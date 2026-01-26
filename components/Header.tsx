@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import LanguageSwitch from "@/components/LanguageSwitch";
+import LanguageSwitch from "./LanguageSwitch";
 
 function NavLink({
   href,
@@ -44,7 +44,7 @@ export default function Header() {
 
   return (
     <header className="border-b border-border-soft bg-white/80 backdrop-blur">
-      {/* Linha de cima */}
+      {/* Top row */}
       <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
         <a
           href={base || "/"}
@@ -59,8 +59,8 @@ export default function Header() {
         <LanguageSwitch />
       </div>
 
-      {/* Menu no DESKTOP */}
-      <div className="mx-auto max-w-7xl px-6 pb-4 hidden md:flex items-center gap-6">
+      {/* Desktop nav */}
+      <div className="mx-auto max-w-7xl px-6 pb-4 hidden md:flex gap-6">
         {links.map((l) => (
           <NavLink
             key={l.href}
@@ -71,7 +71,7 @@ export default function Header() {
         ))}
       </div>
 
-      {/* Menu no MOBILE */}
+      {/* Mobile nav */}
       <div className="mx-auto max-w-7xl px-6 pb-4 flex md:hidden gap-5 overflow-x-auto">
         {links.map((l) => (
           <NavLink
