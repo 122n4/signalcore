@@ -1,5 +1,5 @@
 import "./globals.css";
-import Header from "../components/Header";
+import HeaderWrapper from "../components/HeaderWrapper";
 
 export const metadata = {
   title: "SignalCore",
@@ -14,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-white text-ink-900 antialiased">
-        <Header />
+        <HeaderWrapper />
         <main>{children}</main>
       </body>
     </html>
