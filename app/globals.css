@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html, body { height: 100%; }
+
+body {
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+::selection { background: rgba(14, 107, 79, 0.18); }
