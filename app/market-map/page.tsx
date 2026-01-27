@@ -1,24 +1,6 @@
-type MarketRegimePayload = {
-  market_regime: "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
-  confidence: "Low" | "Moderate" | "High";
-  summary: string;
-  key_risks: string[];
-  regime_change_triggers: string[];
-  week?: string;
-  updated_at?: string;
-};
-
-async function getRegime(): Promise<MarketRegimePayload> {
-  const res = await fetch("/api/market-regime", {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error("Failed to load /api/market-regime");
-  }
-
-  return res.json();
-}
+import React from "react";
+import { getMarketRegime, type MarketRegimePayload } 
+from "../../lib/getMarketRegime";
 
 function Paywall({
   title = "Members-only",
@@ -36,18 +18,22 @@ function Paywall({
   return (
     <div className="relative mt-8">
       <div className="pointer-events-none select-none blur-sm">{children}</div>
+
       <div className="absolute inset-0 flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-3xl border border-border-soft bg-white/90 p-6 text-center shadow-card backdrop-blur">
           <span className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-signal-700/10 px-3 py-1 text-xs font-semibold text-signal-800">
             🔒 {title}
           </span>
+
           <p className="mt-3 text-sm text-ink-700">{description}</p>
+
           <a
             href={href}
             className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
           >
             {cta}
           </a>
+
           <p className="mt-3 text-xs text-ink-500">
             Cancel anytime. Early access pricing.
           </p>
@@ -58,7 +44,7 @@ function Paywall({
 }
 
 export default async function MarketMap() {
-  const regime = await getRegime();
+  const regime: MarketRegimePayload = await getMarketRegime();
 
   return (
     <main className="min-h-screen bg-white text-ink-900">
@@ -80,8 +66,7 @@ export default async function MarketMap() {
         </div>
 
         <p className="mt-6 text-ink-700">
-          This weekly Market Map offers a structured view of market conditions —
-          focused on context, risk, and posture.
+          This weekly Market Map offers a structured view of market conditions — focused on context, risk, and posture.
         </p>
 
         {/* FREE */}
@@ -104,6 +89,8 @@ export default async function MarketMap() {
         <Paywall
           title="Key Risk Factors"
           description="Members unlock the detailed risk breakdown behind the current regime."
+          href="/pricing"
+          cta="Unlock full access"
         >
           <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
             <h2 className="text-lg font-semibold">Key Risk Factors</h2>
@@ -117,12 +104,12 @@ export default async function MarketMap() {
 
         <Paywall
           title="Regime Change Conditions"
-          description="See what would actually change the regime."
+          description="See what would actually change the regime — and what to watch for."
+          href="/pricing"
+          cta="Unlock full access"
         >
           <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-            <h2 className="text-lg font-semibold">
-              What Would Change This Regime
-            </h2>
+            <h2 className="text-lg font-semibold">What Would Change This Regime</h2>
             <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
               {regime.regime_change_triggers.map((x) => (
                 <li key={x}>{x}</li>
