@@ -1,6 +1,61 @@
 import React from "react";
 import { getMarketRegime, type MarketRegimePayload } from "../../../lib/getMarketRegime";
 
+/* =========================
+   Traduções (PT)
+========================= */
+
+function tRegime(regime: MarketRegimePayload["market_regime"]) {
+  const map: Record<MarketRegimePayload["market_regime"], string> = {
+    "Risk-on": "Risk-on",
+    "Risk-off": "Risk-off",
+    "Transitional": "Transição",
+    "Neutral / Range-bound": "Neutro / Lateral",
+  };
+  return map[regime] ?? regime;
+}
+
+function tConfidence(confidence: MarketRegimePayload["confidence"]) {
+  const map: Record<MarketRegimePayload["confidence"], string> = {
+    Low: "Baixa",
+    Moderate: "Moderada",
+    High: "Alta",
+  };
+  return map[confidence] ?? confidence;
+}
+
+function tWeek(week?: string) {
+  if (!week) return "Esta semana";
+  return week.replace(/^Week\s+/i, "Semana ");
+}
+
+function tDay(day?: string) {
+  if (!day) return "";
+  const map: Record<string, string> = {
+    Monday: "Segunda-feira",
+    Tuesday: "Terça-feira",
+    Wednesday: "Quarta-feira",
+    Thursday: "Quinta-feira",
+    Friday: "Sexta-feira",
+    Saturday: "Sábado",
+    Sunday: "Domingo",
+  };
+  return map[day] ?? day;
+}
+
+function tSummary(summary: string) {
+  const map: Record<string, string> = {
+    "Market conditions remain fragile with mixed signals across risk assets. Volatility is still elevated while momentum has weakened, suggesting a market that is searching for direction rather than committing to one.":
+      "As condições de mercado continuam frágeis, com sinais mistos entre ativos de risco. A volatilidade mantém-se elevada e o momentum enfraqueceu, sugerindo um mercado à procura de direção em vez de se comprometer com uma tendência clara.",
+  };
+
+  return map[summary] ?? summary;
+}
+
+/* =========================
+   Teaser pago (sem blur)
+========================= */
+
 function PaidTeaserPT({
   href = "/pt/pricing",
   cta = "Desbloquear clareza (€9/mês)",
@@ -22,8 +77,8 @@ function PaidTeaserPT({
           </h2>
 
           <p className="mt-2 text-sm text-ink-700">
-            O grátis mostra onde o mercado está. Os membros recebem o contexto que
-            ajuda a evitar reações impulsivas semana após semana.
+            O grátis mostra onde o mercado está. Os membros recebem o contexto que ajuda
+            a evitar reações impulsivas semana após semana.
           </p>
 
           <ul className="mt-4 space-y-2 text-sm text-ink-700">
@@ -59,6 +114,10 @@ function PaidTeaserPT({
   );
 }
 
+/* =========================
+   Página PT
+========================= */
+
 export default async function MarketMapPT() {
   const regime: MarketRegimePayload = await getMarketRegime();
 
@@ -73,9 +132,10 @@ export default async function MarketMapPT() {
 
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs text-ink-700">
-            {regime.week ?? "Esta semana"}
-            {regime.updated_at ? ` · Atualizado ${regime.updated_at}` : ""}
+            {tWeek(regime.week)}
+            {regime.updated_at ? ` · Atualizado ${tDay(regime.updated_at)}` : ""}
           </span>
+
           <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs text-ink-700">
             Perspetiva risk-first
           </span>
@@ -93,15 +153,15 @@ export default async function MarketMapPT() {
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-sm font-medium text-ink-800">
-                {regime.market_regime}
+                {tRegime(regime.market_regime)}
               </span>
 
               <span className="text-sm text-ink-500">
-                Confiança: <strong>{regime.confidence}</strong>
+                Confiança: <strong>{tConfidence(regime.confidence)}</strong>
               </span>
             </div>
 
-            <p className="mt-4 text-sm text-ink-700">{regime.summary}</p>
+            <p className="mt-4 text-sm text-ink-700">{tSummary(regime.summary)}</p>
           </div>
 
           {/* Card 2: Regra */}
