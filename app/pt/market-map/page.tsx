@@ -20,25 +20,9 @@ type MarketRegimePayload = {
 ========================= */
 
 async function getRegime(): Promise<MarketRegimePayload> {
-  const baseUrl =
-    process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000";
-
-  const res = await fetch(`${baseUrl}/api/market-regime`, {
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error("Failed to load /api/market-regime");
-  }
-
-  return res.json();
-}
-
-  const host = getHeader("host");
-  const proto = getHeader("x-forwarded-proto") ?? "http";
-  const baseUrl = host ? `${proto}://${host}` : "http://localhost:3000";
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000";
 
   const res = await fetch(`${baseUrl}/api/market-regime`, {
     cache: "no-store",
