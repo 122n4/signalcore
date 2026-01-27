@@ -1,3 +1,10 @@
+import { headers } from "next/headers";
+import React from "react";
+
+/* =========================
+   Types
+========================= */
+
 type MarketRegimePayload = {
   market_regime: "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
   confidence: "Low" | "Moderate" | "High";
@@ -8,19 +15,51 @@ type MarketRegimePayload = {
   updated_at?: string;
 };
 
+/* =========================
+   Data fetch (robusto)
+========================= */
+
 async function getRegime(): Promise<MarketRegimePayload> {
-  const res = await fetch("http://localhost:3000/api/regime", {
+  const baseUrl =
+    process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+
+  const res = await fetch(`${baseUrl}/api/market-regime`, {
     cache: "no-store",
   });
-  if (!res.ok) throw new Error("Failed to load /api/regime");
+
+  if (!res.ok) {
+    throw new Error("Failed to load /api/market-regime");
+  }
+
   return res.json();
 }
 
+  const host = getHeader("host");
+  const proto = getHeader("x-forwarded-proto") ?? "http";
+  const baseUrl = host ? `${proto}://${host}` : "http://localhost:3000";
+
+  const res = await fetch(`${baseUrl}/api/market-regime`, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to load /api/market-regime");
+  }
+
+  return res.json();
+}
+
+/* =========================
+   Paywall Component
+========================= */
+
 function Paywall({
-  title = "Apenas para membros",
-  description = "Desbloqueia a análise completa de risco e as condições de mudança de regime.",
-  cta = "Desbloquear acesso completo",
-  href = "/pt/pricing",
+  title = "Members-only",
+  description = "Unlock the full risk analysis and regime conditions.",
+  cta = "Unlock full access",
+  href = "/pricing",
   children,
 }: {
   title?: string;
@@ -47,13 +86,13 @@ function Paywall({
 
           <a
             href={href}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
           >
             {cta}
           </a>
 
           <p className="mt-3 text-xs text-ink-500">
-            Cancela quando quiseres. Preço de acesso antecipado.
+            Cancel anytime · Early access pricing
           </p>
         </div>
       </div>
@@ -61,108 +100,108 @@ function Paywall({
   );
 }
 
-export default async function MarketMapPT() {
+/* =========================
+   Page
+========================= */
+
+export default async function MarketMap() {
   const regime = await getRegime();
 
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <section className="mx-auto max-w-3xl px-4 py-14">
-        <p className="text-xs font-semibold text-ink-500">SignalCore</p>
+        <p className="text-xs font-semibold text-ink-500">
+          SignalCore
+        </p>
 
         <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
           Weekly Market Map
         </h1>
 
-        {/* META */}
         <div className="mt-4 flex flex-wrap gap-2">
           <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs text-ink-700">
-            {regime.week ?? "Esta semana"}
-            {regime.updated_at ? ` · Atualizado ${regime.updated_at}` : ""}
+            {regime.week ?? "This week"}
+            {regime.updated_at ? ` · Updated ${regime.updated_at}` : ""}
           </span>
+
           <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs text-ink-700">
-            Perspetiva focada no risco
+            Risk-first perspective
           </span>
         </div>
 
-        {/* INTRO */}
         <p className="mt-6 text-ink-700">
-          Esta Market Map semanal oferece uma visão estruturada do ambiente de
-          mercado — com foco no contexto, no risco e na postura, e não em
-          previsões.
+          This weekly Market Map offers a structured view of market conditions —
+          focused on context, risk, and posture.
         </p>
 
-        {/* REGIME DE MERCADO (FREE) */}
+        {/* =========================
+            FREE SECTION
+        ========================= */}
+
         <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">Regime de Mercado</h2>
+          <h2 className="text-lg font-semibold">
+            Market Regime
+          </h2>
 
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-sm font-medium text-ink-800">
               {regime.market_regime}
             </span>
+
             <span className="text-sm text-ink-500">
-              Confiança: <strong>{regime.confidence}</strong>
+              Confidence: <strong>{regime.confidence}</strong>
             </span>
           </div>
 
           <p className="mt-4 text-ink-700">
             {regime.summary}
           </p>
-
-          <p className="mt-3 text-ink-700">
-            Este não é um ambiente de alta convicção. A seletividade e a gestão
-            de risco são mais importantes do que a velocidade.
-          </p>
         </div>
 
-        {/* FATORES DE RISCO (PAYWALL) */}
-        <Paywall
-          title="Fatores de Risco Principais"
-          description="Os membros têm acesso ao detalhe completo dos riscos por trás do regime atual."
-        >
-          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-            <h2 className="text-lg font-semibold">Fatores de Risco Principais</h2>
-            <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
-              {regime.key_risks.map((x) => (
-                <li key={x}>{x}</li>
-              ))}
-            </ul>
+        {/* =========================
+            PAYWALL: Key Risks
+        ========================= */}
 
-            <p className="mt-4 text-ink-700">
-              Estes riscos podem não ser novos — mas a sua interação é
-              determinante.
-            </p>
-          </div>
-        </Paywall>
-
-        {/* CONDIÇÕES DE MUDANÇA DE REGIME (PAYWALL) */}
         <Paywall
-          title="Condições de Mudança de Regime"
-          description="Percebe o que teria realmente de acontecer para o regime mudar."
+          title="Key Risk Factors"
+          description="Members unlock the detailed risk breakdown behind the current regime."
         >
           <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
             <h2 className="text-lg font-semibold">
-              O Que Mudaria Este Regime
+              Key Risk Factors
             </h2>
 
-            <p className="mt-3 text-ink-700">
-              Este regime mudaria se:
-            </p>
-
-            <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
-              {regime.regime_change_triggers.map((x) => (
-                <li key={x}>{x}</li>
+            <ul className="mt-4 list-disc space-y-2 pl-5 text-ink-700">
+              {regime.key_risks.map((risk) => (
+                <li key={risk}>{risk}</li>
               ))}
             </ul>
-
-            <p className="mt-4 text-ink-700">
-              Até lá, a prudência continua a ser apropriada.
-            </p>
           </div>
         </Paywall>
 
-        {/* FOOTNOTE */}
+        {/* =========================
+            PAYWALL: Triggers
+        ========================= */}
+
+        <Paywall
+          title="Regime Change Conditions"
+          description="See what would actually change the regime — and what to watch for."
+        >
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">
+              What Would Change This Regime
+            </h2>
+
+            <ul className="mt-4 list-disc space-y-2 pl-5 text-ink-700">
+              {regime.regime_change_triggers.map((trigger) => (
+                <li key={trigger}>{trigger}</li>
+              ))}
+            </ul>
+          </div>
+        </Paywall>
+
         <p className="mt-10 text-xs text-ink-500">
-          Conteúdo educativo. Sem sinais. Sem previsões.
+          Educational content only. No signals. No predictions.
         </p>
       </section>
     </main>
