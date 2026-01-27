@@ -1,43 +1,61 @@
 import React from "react";
 import { getMarketRegime, type MarketRegimePayload } from "../../../lib/getMarketRegime";
-function Paywall({
-  title = "Apenas para membros",
-  description = "Desbloqueia a análise completa de risco e as condições do regime.",
-  cta = "Desbloquear acesso",
+
+function PaidTeaserPT({
   href = "/pt/pricing",
-  children,
+  cta = "Desbloquear clareza (€9/mês)",
 }: {
-  title?: string;
-  description?: string;
-  cta?: string;
   href?: string;
-  children: React.ReactNode;
+  cta?: string;
 }) {
   return (
-    <div className="relative mt-8">
-      <div className="pointer-events-none select-none blur-sm">{children}</div>
+    <section className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        {/* Left */}
+        <div className="md:flex-1">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-white px-3 py-1 text-xs font-semibold text-ink-700">
+            🔒 Os membros desbloqueiam
+          </div>
 
-      <div className="absolute inset-0 flex items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-3xl border border-border-soft bg-white/90 p-6 text-center shadow-card backdrop-blur">
-          <span className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-signal-700/10 px-3 py-1 text-xs font-semibold text-signal-800">
-            🔒 {title}
-          </span>
+          <h2 className="mt-4 text-xl font-semibold tracking-tight">
+            O Market Map completo — consistência ao longo do tempo
+          </h2>
 
-          <p className="mt-3 text-sm text-ink-700">{description}</p>
-
-          <a
-            href={href}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
-          >
-            {cta}
-          </a>
-
-          <p className="mt-3 text-xs text-ink-500">
-            Podes cancelar quando quiseres · Preço de acesso antecipado
+          <p className="mt-2 text-sm text-ink-700">
+            O grátis mostra onde o mercado está. Os membros recebem o contexto que
+            ajuda a evitar reações impulsivas semana após semana.
           </p>
+
+          <ul className="mt-4 space-y-2 text-sm text-ink-700">
+            <li>• Histórico do regime (como as condições evoluíram)</li>
+            <li>• Alertas quando o regime muda</li>
+            <li>• Postura curto / médio / longo prazo</li>
+            <li>• Notas “o que mudou” (rápidas, humanas, semanais)</li>
+          </ul>
+        </div>
+
+        {/* Right (CTA) */}
+        <div className="md:w-[340px]">
+          <div className="rounded-3xl border border-border-soft bg-white p-5 shadow-card">
+            <p className="text-sm font-semibold text-ink-900">Acesso antecipado</p>
+            <p className="mt-1 text-sm text-ink-700">
+              Estrutura calma e risk-first — todas as semanas.
+            </p>
+
+            <a
+              href={href}
+              className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+            >
+              {cta}
+            </a>
+
+            <p className="mt-3 text-xs text-ink-500">
+              Podes cancelar quando quiseres · Sem hype · Sem “sinais”
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -64,57 +82,54 @@ export default async function MarketMapPT() {
         </div>
 
         <p className="mt-6 text-ink-700">
-          Este Market Map semanal oferece uma visão estruturada das condições de mercado — com foco em contexto, risco e postura.
+          Uma visão estruturada das condições de mercado — com foco em contexto, risco e postura.
         </p>
 
-        {/* GRÁTIS */}
-        <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">Regime de Mercado</h2>
+        {/* ===== GRÁTIS (3 cards) ===== */}
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
+          {/* Card 1: Regime */}
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">Regime de Mercado</h2>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-sm font-medium text-ink-800">
-              {regime.market_regime}
-            </span>
-            <span className="text-sm text-ink-500">
-              Confiança: <strong>{regime.confidence}</strong>
-            </span>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-sm font-medium text-ink-800">
+                {regime.market_regime}
+              </span>
+
+              <span className="text-sm text-ink-500">
+                Confiança: <strong>{regime.confidence}</strong>
+              </span>
+            </div>
+
+            <p className="mt-4 text-sm text-ink-700">{regime.summary}</p>
           </div>
 
-          <p className="mt-4 text-ink-700">{regime.summary}</p>
+          {/* Card 2: Regra */}
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">Regra da semana</h2>
+            <p className="mt-3 text-sm text-ink-700">
+              Em mercados de transição, fazer menos é muitas vezes a melhor decisão.
+            </p>
+          </div>
+
+          {/* Card 3: O que significa */}
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">O que isto significa para ti</h2>
+
+            <ul className="mt-3 space-y-2 text-sm text-ink-700">
+              <li>• Se estás a começar: a tua vantagem é evitar erros, não perseguir movimentos.</li>
+              <li>• Se já estás investido: protege a qualidade das decisões e mantém o tamanho das posições sob controlo.</li>
+              <li>• Se sentes urgência: normalmente é o teu sinal para abrandar.</li>
+            </ul>
+
+            <p className="mt-4 text-sm font-medium text-ink-900">
+              Em resumo: esta semana recompensa paciência mais do que atividade.
+            </p>
+          </div>
         </div>
 
-        {/* PAYWALL */}
-        <Paywall
-          title="Fatores de risco"
-          description="Os membros desbloqueiam a análise detalhada por trás do regime atual."
-          href="/pt/pricing"
-          cta="Desbloquear acesso"
-        >
-          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-            <h2 className="text-lg font-semibold">Fatores de Risco</h2>
-            <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
-              {regime.key_risks.map((x) => (
-                <li key={x}>{x}</li>
-              ))}
-            </ul>
-          </div>
-        </Paywall>
-
-        <Paywall
-          title="Condições de mudança de regime"
-          description="Vê o que teria de acontecer para o regime mudar — e o que observar."
-          href="/pt/pricing"
-          cta="Desbloquear acesso"
-        >
-          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-            <h2 className="text-lg font-semibold">O Que Mudaria Este Regime</h2>
-            <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
-              {regime.regime_change_triggers.map((x) => (
-                <li key={x}>{x}</li>
-              ))}
-            </ul>
-          </div>
-        </Paywall>
+        {/* ===== PAGO (teaser sem blur) ===== */}
+        <PaidTeaserPT href="/pt/pricing" cta="Desbloquear clareza (€9/mês)" />
 
         <p className="mt-10 text-xs text-ink-500">
           Conteúdo educativo. Sem sinais. Sem previsões.

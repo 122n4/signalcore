@@ -1,45 +1,61 @@
 import React from "react";
-import { getMarketRegime, type MarketRegimePayload } 
-from "../../lib/getMarketRegime";
+import { getMarketRegime, type MarketRegimePayload } from "../../lib/getMarketRegime";
 
-function Paywall({
-  title = "Members-only",
-  description = "Unlock the full risk analysis and regime conditions.",
-  cta = "Unlock full access",
+function PaidTeaser({
   href = "/pricing",
-  children,
+  cta = "Unlock clarity (€9/month)",
 }: {
-  title?: string;
-  description?: string;
-  cta?: string;
   href?: string;
-  children: React.ReactNode;
+  cta?: string;
 }) {
   return (
-    <div className="relative mt-8">
-      <div className="pointer-events-none select-none blur-sm">{children}</div>
+    <section className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+        {/* Left */}
+        <div className="md:flex-1">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-white px-3 py-1 text-xs font-semibold text-ink-700">
+            🔒 Members unlock
+          </div>
 
-      <div className="absolute inset-0 flex items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-3xl border border-border-soft bg-white/90 p-6 text-center shadow-card backdrop-blur">
-          <span className="inline-flex items-center gap-2 rounded-full border border-border-soft bg-signal-700/10 px-3 py-1 text-xs font-semibold text-signal-800">
-            🔒 {title}
-          </span>
+          <h2 className="mt-4 text-xl font-semibold tracking-tight">
+            The full Market Map — built for consistency over time
+          </h2>
 
-          <p className="mt-3 text-sm text-ink-700">{description}</p>
-
-          <a
-            href={href}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
-          >
-            {cta}
-          </a>
-
-          <p className="mt-3 text-xs text-ink-500">
-            Cancel anytime. Early access pricing.
+          <p className="mt-2 text-sm text-ink-700">
+            The free snapshot tells you where the market is. Members get the context
+            that helps you avoid overreacting week-to-week.
           </p>
+
+          <ul className="mt-4 space-y-2 text-sm text-ink-700">
+            <li>• Regime history (see how conditions evolved)</li>
+            <li>• Change alerts when the regime shifts</li>
+            <li>• Short / medium / long-term posture guidance</li>
+            <li>• “What changed” notes (fast, human, weekly)</li>
+          </ul>
+        </div>
+
+        {/* Right (CTA) */}
+        <div className="md:w-[340px]">
+          <div className="rounded-3xl border border-border-soft bg-white p-5 shadow-card">
+            <p className="text-sm font-semibold text-ink-900">Early access</p>
+            <p className="mt-1 text-sm text-ink-700">
+              Calm, risk-first structure — every week.
+            </p>
+
+            <a
+              href={href}
+              className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+            >
+              {cta}
+            </a>
+
+            <p className="mt-3 text-xs text-ink-500">
+              Cancel anytime · No hype · No “buy/sell signals”
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -66,57 +82,54 @@ export default async function MarketMap() {
         </div>
 
         <p className="mt-6 text-ink-700">
-          This weekly Market Map offers a structured view of market conditions — focused on context, risk, and posture.
+          A structured view of market conditions — focused on context, risk, and posture.
         </p>
 
-        {/* FREE */}
-        <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">Market Regime</h2>
+        {/* ===== FREE SECTION (3 cards) ===== */}
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
+          {/* Card 1: Regime */}
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">Market Regime</h2>
 
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-sm font-medium text-ink-800">
-              {regime.market_regime}
-            </span>
-            <span className="text-sm text-ink-500">
-              Confidence: <strong>{regime.confidence}</strong>
-            </span>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-sm font-medium text-ink-800">
+                {regime.market_regime}
+              </span>
+
+              <span className="text-sm text-ink-500">
+                Confidence: <strong>{regime.confidence}</strong>
+              </span>
+            </div>
+
+            <p className="mt-4 text-sm text-ink-700">{regime.summary}</p>
           </div>
 
-          <p className="mt-4 text-ink-700">{regime.summary}</p>
+          {/* Card 2: Rule */}
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">This week’s rule</h2>
+            <p className="mt-3 text-sm text-ink-700">
+              In transitional markets, doing less is often the best decision.
+            </p>
+          </div>
+
+          {/* Card 3: What it means */}
+          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold">What this means for you</h2>
+
+            <ul className="mt-3 space-y-2 text-sm text-ink-700">
+              <li>• If you’re a beginner: your edge is avoiding mistakes, not chasing moves.</li>
+              <li>• If you’re already invested: protect decision quality and keep position sizes honest.</li>
+              <li>• If you feel urgency: that’s usually your signal to slow down.</li>
+            </ul>
+
+            <p className="mt-4 text-sm font-medium text-ink-900">
+              Bottom line: this week rewards patience more than activity.
+            </p>
+          </div>
         </div>
 
-        {/* PAYWALL */}
-        <Paywall
-          title="Key Risk Factors"
-          description="Members unlock the detailed risk breakdown behind the current regime."
-          href="/pricing"
-          cta="Unlock full access"
-        >
-          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-            <h2 className="text-lg font-semibold">Key Risk Factors</h2>
-            <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
-              {regime.key_risks.map((x) => (
-                <li key={x}>{x}</li>
-              ))}
-            </ul>
-          </div>
-        </Paywall>
-
-        <Paywall
-          title="Regime Change Conditions"
-          description="See what would actually change the regime — and what to watch for."
-          href="/pricing"
-          cta="Unlock full access"
-        >
-          <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-            <h2 className="text-lg font-semibold">What Would Change This Regime</h2>
-            <ul className="mt-4 list-disc pl-5 space-y-2 text-ink-700">
-              {regime.regime_change_triggers.map((x) => (
-                <li key={x}>{x}</li>
-              ))}
-            </ul>
-          </div>
-        </Paywall>
+        {/* ===== PAID TEASER (no blur) ===== */}
+        <PaidTeaser href="/pricing" cta="Unlock clarity (€9/month)" />
 
         <p className="mt-10 text-xs text-ink-500">
           Educational content only. No signals. No predictions.
