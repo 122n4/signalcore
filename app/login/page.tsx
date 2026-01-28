@@ -19,22 +19,27 @@ export default function LoginPage() {
             Calm, risk-first market context — updated weekly.
           </p>
 
-          {/* Login card */}
           <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
             <div className="space-y-3">
-              {/* Placeholder links for now (no client onClick) */}
               <a
-                href="/login"
+                href="/sign-in"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ink-900 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:opacity-95"
               >
                 Continue with Google
               </a>
 
               <a
-                href="/login"
+                href="/sign-in"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-border-soft bg-white px-5 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
               >
                 Continue with email
+              </a>
+
+              <a
+                href="/sign-up"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-border-soft bg-white px-5 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
+              >
+                Create account
               </a>
 
               <p className="pt-2 text-xs text-ink-500">
@@ -43,7 +48,6 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Why account */}
             <div className="mt-8">
               <h2 className="text-base font-semibold">Why create an account?</h2>
 
@@ -61,9 +65,8 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Trust */}
             <div className="mt-8 rounded-2xl border border-border-soft bg-canvas-50 p-4">
-              <h3 className="text-sm font-semibold">Privacy & security</h3>
+              <h3 className="text-sm font-semibold">Privacy &amp; security</h3>
               <ul className="mt-2 space-y-1 text-sm text-ink-700">
                 <li>• Your portfolio is private</li>
                 <li>• No bank/broker connections</li>
@@ -71,7 +74,6 @@ export default function LoginPage() {
               </ul>
             </div>
 
-            {/* Links */}
             <div className="mt-8 flex flex-wrap gap-x-4 gap-y-2 text-xs text-ink-500">
               <a className="hover:underline" href="/pricing">
                 Pricing

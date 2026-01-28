@@ -19,22 +19,27 @@ export default function LoginPagePT() {
             Contexto de mercado calmo e focado no risco — atualizado semanalmente.
           </p>
 
-          {/* Login card */}
           <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
             <div className="space-y-3">
-              {/* Placeholder links for now (no client onClick) */}
               <a
-                href="/pt/login"
+                href="/sign-in"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-ink-900 px-5 py-3 text-sm font-semibold text-white shadow-soft hover:opacity-95"
               >
                 Continuar com Google
               </a>
 
               <a
-                href="/pt/login"
+                href="/sign-in"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-border-soft bg-white px-5 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
               >
                 Continuar com email
+              </a>
+
+              <a
+                href="/sign-up"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-border-soft bg-white px-5 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
+              >
+                Criar conta
               </a>
 
               <p className="pt-2 text-xs text-ink-500">
@@ -43,14 +48,13 @@ export default function LoginPagePT() {
               </p>
             </div>
 
-            {/* Why account */}
             <div className="mt-8">
               <h2 className="text-base font-semibold">Porquê criar conta?</h2>
 
               <ul className="mt-3 space-y-2 text-sm text-ink-700">
                 <li>• Guardar preferências (EN/PT)</li>
                 <li>• Criar uma área privada “My Portfolio”</li>
-                <li>• Ter estrutura semanal calma — sem spam de alertas</li>
+                <li>• Ter estrutura semanal calma — sem spam</li>
               </ul>
 
               <p className="mt-4 text-sm text-ink-700">
@@ -61,7 +65,6 @@ export default function LoginPagePT() {
               </p>
             </div>
 
-            {/* Trust */}
             <div className="mt-8 rounded-2xl border border-border-soft bg-canvas-50 p-4">
               <h3 className="text-sm font-semibold">Privacidade &amp; segurança</h3>
               <ul className="mt-2 space-y-1 text-sm text-ink-700">
@@ -71,7 +74,6 @@ export default function LoginPagePT() {
               </ul>
             </div>
 
-            {/* Links */}
             <div className="mt-8 flex flex-wrap gap-x-4 gap-y-2 text-xs text-ink-500">
               <a className="hover:underline" href="/pt/pricing">
                 Preços
