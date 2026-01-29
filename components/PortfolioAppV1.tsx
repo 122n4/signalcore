@@ -1,738 +1,743 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 
+/** =========================
+ * Types
+ * ========================= */
 type Locale = "en" | "pt";
-type AssetType = "stock" | "etf" | "crypto" | "other";
-type Importance = "small" | "medium" | "large";
-type Horizon = "short" | "medium" | "long";
-type Status = "favorable" | "neutral" | "caution";
-type Regime = "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
 
 type MarketRegimePayload = {
-  market_regime: Regime;
+  market_regime: "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
   confidence: "Low" | "Moderate" | "High";
   summary: string;
+  key_risks: string[];
+  regime_change_triggers: string[];
   week?: string;
   updated_at?: string;
 };
 
-type AssetItem = {
+type AssetType = "Stock" | "ETF" | "Crypto";
+
+type Asset = {
   id: string;
   name: string;
   type: AssetType;
-  importance: Importance;
+  ticker?: string;
+  importance: "Small" | "Medium" | "Large";
   note?: string;
-  createdAt: string;
+  addedAt: number;
 };
 
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
+type Horizon = "Short" | "Medium" | "Long";
+type State = "Constructive" | "Neutral" | "Caution";
+type Posture = "Favorable" | "Neutral" | "Cautious";
+
+/** =========================
+ * Utils
+ * ========================= */
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function cn(...x: Array<string | false | undefined | null>) {
+  return x.filter(Boolean).join(" ");
 }
 
-function weight(imp: Importance) {
-  if (imp === "large") return 3;
-  if (imp === "medium") return 2;
-  return 1;
+async function fetchRegime(): Promise<MarketRegimePayload> {
+  const res = await fetch("/api/market-regime", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load /api/market-regime");
+  return res.json();
 }
 
-function safeRegime(x: any): Regime {
-  if (x === "Risk-on" || x === "Risk-off" || x === "Transitional" || x === "Neutral / Range-bound") return x;
-  return "Transitional";
+function regimePT(r: MarketRegimePayload["market_regime"]) {
+  switch (r) {
+    case "Risk-on":
+      return "Risk-on";
+    case "Risk-off":
+      return "Risk-off";
+    case "Transitional":
+      return "Transição";
+    case "Neutral / Range-bound":
+      return "Neutro / Lateral";
+  }
 }
 
-function s(locale: Locale) {
+function confidencePT(c: MarketRegimePayload["confidence"]) {
+  switch (c) {
+    case "Low":
+      return "Baixa";
+    case "Moderate":
+      return "Moderada";
+    case "High":
+      return "Alta";
+  }
+}
+
+function weekPT(x?: string) {
+  if (!x) return x;
+  return x.replace(/^Week\s+/i, "Semana ");
+}
+
+function weekdayPT(x?: string) {
+  if (!x) return x;
+  const m: Record<string, string> = {
+    Monday: "Segunda-feira",
+    Tuesday: "Terça-feira",
+    Wednesday: "Quarta-feira",
+    Thursday: "Quinta-feira",
+    Friday: "Sexta-feira",
+    Saturday: "Sábado",
+    Sunday: "Domingo",
+  };
+  return m[x] ?? x;
+}
+
+function badge(locale: Locale, s: State) {
+  const label =
+    locale === "pt"
+      ? s === "Constructive"
+        ? "✅ Construtivo"
+        : s === "Neutral"
+        ? "◼️ Neutro"
+        : "⚠️ Cautela"
+      : s === "Constructive"
+      ? "✅ Constructive"
+      : s === "Neutral"
+      ? "◼️ Neutral"
+      : "⚠️ Caution";
+
+  const color =
+    s === "Constructive"
+      ? "bg-signal-700/10 text-signal-800"
+      : s === "Neutral"
+      ? "bg-canvas-50 text-ink-800"
+      : "bg-amber-500/10 text-amber-800";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border border-border-soft px-3 py-1 text-xs font-semibold",
+        color
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function postureBadge(locale: Locale, p: Posture) {
+  const label =
+    locale === "pt"
+      ? p === "Favorable"
+        ? "🟢 Favorável"
+        : p === "Neutral"
+        ? "🟡 Neutro"
+        : "🔴 Cauteloso"
+      : p === "Favorable"
+      ? "🟢 Favorable"
+      : p === "Neutral"
+      ? "🟡 Neutral"
+      : "🔴 Cautious";
+
+  const color =
+    p === "Favorable"
+      ? "bg-signal-700/10 text-signal-800"
+      : p === "Neutral"
+      ? "bg-amber-500/10 text-amber-800"
+      : "bg-red-500/10 text-red-700";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border border-border-soft px-3 py-1 text-xs font-semibold",
+        color
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+/** =========================
+ * Copy
+ * ========================= */
+function copy(locale: Locale) {
   const pt = locale === "pt";
   return {
     brand: "SignalCore · Market Context",
     title: pt ? "O Meu Portefólio" : "My Portfolio",
     subtitle: pt
-      ? "Um espelho do teu portefólio e um tradutor do mercado — por horizonte temporal, sem sinais."
-      : "A mirror of your portfolio and a translator of the market — by time horizon, without signals.",
-    updated: pt ? "Atualizado" : "Updated",
-    confidence: pt ? "Confiança" : "Confidence",
+      ? "O teu portefólio visto através do contexto do mercado — curto, médio e longo prazo."
+      : "Your portfolio through the lens of market context — short, medium and long term.",
     marketContext: pt ? "Contexto de mercado" : "Market context",
-    postureTitle: pt ? "Estado do teu portefólio" : "Your portfolio status",
-    translatorTitle: pt ? "Tradução do mercado" : "Market translation",
-    assetsTitle: pt ? "Os teus ativos" : "Your assets",
-    addTitle: pt ? "Adicionar ativo" : "Add an asset",
-    addHint: pt
-      ? "Não precisamos de quantidades nem preço. Só o que tens (ou queres acompanhar) e a importância relativa."
-      : "No quantities or entry price needed. Just what you own (or track) and relative importance.",
-    assetLabel: pt ? "Ativo" : "Asset",
-    assetPlaceholder: pt ? "Apple, AAPL, ETF S&P 500, Bitcoin…" : "Apple, AAPL, S&P 500 ETF, Bitcoin…",
-    typeLabel: pt ? "Tipo" : "Type",
-    importanceLabel: pt ? "Importância" : "Importance",
-    noteLabel: pt ? "Nota (opcional)" : "Note (optional)",
-    notePlaceholder: pt ? "Ex: longo prazo, diversificação…" : "e.g. long-term, diversification…",
-    addBtn: pt ? "Adicionar" : "Add",
-    addExample: pt ? "Adicionar exemplo" : "Add example",
-    remove: pt ? "Remover" : "Remove",
-    expand: pt ? "Ver leitura por horizonte" : "View horizon reading",
-    collapse: pt ? "Fechar" : "Close",
-    horizonReading: pt ? "Leitura por horizonte" : "Horizon reading",
-    short: pt ? "Curto prazo" : "Short term",
-    medium: pt ? "Médio prazo" : "Medium term",
-    long: pt ? "Longo prazo" : "Long term",
-    whatMeans: pt ? "O que isto significa?" : "What does this mean?",
-    memoryTitle: pt ? "Memória de mercado" : "Market memory",
-    framingTitle: pt ? "Nota de enquadramento" : "Framing note",
-    framing: pt
-      ? "O SignalCore fornece leitura de contexto e risco dos mercados. As decisões de investimento são sempre da responsabilidade do utilizador."
-      : "SignalCore provides market context and risk reading. Final investment decisions are always the user’s responsibility.",
-    emptyTitle: pt ? "Começa simples" : "Start simple",
-    emptyBody: pt
-      ? "Adiciona 2–4 ativos que já tens. Vais ver uma leitura por horizonte + explicações humanas."
-      : "Add 2–4 assets you already own. You’ll see a horizon reading + human explanations.",
-    status: {
-      favorable: pt ? "Favorável" : "Favorable",
-      neutral: pt ? "Neutro" : "Neutral",
-      caution: pt ? "Cauteloso" : "Cautious",
+    weeklyUpdate: pt ? "Atualização semanal" : "Weekly update",
+    posture: pt ? "Postura desta semana" : "This week’s posture",
+    addAsset: pt ? "Adicionar ativo" : "Add an asset",
+    assets: pt ? "Ativos" : "Assets",
+    empty: pt ? "Ainda não tens ativos. Adiciona o primeiro abaixo." : "No assets yet. Add your first one below.",
+    horizon: {
+      Short: pt ? "Curto prazo" : "Short term",
+      Medium: pt ? "Médio prazo" : "Medium term",
+      Long: pt ? "Long term" : "Long term",
+    } as const,
+    fields: {
+      name: pt ? "Nome" : "Name",
+      ticker: pt ? "Ticker (opcional)" : "Ticker (optional)",
+      type: pt ? "Tipo" : "Type",
+      importance: pt ? "Importância" : "Importance",
+      note: pt ? "Nota (opcional)" : "Note (optional)",
+      add: pt ? "Adicionar" : "Add",
+      remove: pt ? "Remover" : "Remove",
+      open: pt ? "Abrir" : "Open",
+      close: pt ? "Fechar" : "Close",
     },
-    statusLine: {
-      favorable: pt
-        ? "O contexto tende a recompensar consistência. Evita confundir confiança com pressa."
-        : "Context tends to reward consistency. Don’t confuse confidence with urgency.",
-      neutral: pt
-        ? "O mercado não ajuda nem impede claramente. Disciplina vence reação."
-        : "The market isn’t clearly helping or hurting. Discipline beats reaction.",
-      caution: pt
-        ? "Mais ruído e reversões rápidas são prováveis. Prioriza controlo de risco e calma."
-        : "More noise and fast reversals are likely. Prioritize risk control and calm.",
-    },
-    enums: {
-      type: {
-        stock: pt ? "Ação" : "Stock",
-        etf: "ETF",
-        crypto: pt ? "Cripto" : "Crypto",
-        other: pt ? "Outro" : "Other",
-      },
-      importance: {
-        small: pt ? "Pequena" : "Small",
-        medium: pt ? "Média" : "Medium",
-        large: pt ? "Grande" : "Large",
-      },
-      pill: {
-        favorable: pt ? "✅ Construtivo" : "✅ Constructive",
-        neutral: pt ? "◼️ Neutro" : "◼️ Neutral",
-        caution: pt ? "⚠️ Cautela" : "⚠️ Caution",
-      },
-    },
-    education: {
-      line1: pt
-        ? "Curto prazo não é “trading diário”. É sensibilidade a ruído, notícias e liquidez."
-        : "Short term isn’t “day trading”. It’s sensitivity to noise, headlines and liquidity.",
-      line2: pt
-        ? "Um ativo pode ser frágil no curto prazo e ainda assim sólido no longo prazo."
-        : "An asset can be fragile short term and still solid long term.",
-    },
+    types: {
+      Stock: pt ? "Ação" : "Stock",
+      ETF: "ETF",
+      Crypto: pt ? "Cripto" : "Crypto",
+    } as const,
+    importance: {
+      Small: pt ? "Pequena" : "Small",
+      Medium: pt ? "Média" : "Medium",
+      Large: pt ? "Grande" : "Large",
+    } as const,
+    whySimilarRegimes: pt ? "Comportamento em regimes semelhantes" : "Behavior in similar regimes",
+    whatMeans: pt ? "O que isto significa?" : "What this means",
+    microExplain: pt
+      ? "Isto não é um sinal. É uma leitura de contexto para alinhar expectativa e disciplina ao regime atual."
+      : "This is not a signal. It’s context reading to align expectations and discipline with the current regime.",
+    legalTitle: pt ? "Nota de enquadramento" : "Framing note",
+    legalBody: pt
+      ? "O SignalCore fornece leitura de contexto e risco dos mercados por horizonte temporal. As decisões de investimento são sempre da responsabilidade do utilizador."
+      : "SignalCore provides market context and risk reading across time horizons. Investment decisions remain the user’s responsibility.",
   };
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs text-ink-700">
-      {children}
-    </span>
-  );
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-xs font-medium text-ink-800">
-      {children}
-    </span>
-  );
-}
-
-function statusPillLabel(locale: Locale, st: Status) {
-  const c = s(locale);
-  return c.enums.pill[st];
-}
-
-function postureFromScores(regime: Regime, items: AssetItem[]): Status {
-  if (items.length === 0) return regime === "Risk-on" ? "neutral" : "caution";
-
-  // “Heat” simples: cripto e ações pesam mais; importância pesa mais.
-  let heat = 0;
-  for (const it of items) {
-    const w = weight(it.importance);
-    const t = it.type === "crypto" ? 2.3 : it.type === "stock" ? 1.7 : it.type === "etf" ? 1.1 : 1.4;
-    heat += w * t;
-  }
-
-  if (regime === "Risk-on") return heat >= 10 ? "favorable" : "neutral";
-  if (regime === "Risk-off") return "caution";
-  if (regime === "Transitional") return heat >= 8 ? "caution" : "neutral";
-  return "neutral";
-}
-
-/**
- * Tradutor do mercado (texto curto), baseado no regime.
- * Sem buy/sell, sem previsões, só leitura de contexto.
- */
-function marketTranslation(locale: Locale, regime: Regime) {
+/** =========================
+ * Weekly update by regime (short/medium/long)
+ * ========================= */
+function weeklyUpdate(locale: Locale, r: MarketRegimePayload["market_regime"]) {
   const pt = locale === "pt";
-  if (regime === "Risk-on") {
-    return pt
-      ? "Num regime Risk-on, o mercado tende a recompensar consistência e risco bem gerido. O perigo costuma ser emocional: entrar tarde, sair cedo."
-      : "In Risk-on, markets tend to reward consistency and well-managed risk. The main danger is emotional: entering late, exiting early.";
-  }
-  if (regime === "Risk-off") {
-    return pt
-      ? "Num regime Risk-off, o mercado penaliza exposição ao risco e amplifica ruído. O foco é reduzir impulsividade e proteger disciplina."
-      : "In Risk-off, markets punish risk exposure and amplify noise. The focus is lowering impulsivity and protecting discipline.";
-  }
-  if (regime === "Transitional") {
-    return pt
-      ? "Num regime Transitional, o mercado ainda não escolheu direção. Reversões rápidas são comuns e o curto prazo tende a ser mais “barulhento”."
-      : "In Transitional, the market hasn’t chosen a direction. Fast reversals are common and short-term tends to be noisier.";
-  }
-  return pt
-    ? "Num regime neutro/lateral, o mercado não oferece muita direção. Resultados dependem mais de seleção e paciência do que de timing."
-    : "In range-bound regimes, the market offers less direction. Outcomes depend more on selection and patience than timing.";
-}
 
-/**
- * Leitura por horizonte para um ativo.
- * Isto é “compatibilidade com regime” + explicação humana. Não é recomendação.
- */
-function horizonReading(regime: Regime, type: AssetType): Record<Horizon, { status: Status; notePT: string; noteEN: string }> {
-  const vol = type === "crypto";
-  const growthy = type === "stock" || type === "crypto";
-  const broad = type === "etf";
-
-  if (regime === "Risk-on") {
-    return {
-      short: {
-        status: growthy ? "favorable" : "neutral",
-        notePT: growthy ? "O contexto tende a apoiar convicção, mas ruído ainda existe — disciplina conta." : "Não é vento contra, mas o ritmo pode ser mais lento.",
-        noteEN: growthy ? "Context can support conviction, but noise still exists — discipline matters." : "Not a headwind, but pace may be slower.",
-      },
-      medium: {
-        status: broad || growthy ? "favorable" : "neutral",
-        notePT: "Tendências tendem a ficar mais claras — evita mexer demais.",
-        noteEN: "Trends can become clearer — avoid over-adjusting.",
-      },
-      long: {
-        status: "favorable",
-        notePT: vol ? "Bom para consistência, mas aceita volatilidade como custo emocional." : "Consistência e tempo fazem o trabalho em regimes construtivos.",
-        noteEN: vol ? "Good for consistency, but accept volatility as an emotional cost." : "Consistency and time do heavy lifting in constructive regimes.",
-      },
-    };
-  }
-
-  if (regime === "Risk-off") {
-    return {
-      short: {
-        status: "caution",
-        notePT: "O curto prazo tende a penalizar risco. Volatilidade e reversões ficam mais agressivas.",
-        noteEN: "Short term tends to punish risk. Volatility and reversals become more aggressive.",
-      },
-      medium: {
-        status: broad ? "neutral" : "caution",
-        notePT: vol ? "Alta sensibilidade a liquidez e narrativa." : "Postura defensiva costuma importar mais do que “acertar”.",
-        noteEN: vol ? "High sensitivity to liquidity and narrative." : "Defensive posture tends to matter more than being right.",
-      },
-      long: {
-        status: "neutral",
-        notePT: "Regimes de stress podem plantar oportunidades futuras — paciência é a skill.",
-        noteEN: "Stress regimes can plant future opportunities — patience is the skill.",
-      },
-    };
-  }
-
-  if (regime === "Transitional") {
-    return {
-      short: {
-        status: growthy ? "caution" : "neutral",
-        notePT: "Mais ruído do que direção. Reversões rápidas são comuns — evita decisões impulsivas.",
-        noteEN: "More noise than direction. Fast reversals are common — avoid impulsive changes.",
-      },
-      medium: {
-        status: "neutral",
-        notePT: "Confirmações são frágeis. Mantém expectativas realistas e foco no processo.",
-        noteEN: "Confirmation is fragile. Keep expectations realistic and focus on process.",
-      },
-      long: {
-        status: broad ? "favorable" : "neutral",
-        notePT: "Transições muitas vezes preparam o próximo ciclo. Consistência vence timing.",
-        noteEN: "Transitions often set up the next cycle. Consistency beats timing.",
-      },
-    };
-  }
-
-  // Neutral / Range-bound
-  return {
-    short: {
-      status: "neutral",
-      notePT: "Movimentos direcionais podem falhar rápido. Mantém simples e sem pressa.",
-      noteEN: "Directional moves can fail quickly. Keep it simple and unhurried.",
+  const blocks: Record<
+    MarketRegimePayload["market_regime"],
+    { short: string; medium: string; long: string }
+  > = {
+    "Risk-on": {
+      short: pt
+        ? "Curto: o mercado tende a recompensar consistência. Evita confundir confiança com pressa."
+        : "Short: the market tends to reward consistency. Don’t confuse confidence with urgency.",
+      medium: pt
+        ? "Médio: tendências ficam mais claras. Menos ‘adivinhar’, mais disciplina."
+        : "Medium: trends become clearer. Less guessing, more discipline.",
+      long: pt
+        ? "Longo: ambiente construtivo para manter o plano. O risco é emocional (entrar tarde, sair cedo)."
+        : "Long: constructive for sticking to a plan. The risk is emotional (late entries, early exits).",
     },
-    medium: {
-      status: "neutral",
-      notePT: "Resultados dependem mais de seleção do que do ‘vento’ do mercado.",
-      noteEN: "Outcomes depend more on selection than market wind.",
+    "Risk-off": {
+      short: pt
+        ? "Curto: maior probabilidade de ruído e reversões. Prioriza controlo de risco."
+        : "Short: more noise and reversals. Prioritize risk control.",
+      medium: pt
+        ? "Médio: postura defensiva costuma pesar mais do que tentar acertar o timing."
+        : "Medium: a defensive posture often matters more than timing.",
+      long: pt
+        ? "Longo: stress pode criar oportunidades futuras. A skill é paciência, não atividade."
+        : "Long: stress can plant future opportunities. The skill is patience, not activity.",
     },
-    long: {
-      status: "neutral",
-      notePT: "Acumulação gradual pode fazer sentido com expectativas realistas.",
-      noteEN: "Gradual accumulation can make sense with realistic expectations.",
+    Transitional: {
+      short: pt
+        ? "Curto: mais ruído do que direção. Mudanças impulsivas costumam sair caro."
+        : "Short: more noise than direction. Impulsive changes often cost.",
+      medium: pt
+        ? "Médio: seletivo. Confirmações são frágeis — mantém expectativas realistas."
+        : "Medium: selective. Confirmation is fragile — keep expectations realistic.",
+      long: pt
+        ? "Longo: transições preparam o próximo ciclo. Consistência vence timing."
+        : "Long: transitions often set up the next cycle. Consistency beats timing.",
+    },
+    "Neutral / Range-bound": {
+      short: pt
+        ? "Curto: movimentos direcionais falham rápido. Mantém simples."
+        : "Short: directional moves can fail quickly. Keep it simple.",
+      medium: pt
+        ? "Médio: resultados dependem mais de seleção do que do ‘vento’ do mercado."
+        : "Medium: outcomes depend more on selection than market wind.",
+      long: pt
+        ? "Longo: acumulação gradual pode fazer sentido se as expectativas forem realistas."
+        : "Long: gradual accumulation can work if expectations stay realistic.",
     },
   };
+
+  return blocks[r];
 }
 
-/**
- * Memória de mercado (texto curto), dependente do regime e do tipo.
- * Não é performance passada, é “comportamento típico” em ambientes semelhantes.
- */
-function marketMemory(locale: Locale, regime: Regime, type: AssetType) {
+/** =========================
+ * Per-asset horizon matrix + "why"
+ * ========================= */
+function computeMatrix(r: MarketRegimePayload["market_regime"], t: AssetType): Record<Horizon, State> {
+  // Base
+  const base: Record<AssetType, Record<Horizon, State>> = {
+    Stock: { Short: "Caution", Medium: "Neutral", Long: "Constructive" },
+    ETF: { Short: "Neutral", Medium: "Neutral", Long: "Constructive" },
+    Crypto: { Short: "Caution", Medium: "Caution", Long: "Neutral" },
+  };
+
+  const m = { ...base[t] };
+
+  if (r === "Risk-on") {
+    if (t === "Stock") m.Short = "Neutral";
+    if (t === "ETF") m.Short = "Constructive";
+    if (t === "Crypto") m.Medium = "Neutral";
+  }
+
+  if (r === "Risk-off") {
+    if (t === "Stock") {
+      m.Short = "Caution";
+      m.Medium = "Caution";
+    }
+    if (t === "ETF") {
+      m.Short = "Neutral";
+      m.Medium = "Neutral";
+    }
+    if (t === "Crypto") {
+      m.Short = "Caution";
+      m.Medium = "Caution";
+      m.Long = "Neutral";
+    }
+  }
+
+  if (r === "Neutral / Range-bound") {
+    if (t === "Stock") m.Short = "Neutral";
+    if (t === "ETF") m.Short = "Neutral";
+    if (t === "Crypto") m.Short = "Caution";
+  }
+
+  return m;
+}
+
+function whyFor(locale: Locale, r: MarketRegimePayload["market_regime"], t: AssetType) {
   const pt = locale === "pt";
-  const isCrypto = type === "crypto";
-  const isGrowth = type === "stock" || type === "crypto";
-  const isEtf = type === "etf";
 
-  if (regime === "Transitional") {
-    if (isCrypto) return pt ? "Em transições, cripto tende a amplificar ruído e narrativa — exige mais disciplina no curto prazo." : "In transitions, crypto tends to amplify noise and narrative — it demands more short-term discipline.";
-    if (isEtf) return pt ? "ETFs amplos tendem a suavizar extremos, mas ainda seguem o regime. O curto prazo pode ser irregular." : "Broad ETFs can smooth extremes, but still follow the regime. Short-term can be uneven.";
-    if (isGrowth) return pt ? "Ações growth costumam oscilar mais quando o mercado ainda não decidiu direção." : "Growth tends to swing more when the market hasn’t chosen direction.";
-  }
+  const byType: Record<AssetType, Record<MarketRegimePayload["market_regime"], string>> = {
+    Stock: {
+      "Risk-on": pt
+        ? "Em risk-on, ações tendem a beneficiar de momentum — mas inversões podem ser rápidas."
+        : "In risk-on, stocks often benefit from momentum — but reversals can be fast.",
+      "Risk-off": pt
+        ? "Em risk-off, ações costumam sofrer mais volatilidade e quedas mais profundas."
+        : "In risk-off, stocks often see higher volatility and deeper pullbacks.",
+      Transitional: pt
+        ? "Em transição, a liderança muda frequentemente — paciência costuma valer mais do que pressa."
+        : "In transitions, leadership shifts often — patience tends to matter more than speed.",
+      "Neutral / Range-bound": pt
+        ? "Em lateral, muitos movimentos falham — consistência ajuda mais do que reação."
+        : "In range-bound markets, many moves fade — consistency helps more than reaction.",
+    },
+    ETF: {
+      "Risk-on": pt
+        ? "Em risk-on, ETFs amplos tendem a funcionar quando a amplitude do mercado melhora."
+        : "In risk-on, broad ETFs can work as breadth improves.",
+      "Risk-off": pt
+        ? "Em risk-off, ETFs também oscilam, mas geralmente menos do que ações isoladas."
+        : "In risk-off, ETFs still swing, but often less than single names.",
+      Transitional: pt
+        ? "Em transição, diversificação ajuda, mas correlações podem subir de repente."
+        : "In transitions, diversification helps, but correlations can rise suddenly.",
+      "Neutral / Range-bound": pt
+        ? "Em lateral, um plano simples costuma bater perseguir ruído de curto prazo."
+        : "In range-bound markets, a simple plan often beats chasing short-term noise.",
+    },
+    Crypto: {
+      "Risk-on": pt
+        ? "Em risk-on, cripto pode acelerar — mas também pode inverter rápido."
+        : "In risk-on, crypto can accelerate — but can also reverse quickly.",
+      "Risk-off": pt
+        ? "Em risk-off, cripto costuma sofrer com liquidez e choques de sentimento."
+        : "In risk-off, crypto often gets hit by liquidity and sentiment shocks.",
+      Transitional: pt
+        ? "Em transição, cripto pode ser ‘whipsaw’ — timing fica mais difícil."
+        : "In transitions, crypto can be whipsawed — timing becomes harder.",
+      "Neutral / Range-bound": pt
+        ? "Em lateral, cripto ainda tem picos. Tamanho de risco importa."
+        : "In range-bound markets, crypto can still spike. Risk sizing matters.",
+    },
+  };
 
-  if (regime === "Risk-off") {
-    if (isCrypto) return pt ? "Em Risk-off, cripto costuma ter assimetria negativa (quedas rápidas) quando liquidez contrai." : "In Risk-off, crypto can show negative asymmetry (fast drops) as liquidity contracts.";
-    return pt ? "Em Risk-off, ativos sensíveis ao ciclo tendem a ter maior volatilidade e drawdowns mais frequentes." : "In Risk-off, cyclically sensitive assets tend to show higher volatility and more frequent drawdowns.";
-  }
-
-  if (regime === "Risk-on") {
-    return pt ? "Em Risk-on, o mercado tende a “perdoar” ruído e recompensar consistência — o risco é emocional." : "In Risk-on, markets tend to ‘forgive’ noise and reward consistency — the risk is emotional.";
-  }
-
-  return pt ? "Em mercados laterais, seleção e paciência costumam importar mais do que tentar adivinhar direção." : "In range-bound markets, selection and patience tend to matter more than guessing direction.";
+  return byType[t][r];
 }
 
-function aggregateHorizon(locale: Locale, regime: Regime, items: AssetItem[]) {
-  // “Espelho”: estado por horizonte para o portfólio
-  // V1: soma pesos por status por horizon, e decide o dominante.
-  const totals: Record<Horizon, Record<Status, number>> = {
-    short: { favorable: 0, neutral: 0, caution: 0 },
-    medium: { favorable: 0, neutral: 0, caution: 0 },
-    long: { favorable: 0, neutral: 0, caution: 0 },
-  };
-
-  for (const it of items) {
-    const w = weight(it.importance);
-    const hr = horizonReading(regime, it.type);
-    (Object.keys(hr) as Horizon[]).forEach((h) => {
-      totals[h][hr[h].status] += w;
-    });
+/** =========================
+ * Portfolio posture (simple, explainable)
+ * ========================= */
+function computePosture(regime: MarketRegimePayload["market_regime"], assets: Asset[]): Posture {
+  // Simple scoring by risk sensitivity + importance
+  let score = 0;
+  for (const a of assets) {
+    const imp = a.importance === "Large" ? 2 : a.importance === "Medium" ? 1 : 0.5;
+    const sens = a.type === "Crypto" ? 2 : a.type === "Stock" ? 1.5 : 1;
+    score += imp * sens;
   }
 
-  const pick = (h: Horizon): Status => {
-    const t = totals[h];
-    // se caution dominar, é caution; senão favorable se dominar; senão neutral
-    if (t.caution >= t.neutral && t.caution >= t.favorable) return "caution";
-    if (t.favorable >= t.neutral && t.favorable >= t.caution) return "favorable";
-    return "neutral";
-  };
+  if (assets.length === 0) return regime === "Risk-on" ? "Neutral" : "Cautious";
 
-  const summaryLine = () => {
-    const pt = locale === "pt";
-    const short = pick("short");
-    const long = pick("long");
-
-    if (short === "caution" && long === "favorable") {
-      return pt
-        ? "Estruturalmente coerente, mas exposto a fragilidade no curto prazo."
-        : "Structurally coherent, but exposed to short-term fragility.";
-    }
-    if (short === "caution" && long !== "favorable") {
-      return pt
-        ? "Exposto a fragilidade no curto prazo. Mantém disciplina e evita impulsividade."
-        : "Exposed to short-term fragility. Keep discipline and avoid impulsivity.";
-    }
-    if (short === "favorable") {
-      return pt
-        ? "O contexto favorece consistência. Evita confundir confiança com pressa."
-        : "Context favors consistency. Don’t confuse confidence with urgency.";
-    }
-    return pt ? "Equilíbrio moderado: o mercado não está a ajudar nem a impedir claramente." : "Moderate balance: the market isn’t clearly helping or hurting.";
-  };
-
-  return {
-    short: pick("short"),
-    medium: pick("medium"),
-    long: pick("long"),
-    line: summaryLine(),
-  };
+  if (regime === "Risk-on") return score >= 5 ? "Favorable" : "Neutral";
+  if (regime === "Risk-off") return "Cautious";
+  if (regime === "Transitional") return score >= 4 ? "Cautious" : "Neutral";
+  return "Neutral";
 }
 
+/** =========================
+ * Component
+ * ========================= */
 export default function PortfolioAppV1({ locale }: { locale: Locale }) {
-  const c = useMemo(() => s(locale), [locale]);
+  const c = useMemo(() => copy(locale), [locale]);
+  const { user } = useUser();
 
-  const storageKey = locale === "pt" ? "signalcore.portfolio.v1.pt" : "signalcore.portfolio.v1.en";
+  const storageKey = useMemo(() => {
+    // one portfolio per user
+    return user?.id ? `sc_portfolio_v1_${user.id}_${locale}` : `sc_portfolio_v1_anon_${locale}`;
+  }, [user?.id, locale]);
 
-  const [items, setItems] = useState<AssetItem[]>([]);
+  const [loadingRegime, setLoadingRegime] = useState(true);
+  const [regime, setRegime] = useState<MarketRegimePayload | null>(null);
+
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // form
   const [name, setName] = useState("");
-  const [type, setType] = useState<AssetType>("stock");
-  const [importance, setImportance] = useState<Importance>("medium");
+  const [ticker, setTicker] = useState("");
+  const [type, setType] = useState<AssetType>("Stock");
+  const [importance, setImportance] = useState<Asset["importance"]>("Medium");
   const [note, setNote] = useState("");
 
-  const [regime, setRegime] = useState<Regime>("Transitional");
-  const [regimeData, setRegimeData] = useState<MarketRegimePayload | null>(null);
-  const [regimeError, setRegimeError] = useState(false);
-
-  // Load portfolio
+  // load assets
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as AssetItem[];
-      if (Array.isArray(parsed)) setItems(parsed);
+      if (raw) setAssets(JSON.parse(raw));
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [storageKey]);
 
-  // Save portfolio
+  // save assets
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(items));
+      localStorage.setItem(storageKey, JSON.stringify(assets));
     } catch {}
-  }, [items, storageKey]);
+  }, [storageKey, assets]);
 
-  // Fetch regime
+  // fetch regime
   useEffect(() => {
-    let mounted = true;
-    async function run() {
+    let alive = true;
+    (async () => {
       try {
-        setRegimeError(false);
-        const res = await fetch("/api/market-regime", { cache: "no-store" });
-        if (!res.ok) throw new Error("bad response");
-        const json = (await res.json()) as MarketRegimePayload;
-        if (!mounted) return;
-        const normalized = safeRegime(json.market_regime);
-        setRegime(normalized);
-        setRegimeData({ ...json, market_regime: normalized });
+        const data = await fetchRegime();
+        if (!alive) return;
+        setRegime(data);
       } catch {
-        if (!mounted) return;
-        setRegimeError(true);
+        if (!alive) return;
+        setRegime(null);
+      } finally {
+        if (alive) setLoadingRegime(false);
       }
-    }
-    run();
+    })();
     return () => {
-      mounted = false;
+      alive = false;
     };
   }, []);
 
-  const posture = useMemo(() => postureFromScores(regime, items), [regime, items]);
-  const agg = useMemo(() => aggregateHorizon(locale, regime, items), [locale, regime, items]);
+  const currentRegime = regime?.market_regime ?? "Transitional";
+  const posture = useMemo(() => computePosture(currentRegime, assets), [currentRegime, assets]);
+  const weekly = useMemo(() => weeklyUpdate(locale, currentRegime), [locale, currentRegime]);
 
-  function addAsset() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
+  const headerRegime = useMemo(() => {
+    if (!regime) return null;
+    if (locale === "pt") {
+      return {
+        regime: regimePT(regime.market_regime),
+        confidence: confidencePT(regime.confidence),
+        week: weekPT(regime.week),
+        updated_at: weekdayPT(regime.updated_at),
+        summary: ptSummaryFromRegime(regime.market_regime),
+      };
+    }
+    return {
+      regime: regime.market_regime,
+      confidence: regime.confidence,
+      week: regime.week,
+      updated_at: regime.updated_at,
+      summary: regime.summary,
+    };
+  }, [regime, locale]);
 
-    const next: AssetItem = {
+  function onAdd(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = name.trim();
+    if (!clean) return;
+
+    const a: Asset = {
       id: uid(),
-      name: trimmed,
+      name: clean,
+      ticker: ticker.trim() || undefined,
       type,
       importance,
-      note: note.trim() ? note.trim() : undefined,
-      createdAt: new Date().toISOString(),
+      note: note.trim() || undefined,
+      addedAt: Date.now(),
     };
 
-    setItems((prev) => [next, ...prev]);
+    setAssets((prev) => [a, ...prev]);
+    setOpenId(a.id);
+
     setName("");
+    setTicker("");
+    setType("Stock");
+    setImportance("Medium");
     setNote("");
   }
 
-  function addExample() {
-    const now = new Date().toISOString();
-    setItems([
-      { id: uid(), name: "AAPL", type: "stock", importance: "medium", createdAt: now, note: locale === "pt" ? "Qualidade / longo prazo" : "Quality / long-term" },
-      { id: uid(), name: "S&P 500 ETF", type: "etf", importance: "large", createdAt: now, note: locale === "pt" ? "Base diversificada" : "Diversified base" },
-      { id: uid(), name: "Bitcoin", type: "crypto", importance: "small", createdAt: now, note: locale === "pt" ? "Assimétrico" : "Asymmetric" },
-    ]);
-  }
-
-  function removeAsset(id: string) {
-    setItems((prev) => prev.filter((x) => x.id !== id));
-    if (openId === id) setOpenId(null);
+  function remove(id: string) {
+    setAssets((prev) => prev.filter((x) => x.id !== id));
+    setOpenId((curr) => (curr === id ? null : curr));
   }
 
   return (
     <main className="min-h-screen bg-white text-ink-900">
-      <section className="mx-auto max-w-3xl px-6 py-14">
+      <section className="mx-auto max-w-3xl px-4 py-12 md:py-14">
         <p className="text-xs font-semibold text-ink-500">{c.brand}</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">{c.title}</h1>
-        <p className="mt-3 text-ink-700">{c.subtitle}</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">{c.title}</h1>
+        <p className="mt-2 text-ink-700">{c.subtitle}</p>
 
-        {/* 1) Espelho: estado do portfólio */}
+        {/* Regime + weekly */}
         <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-ink-500">{c.postureTitle}</p>
-              <p className="mt-2 text-xl font-semibold">{c.status[posture]}</p>
-              <p className="mt-2 text-sm text-ink-700">{agg.line}</p>
-            </div>
+              <p className="text-xs font-semibold text-ink-500">{c.marketContext}</p>
 
-            <div className="flex flex-wrap gap-2">
-              <Pill>
-                {c.short}: {statusPillLabel(locale, agg.short)}
-              </Pill>
-              <Pill>
-                {c.medium}: {statusPillLabel(locale, agg.medium)}
-              </Pill>
-              <Pill>
-                {c.long}: {statusPillLabel(locale, agg.long)}
-              </Pill>
-            </div>
-          </div>
-
-          <p className="mt-4 text-xs text-ink-500">{c.statusLine[posture]}</p>
-        </div>
-
-        {/* 2) Tradutor: contexto do mercado */}
-        <div className="mt-6 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-ink-500">{c.marketContext}</span>
-
-            <Badge>
-              <strong>{regime}</strong>
-              {regimeData?.confidence ? (
-                <span className="ml-2 text-ink-500">
-                  · {c.confidence}: <strong>{regimeData.confidence}</strong>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-700">
+                <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-xs">
+                  {headerRegime?.week ?? (locale === "pt" ? "Esta semana" : "This week")}
+                  {headerRegime?.updated_at ? ` · ${locale === "pt" ? "Atualizado" : "Updated"} ${headerRegime.updated_at}` : ""}
                 </span>
-              ) : null}
-              {regimeData?.week ? <span className="ml-2 text-ink-500">· {regimeData.week}</span> : null}
-              {regimeData?.updated_at ? (
-                <span className="ml-2 text-ink-500">
-                  · {c.updated} {regimeData.updated_at}
+
+                <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs">
+                  <strong>{headerRegime?.regime ?? currentRegime}</strong>
+                  <span className="text-ink-500">
+                    {" "}
+                    · {locale === "pt" ? "Confiança" : "Confidence"} <strong>{headerRegime?.confidence ?? (locale === "pt" ? "Moderada" : "Moderate")}</strong>
+                  </span>
                 </span>
-              ) : null}
-              {regimeError ? <span className="ml-2 text-ink-500">· fallback</span> : null}
-            </Badge>
+              </div>
+            </div>
+
+            <div>{postureBadge(locale, posture)}</div>
           </div>
 
-          {regimeData?.summary ? (
-            <div className="mt-4 rounded-3xl border border-ink-100 bg-ink-50/40 px-4 py-3">
-              <p className="text-sm text-ink-700">{regimeData.summary}</p>
-            </div>
-          ) : null}
-
-          <div className="mt-4 rounded-3xl border border-border-soft bg-white p-5">
-            <p className="text-sm font-semibold">{c.translatorTitle}</p>
-            <p className="mt-2 text-sm text-ink-700">{marketTranslation(locale, regime)}</p>
-          </div>
-        </div>
-
-        {/* Educação humana */}
-        <div className="mt-6 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <p className="text-sm font-semibold">{c.whatMeans}</p>
-          <ul className="mt-3 list-disc pl-5 space-y-2 text-sm text-ink-700">
-            <li>{c.education.line1}</li>
-            <li>{c.education.line2}</li>
-          </ul>
-        </div>
-
-        {/* 3) Add asset */}
-        <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">{c.addTitle}</h2>
-          <p className="mt-2 text-sm text-ink-700">{c.addHint}</p>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <label className="text-sm font-semibold">{c.assetLabel}</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={c.assetPlaceholder}
-                className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold">{c.typeLabel}</label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as AssetType)}
-                className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
-              >
-                <option value="stock">{c.enums.type.stock}</option>
-                <option value="etf">{c.enums.type.etf}</option>
-                <option value="crypto">{c.enums.type.crypto}</option>
-                <option value="other">{c.enums.type.other}</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold">{c.importanceLabel}</label>
-              <select
-                value={importance}
-                onChange={(e) => setImportance(e.target.value as Importance)}
-                className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
-              >
-                <option value="small">{c.enums.importance.small}</option>
-                <option value="medium">{c.enums.importance.medium}</option>
-                <option value="large">{c.enums.importance.large}</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="text-sm font-semibold">{c.noteLabel}</label>
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={c.notePlaceholder}
-                className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
-              />
-            </div>
+          <div className="mt-4 rounded-3xl border border-ink-100 bg-ink-50/40 px-4 py-3">
+            {loadingRegime ? (
+              <p className="text-sm text-ink-600">{locale === "pt" ? "A carregar…" : "Loading…"}</p>
+            ) : (
+              <p className="text-sm text-ink-700">{headerRegime?.summary ?? (locale === "pt" ? ptSummaryFromRegime(currentRegime) : "Context is temporarily unavailable.")}</p>
+            )}
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={addAsset}
-              className="inline-flex items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
-            >
-              {c.addBtn}
-            </button>
+          {/* Weekly update */}
+          <div className="mt-6">
+            <p className="text-sm font-semibold">{c.weeklyUpdate}</p>
+            <div className="mt-3 grid gap-3">
+              <div className="rounded-2xl border border-border-soft bg-white p-4">
+                <p className="text-xs font-semibold text-ink-500">{c.horizon.Short}</p>
+                <p className="mt-2 text-sm text-ink-700">{weekly.short}</p>
+              </div>
+              <div className="rounded-2xl border border-border-soft bg-white p-4">
+                <p className="text-xs font-semibold text-ink-500">{c.horizon.Medium}</p>
+                <p className="mt-2 text-sm text-ink-700">{weekly.medium}</p>
+              </div>
+              <div className="rounded-2xl border border-border-soft bg-white p-4">
+                <p className="text-xs font-semibold text-ink-500">{c.horizon.Long}</p>
+                <p className="mt-2 text-sm text-ink-700">{weekly.long}</p>
+              </div>
+            </div>
 
-            <button
-              type="button"
-              onClick={addExample}
-              className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold hover:bg-canvas-50"
-            >
-              {c.addExample}
-            </button>
+            <div className="mt-4 rounded-2xl border border-border-soft bg-canvas-50 p-4">
+              <p className="text-xs font-semibold text-ink-700">{c.whatMeans}</p>
+              <p className="mt-2 text-sm text-ink-700">{c.microExplain}</p>
+            </div>
           </div>
         </div>
 
-        {/* 4) Assets list */}
-        <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">{c.assetsTitle}</h2>
+        {/* Assets */}
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold">{c.assets}</h2>
+          {assets.length === 0 ? <p className="mt-3 text-sm text-ink-600">{c.empty}</p> : null}
 
-          {items.length === 0 ? (
-            <div className="mt-4">
-              <p className="text-sm font-semibold">{c.emptyTitle}</p>
-              <p className="mt-2 text-sm text-ink-700">{c.emptyBody}</p>
-            </div>
-          ) : (
-            <div className="mt-4 space-y-4">
-              {items.map((it) => (
-                <AssetCard
-                  key={it.id}
-                  locale={locale}
-                  regime={regime}
-                  item={it}
-                  open={openId === it.id}
-                  onToggle={() => setOpenId(openId === it.id ? null : it.id)}
-                  onRemove={() => removeAsset(it.id)}
+          <div className="mt-6 space-y-4">
+            {assets.map((a) => {
+              const open = openId === a.id;
+              const matrix = computeMatrix(currentRegime, a.type);
+
+              return (
+                <div key={a.id} className="rounded-3xl border border-border-soft bg-white shadow-soft">
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(open ? null : a.id)}
+                    className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">
+                        {a.name}
+                        {a.ticker ? <span className="ml-2 text-sm font-medium text-ink-500">({a.ticker})</span> : null}
+                      </p>
+                      <p className="mt-1 text-xs text-ink-500">
+                        {c.types[a.type]} · {c.importance[a.importance]}
+                        {a.note ? ` · ${a.note}` : ""}
+                      </p>
+                    </div>
+
+                    <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-xs font-semibold text-ink-800">
+                      {open ? c.fields.close : c.fields.open}
+                    </span>
+                  </button>
+
+                  {open ? (
+                    <div className="px-5 pb-5">
+                      {/* Matrix table */}
+                      <div className="overflow-hidden rounded-2xl border border-border-soft">
+                        <table className="w-full text-sm">
+                          <thead className="bg-canvas-50 text-xs text-ink-500">
+                            <tr>
+                              <th className="px-4 py-3 text-left">{locale === "pt" ? "Horizonte" : "Horizon"}</th>
+                              <th className="px-4 py-3 text-left">{locale === "pt" ? "Leitura" : "Reading"}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(["Short", "Medium", "Long"] as Horizon[]).map((h, idx) => (
+                              <tr key={h} className={idx ? "border-t border-border-soft" : ""}>
+                                <td className="px-4 py-3">{c.horizon[h]}</td>
+                                <td className="px-4 py-3">{badge(locale, matrix[h])}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Similar regime behavior */}
+                      <div className="mt-4 rounded-2xl border border-ink-100 bg-ink-50/40 px-4 py-3">
+                        <p className="text-xs font-semibold text-ink-500">{c.whySimilarRegimes}</p>
+                        <p className="mt-2 text-sm text-ink-700">{whyFor(locale, currentRegime, a.type)}</p>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <p className="text-xs text-ink-500">{locale === "pt" ? "Sem sinais. Sem previsões. Só contexto." : "No signals. No predictions. Just context."}</p>
+
+                        <button
+                          type="button"
+                          onClick={() => remove(a.id)}
+                          className="rounded-full border border-border-soft px-3 py-1 text-xs font-semibold text-ink-700 hover:bg-canvas-50"
+                        >
+                          {c.fields.remove}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Add asset */}
+          <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <h3 className="text-lg font-semibold">{c.addAsset}</h3>
+
+            <form onSubmit={onAdd} className="mt-5 grid gap-3">
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold text-ink-500">{c.fields.name}</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full rounded-2xl border border-border-soft px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                  placeholder={locale === "pt" ? "Ex: Apple, MSCI World ETF, Bitcoin" : "e.g. Apple, MSCI World ETF, Bitcoin"}
                 />
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
 
-        {/* Framing note */}
-        <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <p className="text-xs font-semibold text-ink-500">{c.framingTitle}</p>
-          <p className="mt-2 text-sm text-ink-700">{c.framing}</p>
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold text-ink-500">{c.fields.ticker}</label>
+                <input
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value)}
+                  className="w-full rounded-2xl border border-border-soft px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                  placeholder={locale === "pt" ? "Ex: AAPL (opcional)" : "e.g. AAPL (optional)"}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold text-ink-500">{c.fields.type}</label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as AssetType)}
+                  className="w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                >
+                  <option value="Stock">{c.types.Stock}</option>
+                  <option value="ETF">{c.types.ETF}</option>
+                  <option value="Crypto">{c.types.Crypto}</option>
+                </select>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold text-ink-500">{c.fields.importance}</label>
+                <select
+                  value={importance}
+                  onChange={(e) => setImportance(e.target.value as Asset["importance"])}
+                  className="w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                >
+                  <option value="Small">{c.importance.Small}</option>
+                  <option value="Medium">{c.importance.Medium}</option>
+                  <option value="Large">{c.importance.Large}</option>
+                </select>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold text-ink-500">{c.fields.note}</label>
+                <input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="w-full rounded-2xl border border-border-soft px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                  placeholder={locale === "pt" ? "Ex: longo prazo, diversificação…" : "e.g. long-term, diversification…"}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="mt-2 inline-flex items-center justify-center rounded-2xl bg-signal-700 px-5 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+              >
+                {c.fields.add}
+              </button>
+            </form>
+          </div>
+
+          {/* Legal */}
+          <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+            <p className="text-xs font-semibold text-ink-500">{c.legalTitle}</p>
+            <p className="mt-2 text-sm text-ink-700">{c.legalBody}</p>
+          </div>
         </div>
       </section>
     </main>
   );
 }
 
-function AssetCard({
-  locale,
-  regime,
-  item,
-  open,
-  onToggle,
-  onRemove,
-}: {
-  locale: Locale;
-  regime: Regime;
-  item: AssetItem;
-  open: boolean;
-  onToggle: () => void;
-  onRemove: () => void;
-}) {
-  const c = s(locale);
-  const hr = useMemo(() => horizonReading(regime, item.type), [regime, item.type]);
-
-  return (
-    <div className="rounded-3xl border border-border-soft bg-white p-5 shadow-soft">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-base font-semibold text-ink-900">{item.name}</div>
-
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Pill>{c.enums.type[item.type]}</Pill>
-            <Pill>{c.enums.importance[item.importance]}</Pill>
-            {item.note ? <Pill>{item.note}</Pill> : null}
-          </div>
-
-          {/* Preview linha (espelho rápido do ativo) */}
-          <p className="mt-3 text-sm text-ink-700">
-            {c.short}: {statusPillLabel(locale, hr.short.status)} · {c.long}: {statusPillLabel(locale, hr.long.status)}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded-xl border border-border-soft px-3 py-2 text-xs hover:bg-canvas-50"
-        >
-          {c.remove}
-        </button>
-      </div>
-
-      <button
-        type="button"
-        onClick={onToggle}
-        className="mt-4 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm font-semibold hover:bg-canvas-50"
-      >
-        {open ? c.collapse : c.expand}
-      </button>
-
-      {open ? (
-        <div className="mt-4 space-y-3">
-          <HorizonBlock
-            title={c.short}
-            pill={statusPillLabel(locale, hr.short.status)}
-            note={locale === "pt" ? hr.short.notePT : hr.short.noteEN}
-          />
-          <HorizonBlock
-            title={c.medium}
-            pill={statusPillLabel(locale, hr.medium.status)}
-            note={locale === "pt" ? hr.medium.notePT : hr.medium.noteEN}
-          />
-          <HorizonBlock
-            title={c.long}
-            pill={statusPillLabel(locale, hr.long.status)}
-            note={locale === "pt" ? hr.long.notePT : hr.long.noteEN}
-          />
-
-          <div className="rounded-2xl border border-border-soft bg-canvas-50 p-4">
-            <p className="text-xs font-semibold text-ink-700">{c.memoryTitle}</p>
-            <p className="mt-2 text-sm text-ink-700">{marketMemory(locale, regime, item.type)}</p>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function HorizonBlock({ title, pill, note }: { title: string; pill: string; note: string }) {
-  return (
-    <div className="rounded-2xl border border-border-soft bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-ink-900">{title}</p>
-        <Pill>{pill}</Pill>
-      </div>
-      <p className="mt-2 text-sm text-ink-700">{note}</p>
-    </div>
-  );
+/** =========================
+ * PT summary helper
+ * ========================= */
+function ptSummaryFromRegime(r: MarketRegimePayload["market_regime"]) {
+  switch (r) {
+    case "Risk-on":
+      return "O mercado está mais favorável ao risco. Mantém disciplina: o risco é confundir confiança com pressa.";
+    case "Risk-off":
+      return "O mercado está mais defensivo. A prioridade tende a ser preservação e gestão de volatilidade.";
+    case "Transitional":
+      return "O mercado está em transição: sinais mistos e sensível a notícias macro. Ajusta expectativas e evita decisões impulsivas.";
+    case "Neutral / Range-bound":
+      return "O mercado está mais lateral. Consistência e controlo de risco costumam valer mais do que emoção.";
+  }
 }
