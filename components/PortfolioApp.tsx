@@ -10,17 +10,21 @@ type Size = "small" | "medium" | "large";
 type Fit = "aligned" | "neutral" | "misaligned";
 type Risk = "low" | "moderate" | "high";
 
+type Regime =
+  | "Risk-on"
+  | "Risk-off"
+  | "Transitional"
+  | "Neutral / Range-bound";
+
 type PortfolioItem = {
   id: string;
   name: string;
   type: AssetType;
   horizon: Horizon;
   size: Size;
-  note?: string; // opcional: razão do user
+  note?: string;
   createdAt: string;
 };
-
-type Regime = "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
 
 const STORAGE_KEY_EN = "signalcore.portfolio.v1.en";
 const STORAGE_KEY_PT = "signalcore.portfolio.v1.pt";
@@ -29,97 +33,96 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function t(locale: Locale) {
-  const isPT = locale === "pt";
+function copy(locale: Locale) {
+  const pt = locale === "pt";
   return {
-    title: isPT ? "O Meu Portefólio" : "My Portfolio",
-    subtitle: isPT
+    brand: "SignalCore · Market Context",
+    title: pt ? "O Meu Portefólio" : "My Portfolio",
+    subtitle: pt
       ? "Adiciona os ativos que já tens. O SignalCore dá contexto de risco e encaixe com o regime — sem sinais de compra/venda."
       : "Add the assets you already own. SignalCore gives risk context and regime fit — without buy/sell signals.",
-    addTitle: isPT ? "Adicionar ativo" : "Add an asset",
-    addHint: isPT
+    regimeLabel: pt ? "Regime atual" : "Current regime",
+    portfolioFit: pt ? "Encaixe do portefólio" : "Portfolio fit",
+    addTitle: pt ? "Adicionar ativo" : "Add an asset",
+    addHint: pt
       ? "Não estamos a dizer se é “bom”. Estamos a avaliar contexto e comportamento do risco."
       : "We’re not judging if it’s “good”. We’re assessing context and risk behavior.",
-    assetLabel: isPT ? "Ativo" : "Asset",
-    assetPlaceholder: isPT ? "Apple, AAPL, ETF S&P 500, Bitcoin…" : "Apple, AAPL, S&P 500 ETF, Bitcoin…",
-    typeLabel: isPT ? "Tipo" : "Type",
-    horizonLabel: isPT ? "Horizonte" : "Horizon",
-    sizeLabel: isPT ? "Importância" : "Importance",
-    noteLabel: isPT ? "Nota (opcional)" : "Note (optional)",
-    notePlaceholder: isPT ? "Porque tens este ativo? (ex: longo prazo, diversificação…)" : "Why do you hold it? (e.g. long-term, diversification…)",
-    addBtn: isPT ? "Adicionar e analisar" : "Add & assess",
-    holdingsTitle: isPT ? "Ativos" : "Holdings",
-    empty: isPT ? "Ainda não há ativos. Adiciona o primeiro acima." : "No assets yet. Add your first one above.",
-    tableAsset: isPT ? "Ativo" : "Asset",
-    tableType: isPT ? "Tipo" : "Type",
-    tableHorizon: isPT ? "Horizonte" : "Horizon",
-    tableFit: isPT ? "Encaixe" : "Fit",
-    tableRisk: isPT ? "Risco contextual" : "Contextual risk",
-    tableWhy: isPT ? "Contexto" : "Context",
-    remove: isPT ? "Remover" : "Remove",
-    regimeLabel: isPT ? "Regime atual" : "Current regime",
-    portfolioFit: isPT ? "Encaixe do portefólio" : "Portfolio fit",
-    principle: isPT
+    assetLabel: pt ? "Ativo" : "Asset",
+    assetPlaceholder: pt
+      ? "Apple, AAPL, ETF S&P 500, Bitcoin…"
+      : "Apple, AAPL, S&P 500 ETF, Bitcoin…",
+    typeLabel: pt ? "Tipo" : "Type",
+    horizonLabel: pt ? "Horizonte" : "Horizon",
+    sizeLabel: pt ? "Importância" : "Importance",
+    noteLabel: pt ? "Nota (opcional)" : "Note (optional)",
+    notePlaceholder: pt
+      ? "Porque tens este ativo? (ex: longo prazo, diversificação…)"
+      : "Why do you hold it? (e.g. long-term, diversification…)",
+    addBtn: pt ? "Adicionar e analisar" : "Add & assess",
+    holdings: pt ? "Ativos" : "Holdings",
+    empty: pt
+      ? "Ainda não há ativos. Adiciona o primeiro acima."
+      : "No assets yet. Add your first one above.",
+    thAsset: pt ? "Ativo" : "Asset",
+    thType: pt ? "Tipo" : "Type",
+    thHorizon: pt ? "Horizonte" : "Horizon",
+    thFit: pt ? "Encaixe" : "Fit",
+    thRisk: pt ? "Risco" : "Risk",
+    thContext: pt ? "Contexto" : "Context",
+    remove: pt ? "Remover" : "Remove",
+    principle: pt
       ? "Resultados consistentes vêm de decisões consistentes. O SignalCore foca-se no contexto que sustenta ambos."
       : "Consistent results come from consistent decisions. SignalCore focuses on the context that supports both.",
-    disclaimer: isPT
+    disclaimer: pt
       ? "Conteúdo educativo. Sem sinais. Sem previsões. O SignalCore não presta aconselhamento financeiro."
       : "Educational content only. No signals. No predictions. SignalCore does not provide investment advice.",
-    tooltips: {
-      fitTitle: isPT ? "O que é “Encaixe”?" : "What is “Fit”?",
-      fitBody: isPT
-        ? "Não é previsão de preço. É compatibilidade entre o regime atual e o comportamento típico deste tipo de ativo (especialmente no teu horizonte)."
-        : "Not a price forecast. It’s a compatibility check between the current regime and how this type of asset typically behaves (especially for your horizon).",
-      horizonTitle: isPT ? "O que é “Horizonte”?" : "What is “Horizon”?",
-      horizonBody: isPT
-        ? "É o tempo que consegues manter sem stress emocional — não o tempo “ideal”."
-        : "It’s the time you can hold without emotional stress — not the “ideal” holding period.",
-      correlationTitle: isPT ? "Correlação" : "Correlation",
-      correlationBody: isPT
-        ? "Quando vários ativos se mexem juntos, a diversificação perde força."
-        : "When many assets move together, diversification becomes less effective.",
-      volatilityTitle: isPT ? "Volatilidade" : "Volatility",
-      volatilityBody: isPT
-        ? "Variações de preço. Pode levar a decisões impulsivas — mesmo sem mudança real de fundamentos."
-        : "Price swings. It can trigger impulsive decisions even without a real change in fundamentals.",
-    },
     enums: {
       types: {
-        stock: isPT ? "Ação" : "Stock",
+        stock: pt ? "Ação" : "Stock",
         etf: "ETF",
-        crypto: isPT ? "Cripto" : "Crypto",
-        other: isPT ? "Outro" : "Other",
+        crypto: pt ? "Cripto" : "Crypto",
+        other: pt ? "Outro" : "Other",
       },
       horizons: {
-        short: isPT ? "Curto" : "Short",
-        medium: isPT ? "Médio" : "Medium",
-        long: isPT ? "Longo" : "Long",
+        short: pt ? "Curto" : "Short",
+        medium: pt ? "Médio" : "Medium",
+        long: pt ? "Longo" : "Long",
       },
       sizes: {
-        small: isPT ? "Pequena" : "Small",
-        medium: isPT ? "Média" : "Medium",
-        large: isPT ? "Grande" : "Large",
+        small: pt ? "Pequena" : "Small",
+        medium: pt ? "Média" : "Medium",
+        large: pt ? "Grande" : "Large",
       },
       fit: {
-        aligned: isPT ? "Alinhado" : "Aligned",
-        neutral: isPT ? "Neutro" : "Neutral",
-        misaligned: isPT ? "Desalinhado" : "Misaligned",
+        aligned: pt ? "Alinhado" : "Aligned",
+        neutral: pt ? "Neutro" : "Neutral",
+        misaligned: pt ? "Desalinhado" : "Misaligned",
       },
       risk: {
-        low: isPT ? "Baixo" : "Low",
-        moderate: isPT ? "Moderado" : "Moderate",
-        high: isPT ? "Elevado" : "High",
+        low: pt ? "Baixo" : "Low",
+        moderate: pt ? "Moderado" : "Moderate",
+        high: pt ? "Elevado" : "High",
       },
     },
+    tips: {
+      fitTitle: pt ? "O que é “Encaixe”?" : "What is “Fit”?",
+      fitBody: pt
+        ? "Não é previsão de preço. É compatibilidade entre o regime atual e o comportamento típico deste tipo de ativo (especialmente no teu horizonte)."
+        : "Not a price forecast. It’s a compatibility check between the current regime and how this type of asset typically behaves (especially for your horizon).",
+      horizonTitle: pt ? "O que é “Horizonte”?" : "What is “Horizon”?",
+      horizonBody: pt
+        ? "É o tempo que consegues manter sem stress emocional — não o tempo “ideal”."
+        : "It’s the time you can hold without emotional stress — not the “ideal” holding period.",
+      volatilityTitle: pt ? "Volatilidade" : "Volatility",
+      volatilityBody: pt
+        ? "Variações de preço. Pode levar a decisões impulsivas — mesmo sem mudança real de fundamentos."
+        : "Price swings. It can trigger impulsive decisions even without a real change in fundamentals.",
+      correlationTitle: pt ? "Correlação" : "Correlation",
+      correlationBody: pt
+        ? "Quando vários ativos se mexem juntos, a diversificação perde força."
+        : "When many assets move together, diversification becomes less effective.",
+    },
   };
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-xs font-medium text-ink-800">
-      {children}
-    </span>
-  );
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -130,12 +133,21 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-xs font-medium text-ink-800">
+      {children}
+    </span>
+  );
+}
+
 function Info({ title, body }: { title: string; body: string }) {
-  // simples e compatível (sem libs)
   return (
     <details className="inline-block">
       <summary className="cursor-pointer list-none inline-flex items-center gap-1 text-xs text-ink-500 hover:text-ink-700">
-        <span className="rounded-full border border-border-soft bg-white px-2 py-0.5">ⓘ</span>
+        <span className="rounded-full border border-border-soft bg-white px-2 py-0.5">
+          ⓘ
+        </span>
         <span className="hidden sm:inline">{title}</span>
       </summary>
       <div className="mt-2 w-[300px] rounded-2xl border border-border-soft bg-white p-3 text-xs text-ink-700 shadow-soft">
@@ -147,12 +159,23 @@ function Info({ title, body }: { title: string; body: string }) {
 }
 
 /**
- * Lógica v1 do Fit/Risco (simples, explicável, sem promessas).
- * Nota: isto não é “modelo financeiro”, é “compatibilidade contextual”.
+ * Compatibilidade contextual v1 (explicável).
+ * NOTA: não é previsão. é “como tende a sentir-se” neste regime.
  */
-function assess(regime: Regime, item: PortfolioItem): { fit: Fit; risk: Risk; context: string; flags: ("vol" | "corr" | "horizon")[] } {
-  const typeScore: Record<AssetType, number> = { stock: 2, etf: 1, crypto: 3, other: 2 };
-  const horizonAdj: Record<Horizon, number> = { short: 1, medium: 0, long: -1 };
+function assess(regime: Regime, item: PortfolioItem) {
+  const typeScore: Record<AssetType, number> = {
+    stock: 2,
+    etf: 1,
+    crypto: 3,
+    other: 2,
+  };
+
+  const horizonAdj: Record<Horizon, number> = {
+    short: 1,
+    medium: 0,
+    long: -1,
+  };
+
   const regimeAdj: Record<Regime, number> = {
     "Risk-on": -1,
     "Risk-off": 1,
@@ -170,7 +193,10 @@ function assess(regime: Regime, item: PortfolioItem): { fit: Fit; risk: Risk; co
   } else if (regime === "Risk-off") {
     fit = item.type === "crypto" ? "misaligned" : "neutral";
   } else if (regime === "Transitional") {
-    fit = item.horizon === "short" && (item.type === "crypto" || item.type === "stock") ? "misaligned" : "neutral";
+    fit =
+      item.horizon === "short" && (item.type === "crypto" || item.type === "stock")
+        ? "misaligned"
+        : "neutral";
   } else {
     fit = "neutral";
   }
@@ -180,14 +206,21 @@ function assess(regime: Regime, item: PortfolioItem): { fit: Fit; risk: Risk; co
   if (item.horizon === "short") flags.push("horizon");
   if (regime === "Transitional" || regime === "Risk-off") flags.push("corr");
 
-  const context =
+  const contextEN =
     fit === "aligned"
-      ? "Generally compatible with the current environment — still prioritize discipline over activity."
+      ? "Generally compatible with the current environment — discipline matters more than activity."
       : fit === "misaligned"
       ? "More likely to feel noisy in this regime. Focus on risk control and avoid impulsive changes."
       : "Not clearly helped or harmed by the regime. Consistency beats reaction.";
 
-  return { fit, risk, context, flags };
+  const contextPT =
+    fit === "aligned"
+      ? "Geralmente compatível com o contexto atual — disciplina conta mais do que atividade."
+      : fit === "misaligned"
+      ? "Mais provável de sentir “ruído” neste regime. Foca-te no controlo de risco e evita mudanças impulsivas."
+      : "Não está claramente favorecido nem penalizado. Consistência vence reação.";
+
+  return { fit, risk, flags, contextEN, contextPT };
 }
 
 function overallFit(fits: Fit[]): Fit {
@@ -207,48 +240,41 @@ export default function PortfolioApp({
   locale: Locale;
   regime?: Regime;
 }) {
-  const copy = useMemo(() => t(locale), [locale]);
+  const c = useMemo(() => copy(locale), [locale]);
   const storageKey = locale === "pt" ? STORAGE_KEY_PT : STORAGE_KEY_EN;
 
   const [items, setItems] = useState<PortfolioItem[]>([]);
 
-  // form state
   const [name, setName] = useState("");
   const [type, setType] = useState<AssetType>("stock");
   const [horizon, setHorizon] = useState<Horizon>("long");
   const [size, setSize] = useState<Size>("medium");
   const [note, setNote] = useState("");
 
-  // load from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
       if (!raw) return;
       const parsed = JSON.parse(raw) as PortfolioItem[];
       if (Array.isArray(parsed)) setItems(parsed);
-    } catch {
-      // ignore
-    }
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // save
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(items));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [items, storageKey]);
 
   const rows = useMemo(() => {
-    return items.map((it) => {
-      const res = assess(regime, it);
-      return { ...it, ...res };
-    });
+    return items.map((it) => ({ ...it, ...assess(regime, it) }));
   }, [items, regime]);
 
-  const portfolioFit = useMemo(() => overallFit(rows.map((r) => r.fit)), [rows]);
+  const portfolioFitLabel = useMemo(() => {
+    const fit = overallFit(rows.map((r) => r.fit));
+    return c.enums.fit[fit];
+  }, [rows, c.enums.fit]);
 
   function addItem() {
     const trimmed = name.trim();
@@ -273,40 +299,39 @@ export default function PortfolioApp({
     setItems((prev) => prev.filter((x) => x.id !== id));
   }
 
-  const fitLabel = copy.enums.fit[portfolioFit];
-  const regimeLabel = regime;
-
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <section className="mx-auto max-w-3xl px-6 py-16">
-        <p className="text-xs font-semibold text-ink-500">SignalCore</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">{copy.title}</h1>
-        <p className="mt-3 text-ink-700">{copy.subtitle}</p>
+        <p className="text-xs font-semibold text-ink-500">{c.brand}</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
+          {c.title}
+        </h1>
+        <p className="mt-3 text-ink-700">{c.subtitle}</p>
 
-        <div className="mt-6 flex flex-wrap gap-2 items-center">
+        <div className="mt-6 flex flex-wrap items-center gap-2">
           <Badge>
-            {copy.regimeLabel}: <strong className="ml-1">{regimeLabel}</strong>
+            {c.regimeLabel}: <strong className="ml-1">{regime}</strong>
           </Badge>
           <Badge>
-            {copy.portfolioFit}: <strong className="ml-1">{fitLabel}</strong>
+            {c.portfolioFit}: <strong className="ml-1">{portfolioFitLabel}</strong>
           </Badge>
 
-          <Info title={copy.tooltips.fitTitle} body={copy.tooltips.fitBody} />
-          <Info title={copy.tooltips.horizonTitle} body={copy.tooltips.horizonBody} />
+          <Info title={c.tips.fitTitle} body={c.tips.fitBody} />
+          <Info title={c.tips.horizonTitle} body={c.tips.horizonBody} />
         </div>
 
-        {/* Add */}
+        {/* Add asset */}
         <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">{copy.addTitle}</h2>
-          <p className="mt-2 text-sm text-ink-700">{copy.addHint}</p>
+          <h2 className="text-lg font-semibold">{c.addTitle}</h2>
+          <p className="mt-2 text-sm text-ink-700">{c.addHint}</p>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-semibold">{copy.assetLabel}</label>
+              <label className="text-sm font-semibold">{c.assetLabel}</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={copy.assetPlaceholder}
+                placeholder={c.assetPlaceholder}
                 className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
               />
               <p className="mt-2 text-xs text-ink-500">
@@ -317,51 +342,51 @@ export default function PortfolioApp({
             </div>
 
             <div>
-              <label className="text-sm font-semibold">{copy.typeLabel}</label>
+              <label className="text-sm font-semibold">{c.typeLabel}</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as AssetType)}
                 className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
               >
-                <option value="stock">{copy.enums.types.stock}</option>
-                <option value="etf">{copy.enums.types.etf}</option>
-                <option value="crypto">{copy.enums.types.crypto}</option>
-                <option value="other">{copy.enums.types.other}</option>
+                <option value="stock">{c.enums.types.stock}</option>
+                <option value="etf">{c.enums.types.etf}</option>
+                <option value="crypto">{c.enums.types.crypto}</option>
+                <option value="other">{c.enums.types.other}</option>
               </select>
             </div>
 
             <div>
-              <label className="text-sm font-semibold">{copy.horizonLabel}</label>
+              <label className="text-sm font-semibold">{c.horizonLabel}</label>
               <select
                 value={horizon}
                 onChange={(e) => setHorizon(e.target.value as Horizon)}
                 className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
               >
-                <option value="short">{copy.enums.horizons.short}</option>
-                <option value="medium">{copy.enums.horizons.medium}</option>
-                <option value="long">{copy.enums.horizons.long}</option>
+                <option value="short">{c.enums.horizons.short}</option>
+                <option value="medium">{c.enums.horizons.medium}</option>
+                <option value="long">{c.enums.horizons.long}</option>
               </select>
             </div>
 
             <div>
-              <label className="text-sm font-semibold">{copy.sizeLabel}</label>
+              <label className="text-sm font-semibold">{c.sizeLabel}</label>
               <select
                 value={size}
                 onChange={(e) => setSize(e.target.value as Size)}
                 className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
               >
-                <option value="small">{copy.enums.sizes.small}</option>
-                <option value="medium">{copy.enums.sizes.medium}</option>
-                <option value="large">{copy.enums.sizes.large}</option>
+                <option value="small">{c.enums.sizes.small}</option>
+                <option value="medium">{c.enums.sizes.medium}</option>
+                <option value="large">{c.enums.sizes.large}</option>
               </select>
             </div>
 
             <div className="md:col-span-2">
-              <label className="text-sm font-semibold">{copy.noteLabel}</label>
+              <label className="text-sm font-semibold">{c.noteLabel}</label>
               <input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder={copy.notePlaceholder}
+                placeholder={c.notePlaceholder}
                 className="mt-2 w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/30"
               />
             </div>
@@ -373,29 +398,29 @@ export default function PortfolioApp({
               onClick={addItem}
               className="inline-flex items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
             >
-              {copy.addBtn}
+              {c.addBtn}
             </button>
-            <p className="text-xs text-ink-500">{copy.disclaimer}</p>
+            <p className="text-xs text-ink-500">{c.disclaimer}</p>
           </div>
         </div>
 
-        {/* Table */}
+        {/* Holdings */}
         <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold">{copy.holdingsTitle}</h2>
+          <h2 className="text-lg font-semibold">{c.holdings}</h2>
 
           {rows.length === 0 ? (
-            <p className="mt-3 text-sm text-ink-700">{copy.empty}</p>
+            <p className="mt-3 text-sm text-ink-700">{c.empty}</p>
           ) : (
             <div className="mt-5 overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table className="w-full min-w-[900px] text-left text-sm">
                 <thead className="text-xs text-ink-500">
                   <tr>
-                    <th className="py-2 pr-4">{copy.tableAsset}</th>
-                    <th className="py-2 pr-4">{copy.tableType}</th>
-                    <th className="py-2 pr-4">{copy.tableHorizon}</th>
-                    <th className="py-2 pr-4">{copy.tableFit}</th>
-                    <th className="py-2 pr-4">{copy.tableRisk}</th>
-                    <th className="py-2 pr-4">{copy.tableWhy}</th>
+                    <th className="py-2 pr-4">{c.thAsset}</th>
+                    <th className="py-2 pr-4">{c.thType}</th>
+                    <th className="py-2 pr-4">{c.thHorizon}</th>
+                    <th className="py-2 pr-4">{c.thFit}</th>
+                    <th className="py-2 pr-4">{c.thRisk}</th>
+                    <th className="py-2 pr-4">{c.thContext}</th>
                     <th className="py-2 pr-0"></th>
                   </tr>
                 </thead>
@@ -406,37 +431,38 @@ export default function PortfolioApp({
                       <td className="py-3 pr-4">
                         <div className="font-semibold text-ink-900">{r.name}</div>
                         <div className="mt-1 flex flex-wrap gap-1">
-                          <Pill>{copy.enums.sizes[r.size]}</Pill>
+                          <Pill>{c.enums.sizes[r.size]}</Pill>
                           {r.note ? <Pill>{r.note}</Pill> : null}
                         </div>
                       </td>
 
-                      <td className="py-3 pr-4">{copy.enums.types[r.type]}</td>
-                      <td className="py-3 pr-4">{copy.enums.horizons[r.horizon]}</td>
+                      <td className="py-3 pr-4">{c.enums.types[r.type]}</td>
+                      <td className="py-3 pr-4">{c.enums.horizons[r.horizon]}</td>
                       <td className="py-3 pr-4">
-                        <Pill>{copy.enums.fit[r.fit]}</Pill>
+                        <Pill>{c.enums.fit[r.fit]}</Pill>
                       </td>
                       <td className="py-3 pr-4">
-                        <Pill>{copy.enums.risk[r.risk]}</Pill>
+                        <Pill>{c.enums.risk[r.risk]}</Pill>
                       </td>
 
                       <td className="py-3 pr-4 max-w-[360px]">
-                        <div>{locale === "pt" ? translateContextPT(r.context) : r.context}</div>
+                        <div>{locale === "pt" ? r.contextPT : r.contextEN}</div>
 
-                        {/* micro-educação contextual */}
                         {r.flags.includes("vol") ? (
                           <div className="mt-2 text-xs text-ink-500">
-                            ⓘ {copy.tooltips.volatilityTitle}: {copy.tooltips.volatilityBody}
+                            ⓘ {c.tips.volatilityTitle}: {c.tips.volatilityBody}
                           </div>
                         ) : null}
+
                         {r.flags.includes("corr") ? (
                           <div className="mt-1 text-xs text-ink-500">
-                            ⓘ {copy.tooltips.correlationTitle}: {copy.tooltips.correlationBody}
+                            ⓘ {c.tips.correlationTitle}: {c.tips.correlationBody}
                           </div>
                         ) : null}
+
                         {r.flags.includes("horizon") ? (
                           <div className="mt-1 text-xs text-ink-500">
-                            ⓘ {copy.tooltips.horizonTitle}: {copy.tooltips.horizonBody}
+                            ⓘ {c.tips.horizonTitle}: {c.tips.horizonBody}
                           </div>
                         ) : null}
                       </td>
@@ -444,10 +470,10 @@ export default function PortfolioApp({
                       <td className="py-3 pr-0">
                         <button
                           type="button"
-                          className="rounded-xl border border-border-soft px-3 py-2 text-xs hover:bg-canvas-50"
                           onClick={() => removeItem(r.id)}
+                          className="rounded-xl border border-border-soft px-3 py-2 text-xs hover:bg-canvas-50"
                         >
-                          {copy.remove}
+                          {c.remove}
                         </button>
                       </td>
                     </tr>
@@ -455,23 +481,14 @@ export default function PortfolioApp({
                 </tbody>
               </table>
 
-              <p className="mt-6 text-sm font-semibold text-ink-900">{copy.principle}</p>
-              <p className="mt-2 text-xs text-ink-500">{copy.disclaimer}</p>
+              <p className="mt-6 text-sm font-semibold text-ink-900">
+                {c.principle}
+              </p>
+              <p className="mt-2 text-xs text-ink-500">{c.disclaimer}</p>
             </div>
           )}
         </div>
       </section>
     </main>
   );
-}
-
-function translateContextPT(contextEN: string) {
-  // tradução “curta e humana” para v1 (sem depender de i18n externo)
-  if (contextEN.startsWith("Generally compatible")) {
-    return "Geralmente compatível com o contexto atual — ainda assim, disciplina conta mais do que atividade.";
-  }
-  if (contextEN.startsWith("More likely to feel")) {
-    return "Mais provável de sentir “ruído” neste regime. Foca-te no controlo de risco e evita mudanças impulsivas.";
-  }
-  return "Não está claramente favorecido nem penalizado pelo regime. Consistência vence reação.";
 }

@@ -10,10 +10,14 @@ export default function MyPortfolioPagePT() {
       <SignedOut>
         <main className="min-h-screen bg-white text-ink-900">
           <section className="mx-auto max-w-3xl px-6 py-16">
-            <p className="text-xs font-semibold text-ink-500">SignalCore</p>
+            <p className="text-xs font-semibold text-ink-500">
+              SignalCore · Market Context
+            </p>
+
             <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
               O Meu Portefólio
             </h1>
+
             <p className="mt-3 text-ink-700">
               Esta área é privada. Inicia sessão para criares o teu portefólio e veres orientação contextual de risco.
             </p>
@@ -33,6 +37,7 @@ export default function MyPortfolioPagePT() {
                   Criar conta
                 </Link>
               </div>
+
               <p className="mt-4 text-xs text-ink-500">
                 Conteúdo educativo. Sem sinais de compra/venda.
               </p>
