@@ -233,13 +233,45 @@ function overallFit(fits: Fit[]): Fit {
   return "neutral";
 }
 
-export default function PortfolioApp({
-  locale,
-  regime = "Transitional",
-}: {
-  locale: Locale;
-  regime?: Regime;
-}) {
+export default function PortfolioApp({ locale }: { locale: Locale }) {
+  const [regime, setRegime] = useState<Regime>("Transitional");
+  const [regimeMeta, setRegimeMeta] = useState<{
+    confidence?: string;
+    week?: string;
+    updated_at?: string;
+    summary?: string;
+  }>({});
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function run() {
+      try {
+        const res = await fetch("/api/market-regime", { cache: "no-store" });
+        if (!res.ok) return;
+
+        const json = await res.json();
+
+        if (!mounted) return;
+
+        if (json?.market_regime) setRegime(json.market_regime as Regime);
+        setRegimeMeta({
+          confidence: json?.confidence,
+          week: json?.week,
+          updated_at: json?.updated_at,
+          summary: json?.summary,
+        });
+      } catch {
+        // se falhar, fica Transitional
+      }
+    }
+
+    run();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const c = useMemo(() => copy(locale), [locale]);
   const storageKey = locale === "pt" ? STORAGE_KEY_PT : STORAGE_KEY_EN;
 
@@ -310,15 +342,30 @@ export default function PortfolioApp({
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Badge>
-            {c.regimeLabel}: <strong className="ml-1">{regime}</strong>
-          </Badge>
-          <Badge>
-            {c.portfolioFit}: <strong className="ml-1">{portfolioFitLabel}</strong>
-          </Badge>
-
+  {c.regimeLabel}: <strong className="ml-1">{regime}</strong>
+  {regimeMeta.confidence ? (
+    <span className="ml-2 text-ink-500">
+      · {locale === "pt" ? "Confiança" : "Confidence"}:{" "}
+      <strong>{regimeMeta.confidence}</strong>
+    </span>
+  ) : null}
+  {regimeMeta.week ? <span className="ml-2 text-ink-500">· {regimeMeta.week}</span> : null}
+  {regimeMeta.updated_at ? (
+    <span className="ml-2 text-ink-500">
+      · {locale === "pt" ? "Atualizado" : "Updated"} {regimeMeta.updated_at}
+    </span>
+  ) : null}
+</Badge>
           <Info title={c.tips.fitTitle} body={c.tips.fitBody} />
           <Info title={c.tips.horizonTitle} body={c.tips.horizonBody} />
         </div>
+
+        {regimeMeta.summary ? (
+  <div className="mt-4 rounded-3xl border border-ink-100 bg-ink-50/40 px-4 py-3">
+    <p className="text-sm text-ink-700">{regimeMeta.summary}</p>
+    <p className="mt-2 text-xs text-ink-500">{c.disclaimer}</p>
+  </div>
+) : null}
 
         {/* Add asset */}
         <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">

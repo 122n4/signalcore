@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
-import PortfolioApp from "@/components/PortfolioApp";
+import PortfolioAppV1 from "../../components/PortfolioAppV1";
 
 export default function MyPortfolioPage() {
   return (
@@ -10,16 +10,14 @@ export default function MyPortfolioPage() {
       <SignedOut>
         <main className="min-h-screen bg-white text-ink-900">
           <section className="mx-auto max-w-3xl px-6 py-16">
-            <p className="text-xs font-semibold text-ink-500">
-              SignalCore · Market Context
-            </p>
+            <p className="text-xs font-semibold text-ink-500">SignalCore · Market Context</p>
 
             <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
               My Portfolio
             </h1>
 
             <p className="mt-3 text-ink-700">
-              This area is private. Sign in to build your portfolio and see contextual risk guidance.
+              This area is private. Sign in to view your portfolio in market context (no signals).
             </p>
 
             <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
@@ -30,6 +28,7 @@ export default function MyPortfolioPage() {
                 >
                   Sign in
                 </Link>
+
                 <Link
                   href="/sign-up?redirect_url=/my-portfolio"
                   className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
@@ -37,17 +36,13 @@ export default function MyPortfolioPage() {
                   Create account
                 </Link>
               </div>
-
-              <p className="mt-4 text-xs text-ink-500">
-                Educational content only. No buy/sell signals.
-              </p>
             </div>
           </section>
         </main>
       </SignedOut>
 
       <SignedIn>
-        <PortfolioApp locale="en" regime="Transitional" />
+        <PortfolioAppV1 locale="en" />
       </SignedIn>
     </>
   );
