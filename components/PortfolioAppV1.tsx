@@ -92,94 +92,114 @@ function weekdayPT(x?: string) {
   return m[x] ?? x;
 }
 
-function badge(locale: Locale, s: State) {
-  const label =
-    locale === "pt"
-      ? s === "Constructive"
-        ? "✅ Construtivo"
-        : s === "Neutral"
-        ? "◼️ Neutro"
-        : "⚠️ Cautela"
-      : s === "Constructive"
-      ? "✅ Constructive"
-      : s === "Neutral"
-      ? "◼️ Neutral"
-      : "⚠️ Caution";
-
-  const color =
-    s === "Constructive"
-      ? "bg-signal-700/10 text-signal-800"
-      : s === "Neutral"
-      ? "bg-canvas-50 text-ink-800"
-      : "bg-amber-500/10 text-amber-800";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border border-border-soft px-3 py-1 text-xs font-semibold",
-        color
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
-function postureBadge(locale: Locale, p: Posture) {
-  const label =
-    locale === "pt"
-      ? p === "Favorable"
-        ? "🟢 Favorável"
-        : p === "Neutral"
-        ? "🟡 Neutro"
-        : "🔴 Cauteloso"
-      : p === "Favorable"
-      ? "🟢 Favorable"
-      : p === "Neutral"
-      ? "🟡 Neutral"
-      : "🔴 Cautious";
-
-  const color =
-    p === "Favorable"
-      ? "bg-signal-700/10 text-signal-800"
-      : p === "Neutral"
-      ? "bg-amber-500/10 text-amber-800"
-      : "bg-red-500/10 text-red-700";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border border-border-soft px-3 py-1 text-xs font-semibold",
-        color
-      )}
-    >
-      {label}
-    </span>
-  );
-}
-
 /** =========================
  * Copy
  * ========================= */
 function copy(locale: Locale) {
   const pt = locale === "pt";
+
   return {
     brand: "SignalCore · Market Context",
     title: pt ? "O Meu Portefólio" : "My Portfolio",
     subtitle: pt
       ? "O teu portefólio visto através do contexto do mercado — curto, médio e longo prazo."
       : "Your portfolio through the lens of market context — short, medium and long term.",
+
     marketContext: pt ? "Contexto de mercado" : "Market context",
     weeklyUpdate: pt ? "Atualização semanal" : "Weekly update",
     posture: pt ? "Postura desta semana" : "This week’s posture",
-    addAsset: pt ? "Adicionar ativo" : "Add an asset",
+
     assets: pt ? "Ativos" : "Assets",
+    addAsset: pt ? "Adicionar ativo" : "Add an asset",
     empty: pt ? "Ainda não tens ativos. Adiciona o primeiro abaixo." : "No assets yet. Add your first one below.",
+
+    tableTitle: pt
+      ? "Como os teus ativos tendem a comportar-se por horizonte"
+      : "How your assets tend to behave across horizons",
+
     horizon: {
       Short: pt ? "Curto prazo" : "Short term",
       Medium: pt ? "Médio prazo" : "Medium term",
-      Long: pt ? "Long term" : "Long term",
+      Long: pt ? "Longo prazo" : "Long term",
     } as const,
+
+    state: {
+      Caution: pt ? "Cautela" : "Caution",
+      Neutral: pt ? "Neutro" : "Neutral",
+      Constructive: pt ? "Construtivo" : "Constructive",
+    } as const,
+
+    explainShort: pt
+      ? "Curto prazo tende a reagir mais a ruído, notícias e sentimento."
+      : "Short-term tends to react more to noise, news and sentiment.",
+    explainMedium: pt
+      ? "Médio prazo começa a filtrar esse ruído, mas ainda depende de confirmação."
+      : "Medium-term starts filtering that noise, but still requires confirmation.",
+    explainLong: pt
+      ? "Longo prazo tende a refletir fatores mais estruturais do mercado."
+      : "Long-term tends to reflect more structural market forces.",
+
+    whyDifferentBtn: pt ? "Porque estas leituras são diferentes?" : "Why do these readings differ?",
+    whyDifferentBody: pt
+      ? [
+          "No curto prazo, mudanças rápidas de sentimento e notícias podem dominar o comportamento.",
+          "No médio prazo, parte desse ruído desaparece, mas o mercado ainda pode não ter direção definida.",
+          "No longo prazo, o tempo dilui oscilações de curto prazo e a estrutura passa a pesar mais.",
+        ]
+      : [
+          "In the short term, fast shifts in sentiment and news can dominate behavior.",
+          "In the medium term, some noise fades, but the market may still lack clear direction.",
+          "In the long term, time dilutes short-term swings and structure tends to matter more.",
+        ],
+
+    tooltipPrefix: pt ? "Porque?" : "Why?",
+    tooltipNote: pt
+      ? "Leitura contextual: descreve comportamento típico, não dá instruções."
+      : "Context reading: describes typical behavior, not instructions.",
+
+    optionalTitle: pt
+      ? "Explorar ativos compatíveis com este horizonte"
+      : "Explore assets compatible with this horizon",
+    optionalSubtitle: pt
+      ? "Leitura contextual baseada no estado atual do mercado."
+      : "Contextual view based on current market conditions.",
+
+    optionalIntro: pt
+      ? [
+          "Esta tabela mostra como diferentes ativos tendem a alinhar-se com o horizonte selecionado, considerando o contexto atual do mercado.",
+          "O objetivo é apoiar coerência temporal e risco, não indicar decisões específicas.",
+        ]
+      : [
+          "This table shows how different assets tend to align with the selected horizon, considering the current market context.",
+          "The goal is to support temporal coherence and risk awareness, not specific decisions.",
+        ],
+
+    exploreBtn: pt ? "Explorar ativos compatíveis" : "Explore compatible assets",
+    hideBtn: pt ? "Fechar" : "Close",
+
+    optCols: {
+      asset: pt ? "Ativo / Categoria" : "Asset / Category",
+      type: pt ? "Tipo" : "Type",
+      align: pt ? "Alinhamento" : "Alignment",
+      context: pt ? "Contexto" : "Context",
+    },
+
+    alignLegend: pt
+      ? {
+          strong: "✅ Forte",
+          moderate: "◼️ Moderado / Dependente",
+          sensitive: "⚠️ Sensível",
+        }
+      : {
+          strong: "✅ Strong",
+          moderate: "◼️ Moderate / Dependent",
+          sensitive: "⚠️ Sensitive",
+        },
+
+    optionalOutro: pt
+      ? "Leitura comparativa e contextual. Não constitui recomendação."
+      : "Comparative and contextual. Not a recommendation.",
+
     fields: {
       name: pt ? "Nome" : "Name",
       ticker: pt ? "Ticker (opcional)" : "Ticker (optional)",
@@ -191,25 +211,23 @@ function copy(locale: Locale) {
       open: pt ? "Abrir" : "Open",
       close: pt ? "Fechar" : "Close",
     },
+
     types: {
       Stock: pt ? "Ação" : "Stock",
       ETF: "ETF",
       Crypto: pt ? "Cripto" : "Crypto",
     } as const,
+
     importance: {
       Small: pt ? "Pequena" : "Small",
       Medium: pt ? "Média" : "Medium",
       Large: pt ? "Grande" : "Large",
     } as const,
-    whySimilarRegimes: pt ? "Comportamento em regimes semelhantes" : "Behavior in similar regimes",
-    whatMeans: pt ? "O que isto significa?" : "What this means",
-    microExplain: pt
-      ? "Isto não é um sinal. É uma leitura de contexto para alinhar expectativa e disciplina ao regime atual."
-      : "This is not a signal. It’s context reading to align expectations and discipline with the current regime.",
+
     legalTitle: pt ? "Nota de enquadramento" : "Framing note",
     legalBody: pt
-      ? "O SignalCore fornece leitura de contexto e risco dos mercados por horizonte temporal. As decisões de investimento são sempre da responsabilidade do utilizador."
-      : "SignalCore provides market context and risk reading across time horizons. Investment decisions remain the user’s responsibility.",
+      ? "O SignalCore fornece análise de contexto e leitura de risco por horizonte temporal. As decisões finais são sempre da responsabilidade do utilizador."
+      : "SignalCore provides contextual market analysis and horizon-based risk perspective. Final decisions always remain the user’s responsibility.",
   };
 }
 
@@ -273,14 +291,13 @@ function weeklyUpdate(locale: Locale, r: MarketRegimePayload["market_regime"]) {
 }
 
 /** =========================
- * Per-asset horizon matrix + "why"
+ * Per-asset horizon matrix
  * ========================= */
 function computeMatrix(r: MarketRegimePayload["market_regime"], t: AssetType): Record<Horizon, State> {
-  // Base
   const base: Record<AssetType, Record<Horizon, State>> = {
     Stock: { Short: "Caution", Medium: "Neutral", Long: "Constructive" },
     ETF: { Short: "Neutral", Medium: "Neutral", Long: "Constructive" },
-    Crypto: { Short: "Caution", Medium: "Caution", Long: "Neutral" },
+    Crypto: { Short: "Caution", Medium: "Neutral", Long: "Neutral" },
   };
 
   const m = { ...base[t] };
@@ -289,16 +306,19 @@ function computeMatrix(r: MarketRegimePayload["market_regime"], t: AssetType): R
     if (t === "Stock") m.Short = "Neutral";
     if (t === "ETF") m.Short = "Constructive";
     if (t === "Crypto") m.Medium = "Neutral";
+    m.Long = "Constructive";
   }
 
   if (r === "Risk-off") {
     if (t === "Stock") {
       m.Short = "Caution";
       m.Medium = "Caution";
+      m.Long = "Neutral";
     }
     if (t === "ETF") {
       m.Short = "Neutral";
       m.Medium = "Neutral";
+      m.Long = "Constructive";
     }
     if (t === "Crypto") {
       m.Short = "Caution";
@@ -311,67 +331,24 @@ function computeMatrix(r: MarketRegimePayload["market_regime"], t: AssetType): R
     if (t === "Stock") m.Short = "Neutral";
     if (t === "ETF") m.Short = "Neutral";
     if (t === "Crypto") m.Short = "Caution";
+    m.Medium = "Neutral";
+    m.Long = t === "Crypto" ? "Neutral" : "Constructive";
+  }
+
+  // Transitional keeps base: choppy in short; mixed in medium; long constructive for stocks/etfs
+  if (r === "Transitional") {
+    if (t === "Stock") m.Long = "Constructive";
+    if (t === "ETF") m.Long = "Constructive";
+    if (t === "Crypto") m.Medium = "Neutral";
   }
 
   return m;
 }
 
-function whyFor(locale: Locale, r: MarketRegimePayload["market_regime"], t: AssetType) {
-  const pt = locale === "pt";
-
-  const byType: Record<AssetType, Record<MarketRegimePayload["market_regime"], string>> = {
-    Stock: {
-      "Risk-on": pt
-        ? "Em risk-on, ações tendem a beneficiar de momentum — mas inversões podem ser rápidas."
-        : "In risk-on, stocks often benefit from momentum — but reversals can be fast.",
-      "Risk-off": pt
-        ? "Em risk-off, ações costumam sofrer mais volatilidade e quedas mais profundas."
-        : "In risk-off, stocks often see higher volatility and deeper pullbacks.",
-      Transitional: pt
-        ? "Em transição, a liderança muda frequentemente — paciência costuma valer mais do que pressa."
-        : "In transitions, leadership shifts often — patience tends to matter more than speed.",
-      "Neutral / Range-bound": pt
-        ? "Em lateral, muitos movimentos falham — consistência ajuda mais do que reação."
-        : "In range-bound markets, many moves fade — consistency helps more than reaction.",
-    },
-    ETF: {
-      "Risk-on": pt
-        ? "Em risk-on, ETFs amplos tendem a funcionar quando a amplitude do mercado melhora."
-        : "In risk-on, broad ETFs can work as breadth improves.",
-      "Risk-off": pt
-        ? "Em risk-off, ETFs também oscilam, mas geralmente menos do que ações isoladas."
-        : "In risk-off, ETFs still swing, but often less than single names.",
-      Transitional: pt
-        ? "Em transição, diversificação ajuda, mas correlações podem subir de repente."
-        : "In transitions, diversification helps, but correlations can rise suddenly.",
-      "Neutral / Range-bound": pt
-        ? "Em lateral, um plano simples costuma bater perseguir ruído de curto prazo."
-        : "In range-bound markets, a simple plan often beats chasing short-term noise.",
-    },
-    Crypto: {
-      "Risk-on": pt
-        ? "Em risk-on, cripto pode acelerar — mas também pode inverter rápido."
-        : "In risk-on, crypto can accelerate — but can also reverse quickly.",
-      "Risk-off": pt
-        ? "Em risk-off, cripto costuma sofrer com liquidez e choques de sentimento."
-        : "In risk-off, crypto often gets hit by liquidity and sentiment shocks.",
-      Transitional: pt
-        ? "Em transição, cripto pode ser ‘whipsaw’ — timing fica mais difícil."
-        : "In transitions, crypto can be whipsawed — timing becomes harder.",
-      "Neutral / Range-bound": pt
-        ? "Em lateral, cripto ainda tem picos. Tamanho de risco importa."
-        : "In range-bound markets, crypto can still spike. Risk sizing matters.",
-    },
-  };
-
-  return byType[t][r];
-}
-
 /** =========================
- * Portfolio posture (simple, explainable)
+ * Portfolio posture (simple)
  * ========================= */
 function computePosture(regime: MarketRegimePayload["market_regime"], assets: Asset[]): Posture {
-  // Simple scoring by risk sensitivity + importance
   let score = 0;
   for (const a of assets) {
     const imp = a.importance === "Large" ? 2 : a.importance === "Medium" ? 1 : 0.5;
@@ -387,6 +364,281 @@ function computePosture(regime: MarketRegimePayload["market_regime"], assets: As
   return "Neutral";
 }
 
+function postureBadge(locale: Locale, p: Posture) {
+  const label =
+    locale === "pt"
+      ? p === "Favorable"
+        ? "🟢 Favorável"
+        : p === "Neutral"
+        ? "🟡 Neutro"
+        : "🔴 Cauteloso"
+      : p === "Favorable"
+      ? "🟢 Favorable"
+      : p === "Neutral"
+      ? "🟡 Neutral"
+      : "🔴 Cautious";
+
+  const color =
+    p === "Favorable"
+      ? "bg-signal-700/10 text-signal-800"
+      : p === "Neutral"
+      ? "bg-amber-500/10 text-amber-800"
+      : "bg-red-500/10 text-red-700";
+
+  return (
+    <span className={cn("inline-flex items-center rounded-full border border-border-soft px-3 py-1 text-xs font-semibold", color)}>
+      {label}
+    </span>
+  );
+}
+
+/** =========================
+ * Status cell (icon + word + tooltip)
+ * ========================= */
+function statusMeta(locale: Locale, s: State) {
+  const pt = locale === "pt";
+
+  const icon = s === "Constructive" ? "✅" : s === "Neutral" ? "◼️" : "⚠️";
+  const word = pt
+    ? s === "Constructive"
+      ? "Construtivo"
+      : s === "Neutral"
+      ? "Neutro"
+      : "Cautela"
+    : s === "Constructive"
+    ? "Constructive"
+    : s === "Neutral"
+    ? "Neutral"
+    : "Caution";
+
+  const color =
+    s === "Constructive"
+      ? "bg-signal-700/10 text-signal-800"
+      : s === "Neutral"
+      ? "bg-canvas-50 text-ink-800"
+      : "bg-amber-500/10 text-amber-800";
+
+  return { icon, word, color };
+}
+
+function tooltipFor(locale: Locale, horizon: Horizon, state: State, regime: MarketRegimePayload["market_regime"]) {
+  const pt = locale === "pt";
+
+  // curto = ruído; médio = confirmação; longo = estrutura (fechado)
+  const base =
+    horizon === "Short"
+      ? pt
+        ? "Curto prazo é mais sensível a ruído, notícias e sentimento."
+        : "Short term is more sensitive to noise, news and sentiment."
+      : horizon === "Medium"
+      ? pt
+        ? "Médio prazo filtra parte do ruído, mas ainda depende de confirmação."
+        : "Medium term filters some noise, but still depends on confirmation."
+      : pt
+      ? "Longo prazo tende a refletir fatores mais estruturais do mercado."
+      : "Long term tends to reflect more structural forces.";
+
+  const stateLine =
+    state === "Caution"
+      ? pt
+        ? "Neste contexto, a sensibilidade tende a ser maior."
+        : "In this context, sensitivity tends to be higher."
+      : state === "Neutral"
+      ? pt
+        ? "Neste contexto, o comportamento tende a ser misto."
+        : "In this context, behavior tends to be mixed."
+      : pt
+      ? "Neste contexto, o alinhamento tende a ser mais consistente."
+      : "In this context, alignment tends to be more consistent.";
+
+  const regimeLine =
+    pt
+      ? `Regime atual: ${regimePT(regime)}`
+      : `Current regime: ${regime}`;
+
+  return `${base} ${stateLine} ${regimeLine}`;
+}
+
+function Tooltip({
+  text,
+  children,
+}: {
+  text: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span title={text} className="inline-flex">
+      {children}
+    </span>
+  );
+}
+
+function StatusCell({
+  locale,
+  horizon,
+  state,
+  regime,
+}: {
+  locale: Locale;
+  horizon: Horizon;
+  state: State;
+  regime: MarketRegimePayload["market_regime"];
+}) {
+  const meta = statusMeta(locale, state);
+  const tip = tooltipFor(locale, horizon, state, regime);
+
+  return (
+    <Tooltip text={tip}>
+      <span className={cn("inline-flex items-center gap-2 rounded-full border border-border-soft px-3 py-1 text-xs font-semibold", meta.color)}>
+        <span aria-hidden>{meta.icon}</span>
+        <span>{meta.word}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
+/** =========================
+ * Optional explore table logic (regime + horizon)
+ * ========================= */
+type ExploreRow = {
+  label: string; // could be ticker or category
+  type: AssetType | "Category";
+  align: "Strong" | "Moderate" | "Sensitive";
+  contextEN: string;
+  contextPT: string;
+};
+
+function buildExploreRows(regime: MarketRegimePayload["market_regime"], horizon: Horizon): ExploreRow[] {
+  // V1: curated set of candidates (can be expanded later). This is NOT "top picks":
+  // It’s a contextual alignment list.
+  const rows: ExploreRow[] = [
+    {
+      label: "Broad market ETF",
+      type: "ETF",
+      align: "Strong",
+      contextEN: "Diversification tends to help across full cycles.",
+      contextPT: "Diversificação tende a ajudar ao longo de ciclos completos.",
+    },
+    {
+      label: "Quality large-caps",
+      type: "Category",
+      align: "Strong",
+      contextEN: "More stable cashflows tend to improve long-horizon consistency.",
+      contextPT: "Cashflows mais estáveis tendem a melhorar consistência no longo prazo.",
+    },
+    {
+      label: "High-growth equities",
+      type: "Category",
+      align: "Moderate",
+      contextEN: "Potentially constructive long term, but more sensitive in choppy regimes.",
+      contextPT: "Podem funcionar no longo prazo, mas são mais sensíveis em regimes instáveis.",
+    },
+    {
+      label: "Low-volatility ETF",
+      type: "ETF",
+      align: "Moderate",
+      contextEN: "Can reduce swings, especially when risk appetite is weak.",
+      contextPT: "Pode reduzir oscilações, especialmente quando o apetite ao risco é fraco.",
+    },
+    {
+      label: "Crypto (large-cap)",
+      type: "Crypto",
+      align: "Sensitive",
+      contextEN: "Volatility remains structural; horizon matters more than timing.",
+      contextPT: "Volatilidade é estrutural; horizonte importa mais do que timing.",
+    },
+  ];
+
+  // Adjust alignment by regime + horizon
+  // (Still not advice; just contextual behavior)
+  function bump(row: ExploreRow, to: ExploreRow["align"]) {
+    row.align = to;
+  }
+
+  for (const r of rows) {
+    // Risk-off makes crypto and high-growth more sensitive
+    if (regime === "Risk-off") {
+      if (r.label.includes("Crypto")) bump(r, "Sensitive");
+      if (r.label.includes("High-growth")) bump(r, "Sensitive");
+      if (r.label.includes("Low-volatility")) bump(r, "Strong");
+      if (r.label.includes("Broad market")) bump(r, horizon === "Long" ? "Moderate" : "Moderate");
+    }
+
+    // Risk-on improves broad market and growth
+    if (regime === "Risk-on") {
+      if (r.label.includes("Broad market")) bump(r, "Strong");
+      if (r.label.includes("High-growth")) bump(r, horizon === "Long" ? "Strong" : "Moderate");
+      if (r.label.includes("Crypto")) bump(r, horizon === "Short" ? "Moderate" : "Moderate");
+    }
+
+    // Transitional makes short-term more sensitive for most risk assets
+    if (regime === "Transitional") {
+      if (horizon === "Short") {
+        if (r.label.includes("High-growth")) bump(r, "Sensitive");
+        if (r.label.includes("Crypto")) bump(r, "Sensitive");
+        if (r.label.includes("Broad market")) bump(r, "Moderate");
+      }
+      if (horizon === "Medium") {
+        if (r.label.includes("High-growth")) bump(r, "Moderate");
+        if (r.label.includes("Crypto")) bump(r, "Moderate");
+      }
+      if (horizon === "Long") {
+        if (r.label.includes("Quality")) bump(r, "Strong");
+        if (r.label.includes("Broad market")) bump(r, "Strong");
+      }
+    }
+
+    // Range-bound: reduce conviction
+    if (regime === "Neutral / Range-bound") {
+      if (r.align === "Strong") bump(r, "Moderate");
+      if (r.label.includes("Crypto")) bump(r, "Sensitive");
+    }
+  }
+
+  // Horizon: long tends to favor structural diversification; short penalizes sensitivity
+  for (const r of rows) {
+    if (horizon === "Long") {
+      if (r.label.includes("Broad market")) r.align = "Strong";
+      if (r.label.includes("Quality")) r.align = "Strong";
+    }
+    if (horizon === "Short") {
+      if (r.label.includes("Crypto")) r.align = "Sensitive";
+      if (r.label.includes("High-growth")) r.align = "Sensitive";
+    }
+  }
+
+  return rows;
+}
+
+function alignBadge(locale: Locale, a: ExploreRow["align"]) {
+  const pt = locale === "pt";
+  const label =
+    a === "Strong"
+      ? pt
+        ? "✅ Forte"
+        : "✅ Strong"
+      : a === "Moderate"
+      ? pt
+        ? "◼️ Moderado"
+        : "◼️ Moderate"
+      : pt
+      ? "⚠️ Sensível"
+      : "⚠️ Sensitive";
+
+  const color =
+    a === "Strong"
+      ? "bg-signal-700/10 text-signal-800"
+      : a === "Moderate"
+      ? "bg-canvas-50 text-ink-800"
+      : "bg-amber-500/10 text-amber-800";
+
+  return (
+    <span className={cn("inline-flex items-center rounded-full border border-border-soft px-3 py-1 text-xs font-semibold", color)}>
+      {label}
+    </span>
+  );
+}
+
 /** =========================
  * Component
  * ========================= */
@@ -395,7 +647,6 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
   const { user } = useUser();
 
   const storageKey = useMemo(() => {
-    // one portfolio per user
     return user?.id ? `sc_portfolio_v1_${user.id}_${locale}` : `sc_portfolio_v1_anon_${locale}`;
   }, [user?.id, locale]);
 
@@ -411,6 +662,10 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
   const [type, setType] = useState<AssetType>("Stock");
   const [importance, setImportance] = useState<Asset["importance"]>("Medium");
   const [note, setNote] = useState("");
+
+  // optional explore
+  const [showExplore, setShowExplore] = useState(false);
+  const [selectedHorizon, setSelectedHorizon] = useState<Horizon>("Long");
 
   // load assets
   useEffect(() => {
@@ -471,6 +726,8 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
     };
   }, [regime, locale]);
 
+  const exploreRows = useMemo(() => buildExploreRows(currentRegime, selectedHorizon), [currentRegime, selectedHorizon]);
+
   function onAdd(e: React.FormEvent) {
     e.preventDefault();
     const clean = name.trim();
@@ -524,7 +781,8 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
                   <strong>{headerRegime?.regime ?? currentRegime}</strong>
                   <span className="text-ink-500">
                     {" "}
-                    · {locale === "pt" ? "Confiança" : "Confidence"} <strong>{headerRegime?.confidence ?? (locale === "pt" ? "Moderada" : "Moderate")}</strong>
+                    · {locale === "pt" ? "Confiança" : "Confidence"}{" "}
+                    <strong>{headerRegime?.confidence ?? (locale === "pt" ? "Moderada" : "Moderate")}</strong>
                   </span>
                 </span>
               </div>
@@ -537,7 +795,9 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
             {loadingRegime ? (
               <p className="text-sm text-ink-600">{locale === "pt" ? "A carregar…" : "Loading…"}</p>
             ) : (
-              <p className="text-sm text-ink-700">{headerRegime?.summary ?? (locale === "pt" ? ptSummaryFromRegime(currentRegime) : "Context is temporarily unavailable.")}</p>
+              <p className="text-sm text-ink-700">
+                {headerRegime?.summary ?? (locale === "pt" ? ptSummaryFromRegime(currentRegime) : "Context is temporarily unavailable.")}
+              </p>
             )}
           </div>
 
@@ -557,11 +817,6 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
                 <p className="text-xs font-semibold text-ink-500">{c.horizon.Long}</p>
                 <p className="mt-2 text-sm text-ink-700">{weekly.long}</p>
               </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-border-soft bg-canvas-50 p-4">
-              <p className="text-xs font-semibold text-ink-700">{c.whatMeans}</p>
-              <p className="mt-2 text-sm text-ink-700">{c.microExplain}</p>
             </div>
           </div>
         </div>
@@ -601,34 +856,152 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
 
                   {open ? (
                     <div className="px-5 pb-5">
-                      {/* Matrix table */}
-                      <div className="overflow-hidden rounded-2xl border border-border-soft">
-                        <table className="w-full text-sm">
-                          <thead className="bg-canvas-50 text-xs text-ink-500">
-                            <tr>
-                              <th className="px-4 py-3 text-left">{locale === "pt" ? "Horizonte" : "Horizon"}</th>
-                              <th className="px-4 py-3 text-left">{locale === "pt" ? "Leitura" : "Reading"}</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(["Short", "Medium", "Long"] as Horizon[]).map((h, idx) => (
-                              <tr key={h} className={idx ? "border-t border-border-soft" : ""}>
-                                <td className="px-4 py-3">{c.horizon[h]}</td>
-                                <td className="px-4 py-3">{badge(locale, matrix[h])}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                     {/* ====== HORIZON TABLE (clean) ====== */}
+<p className="text-sm font-semibold">
+  {locale === "pt"
+    ? "Comportamento por horizonte"
+    : "Horizon behavior"}
+</p>
 
-                      {/* Similar regime behavior */}
-                      <div className="mt-4 rounded-2xl border border-ink-100 bg-ink-50/40 px-4 py-3">
-                        <p className="text-xs font-semibold text-ink-500">{c.whySimilarRegimes}</p>
-                        <p className="mt-2 text-sm text-ink-700">{whyFor(locale, currentRegime, a.type)}</p>
+<div className="mt-3 overflow-hidden rounded-2xl border border-border-soft">
+  <table className="w-full text-sm">
+    <thead className="bg-canvas-50 text-xs text-ink-500">
+      <tr>
+        <th className="px-4 py-3 text-left">
+          {locale === "pt" ? "Horizonte" : "Horizon"}
+        </th>
+        <th className="px-4 py-3 text-left">
+          {locale === "pt" ? "Leitura" : "Reading"}
+        </th>
+      </tr>
+    </thead>
+
+    <tbody>
+      <tr>
+        <td className="px-4 py-3">{c.horizon.Short}</td>
+        <td className="px-4 py-3">
+          <StatusCell locale={locale} horizon="Short" state={matrix.Short} regime={currentRegime} />
+        </td>
+      </tr>
+
+      <tr className="border-t border-border-soft">
+        <td className="px-4 py-3">{c.horizon.Medium}</td>
+        <td className="px-4 py-3">
+          <StatusCell locale={locale} horizon="Medium" state={matrix.Medium} regime={currentRegime} />
+        </td>
+      </tr>
+
+      <tr className="border-t border-border-soft">
+        <td className="px-4 py-3">{c.horizon.Long}</td>
+        <td className="px-4 py-3">
+          <StatusCell locale={locale} horizon="Long" state={matrix.Long} regime={currentRegime} />
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{/* Explanation (clean + human) */}
+<div className="mt-4 rounded-2xl border border-border-soft bg-white p-4">
+  <p className="text-sm font-semibold text-ink-900">
+    {locale === "pt" ? "O que isto significa" : "What this means"}
+  </p>
+
+  <div className="mt-3 space-y-3 text-sm text-ink-700">
+    <div className="rounded-2xl border border-border-soft bg-canvas-50 p-3">
+      <p className="text-xs font-semibold text-ink-600">
+        {c.horizon.Short} — ⚠️ {locale === "pt" ? "Sensível" : "Sensitive"}
+      </p>
+      <p className="mt-2">
+        {locale === "pt"
+          ? "Mais exposto a ruído, notícias e variações rápidas de sentimento. Movimentos tendem a ser menos previsíveis neste horizonte."
+          : "More exposed to noise, news and fast shifts in sentiment. Moves tend to be less reliable in this horizon."}
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-border-soft bg-canvas-50 p-3">
+      <p className="text-xs font-semibold text-ink-600">
+        {c.horizon.Medium} — ◼️ {locale === "pt" ? "Neutro" : "Neutral"}
+      </p>
+      <p className="mt-2">
+        {locale === "pt"
+          ? "Parte do ruído é absorvida, mas o mercado ainda procura confirmação. O comportamento tende a ser misto no contexto atual."
+          : "Some noise is filtered out, but the market still seeks confirmation. Behavior tends to be mixed under current context."}
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-border-soft bg-canvas-50 p-3">
+      <p className="text-xs font-semibold text-ink-600">
+        {c.horizon.Long} — ✅ {locale === "pt" ? "Construtivo" : "Constructive"}
+      </p>
+      <p className="mt-2">
+        {locale === "pt"
+          ? "Com mais tempo, fatores estruturais tendem a pesar mais do que oscilações de curto prazo. O alinhamento costuma ser mais consistente."
+          : "Over longer periods, structural forces tend to matter more than short-term swings. Alignment is usually more consistent."}
+      </p>
+    </div>
+  </div>
+
+  <details className="mt-4">
+    <summary className="cursor-pointer text-sm font-semibold text-ink-900">
+      {locale === "pt"
+        ? "Porque estas leituras são diferentes?"
+        : "Why do these readings differ?"}
+    </summary>
+
+    <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-ink-700">
+      <li>
+        {locale === "pt"
+          ? "Curto prazo é mais sensível a notícias, ruído e sentimento."
+          : "Short-term is more sensitive to news, noise and sentiment."}
+      </li>
+      <li>
+        {locale === "pt"
+          ? "Médio prazo começa a filtrar ruído, mas ainda depende de confirmação."
+          : "Medium-term filters some noise, but still depends on confirmation."}
+      </li>
+      <li>
+        {locale === "pt"
+          ? "Longo prazo tende a refletir fatores estruturais e normalização do contexto."
+          : "Long-term tends to reflect structural forces and normalization of context."}
+      </li>
+    </ul>
+
+    <p className="mt-3 text-xs text-ink-500">
+      {locale === "pt"
+        ? `Regime atual: ${regimePT(currentRegime)}. Sem sinais. Sem previsões.`
+        : `Current regime: ${currentRegime}. No signals. No predictions.`}
+    </p>
+  </details>
+</div>
+
+                      {/* Explanation (not vague) */}
+                      <div className="mt-4 rounded-2xl border border-border-soft bg-white p-4">
+                        <p className="text-sm text-ink-700">
+                          {c.explainShort}
+                          <br />
+                          {c.explainMedium}
+                          <br />
+                          {c.explainLong}
+                        </p>
+
+                        <details className="mt-3">
+                          <summary className="cursor-pointer text-sm font-semibold text-ink-900">
+                            {c.whyDifferentBtn}
+                          </summary>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-700">
+                            {c.whyDifferentBody.map((x) => (
+                              <li key={x}>{x}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-3 text-xs text-ink-500">{c.tooltipNote}</p>
+                        </details>
                       </div>
 
                       <div className="mt-4 flex items-center justify-between gap-3">
-                        <p className="text-xs text-ink-500">{locale === "pt" ? "Sem sinais. Sem previsões. Só contexto." : "No signals. No predictions. Just context."}</p>
+                        <p className="text-xs text-ink-500">
+                          {locale === "pt" ? "Sem sinais. Sem previsões. Só contexto." : "No signals. No predictions. Just context."}
+                        </p>
 
                         <button
                           type="button"
@@ -645,6 +1018,92 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
             })}
           </div>
 
+          {/* ===== Optional Explore (opt-in) ===== */}
+          {assets.length > 0 ? (
+            <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-lg font-semibold">{c.optionalTitle}</p>
+                  <p className="mt-1 text-sm text-ink-700">{c.optionalSubtitle}</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedHorizon}
+                    onChange={(e) => setSelectedHorizon(e.target.value as Horizon)}
+                    className="rounded-2xl border border-border-soft bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                  >
+                    <option value="Short">{c.horizon.Short}</option>
+                    <option value="Medium">{c.horizon.Medium}</option>
+                    <option value="Long">{c.horizon.Long}</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowExplore((v) => !v)}
+                    className={cn(
+                      "rounded-2xl px-4 py-2 text-sm font-semibold border border-border-soft",
+                      showExplore ? "bg-canvas-50" : "bg-white hover:bg-canvas-50"
+                    )}
+                  >
+                    {showExplore ? c.hideBtn : c.exploreBtn}
+                  </button>
+                </div>
+              </div>
+
+              {showExplore ? (
+                <>
+                  <div className="mt-4 space-y-2 text-sm text-ink-700">
+                    {c.optionalIntro.map((x) => (
+                      <p key={x}>{x}</p>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft">
+                    <table className="w-full text-sm">
+                      <thead className="bg-canvas-50 text-xs text-ink-500">
+                        <tr>
+                          <th className="px-4 py-3 text-left">{c.optCols.asset}</th>
+                          <th className="px-4 py-3 text-left">{c.optCols.type}</th>
+                          <th className="px-4 py-3 text-left">{c.optCols.align}</th>
+                          <th className="px-4 py-3 text-left">{c.optCols.context}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {exploreRows.map((r, idx) => (
+                          <tr key={`${r.label}-${idx}`} className={idx ? "border-t border-border-soft" : ""}>
+                            <td className="px-4 py-3 font-medium">{r.label}</td>
+                            <td className="px-4 py-3">
+                              {r.type === "Category" ? (locale === "pt" ? "Categoria" : "Category") : c.types[r.type]}
+                            </td>
+                            <td className="px-4 py-3">{alignBadge(locale, r.align)}</td>
+                            <td className="px-4 py-3 text-ink-700">
+                              {locale === "pt" ? r.contextPT : r.contextEN}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs">
+                      {c.alignLegend.strong}
+                    </span>
+                    <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs">
+                      {c.alignLegend.moderate}
+                    </span>
+                    <span className="rounded-full border border-border-soft bg-white px-3 py-1 text-xs">
+                      {c.alignLegend.sensitive}
+                    </span>
+                  </div>
+
+                  <p className="mt-4 text-xs text-ink-500">{c.optionalOutro}</p>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Add asset */}
           <div className="mt-10 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
             <h3 className="text-lg font-semibold">{c.addAsset}</h3>
@@ -656,7 +1115,7 @@ export default function PortfolioAppV1({ locale }: { locale: Locale }) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full rounded-2xl border border-border-soft px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
-                  placeholder={locale === "pt" ? "Ex: Apple, MSCI World ETF, Bitcoin" : "e.g. Apple, MSCI World ETF, Bitcoin"}
+                  placeholder={locale === "pt" ? "Ex: Apple, ETF MSCI World, Bitcoin" : "e.g. Apple, MSCI World ETF, Bitcoin"}
                 />
               </div>
 

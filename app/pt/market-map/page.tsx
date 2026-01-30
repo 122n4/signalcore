@@ -195,6 +195,23 @@ export default async function MarketMapPT() {
           Conteúdo educativo. Sem sinais. Sem previsões.
         </p>
       </section>
+      {/* What would change the regime? */}
+<section className="mt-10 rounded-3xl border border-border-soft bg-canvas-50 p-6 shadow-card">
+  <h2 className="text-lg font-semibold">What would change my mind?</h2>
+  <p className="mt-2 text-sm text-ink-700">
+    SignalCore changes slowly on purpose. These are the kinds of shifts that matter.
+  </p>
+
+  <ul className="mt-4 space-y-2 text-sm text-ink-700">
+    <li>• A sustained change in volatility and market stress (not a one-day spike)</li>
+    <li>• A consistent shift in cross-asset behavior (risk-on vs risk-off)</li>
+    <li>• A clear break in trend structure with confirmation (not a headline move)</li>
+  </ul>
+
+  <p className="mt-4 text-xs text-ink-500">
+    Educational context only — not signals, not predictions.
+  </p>
+</section>
     </main>
   );
 }

@@ -85,6 +85,13 @@ export default async function HomePT() {
               Preços (9€/mês)
             </a>
           </div>
+<p className="mt-4 text-sm">
+  <a href="/example" className="text-signal-700 underline underline-offset-4">
+    See a real example →
+  </a>
+</p>
+
+          
 
           <p className="mt-4 text-xs text-ink-500">
             Conteúdo educativo. Sem sinais. Sem previsões.

@@ -27,6 +27,27 @@ export default function Header() {
             Market Map
           </Link>
 
+          <Link
+  href={`${base}/start`}
+  className="text-sm text-ink-600 hover:text-ink-900"
+>
+  {isPT ? "Começar (5 min)" : "Start (5 min)"}
+</Link>
+
+<Link
+  href={isPT ? "/pt/nao-e-para-ti" : "/not-for-you"}
+  className="text-sm text-ink-600 hover:text-ink-900"
+>
+  {isPT ? "Não é para ti" : "Not for you"}
+</Link>
+
+<Link
+  href={`${base}/${isPT ? "metodo" : "method"}`}
+  className="text-sm text-ink-600 hover:text-ink-900"
+>
+  {isPT ? "Método" : "Method"}
+</Link>
+
           <Link href={`${base}/pricing`} className="hover:text-ink-900">
             Pricing
           </Link>

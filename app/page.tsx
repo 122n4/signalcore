@@ -12,12 +12,14 @@ export default async function Home() {
           <p className="text-xs font-semibold text-ink-500">SignalCore</p>
 
           <h1 className="mt-3 text-4xl font-semibold tracking-tight md:text-6xl">
-            Investing doesn’t need to be confusing.
+            Clarity when the market doesn’t.
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-base text-ink-700 md:text-lg">
-            SignalCore gives you a calm, risk-first perspective on the market —
-            built for people who want clarity, not noise.
+            A calm, risk-first view of the market — built to help you decide less, and better.
+            <span className="block mt-2 text-ink-600">
+              No signals. No predictions. No hype.
+            </span>
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -25,19 +27,24 @@ export default async function Home() {
               href="/market-map"
               className="inline-flex items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
             >
-              See this week’s Market Map
+              See the Market Map
             </a>
 
             <a
               href="/pricing"
               className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
             >
-              Pricing (€9/month)
+              Pricing (€9 / month)
             </a>
           </div>
+<p className="mt-4 text-sm">
+  <a href="/example" className="text-signal-700 underline underline-offset-4">
+    See a real example →
+  </a>
+</p>
 
           <p className="mt-4 text-xs text-ink-500">
-            Educational content. No signals. No predictions.
+            Educational content only. Context, not triggers.
           </p>
         </div>
 
@@ -73,36 +80,87 @@ export default async function Home() {
                 See the full Market Map
               </a>
               <p className="mt-2 text-center text-xs text-ink-500">
-                The free snapshot shows the “what”. Members get the “why”.
+                The free snapshot shows the “what”. Members get the “why” + guardrails.
               </p>
             </div>
           </div>
         </section>
 
-        {/* 3 CORE CARDS */}
+        {/* WHAT YOU GET */}
         <section className="mx-auto mt-12 max-w-6xl">
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-              <h3 className="text-lg font-semibold">A clear market regime</h3>
+              <h3 className="text-lg font-semibold">Market Regime</h3>
               <p className="mt-3 text-sm text-ink-700">
-                Know whether the market is risk-on, risk-off, or transitional — without prediction.
+                A slow, intentional read of the environment. It doesn’t flip on headlines.
               </p>
             </div>
 
             <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-              <h3 className="text-lg font-semibold">Risk-first thinking</h3>
+              <h3 className="text-lg font-semibold">Horizons (S / M / L)</h3>
               <p className="mt-3 text-sm text-ink-700">
-                Focus on what can go wrong, what matters most, and what would change the context.
+                The same market, read three ways — so you never confuse noise with thesis.
               </p>
             </div>
 
             <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-              <h3 className="text-lg font-semibold">Built for consistency</h3>
+              <h3 className="text-lg font-semibold">Your Portfolio in Context</h3>
               <p className="mt-3 text-sm text-ink-700">
-                A weekly perspective designed to help you stay disciplined when markets feel noisy.
+                Not green/red. Just: where risk matters most and where patience is an edge.
               </p>
             </div>
           </div>
+        </section>
+
+        {/* ANTI-FEATURES */}
+        <section className="mx-auto mt-14 max-w-6xl">
+          <h2 className="text-2xl font-semibold tracking-tight">
+            What SignalCore doesn’t do (on purpose)
+          </h2>
+          <p className="mt-2 text-sm text-ink-700">
+            Most tools optimize for more activity. SignalCore optimizes for better decisions under uncertainty.
+          </p>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+              <h3 className="text-base font-semibold">No triggers</h3>
+              <ul className="mt-3 space-y-2 text-sm text-ink-700">
+                <li>• No buy/sell signals</li>
+                <li>• No short-term predictions</li>
+                <li>• No constant alerts</li>
+                <li>• No daily hot takes</li>
+              </ul>
+            </div>
+
+            <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+              <h3 className="text-base font-semibold">Just context</h3>
+              <ul className="mt-3 space-y-2 text-sm text-ink-700">
+                <li>• A weekly Market Map</li>
+                <li>• Horizons that prevent confusion</li>
+                <li>• Risk-first guardrails</li>
+                <li>• Calm decision-making by design</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* WEEKLY RITUAL */}
+        <section className="mx-auto mt-14 max-w-6xl rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+          <h2 className="text-2xl font-semibold tracking-tight">10 minutes. Once a week.</h2>
+          <p className="mt-2 text-sm text-ink-700">
+            A simple ritual that reduces noise — and helps you avoid reactive decisions.
+          </p>
+
+          <ol className="mt-5 space-y-2 text-sm text-ink-700">
+            <li>1) Open the Market Map</li>
+            <li>2) Check the regime + confidence</li>
+            <li>3) Read short / medium / long</li>
+            <li>4) Adjust only what is slow and necessary (if anything)</li>
+          </ol>
+
+          <p className="mt-4 text-sm text-ink-700">
+            If the best decision is to do nothing, SignalCore will say that — clearly.
+          </p>
         </section>
 
         {/* PRINCIPLES */}
@@ -171,7 +229,9 @@ export default async function Home() {
         {/* PRICING CTA */}
         <section className="mx-auto mt-14 max-w-3xl text-center">
           <p className="text-sm font-semibold text-ink-900">Early access</p>
-          <div className="mt-2 text-4xl font-semibold tracking-tight">€9 <span className="text-base font-medium text-ink-500">/ month</span></div>
+          <div className="mt-2 text-4xl font-semibold tracking-tight">
+            €9 <span className="text-base font-medium text-ink-500">/ month</span>
+          </div>
           <p className="mt-2 text-sm text-ink-700">One plan. Full access. Early price.</p>
 
           <div className="mt-6">
@@ -181,9 +241,7 @@ export default async function Home() {
             >
               Get early access
             </a>
-            <p className="mt-3 text-xs text-ink-500">
-              Price may increase later. Cancel anytime.
-            </p>
+            <p className="mt-3 text-xs text-ink-500">Price may increase later. Cancel anytime.</p>
           </div>
         </section>
 
