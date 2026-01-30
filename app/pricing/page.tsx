@@ -1,4 +1,57 @@
+"use client";
+
+import { useState } from "react";
+import { useUser, SignInButton } from "@clerk/nextjs";
+
 export default function Pricing() {
+  const { user, isLoaded, isSignedIn } = useUser();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function goCheckout() {
+    setError(null);
+
+    if (!isLoaded) return;
+
+    if (!isSignedIn || !user) {
+      setError("Please sign in to continue.");
+      return;
+    }
+
+    const email = user.primaryEmailAddress?.emailAddress;
+    if (!email) {
+      setError("We couldn’t find your email address.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          email,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data?.error || "Checkout failed.");
+        setLoading(false);
+        return;
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (e: any) {
+      setError(e?.message || "Checkout failed.");
+      setLoading(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <section className="mx-auto max-w-4xl px-4 py-20">
@@ -37,12 +90,29 @@ export default function Pricing() {
               <li>✓ Continuous updates</li>
             </ul>
 
-            <a
-              href="#"
-              className="mt-8 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+            <button
+              onClick={goCheckout}
+              disabled={loading}
+              className="mt-8 inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft disabled:opacity-60"
             >
-              Get early access
-            </a>
+              {loading ? "Redirecting…" : "Get early access"}
+            </button>
+
+            {!isSignedIn && (
+              <div className="mt-3 text-center">
+                <SignInButton mode="modal">
+                  <button className="text-sm font-semibold text-signal-700 underline underline-offset-4">
+                    Sign in to continue
+                  </button>
+                </SignInButton>
+              </div>
+            )}
+
+            {error && (
+              <p className="mt-3 text-center text-sm text-red-600">
+                {error}
+              </p>
+            )}
 
             <p className="mt-4 text-xs text-ink-500 text-center">
               Price will increase in the future. Cancel anytime.
