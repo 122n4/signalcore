@@ -2,86 +2,55 @@
 
 import Link from "next/link";
 import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
-import { usePathname } from "next/navigation";
 
 export default function Header() {
-  const pathname = usePathname();
-  const isPT = pathname.startsWith("/pt");
-
-  const base = isPT ? "/pt" : "";
-
   return (
-    <header className="sticky top-0 z-40 border-b border-ink-100 bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+    <header className="sticky top-0 z-50 border-b border-border-soft bg-white">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         {/* Logo */}
         <Link
-          href={base || "/"}
-          className="text-sm font-semibold tracking-tight"
+          href="/"
+          className="text-sm font-semibold tracking-tight text-ink-900"
         >
           SignalCore
         </Link>
 
         {/* Navigation */}
-        <nav className="flex items-center gap-4 text-sm text-ink-600">
-          <Link href={`${base}/market-map`} className="hover:text-ink-900">
+        <nav className="flex items-center gap-6 text-sm text-ink-700">
+          <Link href="/market-map" className="hover:text-ink-900">
             Market Map
           </Link>
 
-          <Link
-  href={`${base}/start`}
-  className="text-sm text-ink-600 hover:text-ink-900"
->
-  {isPT ? "Começar (5 min)" : "Start (5 min)"}
-</Link>
-
-<Link
-  href={isPT ? "/pt/nao-e-para-ti" : "/not-for-you"}
-  className="text-sm text-ink-600 hover:text-ink-900"
->
-  {isPT ? "Não é para ti" : "Not for you"}
-</Link>
-
-<Link
-  href={`${base}/${isPT ? "metodo" : "method"}`}
-  className="text-sm text-ink-600 hover:text-ink-900"
->
-  {isPT ? "Método" : "Method"}
-</Link>
-
-          <Link href={`${base}/pricing`} className="hover:text-ink-900">
+          <Link href="/pricing" className="hover:text-ink-900">
             Pricing
           </Link>
 
-          {/* Só aparece se estiver logado */}
           <SignedIn>
-            <Link
-              href="/my-portfolio"
-              className="font-medium text-ink-900 hover:underline"
-            >
+            <Link href="/my-portfolio" className="hover:text-ink-900">
               My Portfolio
             </Link>
           </SignedIn>
 
-          {/* Idioma */}
+          {/* Language */}
           <Link
-            href={isPT ? pathname.replace("/pt", "") || "/" : `/pt${pathname}`}
+            href="/pt"
             className="text-xs opacity-70 hover:opacity-100"
           >
-            {isPT ? "EN" : "PT"}
+            PT
           </Link>
 
           {/* Auth */}
           <SignedOut>
             <Link
               href="/sign-in"
-              className="rounded-full border border-ink-200 px-3 py-1 text-xs hover:bg-ink-50"
+              className="rounded-xl bg-signal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-signal-800"
             >
-              Sign in
+              Join SignalCore
             </Link>
           </SignedOut>
 
           <SignedIn>
-            <UserButton afterSignOutUrl={base || "/"} />
+            <UserButton afterSignOutUrl="/" />
           </SignedIn>
         </nav>
       </div>

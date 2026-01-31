@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.10",
+    "@supabase/supabase-js": "^2.93.3",
     "next": "16.1.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
