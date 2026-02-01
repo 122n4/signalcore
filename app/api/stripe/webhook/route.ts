@@ -11,11 +11,14 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 export async function POST(req: Request) {
-  const sig = (await headers()).get("stripe-signature");
+  const sig = headers().get("stripe-signature"); // ✅ sem await
   const whsec = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!sig || !whsec) {
-    return NextResponse.json({ error: "Missing Stripe signature or webhook secret" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing Stripe signature or webhook secret" },
+      { status: 400 }
+    );
   }
 
   const body = await req.text();
@@ -29,14 +32,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    // ✅ Caso principal: checkout concluído
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      // 1) Melhor: client_reference_id (mete isto ao criar a session)
-      const clerkUserId = session.client_reference_id || null;
+      // ✅ 1) principal: client_reference_id (definimos no checkout)
+      let clerkUserId: string | null = session.client_reference_id ?? null;
 
-      // 2) Fallback: email do checkout
+      // ✅ 2) fallback: metadata (também definimos no checkout)
+      if (!clerkUserId && session.metadata?.clerkUserId) {
+        clerkUserId = session.metadata.clerkUserId;
+      }
+
+      // ✅ 3) fallback final: email
       const email =
         session.customer_details?.email ||
         session.customer_email ||
@@ -48,24 +55,22 @@ export async function POST(req: Request) {
       const subscriptionId =
         typeof session.subscription === "string" ? session.subscription : null;
 
-      // obter clerk client (compatível com setups onde clerkClient é função)
+      // clerkClient pode ser função async nalguns setups
       const client: any =
         typeof clerkClient === "function" ? await (clerkClient as any)() : clerkClient;
 
-      let userIdToUpdate: string | null = clerkUserId;
-
-      // Se não tiver userId, tenta pelo email
-      if (!userIdToUpdate && email) {
+      // se não tiver userId, tenta resolver por email
+      if (!clerkUserId && email) {
         const users = await client.users.getUserList({ emailAddress: [email] });
-        userIdToUpdate = users?.data?.[0]?.id ?? null;
+        clerkUserId = users?.data?.[0]?.id ?? null;
       }
 
-      if (!userIdToUpdate) {
-        console.warn("⚠️ Não consegui mapear o utilizador (sem client_reference_id e sem email).");
+      if (!clerkUserId) {
+        console.warn("⚠️ Não consegui mapear user (sem client_reference_id/metadata/email).");
         return NextResponse.json({ received: true });
       }
 
-      await client.users.updateUser(userIdToUpdate, {
+      await client.users.updateUser(clerkUserId, {
         publicMetadata: {
           isPaid: true,
           stripeCustomerId: customerId,
@@ -73,30 +78,21 @@ export async function POST(req: Request) {
         },
       });
 
-      console.log("✅ Marked isPaid=true for", userIdToUpdate);
+      console.log("✅ Marked isPaid=true for", clerkUserId);
       return NextResponse.json({ received: true });
     }
 
-    // ✅ Se cancelarem subscription (opcional)
+    // (opcional) se quiseres “desativar” quando cancelam:
     if (event.type === "customer.subscription.deleted") {
-      const sub = event.data.object as Stripe.Subscription;
-      const customerId = typeof sub.customer === "string" ? sub.customer : null;
-
-      if (customerId) {
-        const client: any =
-          typeof clerkClient === "function" ? await (clerkClient as any)() : clerkClient;
-
-        // procura user pelo stripeCustomerId guardado no publicMetadata
-        // (Clerk não tem “query por metadata” direto, por isso aqui normalmente guardas isso num DB.
-        // Para já, ignora este bloco se não tiveres DB.)
-      }
+      // Aqui só dá para fazer bem se tiveres uma DB/lookup pelo stripeCustomerId.
+      // Por agora, deixa como no-op.
       return NextResponse.json({ received: true });
     }
 
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("❌ Webhook handler error:", err);
-    // Stripe considera OK se devolveres 200; mas nós queremos ver o erro.
+    // Mantemos 200 para o Stripe não ficar a repetir indefinidamente
     return NextResponse.json({ received: true });
   }
 }
