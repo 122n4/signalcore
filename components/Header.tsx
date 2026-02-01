@@ -5,61 +5,62 @@ import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 
 export default function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-border-soft bg-white">
+    <header className="sticky top-0 z-50 border-b border-border-soft bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        {/* Logo */}
-        <Link
-          href="/"
-          className="text-sm font-semibold tracking-tight text-ink-900"
-        >
-          SignalCore
-        </Link>
-
-        {/* Navigation */}
-        <nav className="flex items-center gap-6 text-sm text-ink-700">
-          <Link href="/market-map" className="hover:text-ink-900">
-            Market Map
+        <div className="flex items-center gap-4">
+          <Link href="/" className="text-sm font-semibold text-ink-900">
+            SignalCore
           </Link>
 
-          <Link
-  href="/app"
-  className="text-xs opacity-70 hover:opacity-100"
->
-  App
-</Link>
+          {/* NAV — Signed OUT (marketing / preview) */}
+          <SignedOut>
+            <nav className="flex items-center gap-4">
+              <Link href="/market-map" className="text-xs opacity-70 hover:opacity-100">
+                Market Map
+              </Link>
+              <Link href="/example" className="text-xs opacity-70 hover:opacity-100">
+                Example
+              </Link>
+              <Link href="/pricing" className="text-xs opacity-70 hover:opacity-100">
+                Pricing
+              </Link>
+            </nav>
+          </SignedOut>
 
-          <Link href="/pricing" className="hover:text-ink-900">
-            Pricing
-          </Link>
-
+          {/* NAV — Signed IN (product only) */}
           <SignedIn>
-            <Link href="/my-portfolio" className="hover:text-ink-900">
-              My Portfolio
-            </Link>
+            <nav className="flex items-center gap-4">
+              <Link href="/app" className="text-xs font-semibold opacity-90 hover:opacity-100">
+                App
+              </Link>
+              <Link href="/my-portfolio" className="text-xs opacity-70 hover:opacity-100">
+                My Portfolio
+              </Link>
+            </nav>
           </SignedIn>
+        </div>
 
-          {/* Language */}
-          <Link
-            href="/pt"
-            className="text-xs opacity-70 hover:opacity-100"
-          >
-            PT
-          </Link>
-
-          {/* Auth */}
+        {/* RIGHT SIDE */}
+        <div className="flex items-center gap-3">
           <SignedOut>
             <Link
-              href="/sign-in"
-              className="rounded-xl bg-signal-700 px-4 py-2 text-xs font-semibold text-white hover:bg-signal-800"
+              href="/app"
+              className="rounded-2xl border border-border-soft bg-white px-4 py-2 text-xs font-semibold text-ink-900 hover:bg-canvas-50"
             >
-              Join SignalCore
+              Open App
+            </Link>
+            <Link
+              href="/sign-in"
+              className="rounded-2xl bg-ink-900 px-4 py-2 text-xs font-semibold text-white hover:opacity-90"
+            >
+              Sign in
             </Link>
           </SignedOut>
 
           <SignedIn>
             <UserButton afterSignOutUrl="/" />
           </SignedIn>
-        </nav>
+        </div>
       </div>
     </header>
   );

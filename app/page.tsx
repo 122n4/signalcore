@@ -1,7 +1,11 @@
-// app/page.tsx
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { auth } from "@clerk/nextjs/server";
 
-export default function Home() {
+export default async function Home() {
+  const { userId } = await auth();
+  if (userId) redirect("/app");
+
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <section className="mx-auto max-w-7xl px-6 py-14">
@@ -20,24 +24,24 @@ export default function Home() {
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="/app"
-              className="inline-flex items-center justify-center rounded-2xl bg-ink-900 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:opacity-90"
+              href="/market-map"
+              className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
             >
-              Open App
-            </Link>
-
-            <Link
-              href="/sign-up"
-              className="inline-flex items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
-            >
-              Join SignalCore
+              See Market Map (preview)
             </Link>
 
             <Link
               href="/pricing"
-              className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
+              className="inline-flex items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
             >
               Pricing
+            </Link>
+
+            <Link
+              href="/sign-in"
+              className="inline-flex items-center justify-center rounded-2xl bg-ink-900 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:opacity-90"
+            >
+              Sign in
             </Link>
           </div>
 
