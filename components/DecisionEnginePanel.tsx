@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
-import {
-  runDecisionEngine,
-  type EngineOutput,
-  type MarketRegime,
-  type Horizon,
-  type Goal,
-  type RiskProfile,
+import { useMemo, useState, useEffect } from "react";
+import { runDecisionEngine } from "@/lib/signalcore/decisionEngine";
+import type {
+  EngineOutput,
+  MarketRegime,
+  Horizon,
+  Goal,
+  RiskProfile,
 } from "@/lib/signalcore/decisionEngine";
 
 function cn(...x: Array<string | false | undefined | null>) {
