@@ -21,6 +21,13 @@ export default function Header() {
             Market Map
           </Link>
 
+          <Link
+  href="/app"
+  className="text-xs opacity-70 hover:opacity-100"
+>
+  App
+</Link>
+
           <Link href="/pricing" className="hover:text-ink-900">
             Pricing
           </Link>

@@ -1,3 +1,6 @@
+// app/page.tsx
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-white text-ink-900">
@@ -16,25 +19,32 @@ export default function Home() {
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <a
+            <Link
+              href="/app"
+              className="inline-flex items-center justify-center rounded-2xl bg-ink-900 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:opacity-90"
+            >
+              Open App
+            </Link>
+
+            <Link
               href="/sign-up"
               className="inline-flex items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white shadow-soft hover:bg-signal-800"
             >
               Join SignalCore
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/pricing"
               className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
             >
               Pricing
-            </a>
+            </Link>
           </div>
 
           <p className="mt-5 text-sm">
-            <a href="/example" className="text-signal-700 underline underline-offset-4">
+            <Link href="/example" className="text-signal-700 underline underline-offset-4">
               See a real example →
-            </a>
+            </Link>
           </p>
         </div>
       </section>

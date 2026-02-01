@@ -1,6 +1,7 @@
+// app/app/page.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 
@@ -11,6 +12,31 @@ type TabKey = "overview" | "portfolio" | "advisor";
 
 export default function AppHome() {
   const [tab, setTab] = useState<TabKey>("overview");
+  const [isPaid, setIsPaid] = useState(false);
+  const [loadingPaid, setLoadingPaid] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/me", { cache: "no-store" });
+        const data = await res.json();
+        if (!alive) return;
+        setIsPaid(Boolean(data?.isPaid));
+      } catch {
+        if (!alive) return;
+        setIsPaid(false);
+      } finally {
+        if (!alive) return;
+        setLoadingPaid(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const weekly = useMemo(
     () => ({
@@ -26,7 +52,6 @@ export default function AppHome() {
   return (
     <main className="min-h-screen bg-white text-ink-900">
       <section className="mx-auto max-w-7xl px-6 py-8">
-        {/* Tabs */}
         <div className="flex flex-wrap gap-2">
           <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
             Overview
@@ -39,7 +64,6 @@ export default function AppHome() {
           </TabButton>
         </div>
 
-        {/* Content */}
         <div className="mt-8">
           {tab === "overview" && (
             <div className="grid gap-6 lg:grid-cols-2">
@@ -57,9 +81,7 @@ export default function AppHome() {
 
                 <div className="mt-6 rounded-2xl border border-border-soft bg-canvas-50 p-4">
                   <p className="text-sm text-ink-700 italic">{weekly.teaser}</p>
-                  <p className="mt-3 text-xs text-ink-500">
-                    Educational context only. No predictions.
-                  </p>
+                  <p className="mt-3 text-xs text-ink-500">Educational context only. No predictions.</p>
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -95,6 +117,26 @@ export default function AppHome() {
                     Use any broker. SignalCore doesn’t execute orders. It keeps your plan coherent.
                   </p>
                 </div>
+
+                <SignedIn>
+                  <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
+                    <p className="text-sm text-ink-700">
+                      Status:{" "}
+                      {loadingPaid ? (
+                        <span className="text-ink-500">checking…</span>
+                      ) : isPaid ? (
+                        <span className="font-semibold">Premium active</span>
+                      ) : (
+                        <span className="font-semibold">Free account</span>
+                      )}
+                    </p>
+                    {!loadingPaid && !isPaid ? (
+                      <p className="mt-2 text-xs text-ink-500">
+                        You can explore the preview. Upgrade to unlock editing + Advisor.
+                      </p>
+                    ) : null}
+                  </div>
+                </SignedIn>
               </Card>
             </div>
           )}
@@ -106,7 +148,33 @@ export default function AppHome() {
               </SignedOut>
 
               <SignedIn>
-                <PortfolioEditor locale="en" />
+                {loadingPaid ? (
+                  <Card className="bg-canvas-50">
+                    <CardHeader title="Portfolio" subtitle="Loading your access…" />
+                    <p className="mt-4 text-sm text-ink-700">Checking membership status…</p>
+                  </Card>
+                ) : isPaid ? (
+                  <PortfolioEditor locale="en" />
+                ) : (
+                  <Card className="bg-canvas-50">
+                    <CardHeader
+                      title="Portfolio (members)"
+                      subtitle="Preview is free. Editing is for members."
+                    />
+                    <p className="mt-4 text-sm text-ink-700">
+                      You’re signed in, but portfolio editing is locked until membership is active.
+                    </p>
+                    <div className="mt-6">
+                      <Link
+                        href="/pricing"
+                        className="inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+                      >
+                        Unlock portfolio
+                      </Link>
+                    </div>
+                    <p className="mt-3 text-xs text-ink-500">Cancel anytime. Educational content only.</p>
+                  </Card>
+                )}
               </SignedIn>
 
               <Card className="bg-canvas-50">
@@ -123,8 +191,8 @@ export default function AppHome() {
 
                 <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
                   <p className="text-sm text-ink-700">
-                    Members get a plan + weekly checks. If conditions change materially,
-                    SignalCore “nudges” the plan direction — without urgency.
+                    Members get a plan + weekly checks. If conditions change materially, SignalCore
+                    “nudges” the plan direction — without urgency.
                   </p>
                 </div>
 
@@ -142,38 +210,64 @@ export default function AppHome() {
 
           {tab === "advisor" && (
             <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardHeader
-                  title="Advisor (members)"
-                  subtitle="We don’t tell you what to buy. We keep your plan sane."
-                />
-
-                <div className="mt-5 rounded-2xl border border-border-soft bg-canvas-50 p-4">
-                  <p className="text-sm text-ink-700 italic">
-                    If your goal is to reach €5,000 in 3 years, SignalCore structures a monthly plan and checks
-                    if it still makes sense as market conditions evolve.
+              <SignedOut>
+                <Card>
+                  <CardHeader title="Advisor (members)" subtitle="Sign in to see how the Advisor works." />
+                  <p className="mt-4 text-sm text-ink-700">
+                    The Advisor is designed for long-horizon discipline: plan structure + weekly checks — not trading signals.
                   </p>
-                </div>
+                  <div className="mt-6">
+                    <Link
+                      href="/sign-in"
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
+                    >
+                      Sign in
+                    </Link>
+                  </div>
+                </Card>
+              </SignedOut>
 
-                <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
-                  <p className="text-sm text-ink-700">
-                    You’ll see: plan alignment, posture shifts, and “if created today” nudges — only when
-                    changes are material.
-                  </p>
-                  <p className="mt-2 text-xs text-ink-500">
-                    No signals. No predictions. Just context and discipline.
-                  </p>
-                </div>
-
-                <div className="mt-6">
-                  <Link
-                    href="/pricing"
-                    className="inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
-                  >
-                    Activate Advisor
-                  </Link>
-                </div>
-              </Card>
+              <SignedIn>
+                {loadingPaid ? (
+                  <Card className="bg-canvas-50">
+                    <CardHeader title="Advisor" subtitle="Loading your access…" />
+                    <p className="mt-4 text-sm text-ink-700">Checking membership status…</p>
+                  </Card>
+                ) : isPaid ? (
+                  <Card>
+                    <CardHeader
+                      title="Advisor (members)"
+                      subtitle="We don’t tell you what to buy. We keep your plan sane."
+                    />
+                    <div className="mt-5 rounded-2xl border border-border-soft bg-canvas-50 p-4">
+                      <p className="text-sm text-ink-700 italic">
+                        If your goal is to reach €5,000 in 3 years, SignalCore structures a monthly plan and checks if it still makes sense as market conditions evolve.
+                      </p>
+                    </div>
+                    <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
+                      <p className="text-sm text-ink-700">
+                        You’ll see: plan alignment, posture shifts, and “if created today” nudges — only when changes are material.
+                      </p>
+                      <p className="mt-2 text-xs text-ink-500">No signals. No predictions. Just context and discipline.</p>
+                    </div>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardHeader title="Advisor (members)" subtitle="Locked for free accounts." />
+                    <p className="mt-4 text-sm text-ink-700">
+                      You’re signed in, but membership is not active. Unlock Advisor to get weekly plan checks and coherence nudges.
+                    </p>
+                    <div className="mt-6">
+                      <Link
+                        href="/pricing"
+                        className="inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft"
+                      >
+                        Activate Advisor
+                      </Link>
+                    </div>
+                  </Card>
+                )}
+              </SignedIn>
 
               <Card className="bg-canvas-50">
                 <CardHeader
@@ -201,16 +295,14 @@ function TabButton({
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       className={[
         "rounded-2xl px-4 py-2 text-sm font-semibold transition",
-        active
-          ? "bg-ink-900 text-white"
-          : "border border-border-soft bg-white text-ink-700 hover:bg-canvas-50",
+        active ? "bg-ink-900 text-white" : "border border-border-soft bg-white text-ink-700 hover:bg-canvas-50",
       ].join(" ")}
       type="button"
     >
@@ -219,13 +311,7 @@ function TabButton({
   );
 }
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div className={`rounded-3xl border border-border-soft bg-white p-8 shadow-soft ${className}`}>
       {children}
