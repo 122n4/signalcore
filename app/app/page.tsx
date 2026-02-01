@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
@@ -10,13 +10,45 @@ import PortfolioEditor from "@/components/PortfolioEditor";
 import SignalCoreAdvisorCard from "@/components/SignalCoreAdvisorCard";
 
 type TabKey = "overview" | "marketmap" | "portfolio" | "planning" | "advisor";
+type Regime = "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
+type Horizon = "Short" | "Medium" | "Long";
 
-export default function AppHome() {
+/**
+ * ✅ Wrap the component that uses useSearchParams() in Suspense
+ */
+export default function AppPage() {
+  return (
+    <Suspense fallback={<AppShellLoading />}>
+      <AppInner />
+    </Suspense>
+  );
+}
+
+function AppShellLoading() {
+  return (
+    <main className="min-h-screen bg-white text-ink-900">
+      <section className="mx-auto max-w-7xl px-6 py-8">
+        <div className="rounded-3xl border border-border-soft bg-canvas-50 p-8 shadow-soft">
+          <p className="text-sm text-ink-700">Loading app…</p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AppInner() {
   const params = useSearchParams();
 
   const [tab, setTab] = useState<TabKey>("overview");
+
   const [isPaid, setIsPaid] = useState(false);
   const [loadingPaid, setLoadingPaid] = useState(true);
+
+  const [regime, setRegime] = useState<Regime>("Transitional");
+  const [loadingRegime, setLoadingRegime] = useState(true);
+
+  const [horizon, setHorizon] = useState<Horizon>("Long");
+  const [loadingHorizon, setLoadingHorizon] = useState(true);
 
   // Deep-link: /app?tab=marketmap
   useEffect(() => {
@@ -35,7 +67,6 @@ export default function AppHome() {
         const res = await fetch("/api/me", { cache: "no-store" });
         const data = await res.json();
         if (!alive) return;
-
         setIsPaid(Boolean(data?.isPaid));
       } catch {
         if (!alive) return;
@@ -51,20 +82,90 @@ export default function AppHome() {
     };
   }, []);
 
-  // Demo weekly summary (podes ligar ao /api/market-regime depois)
+  // Regime via /api/market-regime
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/market-regime", { cache: "no-store" });
+        const data = await res.json();
+        if (!alive) return;
+
+        const r = data?.market_regime;
+        if (r === "Risk-on" || r === "Risk-off" || r === "Transitional" || r === "Neutral / Range-bound") {
+          setRegime(r);
+        } else {
+          setRegime("Transitional");
+        }
+      } catch {
+        if (!alive) return;
+        setRegime("Transitional");
+      } finally {
+        if (!alive) return;
+        setLoadingRegime(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Horizon via /api/portfolio (fallback Long)
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const meRes = await fetch("/api/me", { cache: "no-store" });
+        const me = await meRes.json();
+        if (!alive) return;
+
+        if (!me?.isAuthenticated) {
+          setHorizon("Long");
+          setLoadingHorizon(false);
+          return;
+        }
+
+        const pr = await fetch("/api/portfolio", { cache: "no-store" });
+        const pj = await pr.json();
+        if (!alive) return;
+
+        const h = pj?.data?.userHorizon;
+        if (h === "Short" || h === "Medium" || h === "Long") setHorizon(h);
+        else setHorizon("Long");
+      } catch {
+        if (!alive) return;
+        setHorizon("Long");
+      } finally {
+        if (!alive) return;
+        setLoadingHorizon(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Demo weekly summary (podes ligar ao regime summary mais tarde)
   const weekly = useMemo(
     () => ({
       updatedAt: "This week · Updated",
-      market: "Cautious",
-      crypto: "Neutral",
-      teaser: "This week rewards selectivity over urgency. Doing less often beats doing more.",
+      market: regime === "Risk-on" ? "Constructive" : regime === "Risk-off" ? "Defensive" : "Selective",
+      crypto: regime === "Risk-on" ? "Constructive" : "Neutral",
+      teaser:
+        regime === "Risk-off"
+          ? "This environment punishes urgency. Protect your plan."
+          : regime === "Risk-on"
+          ? "Constructive conditions — add risk gradually, not emotionally."
+          : "Selectivity beats activity. Let confirmation do the heavy lifting.",
     }),
-    []
+    [regime]
   );
 
-  // Para já usamos um regime/horizon fixo no Advisor (depois ligamos ao /api/market-regime + user horizon)
-  const regime = "Transitional" as const;
-  const horizon = "Long" as const;
+  const advisorReady = !(loadingRegime || loadingHorizon);
 
   return (
     <main className="min-h-screen bg-white text-ink-900">
@@ -107,7 +208,10 @@ export default function AppHome() {
 
                 <div className="mt-6 rounded-2xl border border-border-soft bg-canvas-50 p-4">
                   <p className="text-sm text-ink-700 italic">{weekly.teaser}</p>
-                  <p className="mt-3 text-xs text-ink-500">No noise. Just context.</p>
+                  <p className="mt-3 text-xs text-ink-500">
+                    Regime: <strong>{loadingRegime ? "loading…" : regime}</strong> · Horizon:{" "}
+                    <strong>{loadingHorizon ? "loading…" : horizon}</strong>
+                  </p>
                 </div>
 
                 <SignedIn>
@@ -122,10 +226,9 @@ export default function AppHome() {
                         <span className="font-semibold">Free account</span>
                       )}
                     </p>
-
                     {!loadingPaid && !isPaid ? (
                       <p className="mt-2 text-xs text-ink-500">
-                        You can explore previews. Premium unlocks portfolio saving + planning + Advisor.
+                        Premium unlocks portfolio saving + planning + Advisor.
                       </p>
                     ) : null}
                   </div>
@@ -150,22 +253,12 @@ export default function AppHome() {
               </Card>
 
               <Card className="bg-canvas-50">
-                <CardHeader
-                  title="What SignalCore does"
-                  subtitle="A decision layer above brokers. Built to reduce mistakes."
-                />
-
+                <CardHeader title="SignalCore" subtitle="A decision layer above brokers." />
                 <ul className="mt-5 space-y-3 text-sm text-ink-700">
-                  <li>• Turns context into weekly posture.</li>
-                  <li>• Helps structure a plan around your goal.</li>
-                  <li>• Trading/Forex mode: playbooks + risk budget (Premium).</li>
+                  <li>• Context → posture.</li>
+                  <li>• Portfolio coherence by horizon.</li>
+                  <li>• Advisor insinuates Increase / Hold / Reduce (Premium).</li>
                 </ul>
-
-                <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
-                  <p className="text-sm text-ink-700">
-                    SignalCore doesn’t execute orders. It governs decisions — calmly.
-                  </p>
-                </div>
               </Card>
             </div>
           )}
@@ -176,7 +269,7 @@ export default function AppHome() {
               <Card className="bg-canvas-50">
                 <CardHeader title="Market Map (preview)" subtitle="Short context (free)." />
                 <p className="mt-4 text-sm text-ink-700">
-                  “Selectivity over urgency. Keep the plan calm.”
+                  Current regime: <strong>{loadingRegime ? "loading…" : regime}</strong>
                 </p>
                 <div className="mt-6">
                   <Link
@@ -196,27 +289,18 @@ export default function AppHome() {
                   </Card>
                 ) : isPaid ? (
                   <Card>
-                    <CardHeader title="Full Market Map (Premium)" subtitle="This is where the full weekly map lives." />
+                    <CardHeader title="Full Market Map (Premium)" subtitle="Move your full weekly map + archive here next." />
                     <p className="mt-4 text-sm text-ink-700">
-                      Next step: move your real weekly map + archive into this tab.
+                      Next: import your real weekly map content into this tab.
                     </p>
                   </Card>
                 ) : (
-                  <PaywallCard
-                    title="Full Market Map (Premium)"
-                    subtitle="Unlock full weekly map + archive inside the App."
-                    cta="Unlock Market Map"
-                  />
+                  <PaywallCard title="Full Market Map (Premium)" subtitle="Unlock full weekly map + archive." cta="Unlock Market Map" />
                 )}
               </SignedIn>
 
               <SignedOut>
-                <PaywallCard
-                  title="Full Market Map (Premium)"
-                  subtitle="Sign in to unlock the full Market Map."
-                  cta="Sign in"
-                  href="/sign-in"
-                />
+                <PaywallCard title="Full Market Map (Premium)" subtitle="Sign in to unlock the full Market Map." cta="Sign in" href="/sign-in" />
               </SignedOut>
             </div>
           )}
@@ -248,26 +332,18 @@ export default function AppHome() {
                 ) : isPaid ? (
                   <PortfolioEditor locale="en" />
                 ) : (
-                  <PaywallCard
-                    title="Portfolio editing (Premium)"
-                    subtitle="Premium unlocks editing + cloud saving."
-                    cta="Unlock Portfolio"
-                  />
+                  <PaywallCard title="Portfolio editing (Premium)" subtitle="Premium unlocks editing + cloud saving." cta="Unlock Portfolio" />
                 )}
               </SignedIn>
 
               <Card className="bg-canvas-50">
-                <CardHeader title="Goal-based planning" subtitle="Tell us where you want to get. We keep the path clear." />
-                <div className="mt-5 space-y-3 text-sm text-ink-700">
-                  <p>• Target: €5,000</p>
-                  <p>• Horizon: 3 years</p>
-                  <p>• Contribution: monthly range (no promises)</p>
-                </div>
-                <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
-                  <p className="text-sm text-ink-700">
-                    Premium adds planning + weekly checks — the plan stays sane as conditions change.
-                  </p>
-                </div>
+                <CardHeader title="Horizon" subtitle="Used by the Advisor." />
+                <p className="mt-4 text-sm text-ink-700">
+                  Current horizon: <strong>{loadingHorizon ? "loading…" : horizon}</strong>
+                </p>
+                <p className="mt-2 text-xs text-ink-500">
+                  Tip: set your horizon inside Portfolio / Planning so the Advisor speaks your language.
+                </p>
               </Card>
             </div>
           )}
@@ -292,27 +368,18 @@ export default function AppHome() {
                   </Card>
                 ) : isPaid ? (
                   <Card>
-                    <CardHeader title="Goal-based planning (Premium)" subtitle="Planning is unlocked." />
+                    <CardHeader title="Goal-based planning (Premium)" subtitle="Next: add the planning form here." />
                     <p className="mt-4 text-sm text-ink-700">
-                      Next step: we plug your planning form + saved plans here.
+                      We’ll plug: target (€) + horizon + monthly contribution → plan + weekly checks.
                     </p>
                   </Card>
                 ) : (
-                  <PaywallCard
-                    title="Goal-based planning (Premium)"
-                    subtitle="Unlock planning + coherence checks."
-                    cta="Unlock Planning"
-                  />
+                  <PaywallCard title="Goal-based planning (Premium)" subtitle="Unlock planning + coherence checks." cta="Unlock Planning" />
                 )}
               </SignedIn>
 
               <SignedOut>
-                <PaywallCard
-                  title="Goal-based planning (Premium)"
-                  subtitle="Sign in to unlock planning."
-                  cta="Sign in"
-                  href="/sign-in"
-                />
+                <PaywallCard title="Goal-based planning (Premium)" subtitle="Sign in to unlock planning." cta="Sign in" href="/sign-in" />
               </SignedOut>
             </div>
           )}
@@ -321,18 +388,14 @@ export default function AppHome() {
           {tab === "advisor" && (
             <div className="grid gap-6 lg:grid-cols-2">
               <Card className="bg-canvas-50">
-                <CardHeader
-                  title="Advisor preview"
-                  subtitle="Not signals. Not noise. A decision layer."
-                />
+                <CardHeader title="Advisor preview" subtitle="Context → action bias → reasons." />
                 <p className="mt-4 text-sm text-ink-700">
-                  SignalCore can insinuate “Increase / Hold / Reduce” based on context — and explain it in human language.
+                  Advisor uses your <strong>Market Regime</strong> + your <strong>Horizon</strong>.
                 </p>
-                <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
-                  <p className="text-sm text-ink-700 italic">
-                    “If you started today, you would take less risk — not because of fear, but because the environment punishes urgency.”
-                  </p>
-                </div>
+                <p className="mt-2 text-xs text-ink-500">
+                  Regime: <strong>{loadingRegime ? "loading…" : regime}</strong> · Horizon:{" "}
+                  <strong>{loadingHorizon ? "loading…" : horizon}</strong>
+                </p>
               </Card>
 
               <SignedIn>
@@ -342,23 +405,21 @@ export default function AppHome() {
                     <p className="mt-4 text-sm text-ink-700">Loading…</p>
                   </Card>
                 ) : isPaid ? (
-                  <SignalCoreAdvisorCard regime={regime} horizon={horizon} />
+                  advisorReady ? (
+                    <SignalCoreAdvisorCard regime={regime} horizon={horizon} />
+                  ) : (
+                    <Card className="bg-canvas-50">
+                      <CardHeader title="Advisor" subtitle="Loading market context…" />
+                      <p className="mt-4 text-sm text-ink-700">Fetching regime and horizon…</p>
+                    </Card>
+                  )
                 ) : (
-                  <PaywallCard
-                    title="Advisor (Premium)"
-                    subtitle="Unlock Advisor: context → action bias → reasons."
-                    cta="Unlock Advisor"
-                  />
+                  <PaywallCard title="Advisor (Premium)" subtitle="Unlock Advisor: insinuations + reasons." cta="Unlock Advisor" />
                 )}
               </SignedIn>
 
               <SignedOut>
-                <PaywallCard
-                  title="Advisor (Premium)"
-                  subtitle="Sign in to unlock Advisor."
-                  cta="Sign in"
-                  href="/sign-in"
-                />
+                <PaywallCard title="Advisor (Premium)" subtitle="Sign in to unlock Advisor." cta="Sign in" href="/sign-in" />
               </SignedOut>
             </div>
           )}
@@ -370,23 +431,13 @@ export default function AppHome() {
 
 /* ---------- UI helpers ---------- */
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
       className={[
         "rounded-2xl px-4 py-2 text-sm font-semibold transition",
-        active
-          ? "bg-ink-900 text-white"
-          : "border border-border-soft bg-white text-ink-700 hover:bg-canvas-50",
+        active ? "bg-ink-900 text-white" : "border border-border-soft bg-white text-ink-700 hover:bg-canvas-50",
       ].join(" ")}
       type="button"
     >
@@ -395,18 +446,8 @@ function TabButton({
   );
 }
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`rounded-3xl border border-border-soft bg-white p-8 shadow-soft ${className}`}>
-      {children}
-    </div>
-  );
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`rounded-3xl border border-border-soft bg-white p-8 shadow-soft ${className}`}>{children}</div>;
 }
 
 function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
