@@ -1,9 +1,12 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs"; // importante no Vercel
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
 
 export async function POST(req: Request) {
   try {
@@ -19,14 +22,26 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
+
+      // ✅ garante mapping 1:1 para o Clerk user
+      client_reference_id: userId,
+
+      // ✅ fallback caso precises (Stripe UI)
       customer_email: email,
+
+      // ✅ também guardamos em metadata (bom para debugging)
+      metadata: { clerkUserId: userId },
+
+      // (opcional) facilita o portal / customer
+      // customer_creation: "always",
+
       success_url: `${appUrl}/pricing?success=1`,
       cancel_url: `${appUrl}/pricing?canceled=1`,
-      metadata: { userId },
     });
 
     return NextResponse.json({ url: session.url });
   } catch (e: any) {
+    console.error("checkout error:", e);
     return NextResponse.json({ error: e?.message ?? "Checkout error" }, { status: 500 });
   }
 }
