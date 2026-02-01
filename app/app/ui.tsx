@@ -1,25 +1,37 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 
 import PortfolioPreview from "@/components/PortfolioPreview";
 import PortfolioEditor from "@/components/PortfolioEditor";
 import SignalCoreAdvisorCard from "@/components/SignalCoreAdvisorCard";
+import DecisionEnginePanel from "@/components/DecisionEnginePanel";
 
 import { usePaid } from "@/lib/usePaid";
-import { useMarketRegime } from "@/lib/useMarketRegime";
+import { useMarketRegime, type Regime as MarketRegime } from "@/lib/useMarketRegime";
+
+import type { Goal, RiskProfile, Horizon } from "@/lib/signalcore/decisionEngine";
 
 type TabKey = "overview" | "portfolio" | "advisor";
-type Horizon = "Short" | "Medium" | "Long";
 
 export default function AppClient() {
   const [tab, setTab] = useState<TabKey>("overview");
-  const [horizon, setHorizon] = useState<Horizon>("Long"); // depois ligamos ao portfolio/planning
+
+  // These will be user settings soon (mode selector). For now, demo controls:
+  const [goal, setGoal] = useState<Goal>("Investing");
+  const [riskProfile, setRiskProfile] = useState<RiskProfile>("Balanced");
+  const [horizon, setHorizon] = useState<Horizon>("Long");
 
   const { isPaid, loadingPaid } = usePaid();
   const { regime, loadingRegime } = useMarketRegime();
+
+  // Cast regime from hook Regime -> decisionEngine MarketRegime union (same strings)
+  const engineRegime = useMemo(() => {
+    // hook Regime is compatible, but TS may treat them different types in different files
+    return regime as unknown as MarketRegime;
+  }, [regime]);
 
   return (
     <main className="min-h-screen bg-white text-ink-900">
@@ -47,8 +59,7 @@ export default function AppClient() {
 
                 <div className="mt-5 rounded-2xl border border-border-soft bg-canvas-50 p-4">
                   <p className="text-sm text-ink-700">
-                    Market regime:{" "}
-                    <strong>{loadingRegime ? "loading…" : regime}</strong>
+                    Market regime: <strong>{loadingRegime ? "loading…" : regime}</strong>
                   </p>
                   <p className="mt-2 text-sm text-ink-700">
                     Horizon: <strong>{horizon}</strong>
@@ -88,7 +99,7 @@ export default function AppClient() {
 
                     {!loadingPaid && !isPaid ? (
                       <p className="mt-2 text-xs text-ink-500">
-                        Premium unlocks portfolio editing + cloud saving + full Advisor.
+                        Premium unlocks portfolio editing + cloud saving + allocation view.
                       </p>
                     ) : null}
                   </div>
@@ -106,25 +117,72 @@ export default function AppClient() {
                 </SignedOut>
               </Card>
 
+              {/* Controls (demo) + Engine output */}
               <Card className="bg-canvas-50">
-                <CardHeader title="Set horizon (demo)" subtitle="We’ll auto-link this to your planning next." />
+                <CardHeader title="Mode controls (demo)" subtitle="Next step: store this per user." />
 
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <HorizonChip active={horizon === "Short"} onClick={() => setHorizon("Short")}>
-                    Short
-                  </HorizonChip>
-                  <HorizonChip active={horizon === "Medium"} onClick={() => setHorizon("Medium")}>
-                    Medium
-                  </HorizonChip>
-                  <HorizonChip active={horizon === "Long"} onClick={() => setHorizon("Long")}>
-                    Long
-                  </HorizonChip>
+                <div className="mt-5 grid gap-3">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-semibold text-ink-500">Goal</label>
+                    <select
+                      value={goal}
+                      onChange={(e) => setGoal(e.target.value as Goal)}
+                      className="w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                    >
+                      <option value="Investing">Investing</option>
+                      <option value="Trading">Trading</option>
+                      <option value="Forex">Forex</option>
+                      <option value="Crypto">Crypto</option>
+                    </select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <label className="text-xs font-semibold text-ink-500">Risk profile</label>
+                    <select
+                      value={riskProfile}
+                      onChange={(e) => setRiskProfile(e.target.value as RiskProfile)}
+                      className="w-full rounded-2xl border border-border-soft bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-signal-700/20"
+                    >
+                      <option value="Conservative">Conservative</option>
+                      <option value="Balanced">Balanced</option>
+                      <option value="Aggressive">Aggressive</option>
+                    </select>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <label className="text-xs font-semibold text-ink-500">Horizon</label>
+                    <div className="flex flex-wrap gap-2">
+                      <Chip active={horizon === "Short"} onClick={() => setHorizon("Short")}>
+                        Short
+                      </Chip>
+                      <Chip active={horizon === "Medium"} onClick={() => setHorizon("Medium")}>
+                        Medium
+                      </Chip>
+                      <Chip active={horizon === "Long"} onClick={() => setHorizon("Long")}>
+                        Long
+                      </Chip>
+                    </div>
+                  </div>
                 </div>
-
-                <p className="mt-4 text-sm text-ink-700">
-                  This horizon feeds the Advisor. Next step: link it to your Portfolio/Planning.
-                </p>
               </Card>
+
+              {/* Engine panel */}
+              <div className="lg:col-span-2">
+                {loadingRegime ? (
+                  <Card className="bg-canvas-50">
+                    <CardHeader title="Decision Engine" subtitle="Loading market regime…" />
+                    <p className="mt-4 text-sm text-ink-700">Fetching live regime…</p>
+                  </Card>
+                ) : (
+                  <DecisionEnginePanel
+                    regime={engineRegime as any}
+                    horizon={horizon}
+                    goal={goal}
+                    riskProfile={riskProfile}
+                    isPremium={isPaid}
+                  />
+                )}
+              </div>
             </div>
           )}
 
@@ -165,11 +223,11 @@ export default function AppClient() {
               </SignedIn>
 
               <Card className="bg-canvas-50">
-                <CardHeader title="Why Portfolio matters" subtitle="SignalCore doesn’t guess — it keeps coherence." />
+                <CardHeader title="Why this matters" subtitle="SignalCore keeps coherence, not noise." />
                 <ul className="mt-5 space-y-2 text-sm text-ink-700">
-                  <li>• Your portfolio is read through market context.</li>
-                  <li>• Horizon coherence reduces emotional decisions.</li>
-                  <li>• Premium adds cloud saving + planning.</li>
+                  <li>• Context drives posture.</li>
+                  <li>• Horizon drives risk.</li>
+                  <li>• Premium turns it into a plan.</li>
                 </ul>
               </Card>
             </div>
@@ -181,12 +239,11 @@ export default function AppClient() {
               <Card className="bg-canvas-50">
                 <CardHeader title="Advisor" subtitle="Context → action bias → reasons." />
                 <p className="mt-4 text-sm text-ink-700">
-                  Regime: <strong>{loadingRegime ? "loading…" : regime}</strong>
-                  {" · "}
-                  Horizon: <strong>{horizon}</strong>
+                  Regime: <strong>{loadingRegime ? "loading…" : regime}</strong> · Horizon:{" "}
+                  <strong>{horizon}</strong>
                 </p>
                 <p className="mt-2 text-xs text-ink-500">
-                  Premium unlocks full Advisor + trading/forex mode selector.
+                  Next step: advisor consumes Decision Engine output and becomes truly goal-aware.
                 </p>
               </Card>
 
@@ -203,7 +260,7 @@ export default function AppClient() {
                       <p className="mt-4 text-sm text-ink-700">Fetching live regime…</p>
                     </Card>
                   ) : (
-                    <SignalCoreAdvisorCard regime={regime} horizon={horizon} />
+                    <SignalCoreAdvisorCard regime={engineRegime as any} horizon={horizon} />
                   )
                 ) : (
                   <PaywallCard
@@ -216,12 +273,7 @@ export default function AppClient() {
               </SignedIn>
 
               <SignedOut>
-                <PaywallCard
-                  title="Advisor (Premium)"
-                  subtitle="Sign in to unlock Advisor."
-                  cta="Sign in"
-                  href="/sign-in"
-                />
+                <PaywallCard title="Advisor (Premium)" subtitle="Sign in to unlock Advisor." cta="Sign in" href="/sign-in" />
               </SignedOut>
             </div>
           )}
@@ -247,9 +299,7 @@ function TabButton({
       onClick={onClick}
       className={[
         "rounded-2xl px-4 py-2 text-sm font-semibold transition",
-        active
-          ? "bg-ink-900 text-white"
-          : "border border-border-soft bg-white text-ink-700 hover:bg-canvas-50",
+        active ? "bg-ink-900 text-white" : "border border-border-soft bg-white text-ink-700 hover:bg-canvas-50",
       ].join(" ")}
       type="button"
     >
@@ -258,7 +308,7 @@ function TabButton({
   );
 }
 
-function HorizonChip({
+function Chip({
   active,
   onClick,
   children,
@@ -281,18 +331,8 @@ function HorizonChip({
   );
 }
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`rounded-3xl border border-border-soft bg-white p-8 shadow-soft ${className}`}>
-      {children}
-    </div>
-  );
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`rounded-3xl border border-border-soft bg-white p-8 shadow-soft ${className}`}>{children}</div>;
 }
 
 function CardHeader({ title, subtitle }: { title: string; subtitle?: string }) {
