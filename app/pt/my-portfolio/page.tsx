@@ -1,49 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { SignedIn, SignedOut } from "@clerk/nextjs";
-import PortfolioAppV1 from "../../../components/PortfolioAppV1";
+import PremiumGate from "@/components/PremiumGate";
+import PortfolioPreview from "@/components/PortfolioPreview";
+import PortfolioEditor from "@/components/PortfolioEditor";
 
 export default function MyPortfolioPagePT() {
   return (
-    <>
-      <SignedOut>
-        <main className="min-h-screen bg-white text-ink-900">
-          <section className="mx-auto max-w-3xl px-6 py-16">
-            <p className="text-xs font-semibold text-ink-500">SignalCore · Market Context</p>
-
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
-              O Meu Portefólio
-            </h1>
-
-            <p className="mt-3 text-ink-700">
-              Esta área é privada. Inicia sessão para veres o teu portefólio no contexto do mercado (sem sinais).
+    <main className="min-h-screen bg-white text-ink-900">
+      <section className="mx-auto max-w-7xl px-6 py-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-ink-500">SignalCore</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">O Meu Portefólio</h1>
+            <p className="mt-2 text-sm text-ink-700">
+              O teu portefólio + contexto SignalCore. Premium desbloqueia edição & guardar na cloud.
             </p>
+          </div>
 
-            <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Link
-                  href="/sign-in?redirect_url=/pt/my-portfolio"
-                  className="inline-flex items-center justify-center rounded-2xl bg-ink-900 px-6 py-3 text-sm font-semibold text-white hover:opacity-95"
-                >
-                  Entrar
-                </Link>
+          <Link
+            href="/pt/app"
+            className="rounded-2xl border border-border-soft bg-white px-4 py-2 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
+          >
+            Ir para a App
+          </Link>
+        </div>
 
-                <Link
-                  href="/sign-up?redirect_url=/pt/my-portfolio"
-                  className="inline-flex items-center justify-center rounded-2xl border border-border-soft bg-white px-6 py-3 text-sm font-semibold text-ink-900 hover:bg-canvas-50"
-                >
-                  Criar conta
-                </Link>
-              </div>
-            </div>
-          </section>
-        </main>
-      </SignedOut>
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          {/* Preview grátis sempre visível */}
+          <PortfolioPreview locale="pt" />
 
-      <SignedIn>
-        <PortfolioAppV1 locale="pt" />
-      </SignedIn>
-    </>
+          {/* Editor premium */}
+          <PremiumGate
+            title="Editor de portefólio (Premium)"
+            subtitle="Edição, guardar e ferramentas de planeamento estão incluídas no Premium."
+          >
+            <PortfolioEditor locale="pt" />
+          </PremiumGate>
+        </div>
+
+        <p className="mt-10 text-xs text-ink-500">
+          Conteúdo educativo. Investir envolve risco.
+        </p>
+      </section>
+    </main>
   );
 }

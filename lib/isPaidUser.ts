@@ -1,12 +1,33 @@
-// lib/isPaidUser.ts
-import { auth, clerkClient } from "@clerk/nextjs/server";
+"use client";
 
-export async function isPaidUser(): Promise<boolean> {
-  const { userId } = await auth();
-  if (!userId) return false;
+import { useEffect, useState } from "react";
 
-  const client = await clerkClient();
-  const user = await client.users.getUser(userId);
+export function usePaid() {
+  const [isPaid, setIsPaid] = useState(false);
+  const [loadingPaid, setLoadingPaid] = useState(true);
 
-  return Boolean((user.publicMetadata as Record<string, any>)?.isPaid);
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/me", { cache: "no-store" });
+        const data = await res.json();
+        if (!alive) return;
+        setIsPaid(Boolean(data?.isPaid));
+      } catch {
+        if (!alive) return;
+        setIsPaid(false);
+      } finally {
+        if (!alive) return;
+        setLoadingPaid(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return { isPaid, loadingPaid };
 }
