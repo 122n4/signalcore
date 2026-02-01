@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {
-  const sig = headers().get("stripe-signature"); // ✅ sem await
+  const sig = (await headers()).get("stripe-signature");
   const whsec = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!sig || !whsec) {
