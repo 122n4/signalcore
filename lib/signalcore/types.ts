@@ -9,13 +9,14 @@ export type PlanBucketLite = {
   
 };
 
-export type MarketRegime =
+export type MarketRegime = {
   | "risk_on"
   | "risk_off"
   | "neutral"
   | "inflation"
   | "deflation"
   | "crisis";
+  };
 
 export type PlanLike = {
   id: string;
