@@ -8,7 +8,7 @@ function isoNow() {
 }
 
 export async function GET() {
-  const { userId } = await auth();
+  const { userId } = await auth();F
   if (!userId) return Response.json({ latest: null, previous: null });
 
   try {
@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { userId } = auth();
+  cconst { userId } = await auth();
   if (!userId) return Response.json({ ok: false }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
