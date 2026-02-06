@@ -1,71 +1,83 @@
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import Stripe from "stripe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function getStripe() {
+function stripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
-  return new Stripe(key, { apiVersion: "2024-06-20" });
+
+  // IMPORTANT:
+  // Don't pin apiVersion here, because your installed Stripe types require a different literal.
+  // Let the SDK default to the version compatible with the installed package.
+  return new Stripe(key);
 }
 
-async function getOrCreateCustomer(params: {
-  userId: string;
-  email?: string | null;
-}) {
-  const stripe = getStripe();
+async function getOrCreateCustomer(params: { userId: string; email?: string | null }) {
+  const sb = supabaseAdmin();
 
-  // 1) tenta encontrar customer pelo metadata (mais robusto)
-  const search = await stripe.customers.search({
-    query: `metadata['clerk_user_id']:'${params.userId}'`,
-    limit: 1,
-  });
+  // You should have a table like: billing_customers(user_id text pk, stripe_customer_id text)
+  // If your table name/columns differ, adjust here.
+  const { data: existing } = await sb
+    .from("billing_customers")
+    .select("stripe_customer_id")
+    .eq("user_id", params.userId)
+    .maybeSingle();
 
-  if (search.data[0]) return search.data[0];
+  if (existing?.stripe_customer_id) return existing.stripe_customer_id;
 
-  // 2) fallback: cria novo customer (guarda clerk_user_id)
-  const customer = await stripe.customers.create({
+  const s = stripe();
+  const customer = await s.customers.create({
     email: params.email ?? undefined,
-    metadata: { clerk_user_id: params.userId },
+    metadata: { userId: params.userId },
   });
 
-  return customer;
+  await sb
+    .from("billing_customers")
+    .upsert(
+      { user_id: params.userId, stripe_customer_id: customer.id },
+      { onConflict: "user_id" }
+    );
+
+  return customer.id;
 }
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+    const a = await auth();
+    if (!a.userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-    const user = await currentUser();
-    const email = user?.emailAddresses?.[0]?.emailAddress ?? null;
+    const s = stripe();
 
-    const stripe = getStripe();
+    const sb = supabaseAdmin();
+    const { data: u } = await sb
+      .from("user_settings")
+      .select("email")
+      .eq("user_id", a.userId)
+      .maybeSingle();
 
-    const customer = await getOrCreateCustomer({ userId, email });
+    const customerId = await getOrCreateCustomer({ userId: a.userId, email: u?.email ?? null });
 
     const origin =
-      req.headers.get("origin") ??
-      process.env.NEXT_PUBLIC_APP_URL ??
-      "http://localhost:3000";
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.VERCEL_URL?.startsWith("http")
+        ? process.env.VERCEL_URL
+        : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000";
 
-    const returnUrl =
-      process.env.STRIPE_PORTAL_RETURN_URL ?? `${origin}/app`;
-
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customer.id,
-      return_url: returnUrl,
+    const session = await s.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${origin}/app`,
     });
 
     return NextResponse.json({ url: session.url }, { status: 200 });
-  } catch (err: any) {
-    console.error("billing/portal error:", err);
+  } catch (e: any) {
     return NextResponse.json(
-      { error: "billing_portal_failed", message: err?.message ?? "Unknown" },
+      { error: "billing_portal_failed", message: e?.message ?? "Unknown" },
       { status: 500 }
     );
   }

@@ -14,7 +14,17 @@ export async function POST(req: Request) {
     const provider = String(body?.provider ?? "snaptrade");
 
     if (provider === "snaptrade") {
-      const url = await snaptradeBuildConnectUrl(userId);
+      const redirectUri =
+  process.env.SNAPTRADE_REDIRECT_URI ??
+  new URL("/api/broker/callback", req.url).toString();
+
+const state = crypto.randomUUID();
+
+const url = await snaptradeBuildConnectUrl({
+  userId,
+  redirectUri,
+  state,
+});
       return NextResponse.json({ provider: "snaptrade", connectUrl: url }, { status: 200 });
     }
 

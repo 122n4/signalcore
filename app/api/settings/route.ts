@@ -1,3 +1,4 @@
+// app/api/settings/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -20,68 +21,86 @@ function normalizeHorizon(x: any): Horizon {
 }
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) {
+  try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json(
+        { goal: "Investing", riskProfile: "Balanced", horizon: "Long" },
+        { status: 200 }
+      );
+    }
+
+    const db = supabaseAdmin(); // ✅ IMPORTANT: call it
+
+    const { data, error } = await db
+      .from("user_settings")
+      .select("goal, risk_profile, horizon, updated_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
     return NextResponse.json(
-      { goal: "Investing", riskProfile: "Balanced", horizon: "Long" },
+      {
+        goal: normalizeGoal(data?.goal),
+        riskProfile: normalizeRisk(data?.risk_profile),
+        horizon: normalizeHorizon(data?.horizon),
+        updatedAt: data?.updated_at ?? null,
+      },
       { status: 200 }
     );
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "settings_get_failed", message: e?.message ?? "Unknown" },
+      { status: 500 }
+    );
   }
-
-  const { data, error } = await supabaseAdmin
-    .from("user_settings")
-    .select("goal, risk_profile, horizon, updated_at")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json(
-    {
-      goal: normalizeGoal(data?.goal),
-      riskProfile: normalizeRisk(data?.risk_profile),
-      horizon: normalizeHorizon(data?.horizon),
-      updatedAt: data?.updated_at ?? null,
-    },
-    { status: 200 }
-  );
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
 
-  const goal = normalizeGoal(body?.goal);
-  const riskProfile = normalizeRisk(body?.riskProfile);
-  const horizon = normalizeHorizon(body?.horizon);
+    const goal = normalizeGoal(body?.goal);
+    const riskProfile = normalizeRisk(body?.riskProfile);
+    const horizon = normalizeHorizon(body?.horizon);
 
-  const { data, error } = await supabaseAdmin
-    .from("user_settings")
-    .upsert(
+    const db = supabaseAdmin(); // ✅ IMPORTANT: call it
+
+    const { data, error } = await db
+      .from("user_settings")
+      .upsert(
+        {
+          user_id: userId,
+          goal,
+          risk_profile: riskProfile,
+          horizon,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      )
+      .select("goal, risk_profile, horizon, updated_at")
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json(
       {
-        user_id: userId,
-        goal,
-        risk_profile: riskProfile,
-        horizon,
-        updated_at: new Date().toISOString(),
+        ok: true,
+        goal: normalizeGoal(data?.goal),
+        riskProfile: normalizeRisk(data?.risk_profile),
+        horizon: normalizeHorizon(data?.horizon),
+        updatedAt: data?.updated_at ?? null,
       },
-      { onConflict: "user_id" }
-    )
-    .select("goal, risk_profile, horizon, updated_at")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json(
-    {
-      ok: true,
-      goal: normalizeGoal(data?.goal),
-      riskProfile: normalizeRisk(data?.risk_profile),
-      horizon: normalizeHorizon(data?.horizon),
-      updatedAt: data?.updated_at ?? null,
-    },
-    { status: 200 }
-  );
+      { status: 200 }
+    );
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: "settings_post_failed", message: e?.message ?? "Unknown" },
+      { status: 500 }
+    );
+  }
 }

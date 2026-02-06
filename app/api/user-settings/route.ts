@@ -1,3 +1,4 @@
+// app/api/user-settings/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -5,28 +6,30 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALLOWED_KEYS = new Set([
+function json(status: number, body: any) {
+  return new NextResponse(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// ✅ só permite escrever estes campos (evita 500 por colunas inexistentes)
+const ALLOWED = new Set([
   "goal_amount",
   "goal_currency",
   "goal_timeframe_months",
   "risk_profile",
   "horizon",
-  "monthly_contribution",
   "language",
+  // adiciona aqui APENAS se existirem na tabela:
+  // "monthly_contribution",
+  // "goal",
 ]);
-
-function cleanPatch(patch: any) {
-  const clean: any = {};
-  for (const [k, v] of Object.entries(patch ?? {})) {
-    if (ALLOWED_KEYS.has(k)) clean[k] = v;
-  }
-  return clean;
-}
 
 export async function GET() {
   try {
-    const { userId } = auth();
-    if (!userId) return NextResponse.json({}, { status: 200 });
+    const { userId } = await auth();
+    if (!userId) return json(200, {}); // sem auth => vazio
 
     const sb = supabaseAdmin();
 
@@ -36,60 +39,62 @@ export async function GET() {
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (error) {
-      return NextResponse.json(
-        { error: "user_settings_get_failed", message: error.message },
-        { status: 500 }
-      );
-    }
+    if (error) return json(500, { error: "user_settings_get_failed", message: error.message });
 
-    return NextResponse.json(data ?? {}, { status: 200 });
+    return json(200, data ?? {});
   } catch (e: any) {
-    return NextResponse.json(
-      { error: "user_settings_get_failed", message: e?.message ?? "Unknown" },
-      { status: 500 }
-    );
+    return json(500, {
+      error: "user_settings_get_failed",
+      message: e?.message ?? "Unknown",
+    });
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const { userId } = auth();
-    if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const { userId } = await auth();
+    if (!userId) return json(401, { error: "unauthorized" });
 
     const body = await req.json().catch(() => ({}));
 
-    // Accept both payloads:
-    // { goal_amount: 50000 } OR { settings: { goal_amount: 50000 } }
+    // aceita { settings: {...} } ou patch direto
     const patch =
       body?.settings && typeof body.settings === "object" ? body.settings : body;
 
-    const clean = cleanPatch(patch);
+    const clean: Record<string, any> = {};
+    for (const [k, v] of Object.entries(patch ?? {})) {
+      if (ALLOWED.has(k)) clean[k] = v;
+    }
 
-    // Always keep updated_at fresh
-    clean.updated_at = new Date().toISOString();
+    // nada para escrever
+    if (!Object.keys(clean).length) return json(200, { ok: true, skipped: true });
 
     const sb = supabaseAdmin();
 
-    // Upsert by user_id
+    const payload = {
+      user_id: userId,
+      ...clean,
+      updated_at: new Date().toISOString(),
+    };
+
     const { data, error } = await sb
       .from("user_settings")
-      .upsert({ user_id: userId, ...clean }, { onConflict: "user_id" })
+      .upsert(payload, { onConflict: "user_id" })
       .select("*")
-      .single();
+      .maybeSingle();
 
     if (error) {
-      return NextResponse.json(
-        { error: "user_settings_post_failed", message: error.message },
-        { status: 500 }
-      );
+      return json(500, {
+        error: "user_settings_post_failed",
+        message: error.message,
+      });
     }
 
-    return NextResponse.json(data ?? {}, { status: 200 });
+    return json(200, data ?? { ok: true });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: "user_settings_post_failed", message: e?.message ?? "Unknown" },
-      { status: 500 }
-    );
+    return json(500, {
+      error: "user_settings_post_failed",
+      message: e?.message ?? "Unknown",
+    });
   }
 }

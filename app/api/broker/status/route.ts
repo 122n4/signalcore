@@ -1,20 +1,51 @@
+// app/api/broker/status/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getBrokerStatus } from "@/lib/brokerStore";
+import { getConnection } from "@/lib/brokerStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const { userId } = await auth();
-    if (!userId) return NextResponse.json({ connected: false }, { status: 200 });
+    const a = await auth();
+    const userId = a.userId;
 
-    const status = await getBrokerStatus(userId);
-    return NextResponse.json(status, { status: 200 });
+    if (!userId) {
+      return NextResponse.json(
+        { ok: true, connected: false, provider: "snaptrade", status: "unauthenticated" },
+        { status: 200 }
+      );
+    }
+
+    const conn = await getConnection(userId, "snaptrade");
+
+    if (!conn) {
+      return NextResponse.json(
+        { ok: true, connected: false, provider: "snaptrade", status: "not_connected" },
+        { status: 200 }
+      );
+    }
+
+    // tenta ler campos comuns sem assumir schema
+    const status =
+      (conn as any).status ??
+      ((conn as any).access_token || (conn as any).accessToken ? "active" : "needs_attention");
+
+    return NextResponse.json(
+      {
+        ok: true,
+        provider: "snaptrade",
+        connected: status === "active",
+        status, // "active" | "needs_attention" | "revoked" | "error" | etc.
+        accountLabel: (conn as any).accountLabel ?? null,
+        updatedAt: (conn as any).updatedAt ?? (conn as any).updated_at ?? null,
+      },
+      { status: 200 }
+    );
   } catch (e: any) {
     return NextResponse.json(
-      { error: "broker_status_failed", message: e?.message ?? "Unknown" },
+      { ok: false, error: "broker_status_failed", message: e?.message ?? "Unknown" },
       { status: 500 }
     );
   }
