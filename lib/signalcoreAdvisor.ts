@@ -1,105 +1,52 @@
-export type UserMode = "investing" | "trading";
-export type Horizon = "Short" | "Medium" | "Long";
-export type Regime = "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
+import type { MarketRegime, Horizon } from "@/lib/signalcore";
 
-export type AdvisorAction = "Increase" | "Hold" | "Reduce";
-
-export type AdvisorPayload = {
-  title: string;
-  action: AdvisorAction;
-  confidence: "Low" | "Moderate" | "High";
-  headline: string;
-  reasons: string[];
-  ifCreatedToday: string;
-  riskBudget?: string; // trading
-  playbookHint?: string; // trading
-};
-
-function pickConfidence(regime: Regime): AdvisorPayload["confidence"] {
-  if (regime === "Risk-on") return "Moderate";
-  if (regime === "Risk-off") return "High";
-  if (regime === "Transitional") return "Moderate";
-  return "Low";
-}
-
-export function buildAdvisor(args: {
-  mode: UserMode;
-  regime: Regime;
+export function buildAdvisor(input: {
+  mode: "investing" | "trading";
+  regime: MarketRegime;
   horizon: Horizon;
-  goalLabel?: string; // ex: "12 months"
-}): AdvisorPayload {
-  const { mode, regime, horizon, goalLabel } = args;
-  const confidence = pickConfidence(regime);
+  goalLabel?: string;
+}) {
+  const { mode, regime, horizon, goalLabel } = input;
 
-  if (mode === "trading") {
-    // trading/forex: foco em ambiente + playbook + risco
-    const isTrap = regime === "Transitional" || regime === "Neutral / Range-bound";
-    const action: AdvisorAction = isTrap ? "Reduce" : regime === "Risk-on" ? "Increase" : "Hold";
+  const isRiskOff = regime === "Risk-off";
+  const isRiskOn = regime === "Risk-on";
 
-    const headline =
-      action === "Reduce"
-        ? "Today is an environment where forcing trades gets punished. Reduce aggressiveness."
-        : action === "Increase"
-        ? "Conditions are cleaner than usual. If you trade, trade selectively — not frequently."
-        : "Stay selective. Let confirmation do the heavy lifting.";
+  const confidence = isRiskOff ? "High" : isRiskOn ? "Moderate" : "Moderate";
 
-    return {
-      title: "SignalCore Advisor · Trading/Forex",
-      action,
-      confidence,
-      headline,
-      reasons: [
-        isTrap
-          ? "Choppy regimes create false breaks and emotional overtrading."
-          : "Cleaner conditions reward disciplined execution over impulsive entries.",
-        "Your edge improves when you trade fewer, higher-quality situations.",
-        "The goal is consistency, not activity.",
-      ],
-      playbookHint: isTrap
-        ? "Hint: prefer mean-reversion/pullback confirmation. Avoid impulsive breakouts."
-        : "Hint: trend continuation is more coherent. Still wait for confirmation.",
-      riskBudget: isTrap
-        ? "Risk budget today: LOW (1 mistake → stop)."
-        : "Risk budget today: MODERATE (protect capital, avoid doubling down).",
-      ifCreatedToday:
-        "If you started today, SignalCore would prioritize protection first — and only add risk when conditions prove themselves.",
-    };
-  }
+  const action: "Increase" | "Hold" | "Reduce" =
+    isRiskOff ? "Reduce" : isRiskOn ? "Increase" : "Hold";
 
-  // investing: foco em coerência + pacing + objetivo
-  const shortH = horizon === "Short";
-  const action: AdvisorAction =
-    regime === "Risk-on" && !shortH ? "Increase" : regime === "Risk-off" ? "Hold" : "Hold";
+  const title = mode === "trading" ? "Trading Advisor" : "Goal-based Advisor";
 
-  const horizonLine =
-    horizon === "Short"
-      ? "Short-horizon goals get damaged by noise. Avoid urgency."
-      : horizon === "Medium"
-      ? "Medium horizon rewards pacing and confirmation."
-      : "Long horizon rewards consistency over timing.";
+  const reasons: string[] = [];
+
+  if (goalLabel) reasons.push(`Goal timeframe: ${goalLabel} — decisions must respect pace and drawdown.`);
+  reasons.push(`Market regime: ${regime} — stance adjusted automatically.`);
+  reasons.push(`Horizon: ${horizon} — tempo and risk budget aligned.`);
 
   const headline =
     action === "Increase"
-      ? "Conditions are constructive enough to add gradually — without rushing."
-      : "The best edge right now is coherence: keep your plan steady and avoid emotional changes.";
+      ? "You can take risk today — but only inside your plan."
+      : action === "Reduce"
+      ? "Capital protection matters more than speed right now."
+      : "Avoid unnecessary changes. Structure > activity.";
+
+  const ifCreatedToday =
+    "If this plan was created today, SignalCore would prioritize coherence first — then execution.";
 
   return {
-    title: "SignalCore Advisor · Investing",
+    title,
     action,
-    confidence,
+    confidence: confidence as "Low" | "Moderate" | "High",
     headline,
-    reasons: [
-      horizonLine,
-      regime === "Risk-off"
-        ? "In defensive regimes, protecting consistency beats chasing rebounds."
-        : "In mixed regimes, doing less often beats doing more.",
-      goalLabel
-        ? `Your goal (${goalLabel}) improves with consistency, not frequent changes.`
-        : "Your goal improves with consistency, not frequent changes.",
-    ],
-    ifCreatedToday:
-      regime === "Risk-off"
-        ? "If created today, the plan would lean slightly more defensive — not to be safe, but to keep probability of success stable."
-        : "If created today, the plan would emphasize gradual accumulation and discipline over timing.",
+    reasons,
+    ifCreatedToday,
+    riskBudget: isRiskOff ? "Tight" : "Normal",
+    playbookHint:
+      action === "Increase"
+        ? "Use incremental adds + strict guardrails."
+        : action === "Reduce"
+        ? "Reduce tail risk and simplify."
+        : "Hold and refine plan drivers.",
   };
 }

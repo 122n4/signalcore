@@ -6,7 +6,7 @@ const isProtectedRoute = createRouteMatcher([
   "/app(.*)",
   "/my-portfolio(.*)",
   "/portfolio(.*)",
-  "/pricing(.*)", // se quiseres proteger pricing, senão remove
+  // "/pricing(.*)",  // <- deixa PUBLIC para converter melhor
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

@@ -2,42 +2,26 @@
 
 import { useEffect, useState } from "react";
 
-export type UserMode = "investing" | "trading";
+type Mode = "investing" | "trading";
 
 export function useUserMode() {
-  const [mode, setMode] = useState<UserMode>("investing");
+  const [mode, setMode] = useState<Mode>("investing");
   const [loadingMode, setLoadingMode] = useState(true);
 
   useEffect(() => {
-    let alive = true;
-
-    (async () => {
-      try {
-        const res = await fetch("/api/user-mode", { cache: "no-store" });
-        const data = await res.json();
-        if (!alive) return;
-        setMode(data?.mode === "trading" ? "trading" : "investing");
-      } catch {
-        if (!alive) return;
-        setMode("investing");
-      } finally {
-        if (!alive) return;
-        setLoadingMode(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
+    try {
+      const v = window.localStorage.getItem("sc:userMode");
+      if (v === "trading" || v === "investing") setMode(v);
+    } catch {}
+    setLoadingMode(false);
   }, []);
 
-  async function saveMode(next: UserMode) {
+  async function saveMode(next: Mode) {
     setMode(next);
-    await fetch("/api/user-mode", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: next }),
-    }).catch(() => null);
+    try {
+      window.localStorage.setItem("sc:userMode", next);
+    } catch {}
+    // Optional: persist to user_settings later
   }
 
   return { mode, loadingMode, saveMode };

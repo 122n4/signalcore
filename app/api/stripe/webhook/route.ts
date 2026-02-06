@@ -6,10 +6,12 @@ import { clerkClient } from "@clerk/nextjs/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
 
 export async function POST(req: Request) {
-  const sig = (await headers()).get("stripe-signature");
+  const sig = headers().get("stripe-signature");
   const whsec = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!sig || !whsec) {
@@ -30,22 +32,36 @@ export async function POST(req: Request) {
   }
 
   try {
+    // clerkClient pode ser função async nalguns setups
+    const client: any =
+      typeof clerkClient === "function"
+        ? await (clerkClient as any)()
+        : clerkClient;
+
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      // ✅ 1) principal: client_reference_id (definimos no checkout)
-      let clerkUserId: string | null = session.client_reference_id ?? null;
+      // ✅ Mapear user
+      let userId: string | null =
+        session.client_reference_id ??
+        session.metadata?.userId ??
+        null;
 
-      // ✅ 2) fallback: metadata (também definimos no checkout)
-      if (!clerkUserId && session.metadata?.clerkUserId) {
-        clerkUserId = session.metadata.clerkUserId;
-      }
-
-      // ✅ 3) fallback final: email
+      // fallback: email (último recurso)
       const email =
         session.customer_details?.email ||
         session.customer_email ||
         null;
+
+      if (!userId && email) {
+        const users = await client.users.getUserList({ emailAddress: [email] });
+        userId = users?.data?.[0]?.id ?? null;
+      }
+
+      if (!userId) {
+        console.warn("⚠️ Webhook: não consegui mapear user.");
+        return NextResponse.json({ received: true });
+      }
 
       const customerId =
         typeof session.customer === "string" ? session.customer : null;
@@ -53,22 +69,7 @@ export async function POST(req: Request) {
       const subscriptionId =
         typeof session.subscription === "string" ? session.subscription : null;
 
-      // clerkClient pode ser função async nalguns setups
-      const client: any =
-        typeof clerkClient === "function" ? await (clerkClient as any)() : clerkClient;
-
-      // se não tiver userId, tenta resolver por email
-      if (!clerkUserId && email) {
-        const users = await client.users.getUserList({ emailAddress: [email] });
-        clerkUserId = users?.data?.[0]?.id ?? null;
-      }
-
-      if (!clerkUserId) {
-        console.warn("⚠️ Não consegui mapear user (sem client_reference_id/metadata/email).");
-        return NextResponse.json({ received: true });
-      }
-
-      await client.users.updateUser(clerkUserId, {
+      await client.users.updateUser(userId, {
         publicMetadata: {
           isPaid: true,
           stripeCustomerId: customerId,
@@ -76,21 +77,14 @@ export async function POST(req: Request) {
         },
       });
 
-      console.log("✅ Marked isPaid=true for", clerkUserId);
+      console.log("✅ isPaid=true for", userId, "customer:", customerId);
       return NextResponse.json({ received: true });
     }
 
-    // (opcional) se quiseres “desativar” quando cancelam:
-    if (event.type === "customer.subscription.deleted") {
-      // Aqui só dá para fazer bem se tiveres uma DB/lookup pelo stripeCustomerId.
-      // Por agora, deixa como no-op.
-      return NextResponse.json({ received: true });
-    }
-
+    // (opcional) downgrade automático — só se tiveres DB/lookup robusto
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("❌ Webhook handler error:", err);
-    // Mantemos 200 para o Stripe não ficar a repetir indefinidamente
     return NextResponse.json({ received: true });
   }
 }

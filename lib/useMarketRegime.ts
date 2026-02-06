@@ -1,31 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { MarketRegime } from "./types";
 
-export type Regime = "Risk-on" | "Risk-off" | "Transitional" | "Neutral / Range-bound";
+const FALLBACK: MarketRegime = "Neutral / Range-bound";
 
-const FALLBACK: Regime = "Neutral / Range-bound";
-
-function normalizeRegime(input: unknown): Regime {
+function normalizeRegime(input: unknown): MarketRegime {
   const v = String(input ?? "").trim();
-
-  if (v === "Risk-on") return "Risk-on";
-  if (v === "Risk-off") return "Risk-off";
-  if (v === "Transitional") return "Transitional";
-  if (v === "Neutral / Range-bound") return "Neutral / Range-bound";
-
-  // tolerância se API devolver outros nomes
+  if (v === "Risk-on" || v === "Risk-off" || v === "Transitional" || v === "Neutral / Range-bound") return v;
   const lower = v.toLowerCase();
   if (lower.includes("risk on")) return "Risk-on";
   if (lower.includes("risk off")) return "Risk-off";
   if (lower.includes("transition")) return "Transitional";
-  if (lower.includes("neutral") || lower.includes("range")) return "Neutral / Range-bound";
-
   return FALLBACK;
 }
 
 export function useMarketRegime() {
-  const [regime, setRegime] = useState<Regime>(FALLBACK);
+  const [regime, setRegime] = useState<MarketRegime>(FALLBACK);
   const [loadingRegime, setLoadingRegime] = useState(true);
 
   useEffect(() => {
@@ -36,7 +27,6 @@ export function useMarketRegime() {
         const res = await fetch("/api/market-regime", { cache: "no-store" });
         const data = await res.json();
         if (!alive) return;
-
         setRegime(normalizeRegime(data?.regime));
       } catch {
         if (!alive) return;

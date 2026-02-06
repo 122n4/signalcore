@@ -1,187 +1,133 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { runDecisionEngine } from "@/lib/signalcore/decisionEngine";
-import type {
-  EngineOutput,
-  MarketRegime,
-  Horizon,
-  Goal,
-  RiskProfile,
+import { useMemo } from "react";
+import {
+  runDecisionEngine,
+  type MarketRegime,
+  type Horizon,
+  type RiskProfile,
+  type Goal,
+  type PortfolioItem,
 } from "@/lib/signalcore/decisionEngine";
 
 function cn(...x: Array<string | false | undefined | null>) {
   return x.filter(Boolean).join(" ");
 }
 
-function badgeColor(bias: EngineOutput["posture"]["riskBias"]) {
-  if (bias === "Offensive") return "bg-signal-700/10 text-signal-800";
-  if (bias === "Defensive") return "bg-amber-500/10 text-amber-800";
-  return "bg-canvas-50 text-ink-800";
-}
-
-function actionEmoji(a: EngineOutput["decisions"][number]["action"]) {
-  switch (a) {
-    case "Increase":
-      return "🟢";
-    case "Decrease":
-      return "🟡";
-    case "Hold":
-      return "◼️";
-    case "Hedge":
-      return "🛡️";
-    case "Rebalance":
-      return "🔁";
-    case "Avoid":
-      return "⛔";
-    case "PhaseIn":
-      return "🧊";
-    case "PhaseOut":
-      return "🧯";
-    default:
-      return "◼️";
-  }
-}
-
-function strengthDots(n: 1 | 2 | 3) {
-  return n === 3 ? "●●●" : n === 2 ? "●●" : "●";
-}
-
-function bucketLabel(b: string) {
-  // Humanize some buckets (keep simple)
-  const map: Record<string, string> = {
-    Cash: "Cash / buffer",
-    Bonds_Short: "Short-duration bonds",
-    Bonds_Intermediate: "Intermediate bonds",
-    Bonds_Long: "Long-duration bonds",
-    Equities_US_Large: "US large-cap equities",
-    Equities_US_Small: "US small-cap equities",
-    Equities_Intl_Developed: "Intl developed equities",
-    Equities_Emerging: "Emerging equities",
-    Commodities_Broad: "Commodities",
-    Gold: "Gold",
-    RealEstate: "Real estate",
-    Crypto_BTC: "Crypto (BTC)",
-    Crypto_Alt: "Crypto (alts)",
-  };
-  return map[b] ?? b.replaceAll("_", " ");
-}
-
 export default function DecisionEnginePanel({
   regime,
   horizon,
+  risk,
   goal,
-  riskProfile,
-  isPremium,
+  portfolio,
 }: {
   regime: MarketRegime;
   horizon: Horizon;
+  risk: RiskProfile;
   goal: Goal;
-  riskProfile: RiskProfile;
-  isPremium: boolean;
+  portfolio: PortfolioItem[];
 }) {
   const out = useMemo(() => {
-    return runDecisionEngine({
-      regime,
-      horizon,
-      goal,
-      riskProfile,
-      isPremium,
-    });
-  }, [regime, horizon, goal, riskProfile, isPremium]);
+    return runDecisionEngine({ regime, horizon, risk, goal, portfolio });
+  }, [regime, horizon, risk, goal, portfolio]);
 
-  const top3 = out.decisions.slice(0, 3);
-  const allocEntries = Object.entries(out.suggestedAllocation)
-    .filter(([, v]) => (v ?? 0) > 0)
-    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
+  const pressureColor =
+    out.decisionPressure === "Low"
+      ? "bg-emerald-700/10 text-emerald-800"
+      : out.decisionPressure === "Medium"
+      ? "bg-amber-500/10 text-amber-800"
+      : "bg-red-500/10 text-red-700";
+
+  const postureColor =
+    out.posture === "Favorable"
+      ? "bg-emerald-700/10 text-emerald-800"
+      : out.posture === "Neutral"
+      ? "bg-canvas-50 text-ink-800"
+      : "bg-red-500/10 text-red-700";
 
   return (
-    <div className="rounded-3xl border border-border-soft bg-white p-8 shadow-soft">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-ink-500">SignalCore Decision Engine</p>
-          <h3 className="mt-2 text-xl font-semibold text-ink-900">{out.summaryTitle}</h3>
-          <p className="mt-2 text-sm text-ink-700">{out.summary}</p>
+    <div className="space-y-6">
+      {/* Top cards */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-3xl border border-border-soft bg-white p-5 shadow-soft">
+          <p className="text-xs font-semibold text-ink-500">Decision pressure</p>
+          <p className={cn("mt-2 inline-flex rounded-full border border-border-soft px-3 py-1 text-xs font-semibold", pressureColor)}>
+            {out.decisionPressure}
+          </p>
+          <p className="mt-3 text-xs text-ink-500">
+            Higher pressure → do less, not more.
+          </p>
+        </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full border border-border-soft px-3 py-1 font-semibold",
-                badgeColor(out.posture.riskBias)
-              )}
-            >
-              {out.posture.riskBias}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-border-soft bg-white px-3 py-1 font-semibold text-ink-700">
-              Tempo: {out.posture.tempo}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-border-soft bg-white px-3 py-1 font-semibold text-ink-700">
-              Conviction: {strengthDots(out.posture.conviction)}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-border-soft bg-white px-3 py-1 font-semibold text-ink-700">
-              Next check: {out.nextCheck.cadence}
-            </span>
-          </div>
+        <div className="rounded-3xl border border-border-soft bg-white p-5 shadow-soft">
+          <p className="text-xs font-semibold text-ink-500">Plan coherence</p>
+          <p className="mt-2 text-2xl font-semibold text-ink-900">{out.coherenceScore}/100</p>
+          <p className="mt-3 text-xs text-ink-500">
+            How aligned your plan is with goal + context.
+          </p>
+        </div>
+
+        <div className="rounded-3xl border border-border-soft bg-white p-5 shadow-soft">
+          <p className="text-xs font-semibold text-ink-500">Posture</p>
+          <p className={cn("mt-2 inline-flex rounded-full border border-border-soft px-3 py-1 text-xs font-semibold", postureColor)}>
+            {out.posture}
+          </p>
+          <p className="mt-3 text-xs text-ink-500">
+            Derived from current market regime.
+          </p>
         </div>
       </div>
 
-      {/* Top decisions */}
-      <div className="mt-6">
-        <p className="text-sm font-semibold text-ink-900">Top actions</p>
-        <div className="mt-3 grid gap-3">
-          {top3.map((d, i) => (
-            <div key={`${d.bucket}-${d.action}-${i}`} className="rounded-2xl border border-border-soft bg-canvas-50 p-4">
-              <p className="text-sm font-semibold text-ink-900">
-                {actionEmoji(d.action)} {d.action} — {bucketLabel(d.bucket)}{" "}
-                <span className="text-xs font-semibold text-ink-500">{strengthDots(d.strength)}</span>
-              </p>
-              <p className="mt-2 text-sm text-ink-700">{d.rationale}</p>
-            </div>
-          ))}
+      {/* Nudges */}
+      <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+        <p className="text-sm font-semibold text-ink-900">SignalCore nudges</p>
+        <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-ink-700">
+          {out.nudges.length ? out.nudges.map((x) => <li key={x}>{x}</li>) : <li>No action needed.</li>}
+        </ul>
+        <p className="mt-4 text-xs text-ink-500">
+          Educational context only. No signals. No predictions.
+        </p>
+      </div>
+
+      {/* Suggested allocation */}
+      <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+        <p className="text-sm font-semibold text-ink-900">Suggested allocation (buckets)</p>
+        <p className="mt-1 text-sm text-ink-700">
+          Goal-aware structure. Not execution.
+        </p>
+
+        <div className="mt-4 overflow-hidden rounded-2xl border border-border-soft">
+          <table className="w-full text-sm">
+            <thead className="bg-canvas-50 text-xs text-ink-500">
+              <tr>
+                <th className="px-4 py-3 text-left">Bucket</th>
+                <th className="px-4 py-3 text-right">Weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              {out.suggestedAllocation.map((r) => (
+                <tr key={r.bucket} className="border-t border-border-soft">
+                  <td className="px-4 py-3 font-medium text-ink-900">{r.bucket}</td>
+                  <td className="px-4 py-3 text-right text-ink-700">{r.weight}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+
+        <p className="mt-4 text-xs text-ink-500">
+          Next step: tune buckets using your actual portfolio exposures.
+        </p>
       </div>
 
       {/* Guardrails */}
-      <div className="mt-6">
+      <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
         <p className="text-sm font-semibold text-ink-900">Guardrails</p>
-        <ul className="mt-3 space-y-2 text-sm text-ink-700">
-          {out.guardrails.slice(0, 4).map((g) => (
-            <li key={g}>• {g}</li>
+        <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-ink-700">
+          {out.guardrails.map((x) => (
+            <li key={x}>{x}</li>
           ))}
         </ul>
-        <p className="mt-3 text-xs text-ink-500">{out.nextCheck.why}</p>
-      </div>
-
-      {/* Allocation (Premium only) */}
-      <div className="mt-6">
-        <p className="text-sm font-semibold text-ink-900">Suggested allocation</p>
-
-        {!isPremium ? (
-          <div className="mt-3 rounded-2xl border border-border-soft bg-white p-4">
-            <p className="text-sm text-ink-700">
-              Allocation view is Premium. You can still see posture + actions above.
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3 overflow-hidden rounded-2xl border border-border-soft">
-            <table className="w-full text-sm">
-              <thead className="bg-canvas-50 text-xs text-ink-500">
-                <tr>
-                  <th className="px-4 py-3 text-left">Bucket</th>
-                  <th className="px-4 py-3 text-left">Weight</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allocEntries.map(([k, v], idx) => (
-                  <tr key={k} className={idx ? "border-t border-border-soft" : ""}>
-                    <td className="px-4 py-3 font-medium">{bucketLabel(k)}</td>
-                    <td className="px-4 py-3">{v}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );

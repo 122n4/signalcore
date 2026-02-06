@@ -1,19 +1,18 @@
+// app/layout.tsx
 import "./globals.css";
+import React from "react";
 import { ClerkProvider } from "@clerk/nextjs";
-import Header from "@/components/Header";
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export const metadata = {
+  title: "SignalCore",
+  description: "Goal-based investing, institutional discipline",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className="bg-white text-ink-900 antialiased">
-          <Header />
-          {children}
-        </body>
+        <body>{children}</body>
       </html>
     </ClerkProvider>
   );

@@ -1,100 +1,60 @@
 "use client";
 
-import { useMemo } from "react";
-import { buildAdvisor } from "@/lib/signalcoreAdvisor";
-import { useUserMode } from "@/lib/useUserMode";
+import React from "react";
+import type { Goal, Horizon, MarketRegime, PortfolioItem, RiskProfile } from "@/lib/signalcore";
+import { runEngineV2 } from "@/lib/signalcore";
 
-type Regime =
-  | "Risk-on"
-  | "Risk-off"
-  | "Transitional"
-  | "Neutral / Range-bound";
-
-type Horizon = "Short" | "Medium" | "Long";
-
-export default function SignalCoreAdvisorCard({
-  regime,
-  horizon,
-}: {
-  regime: Regime;
+export default function SignalCoreAdvisorCard(props: {
+  regime: MarketRegime;
   horizon: Horizon;
+  risk: RiskProfile;
+  goal: Goal;
+  portfolio: PortfolioItem[];
+  previousOverall: number | null;
+  onOpenTab?: (tab: any, anchorId?: string) => void;
 }) {
-  const { mode, loadingMode, saveMode } = useUserMode();
-
-  const payload = useMemo(() => {
-    return buildAdvisor({
-      mode,
-      regime,
-      horizon,
-      goalLabel: "12 months",
-    });
-  }, [mode, regime, horizon]);
-
-  const badge =
-    payload.action === "Increase"
-      ? "🟢 Increase"
-      : payload.action === "Hold"
-      ? "🟡 Hold"
-      : "🔴 Reduce";
+  const out = runEngineV2({
+    regime: props.regime,
+    horizon: props.horizon,
+    risk: props.risk,
+    goal: props.goal,
+    portfolio: props.portfolio,
+    previousOverall: props.previousOverall,
+  });
 
   return (
-    <div className="rounded-3xl border border-border-soft bg-white p-8 shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-ink-500">{payload.title}</p>
-          <p className="mt-2 text-lg font-semibold text-ink-900">{payload.headline}</p>
-          <p className="mt-1 text-xs text-ink-500">
-            Confidence: <strong>{payload.confidence}</strong> · Regime:{" "}
-            <strong>{regime}</strong> · Horizon: <strong>{horizon}</strong>
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border border-border-soft bg-canvas-50 px-3 py-1 text-xs font-semibold">
-            {badge}
-          </span>
-
-          <div className="rounded-2xl border border-border-soft bg-white px-3 py-2 text-xs">
-            {loadingMode ? (
-              <span className="text-ink-500">mode…</span>
-            ) : (
-              <select
-                value={mode}
-                onChange={(e) => saveMode(e.target.value as any)}
-                className="bg-transparent outline-none"
-              >
-                <option value="investing">Investing</option>
-                <option value="trading">Trading/Forex</option>
-              </select>
-            )}
-          </div>
-        </div>
+    <div className="rounded-3xl border border-border-soft bg-white p-6 shadow-soft">
+      <div className="text-sm font-semibold">SignalCore Terminal (fallback)</div>
+      <div className="mt-2 text-sm text-ink-700">
+        This is a minimal terminal so the Advisor compiles even if your real card is elsewhere.
       </div>
 
-      <ul className="mt-5 space-y-2 text-sm text-ink-700">
-        {payload.reasons.map((r) => (
-          <li key={r}>• {r}</li>
-        ))}
-      </ul>
-
-      {payload.playbookHint ? (
-        <div className="mt-6 rounded-2xl border border-border-soft bg-canvas-50 p-4">
-          <p className="text-sm text-ink-700">
-            <strong>Playbook:</strong> {payload.playbookHint}
-          </p>
-          {payload.riskBudget ? (
-            <p className="mt-2 text-sm text-ink-700">
-              <strong>Risk:</strong> {payload.riskBudget}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div className="mt-6 rounded-2xl border border-border-soft bg-white p-4">
-        <p className="text-sm text-ink-700">
-          <strong>If created today:</strong> {payload.ifCreatedToday}
-        </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <Metric label="Coherence" value={`${Math.round(out.breakdown.overall)}/100`} />
+        <Metric label="Drift" value={out.drift ?? "—"} />
+        <Metric label="Tempo" value={out.tempo ?? "—"} />
+        <Metric label="Next check" value={out.nextCheck ?? "—"} />
       </div>
+
+      <div className="mt-5 rounded-2xl border border-border-soft bg-canvas-50 p-4">
+        <div className="text-xs font-semibold text-ink-500">Nudges</div>
+        <div className="mt-2 space-y-2">
+          {(out.nudges ?? []).slice(0, 4).map((n, i) => (
+            <div key={i} className="rounded-xl border border-border-soft bg-white p-3 text-sm text-ink-800">
+              {n}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border-soft bg-white p-4">
+      <div className="text-xs font-semibold text-ink-500">{label}</div>
+      <div className="mt-2 text-lg font-semibold text-ink-900">{value}</div>
     </div>
   );
 }

@@ -1,20 +1,26 @@
 import { NextResponse } from "next/server";
-import { MarketRegimeSchema } from "@/lib/signalcore/regime.schema";
-import { regimeMock } from "@/lib/signalcore/regime.mock";
 
 export async function GET() {
-  // Aqui, no futuro, trocas "regimeMock" por:
-  // - ficheiro JSON gerado pela IA
-  // - BD (SQLite/Postgres)
-  // - chamada a um worker
-  const parsed = MarketRegimeSchema.safeParse(regimeMock);
-
-  if (!parsed.success) {
+  try {
+    // v1 fallback regime (até ligares o engine real)
+    return NextResponse.json({
+      ok: true,
+      regime: "neutral",
+      confidence: 0.55,
+      drivers: ["fallback"],
+      ts: Date.now(),
+    });
+  } catch (e: any) {
     return NextResponse.json(
-      { error: "Invalid regime payload", issues: parsed.error.issues },
-      { status: 500 }
+      {
+        ok: false,
+        regime: "neutral",
+        confidence: 0.4,
+        drivers: ["error_fallback"],
+        ts: Date.now(),
+        error: String(e?.message ?? e),
+      },
+      { status: 200 } // IMPORTANT: nunca 500 para não rebentar UI
     );
   }
-
-  return NextResponse.json(parsed.data, { status: 200 });
 }
