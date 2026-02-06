@@ -7,25 +7,18 @@ import { getLatestSnapshot } from "@/lib/brokerStore";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Advisor Snapshot
- * - Returns latest broker snapshot (if any) for current user
- * - Keeps endpoint build-safe even if broker isn't connected yet
- */
-
 export async function GET() {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ latest: null, previous: null }, { status: 200 });
+    if (!userId) {
+      return NextResponse.json({ latest: null, previous: null }, { status: 200 });
+    }
 
-    // In your current brokerStore.ts, this returns snapshot or null
+    // v1: devolvemos o snapshot mais recente (se existir)
     const latest = await getLatestSnapshot(userId);
 
     return NextResponse.json(
-      {
-        latest: latest ?? null,
-        previous: null, // reserved for drift compare later
-      },
+      { latest: latest ?? null, previous: null },
       { status: 200 }
     );
   } catch (e: any) {
@@ -39,16 +32,16 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
 
-    // For now we accept body but don't persist here (you can later store to Supabase)
-    const body = await req.json().catch(() => ({}));
+    // Mantemos POST compatível: se no futuro quiseres gravar snapshots, fazes aqui.
+    // Por agora apenas devolve o mesmo que o GET para não quebrar o frontend.
+    const latest = await getLatestSnapshot(userId);
 
     return NextResponse.json(
-      {
-        ok: true,
-        received: body ?? {},
-      },
+      { ok: true, latest: latest ?? null, previous: null },
       { status: 200 }
     );
   } catch (e: any) {
