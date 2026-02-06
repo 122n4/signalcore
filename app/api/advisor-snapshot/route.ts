@@ -8,7 +8,7 @@ function isoNow() {
 }
 
 export async function GET() {
-  const { userId } = await auth();F
+  const { userId } = await auth();
   if (!userId) return Response.json({ latest: null, previous: null });
 
   try {
