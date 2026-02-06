@@ -1,4 +1,3 @@
-// app/api/copilot/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { runCopilot } from "@/lib/copilot";
@@ -6,45 +5,46 @@ import { runCopilot } from "@/lib/copilot";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * We avoid importing repo-specific Copilot types (they may not be exported).
- * Keep a permissive shape to prevent TS/build breaks.
- */
-type UserTier = "free" | "pro";
+export async function GET() {
+  // Health/info endpoint (browser-friendly)
+  return NextResponse.json(
+    { ok: true, endpoint: "copilot", method: "POST", auth: "clerk" },
+    { status: 200 }
+  );
+}
 
-type LooseCopilotContext = Record<string, any> & {
-  intent?: string;
-  context?: string;
-  state?: any;
-  quickActions?: any;
-  locale?: "en" | "pt";
-  tier?: UserTier;
-};
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  return NextResponse.json(
+    { ok: true, endpoint: "copilot", method: "POST", note: "Use POST (requires auth)" },
+    { status: 200 }
+  );
+}
 
 export async function POST(req: Request) {
   try {
-    const a = await auth();
-    const userId = a.userId;
-    if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
 
-    const body = (await req.json().catch(() => ({}))) as any;
+    const body = await req.json().catch(() => ({}));
 
-    // allow both { ctx } and direct body
-    const ctx: LooseCopilotContext =
-      body?.ctx && typeof body.ctx === "object" ? body.ctx : body;
+    // Se não tens key/config em produção, NÃO rebentes o build/deploy:
+    // devolve 200 com disabled para não parecer “site quebrado”
+    if (!process.env.OPENAI_API_KEY && !process.env.COPILOT_DISABLED) {
+      return NextResponse.json(
+        { ok: false, error: "copilot_not_configured" },
+        { status: 200 }
+      );
+    }
 
-    const tier: UserTier = (ctx?.tier as UserTier) ?? (body?.tier as UserTier) ?? "free";
-
-    const out = await runCopilot({
-      ...ctx,
-      userId,
-      tier,
-    } as any);
-
-    return NextResponse.json(out ?? { ok: true }, { status: 200 });
+    const out = await runCopilot({ userId, ...body });
+    return NextResponse.json({ ok: true, ...out }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json(
-      { error: "copilot_failed", message: e?.message ?? "Unknown" },
+      { ok: false, error: "copilot_failed", message: e?.message ?? "Unknown" },
       { status: 500 }
     );
   }
