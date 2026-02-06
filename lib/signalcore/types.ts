@@ -1,5 +1,14 @@
 // lib/signalcore/types.ts
 
+export type MarketRegime = 
+  | "risk_on"
+  | "risk_off"
+  | "neutral"
+  | "inflation"
+  | "deflation"
+  | "crisis";
+
+
 export type RiskPosture = "conservative" | "balanced" | "growth";
 
 export type PlanBucketLite = {
@@ -8,15 +17,6 @@ export type PlanBucketLite = {
   targetPct: number;
   
 };
-
-export type MarketRegime = {
-  | "risk_on"
-  | "risk_off"
-  | "neutral"
-  | "inflation"
-  | "deflation"
-  | "crisis";
-  };
 
 export type PlanLike = {
   id: string;
