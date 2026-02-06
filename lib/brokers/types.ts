@@ -1,66 +1,33 @@
-export type BrokerProvider = "snaptrade" | "csv";
+// lib/brokers/types.ts
+export type BrokerProvider = "snaptrade";
 
-export type Money = {
-  currency: string; // "EUR","USD"
-  value: number;
-};
+export type BrokerConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
-export type Holding = {
-  symbol: string;
-  name?: string;
-  assetType?: "stock" | "etf" | "fund" | "crypto" | "cash" | "other";
-  quantity: number;
-  price?: number;
-  marketValue?: number;
-  currency?: string;
-  weightPct?: number;
-};
-
-export type Cash = {
-  currency: string;
-  value: number;
-};
-
-export type Trade = {
-  ts: number;
-  symbol: string;
-  side: "buy" | "sell";
-  quantity: number;
-  price?: number;
-  currency?: string;
-};
-
-export type PortfolioSnapshot = {
-  userId: string;
-  provider: BrokerProvider;
-  connectionId?: string | null;
-  asOf: string; // ISO
-  holdings: Holding[];
-  cash: Cash[];
-  trades: Trade[];
-  metrics: {
-    totalValue?: number;
-    currency?: string;
-    concentrationTop5Pct?: number;
-    holdingsCount?: number;
-  };
-};
-
-export type BrokerConnection = {
+export type BrokerAccount = {
   id: string;
-  user_id: string;
-  provider: BrokerProvider;
-  status: "active" | "revoked" | "error" | "needs_attention";
-  account_label?: string | null;
-  meta: Record<string, any>;
-  created_at: string;
-  updated_at: string;
+  name?: string | null;
+  institution?: string | null;
+  currency?: string | null;
 };
 
-export type BrokerStatus = {
-  connected: boolean;
-  provider?: BrokerProvider;
-  status?: BrokerConnection["status"];
-  accountLabel?: string | null;
-  lastSyncAt?: string | null;
+export type BrokerPosition = {
+  symbol: string;
+  name?: string | null;
+  qty: number;
+  price?: number | null;
+  value?: number | null;
+  currency?: string | null;
+  assetType?: string | null;
+};
+
+export type BrokerSnapshot = {
+  provider: BrokerProvider;
+  asOf: string; // ISO
+  accounts: BrokerAccount[];
+  positions: BrokerPosition[];
+  totalValue?: number | null;
 };

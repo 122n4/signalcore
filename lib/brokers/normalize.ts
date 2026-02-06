@@ -1,35 +1,34 @@
-import type { Holding, PortfolioSnapshot } from "./types";
+// lib/brokers/normalize.ts
+import type { BrokerSnapshot } from "./types";
 
-export function computeWeights(holdings: Holding[], totalValue?: number) {
-  const tv =
-    typeof totalValue === "number" && Number.isFinite(totalValue) && totalValue > 0
-      ? totalValue
-      : holdings.reduce((s, h) => s + (h.marketValue ?? 0), 0);
+export function snapshotHash(snapshot: BrokerSnapshot) {
+  // hash simples (determinístico) para evitar guardar snapshots repetidos
+  const raw = JSON.stringify({
+    provider: snapshot.provider,
+    asOf: snapshot.asOf,
+    accounts: snapshot.accounts,
+    positions: snapshot.positions,
+  });
 
-  if (!tv || tv <= 0) return holdings;
-
-  return holdings.map((h) => ({
-    ...h,
-    weightPct: ((h.marketValue ?? 0) / tv) * 100,
-  }));
+  let h = 0;
+  for (let i = 0; i < raw.length; i++) {
+    h = (h << 5) - h + raw.charCodeAt(i);
+    h |= 0;
+  }
+  return String(h);
 }
 
-export function computeMetrics(snapshot: PortfolioSnapshot) {
+export function computeMetrics(snapshot: BrokerSnapshot) {
   const total =
-    snapshot.holdings.reduce((s, h) => s + (h.marketValue ?? 0), 0) +
-    snapshot.cash.reduce((s, c) => s + (c.value ?? 0), 0);
+    snapshot.totalValue ??
+    snapshot.positions.reduce((acc, p) => acc + (p.value ?? 0), 0);
 
-  const weights = computeWeights(snapshot.holdings, total);
-  const top5 = [...weights]
-    .sort((a, b) => (b.weightPct ?? 0) - (a.weightPct ?? 0))
-    .slice(0, 5)
-    .reduce((s, h) => s + (h.weightPct ?? 0), 0);
+  const positionsCount = snapshot.positions.length;
+  const accountsCount = snapshot.accounts.length;
 
   return {
     totalValue: total,
-    currency: snapshot.cash?.[0]?.currency ?? snapshot.holdings?.[0]?.currency ?? "EUR",
-    concentrationTop5Pct: top5,
-    holdingsCount: snapshot.holdings.length,
-    holdingsWeighted: weights,
+    positionsCount,
+    accountsCount,
   };
 }
