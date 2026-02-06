@@ -1,218 +1,99 @@
 // lib/brokerStore.ts
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type { BrokerProvider } from "@/lib/brokers/types";
 
-export type BrokerProvider = "snaptrade";
-
-export type BrokerConnectionStatus =
-  | "active"
-  | "revoked"
-  | "needs_attention"
-  | "error";
+export type BrokerStatus = "active" | "revoked" | "needs_attention" | "error";
 
 export type BrokerConnection = {
   userId: string;
-  provider: BrokerProvider;
-  status: BrokerConnectionStatus;
+  provider: BrokerProvider; // "snaptrade"
+  status: BrokerStatus;
 
   accountLabel?: string | null;
 
-  accessToken?: string | null;
-  refreshToken?: string | null;
-  tokenExpiresAt?: string | null; // ISO string
+  // Tokens (nomes comuns que já vi no teu código)
+  access_token?: string | null;
+  refresh_token?: string | null;
+  token_expires_at?: string | null;
 
-  meta?: Record<string, any> | null;
-  updatedAt?: string | null;
-};
-
-export type BrokerSnapshot = {
-  userId: string;
-  provider: BrokerProvider;
-  accountId?: string | null;
-
-  // normalized payload (whatever your adapters return)
-  snapshot: any;
-
-  // optional derived metrics
-  metrics?: any;
-
-  createdAt: string; // ISO
-};
-
-const CONN_TABLE = "broker_connections";
-const SNAP_TABLE = "broker_snapshots";
-
-/**
- * Read a connection row. Supports snake_case OR camelCase schemas.
- */
-export async function getConnection(
-  userId: string,
-  provider: BrokerProvider
-): Promise<
-  | (BrokerConnection & {
-      access_token?: string | null;
-      refresh_token?: string | null;
-      token_expires_at?: string | null;
-    })
-  | null
-> {
-  const sb = supabaseAdmin();
-
-  const { data, error } = await sb
-    .from(CONN_TABLE)
-    .select("*")
-    .eq("user_id", userId)
-    .eq("provider", provider)
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  if (!data) return null;
-
-  const accessToken = (data as any).access_token ?? (data as any).accessToken ?? null;
-  const refreshToken = (data as any).refresh_token ?? (data as any).refreshToken ?? null;
-  const tokenExpiresAt =
-    (data as any).token_expires_at ?? (data as any).tokenExpiresAt ?? null;
-
-  return {
-    userId: (data as any).user_id ?? userId,
-    provider: (data as any).provider ?? provider,
-    status: ((data as any).status ?? "needs_attention") as BrokerConnectionStatus,
-    accountLabel: (data as any).account_label ?? (data as any).accountLabel ?? null,
-    accessToken,
-    refreshToken,
-    tokenExpiresAt,
-    meta: (data as any).meta ?? null,
-    updatedAt: (data as any).updated_at ?? (data as any).updatedAt ?? null,
-
-    // keep legacy keys for older callsites
-    access_token: (data as any).access_token ?? null,
-    refresh_token: (data as any).refresh_token ?? null,
-    token_expires_at: (data as any).token_expires_at ?? null,
-  };
-}
-
-export async function upsertConnection(params: {
-  userId: string;
-  provider: BrokerProvider;
-  status: BrokerConnectionStatus;
-
-  accountLabel?: string | null;
-
+  // alias fields (para compat)
   accessToken?: string | null;
   refreshToken?: string | null;
   tokenExpiresAt?: string | null;
 
-  meta?: Record<string, any> | null;
-}) {
-  const sb = supabaseAdmin();
+  meta?: Record<string, any>;
+  updatedAt?: string | null;
+};
 
-  const row: any = {
-    user_id: params.userId,
-    provider: params.provider,
-    status: params.status,
-    account_label: params.accountLabel ?? null,
-
-    access_token: params.accessToken ?? null,
-    refresh_token: params.refreshToken ?? null,
-    token_expires_at: params.tokenExpiresAt ?? null,
-
-    meta: params.meta ?? null,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await sb
-    .from(CONN_TABLE)
-    .upsert(row, { onConflict: "user_id,provider" })
-    .select("*")
-    .maybeSingle();
-
-  if (error) throw new Error(error.message);
-  return data ?? row;
-}
-
-export async function revokeConnection(userId: string, provider: BrokerProvider) {
-  const sb = supabaseAdmin();
-
-  const { error } = await sb
-    .from(CONN_TABLE)
-    .update({
-      status: "revoked",
-      access_token: null,
-      refresh_token: null,
-      token_expires_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId)
-    .eq("provider", provider);
-
-  if (error) throw new Error(error.message);
-  return { ok: true };
-}
-
-/**
- * Save a broker snapshot (portfolio holdings + balances etc).
- * Your engine can use this as the "truth" source.
- */
-export async function saveSnapshot(params: {
+export type BrokerSnapshotRecord = {
   userId: string;
   provider: BrokerProvider;
   accountId?: string | null;
+  asOf: string;
   snapshot: any;
   metrics?: any;
-}) {
-  const sb = supabaseAdmin();
+};
 
-  const now = new Date().toISOString();
+// ---- In-memory fallback (build-safe) ----
+const MEM_CONN = new Map<string, BrokerConnection>();
+const MEM_SNAP = new Map<string, BrokerSnapshotRecord>();
 
-  const row: any = {
-    user_id: params.userId,
-    provider: params.provider,
-    account_id: params.accountId ?? null,
-    snapshot: params.snapshot,
-    metrics: params.metrics ?? null,
-    created_at: now,
-  };
-
-  const { error } = await sb.from(SNAP_TABLE).insert(row);
-  if (error) throw new Error(error.message);
-
-  return { ok: true, createdAt: now };
+function connKey(userId: string, provider: BrokerProvider) {
+  return `${provider}:${userId}`;
+}
+function snapKey(userId: string, provider: BrokerProvider, accountId?: string | null) {
+  return `${provider}:${userId}:${accountId ?? "default"}`;
 }
 
-/**
- * ✅ This is what your /api/portfolio and other routes are asking for.
- * Returns the most recent snapshot row.
- */
-export async function getLatestSnapshot(params: {
-  userId: string;
-  provider?: BrokerProvider;
-  accountId?: string | null;
-}): Promise<BrokerSnapshot | null> {
-  const sb = supabaseAdmin();
+export async function upsertConnection(input: BrokerConnection) {
+  const key = connKey(input.userId, input.provider);
+  const now = new Date().toISOString();
 
-  const provider = params.provider ?? "snaptrade";
-
-  let q = sb
-    .from(SNAP_TABLE)
-    .select("*")
-    .eq("user_id", params.userId)
-    .eq("provider", provider)
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (params.accountId) q = q.eq("account_id", params.accountId);
-
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-
-  const row = Array.isArray(data) && data.length ? data[0] : null;
-  if (!row) return null;
-
-  return {
-    userId: (row as any).user_id ?? params.userId,
-    provider: (row as any).provider ?? provider,
-    accountId: (row as any).account_id ?? null,
-    snapshot: (row as any).snapshot ?? null,
-    metrics: (row as any).metrics ?? null,
-    createdAt: (row as any).created_at ?? new Date().toISOString(),
+  const normalized: BrokerConnection = {
+    ...input,
+    status: input.status,
+    access_token: input.access_token ?? input.accessToken ?? null,
+    refresh_token: input.refresh_token ?? input.refreshToken ?? null,
+    token_expires_at: input.token_expires_at ?? input.tokenExpiresAt ?? null,
+    updatedAt: now,
   };
+
+  MEM_CONN.set(key, normalized);
+  return normalized;
+}
+
+export async function getConnection(userId: string, provider: BrokerProvider) {
+  return MEM_CONN.get(connKey(userId, provider)) ?? null;
+}
+
+export async function getBrokerStatus(userId: string, provider: BrokerProvider = "snaptrade") {
+  const c = await getConnection(userId, provider);
+  return {
+    provider,
+    connected: !!c && c.status === "active",
+    status: c?.status ?? "error",
+    accountLabel: c?.accountLabel ?? null,
+    updatedAt: c?.updatedAt ?? null,
+  };
+}
+
+export async function upsertSnapshot(input: BrokerSnapshotRecord) {
+  MEM_SNAP.set(snapKey(input.userId, input.provider, input.accountId), input);
+  return input;
+}
+
+// Compat: algumas rotas chamam getLatestSnapshot(userId) apenas
+export async function getLatestSnapshot(arg: string | { userId: string; provider?: BrokerProvider; accountId?: string | null }) {
+  const userId = typeof arg === "string" ? arg : arg.userId;
+  const provider = typeof arg === "string" ? "snaptrade" : (arg.provider ?? "snaptrade");
+  const accountId = typeof arg === "string" ? null : (arg.accountId ?? null);
+
+  // tenta accountId específico, senão default
+  const exact = MEM_SNAP.get(snapKey(userId, provider, accountId));
+  if (exact) return exact.snapshot;
+
+  const def = MEM_SNAP.get(snapKey(userId, provider, "default"));
+  if (def) return def.snapshot;
+
+  // se não houver, retorna null
+  return null;
 }

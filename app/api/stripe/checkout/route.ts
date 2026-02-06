@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // ✅ Não fixes apiVersion aqui — a tua versão do stripe SDK tipa isto como um literal (ex: "2026-01-28.clover")
-// e dá erro no build se meteres "2024-06-20".
+// e dá erro no build se meteres "2026-01-28.clover".
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {

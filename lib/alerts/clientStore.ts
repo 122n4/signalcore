@@ -1,36 +1,43 @@
 // lib/alerts/clientStore.ts
-import { CreateUserAlertInput, UserAlert } from "@/lib/alerts/types";
+"use client";
+
+type AlertsSnapshot = {
+  planActive?: boolean;
+  brokerConnected?: boolean;
+  lastSyncAt?: string | null;
+};
+
+const KEY = "signalcore_alerts_snapshot_v1";
+
+function safeParse<T>(s: string | null, fallback: T): T {
+  try {
+    return s ? (JSON.parse(s) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readSnapshot(): AlertsSnapshot {
+  if (typeof window === "undefined") return {};
+  return safeParse<AlertsSnapshot>(localStorage.getItem(KEY), {});
+}
+
+function writeSnapshot(next: AlertsSnapshot) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(KEY, JSON.stringify(next ?? {}));
+}
 
 export const alertsStore = {
-  async list(limit = 50): Promise<UserAlert[]> {
-    const res = await fetch(`/api/alerts?limit=${limit}`, { cache: "no-store" });
-    const data = await res.json().catch(() => []);
-    return Array.isArray(data) ? data : [];
+  getSnapshot(): AlertsSnapshot {
+    return readSnapshot();
   },
 
-  async create(input: CreateUserAlertInput): Promise<UserAlert | null> {
-    const res = await fetch("/api/alerts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (!res.ok) return null;
-    return (await res.json().catch(() => null)) as UserAlert | null;
+  setSnapshot(next: AlertsSnapshot) {
+    writeSnapshot(next);
   },
 
-  async dismiss(id: string) {
-    await fetch("/api/alerts/dismiss", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id }),
-    }).catch(() => null);
-  },
-
-  async dismissAll() {
-    await fetch("/api/alerts/dismiss", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: "ALL" }),
-    }).catch(() => null);
+  patchSnapshot(patch: Partial<AlertsSnapshot>) {
+    const cur = readSnapshot();
+    writeSnapshot({ ...cur, ...patch });
   },
 };
