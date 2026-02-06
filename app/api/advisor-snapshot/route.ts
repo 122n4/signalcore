@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  cconst { userId } = await auth();
+  const { userId } = await auth();
   if (!userId) return Response.json({ ok: false }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
