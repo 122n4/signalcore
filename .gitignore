@@ -1,0 +1,40 @@
+node_modules/
+.next/
+.next-*/
+out/
+coverage/
+
+# env
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.log
+.vercel
+
+# local runtime / QA / generated artifacts
+.cache/
+.codex-chrome-profile/
+.codex-chrome-profile-runtime/
+.qa-*/
+.next-dev.log
+artifacts/
+Data/historical/
+data/historical/
+data/historical-staging/
+supabase/.temp/
+qa_*.json
+qa_*.mjs
+qa_*.png
+tmp_*
+__live_syntrake.html
+undefined/
+tsconfig.tsbuildinfo
+/Build
+/curl
+/daily_current.png
+/.codex-next-dev.err.log & echo started

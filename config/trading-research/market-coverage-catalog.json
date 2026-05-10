@@ -1,0 +1,20 @@
+{
+  "coverage_backed": [
+    "BTCUSD",
+    "ETHUSD",
+    "EURUSD",
+    "GBPUSD",
+    "NAS100",
+    "US500",
+    "USDJPY",
+    "XAUUSD"
+  ],
+  "staged_only": [
+    "AUDUSD",
+    "USDCHF",
+    "NZDUSD",
+    "AUDJPY",
+    "XAGUSD",
+    "GER40"
+  ]
+}
