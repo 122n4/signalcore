@@ -94,7 +94,7 @@ function PreviewShell({
           </div>
           <div className={`flex items-center gap-2 ${compact ? "text-[8px]" : "text-[10px]"}`}>
             <span className="hidden rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-white/72 md:inline-flex">Search</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-white/72">+EUR -</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-white/72">Plan ready</span>
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-white/72">Protected</span>
             <span className="rounded-full border border-blue-400/24 bg-blue-400/10 px-2.5 py-1 text-blue-100">7-Day Trial</span>
             <span className="rounded-full border border-amber-400/18 bg-amber-400/10 px-2.5 py-1 text-amber-200">Free</span>

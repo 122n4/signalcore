@@ -18,7 +18,7 @@ import { useAccess } from "@/lib/signalcore/useAccess";
 import { useAutopilotMode } from "@/lib/signalcore/useAutopilotMode";
 import { useUserSettings } from "@/lib/signalcore/useUserSettings";
 import { canAccessView, getLockedViewsForMode } from "@/lib/signalcore/entitlements";
-import { deriveFirstValueRailState, type FirstValueSetupKey } from "@/app/app/firstValue";
+import { deriveFirstValueRailState, deriveSetupProgress, type FirstValueSetupKey } from "@/app/app/firstValue";
 
 import DailyTab from "@/app/app/tabs/DailyTab";
 import TradingTab from "@/app/app/tabs/TradingTab";
@@ -140,6 +140,12 @@ function firstValueSetupLabel(lang: ReturnType<typeof useSiteLanguage>["lang"], 
   });
 }
 
+function guidedMissionToneClasses(status: "done" | "active" | "locked") {
+  if (status === "done") return "border-emerald-400/18 bg-emerald-400/10 text-emerald-100";
+  if (status === "active") return "border-cyan-300/22 bg-cyan-300/10 text-cyan-100";
+  return "border-white/8 bg-white/[0.035] text-slate-400";
+}
+
 function FirstValueRail(props: {
   lang: ReturnType<typeof useSiteLanguage>["lang"];
   mode: "investing" | "trading";
@@ -153,6 +159,88 @@ function FirstValueRail(props: {
   if (props.state.kind === "hidden") return null;
 
   if (props.state.kind === "setup") {
+    const missionSteps = [
+      {
+        key: "plan",
+        status: props.state.progressDone >= props.state.progressTotal ? "done" : "active",
+        title: pickByLang(props.lang, {
+          en: "Plan",
+          pt: "Plano",
+          es: "Plan",
+          fr: "Plan",
+          de: "Plan",
+          it: "Piano",
+        }),
+        detail: pickByLang(props.lang, {
+          en: "Goal, risk, horizon",
+          pt: "Objetivo, risco, horizonte",
+          es: "Objetivo, riesgo, horizonte",
+          fr: "Objectif, risque, horizon",
+          de: "Ziel, Risiko, Horizont",
+          it: "Obiettivo, rischio, orizzonte",
+        }),
+      },
+      {
+        key: "portfolio",
+        status: props.state.progressDone >= props.state.progressTotal ? "active" : "locked",
+        title: "Portfolio",
+        detail: pickByLang(props.lang, {
+          en: "Holdings or starter pack",
+          pt: "Holdings ou starter pack",
+          es: "Holdings o starter pack",
+          fr: "Positions ou starter pack",
+          de: "Holdings oder Starter-Pack",
+          it: "Holdings o starter pack",
+        }),
+      },
+      {
+        key: "daily",
+        status: "locked",
+        title: "Daily",
+        detail: pickByLang(props.lang, {
+          en: "One action today",
+          pt: "Uma acao hoje",
+          es: "Una accion hoy",
+          fr: "Une action aujourd hui",
+          de: "Eine Aktion heute",
+          it: "Un azione oggi",
+        }),
+      },
+      {
+        key: "advisor",
+        status: "locked",
+        title: "Advisor",
+        detail: pickByLang(props.lang, {
+          en: "Why it matters",
+          pt: "Porque importa",
+          es: "Por que importa",
+          fr: "Pourquoi ca compte",
+          de: "Warum es zaehlt",
+          it: "Perche conta",
+        }),
+      },
+      {
+        key: "autonomy",
+        status: "locked",
+        title: pickByLang(props.lang, {
+          en: "Autonomy",
+          pt: "Autonomia",
+          es: "Autonomia",
+          fr: "Autonomie",
+          de: "Autonomie",
+          it: "Autonomia",
+        }),
+        detail: pickByLang(props.lang, {
+          en: "Control level",
+          pt: "Nivel de controlo",
+          es: "Nivel de control",
+          fr: "Niveau de controle",
+          de: "Kontrollniveau",
+          it: "Livello di controllo",
+        }),
+      },
+    ] as const;
+
     const heading =
       props.mode === "trading"
         ? props.tier === "free"
@@ -173,12 +261,12 @@ function FirstValueRail(props: {
               it: "Il cockpit Trading e attivo. Completa il setup per rendere piu precisa la cornice di rischio.",
             })
         : pickByLang(props.lang, {
-            en: "Start getting value now. Finish a few setup inputs for sharper guidance.",
-            pt: "Comeca a tirar valor agora. Termina alguns inputs para uma orientacao mais forte.",
-            es: "Empieza a obtener valor ya. Termina algunos datos para una orientacion mas precisa.",
-            fr: "Commencez a obtenir de la valeur maintenant. Terminez quelques donnees pour un guidage plus net.",
-            de: "Hol dir jetzt schon Wert. Ergaenze ein paar Angaben fuer schaerfere Guidance.",
-            it: "Inizia a ottenere valore subito. Completa alcuni dati per una guida piu precisa.",
+            en: "10-minute mission: make Syntrake ready to guide your capital.",
+            pt: "Missao de 10 minutos: deixa o Syntrake pronto para guiar o teu capital.",
+            es: "Mision de 10 minutos: deja Syntrake listo para guiar tu capital.",
+            fr: "Mission de 10 minutes : preparez Syntrake a guider votre capital.",
+            de: "10-Minuten-Mission: Mach Syntrake bereit, dein Kapital zu fuehren.",
+            it: "Missione da 10 minuti: prepara Syntrake a guidare il tuo capitale.",
           });
 
     const body =
@@ -201,12 +289,12 @@ function FirstValueRail(props: {
               it: "Puoi gia leggere il flow live. Completa questi dati per rendere sizing, limiti di rischio e checklist broker piu specifici.",
             })
         : pickByLang(props.lang, {
-            en: "Daily, Planning, and Portfolio are already useful. Finishing these inputs lets Syntrake calibrate the plan around your real target and horizon.",
-            pt: "Daily, Planning e Portfolio ja sao uteis. Terminar estes inputs deixa o Syntrake calibrar o plano ao teu alvo e horizonte reais.",
-            es: "Daily, Planning y Portfolio ya son utiles. Completar estos datos permite a Syntrake calibrar el plan con tu objetivo y horizonte reales.",
-            fr: "Daily, Planning et Portfolio sont deja utiles. Completer ces donnees permet a Syntrake de calibrer le plan selon votre vrai objectif et horizon.",
-            de: "Daily, Planning und Portfolio sind bereits nuetzlich. Mit diesen Angaben kann Syntrake den Plan auf dein echtes Ziel und deinen Horizont kalibrieren.",
-            it: "Daily, Planning e Portfolio sono gia utili. Completare questi dati permette a Syntrake di calibrare il piano sul tuo vero obiettivo e orizzonte.",
+            en: "This is the guided path: set the plan, load the portfolio, read one daily action, then use Advisor and Autonomy only when the base is clear.",
+            pt: "Este e o caminho guiado: definir o plano, carregar o portfolio, ler uma acao diaria e so depois usar Advisor e Autonomia com a base clara.",
+            es: "Este es el camino guiado: definir plan, cargar portfolio, leer una accion diaria y despues usar Advisor y Autonomia con la base clara.",
+            fr: "Voici le chemin guide : definir le plan, charger le portefeuille, lire une action quotidienne, puis utiliser Advisor et Autonomie.",
+            de: "Das ist der gefuehrte Weg: Plan setzen, Portfolio laden, eine Tagesaktion lesen, dann Advisor und Autonomy nutzen.",
+            it: "Questo e il percorso guidato: definisci piano, carica portfolio, leggi una azione daily, poi usa Advisor e Autonomia.",
           });
 
     return (
@@ -253,6 +341,20 @@ function FirstValueRail(props: {
             </span>
           ))}
         </div>
+
+        {props.mode === "investing" ? (
+          <div className="mt-5 grid gap-2 md:grid-cols-5">
+            {missionSteps.map((step, index) => (
+              <div key={step.key} className={`rounded-2xl border p-3 ${guidedMissionToneClasses(step.status)}`}>
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-70">
+                  {String(index + 1).padStart(2, "0")}
+                </div>
+                <div className="mt-2 text-sm font-semibold tracking-tight">{step.title}</div>
+                <div className="mt-1 text-xs leading-5 opacity-80">{step.detail}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-3">
           <button
@@ -733,18 +835,25 @@ export default function AppUI() {
         : {},
     [settingsData],
   );
-  const firstValueRailState = useMemo(
-    () =>
-      deriveFirstValueRailState({
-        mode: workspaceMode,
-        tier,
-        settings,
-        view,
-        welcomeSetupRequested,
-        offlineSetupRequested,
-      }),
-    [workspaceMode, tier, settings, view, welcomeSetupRequested, offlineSetupRequested],
-  );
+	  const firstValueRailState = useMemo(
+	    () =>
+	      deriveFirstValueRailState({
+	        mode: workspaceMode,
+	        tier,
+	        settings,
+	        view,
+	        welcomeSetupRequested,
+	        offlineSetupRequested,
+	      }),
+	    [workspaceMode, tier, settings, view, welcomeSetupRequested, offlineSetupRequested],
+	  );
+  const setupProgress = useMemo(() => deriveSetupProgress(settings), [settings]);
+  const showInvestingExplainerRails =
+    workspaceMode === "investing" &&
+    view === "daily" &&
+    firstValueRailState.kind === "hidden" &&
+    !loadingAccess &&
+    !modeLoading;
   const firstValuePrimaryHref =
     workspaceMode === "trading" ? `/app?tab=opportunities&mode=${workspaceMode}` : `/app?tab=daily&mode=${workspaceMode}`;
   const setupHref = `/app?tab=planning&welcomeSetup=1&mode=${workspaceMode}`;
@@ -787,25 +896,54 @@ export default function AppUI() {
       <div className="hidden gap-2 md:flex">
         <MoneyPill
           label={pickByLang(lang, {
-            en: "This week",
-            pt: "Esta semana",
-            es: "Esta semana",
-            fr: "Cette semaine",
-            de: "Diese Woche",
-            it: "Questa settimana",
+            en: "Setup",
+            pt: "Setup",
+            es: "Setup",
+            fr: "Setup",
+            de: "Setup",
+            it: "Setup",
           })}
-          value="+EUR -"
+          value={
+            setupProgress.complete
+              ? pickByLang(lang, {
+                  en: "Complete",
+                  pt: "Completo",
+                  es: "Completo",
+                  fr: "Complet",
+                  de: "Komplett",
+                  it: "Completo",
+                })
+              : `${setupProgress.progressDone}/${setupProgress.progressTotal}`
+          }
         />
         <MoneyPill
           label={pickByLang(lang, {
-            en: "Protected",
-            pt: "Protegido",
-            es: "Protegido",
-            fr: "Protege",
-            de: "Geschutzt",
-            it: "Protetto",
+            en: "Protection",
+            pt: "Protecao",
+            es: "Proteccion",
+            fr: "Protection",
+            de: "Schutz",
+            it: "Protezione",
           })}
-          value="EUR -"
+          value={
+            setupProgress.complete
+              ? pickByLang(lang, {
+                  en: "Plan ready",
+                  pt: "Plano pronto",
+                  es: "Plan listo",
+                  fr: "Plan pret",
+                  de: "Plan bereit",
+                  it: "Piano pronto",
+                })
+              : pickByLang(lang, {
+                  en: "Configure",
+                  pt: "Configurar",
+                  es: "Configurar",
+                  fr: "Configurer",
+                  de: "Einrichten",
+                  it: "Configura",
+                })
+          }
         />
       </div>
     );
@@ -880,16 +1018,6 @@ export default function AppUI() {
             onChange={handleModeChange}
           />
 
-          {workspaceMode === "investing" && !loadingAccess && !modeLoading ? (
-            <WorkspaceIdentityRail
-              lang={lang}
-              mode={workspaceMode}
-              view={view}
-              tier={tier}
-              onNavigate={(href) => router.push(href)}
-            />
-          ) : null}
-
           {!settingsLoading && !loadingAccess && !modeLoading ? (
             <FirstValueRail
               lang={lang}
@@ -899,17 +1027,6 @@ export default function AppUI() {
               setupHref={setupHref}
               primaryHref={firstValuePrimaryHref}
               pricingHref={pricingHref}
-              onNavigate={(href) => router.push(href)}
-            />
-          ) : null}
-
-          {workspaceMode === "investing" && !loadingAccess && !modeLoading ? (
-            <TrustProofRail
-              lang={lang}
-              mode={workspaceMode}
-              tier={tier}
-              trustHref={trustHref}
-              secondaryHref={trustSecondaryHref}
               onNavigate={(href) => router.push(href)}
             />
           ) : null}
@@ -951,6 +1068,27 @@ export default function AppUI() {
               {view === "alerts" && <AlertsTab locale={lang === "pt" ? "pt" : "en"} />}
             </>
           )}
+
+          {showInvestingExplainerRails ? (
+            <WorkspaceIdentityRail
+              lang={lang}
+              mode={workspaceMode}
+              view={view}
+              tier={tier}
+              onNavigate={(href) => router.push(href)}
+            />
+          ) : null}
+
+          {showInvestingExplainerRails ? (
+            <TrustProofRail
+              lang={lang}
+              mode={workspaceMode}
+              tier={tier}
+              trustHref={trustHref}
+              secondaryHref={trustSecondaryHref}
+              onNavigate={(href) => router.push(href)}
+            />
+          ) : null}
         </div>
       </CockpitShell>
 

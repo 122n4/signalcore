@@ -260,6 +260,14 @@ async function auditPage(page, name, route, requiredSignals) {
     fail(`Application error copy appeared on ${name}.`, { route });
   }
 
+  if (/\+EUR -|EUR -/.test(body)) {
+    fail(`Unfinished money placeholder appeared on ${name}.`, { route });
+  }
+
+  if (/\bSignalCore\b/.test(body)) {
+    fail(`Legacy SignalCore brand copy appeared on ${name}.`, { route });
+  }
+
   report.pages.push(pageReport);
   return body;
 }
