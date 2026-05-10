@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import ProofRail from "@/components/ProofRail";
-import { pickByLang, type SiteLang } from "@/lib/i18n/siteLanguage";
+import { pickByLang, type Multilingual, type SiteLang } from "@/lib/i18n/siteLanguage";
 import { resolveRequestSiteLang, withLangQuery } from "@/lib/i18n/requestSiteLang";
 
 type PageSearchParams = Record<string, string | string[] | undefined>;
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 function t(
   lang: SiteLang,
-  value: { en: string; pt?: string; es?: string; fr?: string; de?: string; it?: string }
+  value: Multilingual
 ) {
   return pickByLang(lang, value);
 }

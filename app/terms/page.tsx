@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { pickByLang, type SiteLang } from "@/lib/i18n/siteLanguage";
+import { pickByLang, type Multilingual, type SiteLang } from "@/lib/i18n/siteLanguage";
 import { resolveRequestSiteLang, withLangQuery } from "@/lib/i18n/requestSiteLang";
 
 type PageSearchParams = Record<string, string | string[] | undefined>;
 
 function t(
   lang: SiteLang,
-  value: { en: string; pt?: string; es?: string; fr?: string; de?: string; it?: string }
+  value: Multilingual
 ) {
   return pickByLang(lang, value);
 }

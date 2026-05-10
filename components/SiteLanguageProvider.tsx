@@ -2,7 +2,14 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { track } from "@/lib/analytics/client";
-import { DEFAULT_SITE_LANG, SITE_LANG_COOKIE_KEY, type SiteLang, resolveSiteLang } from "@/lib/i18n/siteLanguage";
+import {
+  DEFAULT_SITE_LANG,
+  SITE_DETECTED_LANG_COOKIE_KEY,
+  SITE_LANG_COOKIE_KEY,
+  type SiteLang,
+  resolvePreferredSiteLang,
+  resolveSiteLang,
+} from "@/lib/i18n/siteLanguage";
 
 type SiteLanguageContextValue = {
   lang: SiteLang;
@@ -32,15 +39,25 @@ export function SiteLanguageProvider({ children }: { children: React.ReactNode }
     if (typeof window === "undefined") return;
     const cookieMatch = document.cookie.match(new RegExp(`(?:^|; )${SITE_LANG_COOKIE_KEY}=([^;]*)`));
     const rawCookie = cookieMatch?.[1] ? decodeURIComponent(cookieMatch[1]) : null;
-    const fromCookie = rawCookie ? resolveSiteLang(rawCookie) : null;
+    const detectedCookieMatch = document.cookie.match(new RegExp(`(?:^|; )${SITE_DETECTED_LANG_COOKIE_KEY}=([^;]*)`));
+    const rawDetectedCookie = detectedCookieMatch?.[1] ? decodeURIComponent(detectedCookieMatch[1]) : null;
     const qp = new URLSearchParams(window.location.search);
     const rawQuery = qp.get("lang");
-    const fromQuery = rawQuery ? resolveSiteLang(rawQuery) : null;
     const rawStored = window.localStorage.getItem(SITE_LANG_KEY);
-    const stored = rawStored ? resolveSiteLang(rawStored) : null;
+    const browserLanguages = Array.isArray(navigator.languages) && navigator.languages.length > 0
+      ? navigator.languages
+      : [navigator.language].filter(Boolean);
     // Sync initial language preference once after hydration.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLangState(fromQuery ?? stored ?? fromCookie ?? DEFAULT_SITE_LANG);
+    setLangState(
+      resolvePreferredSiteLang({
+        query: rawQuery,
+        stored: rawStored,
+        cookie: rawCookie,
+        browser: browserLanguages,
+        detected: rawDetectedCookie,
+      }),
+    );
   }, []);
 
   useEffect(() => {

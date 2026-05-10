@@ -1,5 +1,5 @@
-import { cookies } from "next/headers";
-import { DEFAULT_SITE_LANG, resolveSiteLang, SITE_LANG_COOKIE_KEY, type SiteLang } from "@/lib/i18n/siteLanguage";
+import { cookies, headers } from "next/headers";
+import { DEFAULT_SITE_LANG, resolvePreferredSiteLang, SITE_LANG_COOKIE_KEY, type SiteLang } from "@/lib/i18n/siteLanguage";
 
 type SearchParamsInput =
   | URLSearchParams
@@ -23,8 +23,14 @@ export async function resolveRequestSiteLang(searchParams?: SearchParamsInput): 
   }
 
   const cookieStore = await cookies();
+  const headerStore = await headers();
   const fromCookie = cookieStore.get(SITE_LANG_COOKIE_KEY)?.value ?? null;
-  return resolveSiteLang(fromQuery ?? fromCookie ?? DEFAULT_SITE_LANG);
+  return resolvePreferredSiteLang({
+    query: fromQuery,
+    cookie: fromCookie,
+    acceptLanguage: headerStore.get("accept-language"),
+    country: headerStore.get("x-vercel-ip-country") ?? headerStore.get("cf-ipcountry"),
+  });
 }
 
 export function withLangQuery(href: string, lang: SiteLang): string {

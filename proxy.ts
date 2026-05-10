@@ -1,7 +1,8 @@
 // proxy.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { isLocalQaAuthBypassRequest, LOCAL_QA_AUTH_COOKIE } from "@/lib/auth/localQaAuth";
+import { SITE_DETECTED_LANG_COOKIE_KEY, resolveCountrySiteLang } from "@/lib/i18n/siteLanguage";
 import { resolveProtectedRedirectTarget } from "@/lib/navigation/resolveProtectedRedirectTarget";
 
 /**
@@ -27,6 +28,19 @@ const isProtectedRoute = createRouteMatcher([
   "/api/market(.*)",
 ]);
 
+function attachDetectedLanguageCookie(req: NextRequest, res: NextResponse) {
+  const country = req.headers.get("x-vercel-ip-country") ?? req.headers.get("cf-ipcountry");
+  const detected = resolveCountrySiteLang(country);
+  if (!detected) return res;
+  res.cookies.set(SITE_DETECTED_LANG_COOKIE_KEY, detected, {
+    httpOnly: false,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 30,
+    path: "/",
+  });
+  return res;
+}
+
 export default clerkMiddleware(async (auth, req) => {
   const host = req.nextUrl.host.trim().toLowerCase();
 
@@ -38,7 +52,7 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // se não for protegida, passa
-  if (!isProtectedRoute(req)) return NextResponse.next();
+  if (!isProtectedRoute(req)) return attachDetectedLanguageCookie(req, NextResponse.next());
 
   if (isLocalQaAuthBypassRequest(req)) {
     const res = NextResponse.next();
@@ -48,7 +62,7 @@ export default clerkMiddleware(async (auth, req) => {
       maxAge: 60 * 60,
       path: "/",
     });
-    return res;
+    return attachDetectedLanguageCookie(req, res);
   }
 
   const a = await auth();
@@ -63,10 +77,10 @@ export default clerkMiddleware(async (auth, req) => {
     // se for página -> redirect para login com redirect_url
     const signInUrl = new URL("/sign-in", req.url);
     signInUrl.searchParams.set("redirect_url", resolveProtectedRedirectTarget(req.nextUrl.pathname, req.nextUrl.search));
-    return NextResponse.redirect(signInUrl);
+    return attachDetectedLanguageCookie(req, NextResponse.redirect(signInUrl));
   }
 
-  return NextResponse.next();
+  return attachDetectedLanguageCookie(req, NextResponse.next());
 });
 
 export const config = {

@@ -537,48 +537,80 @@ export default function AdvisorTab({
   const advisorProofStats = useMemo(
     () => [
       {
-        label: pickByLang(lang, {
-          en: "Strategy score",
-          pt: "Score estrategico",
-        }),
+	        label: pickByLang(lang, {
+	          en: "Strategy score",
+	          pt: "Score estrategico",
+	          es: "Score estrategico",
+	          fr: "Score strategique",
+	          de: "Strategie-Score",
+	          it: "Score strategico",
+	        }),
         value: `${Math.round(strategyPortfolioScore || 0)}/100`,
-        detail: pickByLang(lang, {
-          en: "Advisor tracks whether the current capital path is aligned or drifting.",
-          pt: "O Advisor acompanha se o caminho atual do capital esta alinhado ou a desviar.",
-        }),
+	        detail: pickByLang(lang, {
+	          en: "Advisor tracks whether the current capital path is aligned or drifting.",
+	          pt: "O Advisor acompanha se o caminho atual do capital esta alinhado ou a desviar.",
+	          es: "Advisor sigue si el camino actual del capital esta alineado o desviandose.",
+	          fr: "Advisor suit si le parcours actuel du capital est aligne ou en derive.",
+	          de: "Advisor verfolgt, ob der aktuelle Kapitalpfad ausgerichtet ist oder abdriftet.",
+	          it: "Advisor controlla se il percorso attuale del capitale e allineato o in deriva.",
+	        }),
       },
       {
-        label: pickByLang(lang, {
-          en: "Open leaks",
-          pt: "Leaks abertos",
-        }),
+	        label: pickByLang(lang, {
+	          en: "Open leaks",
+	          pt: "Leaks abertos",
+	          es: "Leaks abiertos",
+	          fr: "Leaks ouverts",
+	          de: "Offene Leaks",
+	          it: "Leak aperti",
+	        }),
         value: String(openLeakCount),
-        detail: pickByLang(lang, {
-          en: "Leaks are the fastest way to destroy confidence and slow compounding.",
-          pt: "Leaks sao a forma mais rapida de destruir confianca e abrandar o compounding.",
-        }),
+	        detail: pickByLang(lang, {
+	          en: "Leaks are the fastest way to destroy confidence and slow compounding.",
+	          pt: "Leaks sao a forma mais rapida de destruir confianca e abrandar o compounding.",
+	          es: "Los leaks son la forma mas rapida de destruir confianza y frenar el compounding.",
+	          fr: "Les leaks sont le moyen le plus rapide de detruire la confiance et de ralentir le compounding.",
+	          de: "Leaks sind der schnellste Weg, Vertrauen zu zerstoeren und Compounding zu bremsen.",
+	          it: "I leak sono il modo piu rapido per distruggere fiducia e rallentare il compounding.",
+	        }),
       },
       {
-        label: pickByLang(lang, {
-          en: "Weekly confirmed",
-          pt: "Confirmado na semana",
-        }),
+	        label: pickByLang(lang, {
+	          en: "Weekly confirmed",
+	          pt: "Confirmado na semana",
+	          es: "Confirmado en la semana",
+	          fr: "Confirme cette semaine",
+	          de: "Diese Woche bestaetigt",
+	          it: "Confermato nella settimana",
+	        }),
         value: weeklyConfirmedEur > 0 ? fmtEUR(weeklyConfirmedEur) : "0 EUR",
-        detail: pickByLang(lang, {
-          en: "Advisor becomes more credible when strategy improvements show up in receipts and execution quality.",
-          pt: "O Advisor torna-se mais credivel quando as melhorias estrategicas aparecem nos recibos e na qualidade de execucao.",
-        }),
+	        detail: pickByLang(lang, {
+	          en: "Advisor becomes more credible when strategy improvements show up in receipts and execution quality.",
+	          pt: "O Advisor torna-se mais credivel quando as melhorias estrategicas aparecem nos recibos e na qualidade de execucao.",
+	          es: "Advisor gana credibilidad cuando las mejoras estrategicas aparecen en recibos y calidad de ejecucion.",
+	          fr: "Advisor devient plus credible lorsque les ameliorations strategiques apparaissent dans les recus et la qualite d execution.",
+	          de: "Advisor wird glaubwuerdiger, wenn strategische Verbesserungen in Belegen und Ausfuehrungsqualitaet sichtbar werden.",
+	          it: "Advisor diventa piu credibile quando i miglioramenti strategici appaiono nelle ricevute e nella qualita di esecuzione.",
+	        }),
       },
       {
-        label: pickByLang(lang, {
-          en: "Next review",
-          pt: "Proxima revisao",
-        }),
+	        label: pickByLang(lang, {
+	          en: "Next review",
+	          pt: "Proxima revisao",
+	          es: "Proxima revision",
+	          fr: "Prochaine revue",
+	          de: "Naechste Ueberpruefung",
+	          it: "Prossima revisione",
+	        }),
         value: nextReviewAt ? fmtTime(nextReviewAt) : "Open now",
-        detail: pickByLang(lang, {
-          en: "The strategy layer keeps pressure, leaks, and plan changes visible between daily cycles.",
-          pt: "A camada estrategica mantem pressao, leaks e mudancas de plano visiveis entre ciclos diarios.",
-        }),
+	        detail: pickByLang(lang, {
+	          en: "The strategy layer keeps pressure, leaks, and plan changes visible between daily cycles.",
+	          pt: "A camada estrategica mantem pressao, leaks e mudancas de plano visiveis entre ciclos diarios.",
+	          es: "La capa estrategica mantiene presion, leaks y cambios de plan visibles entre ciclos diarios.",
+	          fr: "La couche strategique garde pression, leaks et changements de plan visibles entre les cycles quotidiens.",
+	          de: "Die Strategieebene haelt Druck, Leaks und Planaenderungen zwischen Tageszyklen sichtbar.",
+	          it: "Il livello strategico mantiene visibili pressione, leak e modifiche al piano tra i cicli daily.",
+	        }),
       },
     ],
     [lang, nextReviewAt, openLeakCount, strategyPortfolioScore, weeklyConfirmedEur],
@@ -586,19 +618,31 @@ export default function AdvisorTab({
   const advisorProofCards = useMemo(
     () => [
       {
-        title: pickByLang(lang, {
-          en: "What Advisor proves",
-          pt: "O que o Advisor prova",
-        }),
-        body: pickByLang(lang, {
-          en: "Advisor is the strategic layer that explains why Syntrake wants to press, pause, protect, or fix before the next capital move.",
-          pt: "O Advisor e a camada estrategica que explica porque o Syntrake quer acelerar, pausar, proteger ou corrigir antes do proximo movimento de capital.",
-        }),
+	        title: pickByLang(lang, {
+	          en: "What Advisor proves",
+	          pt: "O que o Advisor prova",
+	          es: "Lo que prueba Advisor",
+	          fr: "Ce que prouve Advisor",
+	          de: "Was Advisor beweist",
+	          it: "Cosa dimostra Advisor",
+	        }),
+	        body: pickByLang(lang, {
+	          en: "Advisor is the strategic layer that explains why Syntrake wants to press, pause, protect, or fix before the next capital move.",
+	          pt: "O Advisor e a camada estrategica que explica porque o Syntrake quer acelerar, pausar, proteger ou corrigir antes do proximo movimento de capital.",
+	          es: "Advisor es la capa estrategica que explica por que Syntrake quiere acelerar, pausar, proteger o corregir antes del siguiente movimiento de capital.",
+	          fr: "Advisor est la couche strategique qui explique pourquoi Syntrake veut accelerer, pauser, proteger ou corriger avant le prochain mouvement de capital.",
+	          de: "Advisor ist die Strategieebene, die erklaert, warum Syntrake vor der naechsten Kapitalbewegung druecken, pausieren, schuetzen oder korrigieren will.",
+	          it: "Advisor e il livello strategico che spiega perche Syntrake vuole accelerare, fermarsi, proteggere o correggere prima del prossimo movimento di capitale.",
+	        }),
         bullets: [
-          pickByLang(lang, {
-            en: "It translates score, pressure, and leaks into one strategic posture.",
-            pt: "Traduz score, pressao e leaks numa postura estrategica unica.",
-          }),
+	          pickByLang(lang, {
+	            en: "It translates score, pressure, and leaks into one strategic posture.",
+	            pt: "Traduz score, pressao e leaks numa postura estrategica unica.",
+	            es: "Traduce score, presion y leaks en una postura estrategica unica.",
+	            fr: "Il traduit score, pression et leaks en une posture strategique unique.",
+	            de: "Es uebersetzt Score, Druck und Leaks in eine strategische Haltung.",
+	            it: "Traduce score, pressione e leak in una postura strategica unica.",
+	          }),
           pickByLang(lang, {
             en: "It keeps the user focused on the main blocker instead of random fixes.",
             pt: "Mantem o utilizador focado no bloqueio principal em vez de correçoes aleatorias.",
