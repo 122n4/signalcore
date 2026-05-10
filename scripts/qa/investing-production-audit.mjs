@@ -90,16 +90,31 @@ async function resolveSignInUrl() {
   }
 
   const secretKey = process.env.CLERK_SECRET_KEY;
-  const userId = process.env.QA_CLERK_USER_ID;
+  const ownerUserIds = [
+    process.env.SC_OWNER_USER_ID,
+    ...String(process.env.SC_OWNER_USER_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean),
+  ]
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const userIds = [
+    process.env.QA_CLERK_USER_ID,
+    ...ownerUserIds,
+  ]
+    .map((id) => String(id || "").trim())
+    .filter(Boolean)
+    .filter((id, index, arr) => arr.indexOf(id) === index);
   const email = process.env.QA_CLERK_EMAIL;
 
-  if (!secretKey || (!userId && !email)) {
+  if (!secretKey || (!userIds.length && !email)) {
     return null;
   }
 
   const { createClerkClient } = await import("@clerk/backend");
   const client = createClerkClient({ secretKey });
-  let resolvedUserId = userId;
+  let resolvedUserId = userIds[0] || "";
 
   if (!resolvedUserId && email) {
     const users = await client.users.getUserList({ emailAddress: [email], limit: 1 });
@@ -110,12 +125,29 @@ async function resolveSignInUrl() {
     throw new Error("QA Clerk user was not found.");
   }
 
-  const token = await client.signInTokens.createSignInToken({
-    userId: resolvedUserId,
-    expiresInSeconds: 300,
-  });
-  report.auth.method = userId ? "CLERK_SECRET_KEY+QA_CLERK_USER_ID" : "CLERK_SECRET_KEY+QA_CLERK_EMAIL";
-  return token.url;
+  const candidates = resolvedUserId
+    ? [resolvedUserId, ...userIds.filter((id) => id !== resolvedUserId)]
+    : userIds;
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    try {
+      const token = await client.signInTokens.createSignInToken({
+        userId: candidate,
+        expiresInSeconds: 300,
+      });
+      report.auth.method = process.env.QA_CLERK_USER_ID === candidate
+        ? "CLERK_SECRET_KEY+QA_CLERK_USER_ID"
+        : ownerUserIds.includes(candidate)
+          ? "CLERK_SECRET_KEY+SC_OWNER_USER_IDS"
+          : "CLERK_SECRET_KEY+QA_CLERK_EMAIL";
+      return token.url;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("QA Clerk sign-in token could not be created.");
 }
 
 function attachPageDiagnostics(page) {

@@ -66,8 +66,11 @@ jobs:
           QA_CLERK_USER_ID: ${{ secrets.QA_CLERK_USER_ID }}
           QA_CLERK_EMAIL: ${{ secrets.QA_CLERK_EMAIL }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          SC_OWNER_USER_ID: ${{ secrets.SC_OWNER_USER_ID }}
+          SC_OWNER_USER_IDS: ${{ secrets.SC_OWNER_USER_IDS }}
         run: |
-          if [ -z "$QA_SIGN_IN_URL" ] && { [ -z "$CLERK_SECRET_KEY" ] || { [ -z "$QA_CLERK_USER_ID" ] && [ -z "$QA_CLERK_EMAIL" ]; }; }; then
+          OWNER_FALLBACK="${SC_OWNER_USER_ID:-${SC_OWNER_USER_IDS%%,*}}"
+          if [ -z "$QA_SIGN_IN_URL" ] && { [ -z "$CLERK_SECRET_KEY" ] || { [ -z "$QA_CLERK_USER_ID" ] && [ -z "$QA_CLERK_EMAIL" ] && [ -z "$OWNER_FALLBACK" ]; }; }; then
             echo "Skipping investing production audit: QA auth is not configured."
             exit 0
           fi
