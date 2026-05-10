@@ -8,14 +8,19 @@ import type {
 } from "@/lib/market/types";
 import { inferAssetKind } from "@/lib/market/symbols";
 import { binanceQuote, binanceCandles } from "@/lib/market/providers/binance";
+import { coinbaseCandles, coinbaseQuote } from "@/lib/market/providers/coinbase";
 import { finnhubQuote, finnhubCandles } from "@/lib/market/providers/finnhub";
 import { tdQuoteNormalized, tdCandles } from "@/lib/market/providers/twelvedata";
 
-export type ProviderPref = "auto" | "binance" | "finnhub" | "twelvedata";
+export type ProviderPref = "auto" | "binance" | "coinbase" | "finnhub" | "twelvedata";
 type ConcreteProviderPref = Exclude<ProviderPref, "auto">;
 
 function hasProviderKey(provider: ConcreteProviderPref) {
   if (provider === "binance") {
+    return true;
+  }
+
+  if (provider === "coinbase") {
     return true;
   }
 
@@ -34,7 +39,7 @@ function resolveProviderOrder(kind: AssetKind, pref: ProviderPref): ConcreteProv
   const baseOrder: ConcreteProviderPref[] =
     pref === "auto"
       ? kind === "crypto"
-        ? ["binance", "twelvedata", "finnhub"]
+        ? ["coinbase", "binance", "twelvedata", "finnhub"]
         : kind === "equity"
           ? ["finnhub", "twelvedata"]
           : ["twelvedata", "finnhub"]
@@ -63,6 +68,10 @@ function resolveExplicitProviderOrder(
     return ["binance", "twelvedata", "finnhub"];
   }
 
+  if (pref === "coinbase") {
+    return ["coinbase", "binance", "twelvedata", "finnhub"];
+  }
+
   if (pref === "finnhub") {
     return kind === "crypto"
       ? ["finnhub", "binance", "twelvedata"]
@@ -70,7 +79,7 @@ function resolveExplicitProviderOrder(
   }
 
   return kind === "crypto"
-    ? ["twelvedata", "binance", "finnhub"]
+    ? ["twelvedata", "coinbase", "binance", "finnhub"]
     : ["twelvedata", "finnhub"];
 }
 
@@ -89,6 +98,7 @@ export async function getQuote(
 
   for (const p of order) {
     try {
+      if (p === "coinbase") return await coinbaseQuote(symbol, undefined, options);
       if (p === "binance") return await binanceQuote(symbol, undefined, options);
       if (p === "finnhub") return await finnhubQuote(symbol, undefined, options);
       if (p === "twelvedata") return await tdQuoteNormalized(symbol, undefined, options);
@@ -116,6 +126,7 @@ export async function getCandles(
 
   for (const p of order) {
     try {
+      if (p === "coinbase") return await coinbaseCandles(symbol, tf, undefined, options);
       if (p === "binance") return await binanceCandles(symbol, tf, undefined, options);
       if (p === "finnhub") return await finnhubCandles(symbol, tf, undefined, options);
       if (p === "twelvedata") return await tdCandles(symbol, tf, undefined, options);
