@@ -16,6 +16,7 @@
     "qa:trading:prod": "node scripts/qa/trading-production-audit.mjs",
     "qa:billing": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/billingPremiumAudit.ts",
     "qa:billing:strict": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/billingPremiumAudit.ts --fail-on-issues --fail-on-warnings",
+    "qa:billing:fix-premium": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/fixPremiumMetadata.ts",
     "research:baseline": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/rebuildBaselineSnapshot.ts",
     "research:run": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchQueue.ts",
     "research:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchAutomationLoop.ts",

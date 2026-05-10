@@ -119,4 +119,61 @@ describe("trading research recovery", () => {
     expect(queue.tasks[0].last_run_id).toBe("run-retry-001");
     expect(queue.tasks[0].run_fingerprint).toBe("fp-retry");
   });
+
+  it("requeues a stage-timeout run even when the lock heartbeat is healthy", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    config.timing.stageWarnMs = 1000;
+    config.timing.stageHardTimeoutMs = 2000;
+    const task = createResearchTask({
+      id: "task-stage-timeout",
+      status: "running",
+      attempt: 1,
+      max_attempts: 2,
+      retryable: true,
+      started_at: "2026-03-19T10:00:00.000Z",
+      last_run_id: "run-stage-timeout-001",
+      run_fingerprint: "fp-stage-timeout",
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, {
+      ...createResearchQueue([task]),
+      active_run_id: "run-stage-timeout-001",
+    });
+    await writeJsonAtomic(config.paths.lockPath, {
+      version: 1,
+      run_id: "run-stage-timeout-001",
+      task_id: "task-stage-timeout",
+      runner_pid: 9999,
+      hostname: "test",
+      started_at: "2026-03-19T10:00:00.000Z",
+      heartbeat_at: new Date().toISOString(),
+      stage: "aggregate",
+      run_fingerprint: "fp-stage-timeout",
+      baseline_id: "baseline-test-live",
+    });
+
+    const paths = buildResearchRunArtifactPaths(config.paths.runsDir, "run-stage-timeout-001");
+    await writeJsonAtomic(paths.statusPath, {
+      run_id: "run-stage-timeout-001",
+      task_id: "task-stage-timeout",
+      status: "running",
+      stage: "aggregate",
+      started_at: "2026-03-19T10:00:00.000Z",
+      updated_at: new Date().toISOString(),
+      stage_started_at: "2026-03-19T10:00:00.000Z",
+      completed_stages: [],
+      failed_stage: null,
+      error: null,
+    });
+
+    const result = await recoverResearchRunner(config);
+    expect(result.recovered).toBe(true);
+    expect(result.message).toContain("automatic retry");
+
+    const queue = await readResearchQueue(config);
+    expect(queue.active_run_id).toBeNull();
+    expect(queue.tasks[0].status).toBe("pending");
+    expect(queue.tasks[0].error).toContain("Recovered stage-timeout run");
+  });
 });

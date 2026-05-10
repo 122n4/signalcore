@@ -11,6 +11,7 @@ import {
 } from "./queue";
 import type { ResearchConfig, ResearchDecisionLedgerEntry, ResearchRunDecision } from "./types";
 import { readJsonIfExists } from "./fs";
+import { buildResearchRuntimeHealth } from "./runtimeHealth";
 
 export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   recovered: boolean;
@@ -23,9 +24,18 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   }
 
   const health = classifyResearchLockHealth(config, lock);
-  if (health === "healthy") {
+  const runtimeHealth = await buildResearchRuntimeHealth({ config });
+  const stageTimedOut =
+    runtimeHealth.activeRun.runId === lock.run_id &&
+    runtimeHealth.activeRun.stageHealth === "timed_out";
+
+  if (health === "healthy" && !stageTimedOut) {
     return { recovered: false, message: "Active research lock is healthy." };
   }
+
+  const recoveryReason = stageTimedOut
+    ? `Recovered stage-timeout run in '${runtimeHealth.activeRun.stage ?? lock.stage}' after ${runtimeHealth.activeRun.stageElapsedMs ?? "unknown"}ms.`
+    : "Recovered stale or hung run without complete artifact contract.";
 
   const queue = await readResearchQueue(config);
   const task = queue.tasks.find((entry) => entry.id === lock.task_id) ?? null;
@@ -74,10 +84,12 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   }
 
   const failureForensics = classifyResearchFailure({
-    reason: "Recovered stale or hung run without complete artifact contract.",
-    error: "Recovered stale or hung run without complete artifact contract.",
+    reason: recoveryReason,
+    error: recoveryReason,
   });
-  const recoveryError = "Recovered stale or hung lock without complete artifact contract.";
+  const recoveryError = stageTimedOut
+    ? `${recoveryReason} Artifact contract was incomplete.`
+    : "Recovered stale or hung lock without complete artifact contract.";
   const canRetry =
     task !== null &&
     task.retryable &&
@@ -109,9 +121,9 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
     run_fingerprint: lock.run_fingerprint,
     decision: "failed",
     reason: canRetry
-      ? `Recovered stale or hung run without complete artifact contract; auto-requeued attempt ${task?.attempt ?? 0}/${task?.max_attempts ?? 0}.`
-      : "Recovered stale or hung run without complete artifact contract.",
-    error: "Recovered stale or hung run without complete artifact contract.",
+      ? `${recoveryReason}; auto-requeued attempt ${task?.attempt ?? 0}/${task?.max_attempts ?? 0}.`
+      : recoveryReason,
+    error: recoveryError,
     planner_family_id: task?.planner_source?.family_id ?? null,
     planner_template_id: task?.planner_source?.template_id ?? null,
     planner_campaign_id: task?.planner_source?.campaign_id ?? null,
@@ -125,7 +137,7 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   return {
     recovered: true,
     message: canRetry
-      ? `Requeued stale run '${lock.run_id}' for automatic retry.`
-      : `Marked stale run '${lock.run_id}' as failed.`,
+      ? `Requeued recoverable run '${lock.run_id}' for automatic retry.`
+      : `Marked recoverable run '${lock.run_id}' as failed.`,
   };
 }
