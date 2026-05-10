@@ -202,7 +202,7 @@ export type ResearchRunStatus = {
   run_id: string;
   task_id: string;
   status: "running" | "completed" | "failed";
-  stage: "aggregate" | "crisis" | "walkforward" | "decision" | "completed" | "failed";
+  stage: "aggregate" | "crisis" | "walkforward" | "robustness" | "decision" | "completed" | "failed";
   started_at: string;
   updated_at: string;
   stage_started_at?: string;
@@ -223,6 +223,10 @@ export type ResearchValidationThresholds = {
   crisisProfitFactorMinDelta: number;
   maxDrawdownMinImprovement: number;
   requireWalkForwardBreakEven: boolean;
+  minAggregateTrades?: number;
+  maxAggregateTrades?: number;
+  minAggregateTradeRetentionPct?: number;
+  requireCrisisImprovementForPromotion?: boolean;
   requireHoldoutBreakEven?: boolean;
   requirePerturbationBreakEven?: boolean;
   requireMonteCarloBreakEven?: boolean;
@@ -239,6 +243,8 @@ export type ResearchGateEvaluation = {
   aggregateExpectancyStable: boolean;
   aggregateProfitFactorStable: boolean;
   aggregateDrawdownStable: boolean;
+  aggregateTradeCountStable?: boolean;
+  aggregateTradeCadencePass?: boolean;
   crisisExpectancyStable: boolean;
   crisisProfitFactorStable: boolean;
   crisisDrawdownStable: boolean;
@@ -269,6 +275,9 @@ export type ResearchGateEvaluation = {
   aggregateImproved: boolean;
   crisisImproved: boolean;
   walkForwardImproved: boolean;
+  aggregatePromotionThresholdMet?: boolean;
+  crisisPromotionThresholdMet?: boolean;
+  drawdownPromotionThresholdMet?: boolean;
   promotionThresholdMet: boolean;
   allHardGatesPass: boolean;
 };
@@ -1095,6 +1104,11 @@ export type ResearchTaskExecutorContext = {
     aggregateComparative: TradingBacktestComparativeReport;
     crisisComparative: TradingBacktestComparativeReport;
   };
+  reportProgress?: (progress: {
+    stage: ResearchRunStatus["stage"];
+    progress_note: string;
+    completed_stages?: ResearchRunStatus["completed_stages"];
+  }) => Promise<void>;
 };
 
 export type ResearchTaskExecutor = (

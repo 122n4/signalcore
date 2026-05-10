@@ -337,6 +337,84 @@ describe("trading research runner", () => {
     expect(observedHeartbeatUpdate).toBe(true);
   }, 15000);
 
+  it("persists explicit stage progress while a task is running", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([createResearchTask({ id: "task-progress" })]),
+    );
+
+    let observedStage: string | null = null;
+    let observedNote: string | null = null;
+
+    await processResearchQueue(config, {
+      executors: {
+        risk_shaping: async ({ config: executorConfig, reportProgress }) => {
+          await reportProgress?.({
+            stage: "crisis",
+            progress_note: "Running crisis validation slice.",
+            completed_stages: ["aggregate"],
+          });
+
+          const queue = await readResearchQueue(executorConfig);
+          const status = await readJsonFile<{ stage: string; progress_note: string | null }>(
+            path.join(executorConfig.paths.runsDir, queue.active_run_id as string, "status.json"),
+          );
+          observedStage = status.stage;
+          observedNote = status.progress_note;
+
+          return {
+            affectedInstruments: ["NAS100"],
+            comparison: {
+              aggregate: {
+                baseline: createMetricSummary(),
+                current: createMetricSummary({ profitFactor: 1.62, maxDrawdown: 3.8 }),
+              },
+              crisis: {
+                baseline: createMetricSummary({ expectancy: -0.05, profitFactor: 0.98, maxDrawdown: 5 }),
+                current: createMetricSummary({ expectancy: -0.02, profitFactor: 1.05, maxDrawdown: 4.6 }),
+              },
+              walkForward: {
+                baseline: createMetricSummary({ expectancy: 0.05, profitFactor: 1.01, maxDrawdown: 2.4 }),
+                current: createMetricSummary({ expectancy: 0.08, profitFactor: 1.04, maxDrawdown: 2.2 }),
+                affectedInstruments: ["NAS100"],
+              },
+              gates: {
+                aggregateExpectancyStable: true,
+                aggregateProfitFactorStable: true,
+                aggregateDrawdownStable: true,
+                crisisExpectancyStable: true,
+                crisisProfitFactorStable: true,
+                crisisDrawdownStable: true,
+                walkForwardExpectancyStable: true,
+                walkForwardProfitFactorStable: true,
+                walkForwardDrawdownStable: true,
+                walkForwardBreakEvenOrBetter: true,
+                aggregateImproved: true,
+                crisisImproved: true,
+                walkForwardImproved: true,
+                promotionThresholdMet: true,
+                allHardGatesPass: true,
+              },
+            },
+            artifacts: {
+              aggregateReport: { ok: true },
+              crisisReport: { ok: true },
+              walkForwardReport: { ok: true },
+            },
+          };
+        },
+      },
+      now: () => new Date("2026-03-19T10:00:00.000Z"),
+      pid: () => 7272,
+      postCycleOpportunityRefresh: stubOpportunityRefresh,
+    });
+
+    expect(observedStage).toBe("crisis");
+    expect(observedNote).toBe("Running crisis validation slice.");
+  }, 15000);
+
   it("refreshes research opportunities after each processed run instead of waiting for full cycle end", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);

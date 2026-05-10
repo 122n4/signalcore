@@ -110,29 +110,29 @@ describe("trading research ranking and forensics", () => {
         reason: "EPERM: operation not permitted, rename research-lock.json.tmp -> research-lock.json",
       }).category,
     ).toBe("runtime_os");
-    expect(
-      decideResearchRun({
-        runId: "run-1",
-        taskId: "task-1",
-        gates: {
-          aggregateExpectancyStable: false,
-          aggregateProfitFactorStable: true,
-          aggregateDrawdownStable: true,
-          crisisExpectancyStable: true,
-          crisisProfitFactorStable: true,
-          crisisDrawdownStable: true,
-          walkForwardExpectancyStable: true,
-          walkForwardProfitFactorStable: true,
-          walkForwardDrawdownStable: true,
-          walkForwardBreakEvenOrBetter: true,
-          aggregateImproved: false,
-          crisisImproved: false,
-          walkForwardImproved: false,
-          promotionThresholdMet: false,
-          allHardGatesPass: false,
-        },
-        promotedMetrics: {},
-      }).failure_forensics?.category,
-    ).toBe("validation_gate");
+    const validationDecision = decideResearchRun({
+      runId: "run-1",
+      taskId: "task-1",
+      gates: {
+        aggregateExpectancyStable: false,
+        aggregateProfitFactorStable: true,
+        aggregateDrawdownStable: true,
+        crisisExpectancyStable: true,
+        crisisProfitFactorStable: true,
+        crisisDrawdownStable: true,
+        walkForwardExpectancyStable: true,
+        walkForwardProfitFactorStable: true,
+        walkForwardDrawdownStable: true,
+        walkForwardBreakEvenOrBetter: true,
+        aggregateImproved: false,
+        crisisImproved: false,
+        walkForwardImproved: false,
+        promotionThresholdMet: false,
+        allHardGatesPass: false,
+      },
+      promotedMetrics: {},
+    });
+    expect(validationDecision.failure_forensics?.category).toBe("validation_gate");
+    expect(validationDecision.reason).toContain("aggregate expectancy degraded");
   });
 });

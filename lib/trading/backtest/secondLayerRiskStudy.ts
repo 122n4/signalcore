@@ -56,6 +56,11 @@ export type TradingSecondLayerRiskStudyRequest = {
     yearlyComparatives?: TradingBacktestComparativeReport[];
     crisisComparatives?: TradingBacktestComparativeReport[];
   };
+  onProgress?: (progress: {
+    stage: "aggregate" | "crisis" | "walkforward";
+    scenarioId?: string;
+    message: string;
+  }) => void | Promise<void>;
 };
 
 export type TradingSecondLayerRiskStudyScenarioResult = {
@@ -334,6 +339,11 @@ export async function runTradingSecondLayerRiskStudy(
     }
 
     const scenarioBacktest = mergeBacktestWithScenario(request.backtest, scenario.rules);
+    await request.onProgress?.({
+      stage: "aggregate",
+      scenarioId: scenario.id,
+      message: `Running aggregate sweep for ${scenario.id} on ${affectedInstruments.join(", ")}.`,
+    });
     const affectedYearly = await runTradingHistoricalComparativeSweep({
       periods: request.yearlyPeriods,
       instruments: affectedInstruments,
@@ -341,6 +351,11 @@ export async function runTradingSecondLayerRiskStudy(
       continueOnError: true,
       sourcePreference: request.sourcePreference,
       backtest: scenarioBacktest,
+    });
+    await request.onProgress?.({
+      stage: "crisis",
+      scenarioId: scenario.id,
+      message: `Running crisis sweep for ${scenario.id} on ${affectedInstruments.join(", ")}.`,
     });
     const affectedCrisis = await runTradingHistoricalComparativeSweep({
       periods: request.crisisPeriods,
@@ -370,6 +385,11 @@ export async function runTradingSecondLayerRiskStudy(
           new Set(affectedInstruments),
         );
       } else {
+        await request.onProgress?.({
+          stage: "walkforward",
+          scenarioId: scenario.id,
+          message: `Building baseline walk-forward reference for ${scenario.id}.`,
+        });
         const baselineWalkForward = await runTradingWalkForwardStudy({
           instruments: affectedInstruments,
           from: request.walkForward?.from ?? request.yearlyPeriods[0]?.from ?? "2020-01-01T00:00:00.000Z",
@@ -387,23 +407,30 @@ export async function runTradingSecondLayerRiskStudy(
       baselineWalkForwardCache.set(walkForwardKey, baselineWalkForwardSummary);
     }
 
-    const walkForwardSummary =
-      walkForwardMode === "comparative_proxy"
-        ? computeSummaryFromComparativeCollection([affectedYearly], new Set(affectedInstruments))
-        : toWalkForwardSummary(
-            await runTradingWalkForwardStudy({
-              instruments: affectedInstruments,
-              from: request.walkForward?.from ?? request.yearlyPeriods[0]?.from ?? "2020-01-01T00:00:00.000Z",
-              to:
-                request.walkForward?.to ??
-                request.yearlyPeriods[request.yearlyPeriods.length - 1]?.to ??
-                "2025-12-31T23:59:59.000Z",
-              timeframes,
-              sourcePreference: request.sourcePreference,
-              backtest: scenarioBacktest,
-              windowing: request.walkForward?.windowing,
-            }),
-          );
+    let walkForwardSummary: TradingSecondLayerRiskStudyMetricSummary;
+    if (walkForwardMode === "comparative_proxy") {
+      walkForwardSummary = computeSummaryFromComparativeCollection([affectedYearly], new Set(affectedInstruments));
+    } else {
+      await request.onProgress?.({
+        stage: "walkforward",
+        scenarioId: scenario.id,
+        message: `Running candidate walk-forward validation for ${scenario.id}.`,
+      });
+      walkForwardSummary = toWalkForwardSummary(
+        await runTradingWalkForwardStudy({
+          instruments: affectedInstruments,
+          from: request.walkForward?.from ?? request.yearlyPeriods[0]?.from ?? "2020-01-01T00:00:00.000Z",
+          to:
+            request.walkForward?.to ??
+            request.yearlyPeriods[request.yearlyPeriods.length - 1]?.to ??
+            "2025-12-31T23:59:59.000Z",
+          timeframes,
+          sourcePreference: request.sourcePreference,
+          backtest: scenarioBacktest,
+          windowing: request.walkForward?.windowing,
+        }),
+      );
+    }
     const aggregateDelta = buildDelta(aggregateSummary, baselineAggregateSummary);
     const crisisDelta = buildDelta(crisisSummary, baselineCrisisSummary);
     const walkForwardDelta = buildDelta(walkForwardSummary, baselineWalkForwardSummary);

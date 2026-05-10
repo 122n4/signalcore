@@ -52,6 +52,7 @@ import type {
   ResearchRunStatus,
   ResearchSupplementalValidation,
   ResearchTask,
+  ResearchTaskExecutorContext,
   ResearchTaskExecutor,
   ResearchTaskExecutorMap,
   ResearchTaskRunnerDependencies,
@@ -268,6 +269,27 @@ function buildResearchComparison(args: {
   };
 }
 
+async function reportBacktestProgress(
+  context: ResearchTaskExecutorContext,
+  progress: {
+    stage: "aggregate" | "crisis" | "walkforward";
+    scenarioId?: string;
+    message: string;
+  },
+) {
+  const completed: ResearchRunStatus["completed_stages"] =
+    progress.stage === "aggregate"
+      ? []
+      : progress.stage === "crisis"
+        ? ["aggregate"]
+        : ["aggregate", "crisis"];
+  await context.reportProgress?.({
+    stage: progress.stage,
+    progress_note: progress.message,
+    completed_stages: completed,
+  });
+}
+
 export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
   const riskShapingExecutor: ResearchTaskExecutor = async (context) => {
     const scenario = buildResearchRiskScenarioFromTask({
@@ -294,12 +316,18 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         yearlyComparatives: [context.baseline.aggregateComparative],
         crisisComparatives: [context.baseline.crisisComparative],
       },
+      onProgress: (progress) => reportBacktestProgress(context, progress),
     });
 
     const scenarioResult = report.scenarios[0];
     const walkKey = scenarioResult.affectedInstruments.slice().sort().join(",");
     const walkBaseline = report.baseline.walkForwardByAffectedInstruments[walkKey];
     const thresholds = context.config.validationProfiles[context.task.validation_profile].thresholds;
+    await context.reportProgress?.({
+      stage: "robustness",
+      progress_note: "Running holdout, perturbation, and stress robustness checks.",
+      completed_stages: ["aggregate", "crisis", "walkforward"],
+    });
     let robustness = await runResearchRiskRobustnessValidation({
       context,
       scenario,
@@ -318,6 +346,11 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
     });
 
     if (context.config.study.robustness?.monteCarlo?.enabled && comparison.gates.allHardGatesPass) {
+      await context.reportProgress?.({
+        stage: "robustness",
+        progress_note: "Running Monte Carlo robustness validation.",
+        completed_stages: ["aggregate", "crisis", "walkforward"],
+      });
       const monteCarlo = await runResearchRiskMonteCarloValidation({
         context,
         scenario,
@@ -341,6 +374,11 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
     }
 
     if (context.config.study.robustness?.finalHoldout?.enabled && comparison.gates.allHardGatesPass) {
+      await context.reportProgress?.({
+        stage: "robustness",
+        progress_note: "Running final holdout robustness validation.",
+        completed_stages: ["aggregate", "crisis", "walkforward"],
+      });
       const finalHoldout = await runResearchRiskFinalHoldoutValidation({
         context,
         scenario,
@@ -364,6 +402,11 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
     }
 
     if (context.config.study.robustness?.costStress?.enabled && comparison.gates.allHardGatesPass) {
+      await context.reportProgress?.({
+        stage: "robustness",
+        progress_note: "Running cost-stress robustness validation.",
+        completed_stages: ["aggregate", "crisis", "walkforward"],
+      });
       const costStress = await runResearchRiskCostStressValidation({
         context,
         scenario,
@@ -434,12 +477,18 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         yearlyComparatives: [context.baseline.aggregateComparative],
         crisisComparatives: [context.baseline.crisisComparative],
       },
+      onProgress: (progress) => reportBacktestProgress(context, progress),
     });
 
     const scenarioResult = report.scenarios[0];
     const walkKey = scenarioResult.affectedInstruments.slice().sort().join(",");
     const walkBaseline = report.baseline.walkForwardByAffectedInstruments[walkKey];
     const thresholds = context.config.validationProfiles[context.task.validation_profile].thresholds;
+    await context.reportProgress?.({
+      stage: "robustness",
+      progress_note: "Running holdout, perturbation, and stress robustness checks.",
+      completed_stages: ["aggregate", "crisis", "walkforward"],
+    });
     let robustness = await runResearchContextRobustnessValidation({
       context,
       scenario,
@@ -458,6 +507,11 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
     });
 
     if (context.config.study.robustness?.monteCarlo?.enabled && comparison.gates.allHardGatesPass) {
+      await context.reportProgress?.({
+        stage: "robustness",
+        progress_note: "Running Monte Carlo robustness validation.",
+        completed_stages: ["aggregate", "crisis", "walkforward"],
+      });
       const monteCarlo = await runResearchContextMonteCarloValidation({
         context,
         scenario,
@@ -481,6 +535,11 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
     }
 
     if (context.config.study.robustness?.finalHoldout?.enabled && comparison.gates.allHardGatesPass) {
+      await context.reportProgress?.({
+        stage: "robustness",
+        progress_note: "Running final holdout robustness validation.",
+        completed_stages: ["aggregate", "crisis", "walkforward"],
+      });
       const finalHoldout = await runResearchContextFinalHoldoutValidation({
         context,
         scenario,
@@ -504,6 +563,11 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
     }
 
     if (context.config.study.robustness?.costStress?.enabled && comparison.gates.allHardGatesPass) {
+      await context.reportProgress?.({
+        stage: "robustness",
+        progress_note: "Running cost-stress robustness validation.",
+        completed_stages: ["aggregate", "crisis", "walkforward"],
+      });
       const costStress = await runResearchContextCostStressValidation({
         context,
         scenario,
@@ -763,6 +827,15 @@ async function runSingleResearchTask(
     activeStatus = buildRunStatusHeartbeat(activeStatus, activeStage);
     await writeJsonAtomic(runPaths.statusPath, activeStatus);
   };
+  const reportProgress: NonNullable<ResearchTaskExecutorContext["reportProgress"]> = async (progress) => {
+    activeStage = progress.stage;
+    activeLock = await updateResearchLockHeartbeat(config, activeLock, activeStage);
+    activeStatus = buildRunStatusHeartbeat(activeStatus, activeStage, {
+      progress_note: progress.progress_note,
+      completed_stages: progress.completed_stages ?? activeStatus.completed_stages,
+    });
+    await writeJsonAtomic(runPaths.statusPath, activeStatus);
+  };
 
   const heartbeatTimer = setInterval(() => {
     void updateResearchLockHeartbeat(config, activeLock, activeStage)
@@ -781,12 +854,13 @@ async function runSingleResearchTask(
       config,
       task,
       baseline,
+      reportProgress,
     });
 
     activeStage = "decision";
     activeLock = await updateResearchLockHeartbeat(config, activeLock, activeStage);
     activeStatus = buildRunStatusHeartbeat(activeStatus, activeStage, {
-      completed_stages: ["aggregate", "crisis", "walkforward"],
+      completed_stages: ["aggregate", "crisis", "walkforward", "robustness"],
     });
     await writeJsonAtomic(runPaths.statusPath, activeStatus);
     await writeJsonAtomic(runPaths.aggregateReportPath, result.artifacts.aggregateReport);
@@ -819,7 +893,7 @@ async function runSingleResearchTask(
       status: "completed",
       stage: "completed",
       updated_at: new Date().toISOString(),
-      completed_stages: ["aggregate", "crisis", "walkforward", "decision"],
+      completed_stages: ["aggregate", "crisis", "walkforward", "robustness", "decision"],
       failed_stage: null,
       error: null,
     } satisfies ResearchRunStatus;

@@ -50,6 +50,11 @@ export type TradingContextBlockStudyRequest = {
     crisisComparatives?: TradingBacktestComparativeReport[] | null;
     walkForwardByAffectedInstruments?: Record<string, TradingContextBlockStudyMetricSummary> | null;
   };
+  onProgress?: (progress: {
+    stage: "aggregate" | "crisis" | "walkforward";
+    scenarioId?: string;
+    message: string;
+  }) => void | Promise<void>;
 };
 
 export type TradingContextBlockStudyScenarioResult = {
@@ -345,6 +350,11 @@ export async function runTradingContextBlockStudy(
     );
     const affectedInstrumentSet = new Set(affectedInstruments);
 
+    await request.onProgress?.({
+      stage: "aggregate",
+      scenarioId: scenario.id,
+      message: `Running aggregate context sweep for ${scenario.id} on ${affectedInstruments.join(", ")}.`,
+    });
     const affectedYearly = await runTradingHistoricalComparativeSweep({
       periods: request.yearlyPeriods,
       instruments: affectedInstruments,
@@ -352,6 +362,11 @@ export async function runTradingContextBlockStudy(
       continueOnError: true,
       sourcePreference: request.sourcePreference,
       backtest: mergeBacktestWithScenario(baseBacktest, scenario.rules),
+    });
+    await request.onProgress?.({
+      stage: "crisis",
+      scenarioId: scenario.id,
+      message: `Running crisis context sweep for ${scenario.id} on ${affectedInstruments.join(", ")}.`,
     });
     const affectedCrisis = await runTradingHistoricalComparativeSweep({
       periods: request.crisisPeriods,
@@ -365,6 +380,11 @@ export async function runTradingContextBlockStudy(
     const instrumentKey = affectedInstruments.slice().sort().join("|");
 
     if (!baselineWalkForwardCache.has(instrumentKey)) {
+      await request.onProgress?.({
+        stage: "walkforward",
+        scenarioId: scenario.id,
+        message: `Building baseline walk-forward reference for ${scenario.id}.`,
+      });
       const baselineWalkForward = await runTradingWalkForwardStudy({
         instruments: affectedInstruments,
         from: request.walkForward?.from ?? "2020-01-01T00:00:00.000Z",
@@ -377,6 +397,11 @@ export async function runTradingContextBlockStudy(
       baselineWalkForwardCache.set(instrumentKey, toWalkForwardSummary(baselineWalkForward));
     }
 
+    await request.onProgress?.({
+      stage: "walkforward",
+      scenarioId: scenario.id,
+      message: `Running candidate walk-forward context validation for ${scenario.id}.`,
+    });
     const scenarioWalkForward = await runTradingWalkForwardStudy({
       instruments: affectedInstruments,
       from: request.walkForward?.from ?? "2020-01-01T00:00:00.000Z",

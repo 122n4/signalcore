@@ -8,6 +8,12 @@ function inverseStable(current: number | null, baseline: number | null, epsilon:
   return (current ?? Number.POSITIVE_INFINITY) <= (baseline ?? Number.POSITIVE_INFINITY) + epsilon;
 }
 
+function normalizeRetentionPct(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const bounded = Math.max(0, Number(value));
+  return bounded > 1 ? bounded / 100 : bounded;
+}
+
 export function evaluateResearchValidationGates(args: {
   aggregateBaseline: ResearchMetricSummary;
   aggregateCurrent: ResearchMetricSummary;
@@ -44,6 +50,18 @@ export function evaluateResearchValidationGates(args: {
     args.aggregateBaseline.maxDrawdown,
     epsilon,
   );
+  const tradeRetentionPct = normalizeRetentionPct(args.thresholds.minAggregateTradeRetentionPct);
+  const minTrades = args.thresholds.minAggregateTrades;
+  const maxTrades = args.thresholds.maxAggregateTrades;
+  const aggregateTradeCountStable =
+    tradeRetentionPct == null
+      ? true
+      : args.aggregateCurrent.totalTrades >=
+        Math.floor(args.aggregateBaseline.totalTrades * tradeRetentionPct);
+  const aggregateTradeCadencePass =
+    aggregateTradeCountStable &&
+    (minTrades == null || args.aggregateCurrent.totalTrades >= minTrades) &&
+    (maxTrades == null || args.aggregateCurrent.totalTrades <= maxTrades);
 
   const crisisExpectancyStable = positiveStable(
     args.crisisCurrent.expectancy,
@@ -219,22 +237,37 @@ export function evaluateResearchValidationGates(args: {
       (args.walkForwardBaseline.profitFactor ?? 0) + epsilon ||
     args.walkForwardCurrent.maxDrawdown < args.walkForwardBaseline.maxDrawdown - epsilon;
 
-  const promotionThresholdMet =
+  const aggregatePromotionThresholdMet =
     args.aggregateCurrent.expectancy >=
       args.aggregateBaseline.expectancy + args.thresholds.aggregateExpectancyMinDelta ||
     (args.aggregateCurrent.profitFactor ?? 0) >=
-      (args.aggregateBaseline.profitFactor ?? 0) + args.thresholds.aggregateProfitFactorMinDelta ||
+      (args.aggregateBaseline.profitFactor ?? 0) + args.thresholds.aggregateProfitFactorMinDelta;
+  const crisisPromotionThresholdMet =
     args.crisisCurrent.expectancy >=
       args.crisisBaseline.expectancy + args.thresholds.crisisExpectancyMinDelta ||
     (args.crisisCurrent.profitFactor ?? 0) >=
-      (args.crisisBaseline.profitFactor ?? 0) + args.thresholds.crisisProfitFactorMinDelta ||
+      (args.crisisBaseline.profitFactor ?? 0) + args.thresholds.crisisProfitFactorMinDelta;
+  const drawdownPromotionThresholdMet =
     args.aggregateCurrent.maxDrawdown <=
-      args.aggregateBaseline.maxDrawdown - args.thresholds.maxDrawdownMinImprovement;
+      args.aggregateBaseline.maxDrawdown - args.thresholds.maxDrawdownMinImprovement ||
+    args.crisisCurrent.maxDrawdown <=
+      args.crisisBaseline.maxDrawdown - args.thresholds.maxDrawdownMinImprovement;
+  const rawPromotionThresholdMet =
+    aggregatePromotionThresholdMet ||
+    crisisPromotionThresholdMet ||
+    drawdownPromotionThresholdMet;
+  const crisisPromotionRequirementPass =
+    !args.thresholds.requireCrisisImprovementForPromotion || crisisPromotionThresholdMet;
+  const promotionThresholdMet =
+    rawPromotionThresholdMet &&
+    crisisPromotionRequirementPass &&
+    aggregateTradeCadencePass;
 
   const allHardGatesPass =
     aggregateExpectancyStable &&
     aggregateProfitFactorStable &&
     aggregateDrawdownStable &&
+    aggregateTradeCadencePass &&
     crisisExpectancyStable &&
     crisisProfitFactorStable &&
     crisisDrawdownStable &&
@@ -269,6 +302,8 @@ export function evaluateResearchValidationGates(args: {
     aggregateExpectancyStable,
     aggregateProfitFactorStable,
     aggregateDrawdownStable,
+    aggregateTradeCountStable,
+    aggregateTradeCadencePass,
     crisisExpectancyStable,
     crisisProfitFactorStable,
     crisisDrawdownStable,
@@ -299,6 +334,9 @@ export function evaluateResearchValidationGates(args: {
     aggregateImproved,
     crisisImproved,
     walkForwardImproved,
+    aggregatePromotionThresholdMet,
+    crisisPromotionThresholdMet,
+    drawdownPromotionThresholdMet,
     promotionThresholdMet,
     allHardGatesPass,
   };
