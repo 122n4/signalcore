@@ -108,11 +108,11 @@ export const SITE_LANG_LABELS: Record<SiteLang, string> = {
 
 export type Multilingual = {
   en: string;
-  pt?: string;
-  es?: string;
-  fr?: string;
-  de?: string;
-  it?: string;
+  pt: string;
+  es: string;
+  fr: string;
+  de: string;
+  it: string;
 };
 
 export function pickByLang(lang: SiteLang, text: Multilingual): string {

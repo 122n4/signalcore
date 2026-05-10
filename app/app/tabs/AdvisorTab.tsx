@@ -645,10 +645,18 @@ export default function AdvisorTab({
 	          }),
           pickByLang(lang, {
             en: "It keeps the user focused on the main blocker instead of random fixes.",
+            es: "Mantiene al usuario enfocado en el bloqueo principal en vez de correcciones aleatorias.",
+            fr: "Il garde l utilisateur concentre sur le blocage principal plutot que sur des corrections aleatoires.",
+            de: "Es haelt den Nutzer auf den Hauptblocker fokussiert statt auf zufaellige Korrekturen.",
+            it: "Mantiene l utente concentrato sul blocco principale invece che su correzioni casuali.",
             pt: "Mantem o utilizador focado no bloqueio principal em vez de correçoes aleatorias.",
           }),
           pickByLang(lang, {
             en: "It makes the monthly value feel like better decisions, not more noise.",
+            es: "Hace que el valor mensual se sienta como mejores decisiones, no mas ruido.",
+            fr: "Cela fait sentir la valeur mensuelle comme de meilleures decisions, pas plus de bruit.",
+            de: "Es laesst den monatlichen Wert wie bessere Entscheidungen wirken, nicht wie mehr Laerm.",
+            it: "Fa percepire il valore mensile come decisioni migliori, non piu rumore.",
             pt: "Faz o valor mensal parecer melhores decisoes, e nao mais ruido.",
           }),
         ],
@@ -656,23 +664,43 @@ export default function AdvisorTab({
       {
         title: pickByLang(lang, {
           en: "Why this improves retention",
+          es: "Por que esto mejora la retencion",
+          fr: "Pourquoi cela ameliore la retention",
+          de: "Warum das die Bindung verbessert",
+          it: "Perche migliora la retention",
           pt: "Porque isto melhora retencao",
         }),
         body: pickByLang(lang, {
           en: "Users return when the product keeps telling them what matters now, what improved, and what still blocks the next step.",
+          es: "Los usuarios vuelven cuando el producto sigue diciendo que importa ahora, que mejoro y que bloquea el siguiente paso.",
+          fr: "Les utilisateurs reviennent quand le produit continue de dire ce qui compte maintenant, ce qui a progresse et ce qui bloque encore l etape suivante.",
+          de: "Nutzer kommen zurueck, wenn das Produkt weiter zeigt, was jetzt zaehlt, was besser wurde und was den naechsten Schritt noch blockiert.",
+          it: "Gli utenti tornano quando il prodotto continua a dire cosa conta ora, cosa e migliorato e cosa blocca ancora il prossimo passo.",
           pt: "Os utilizadores regressam quando o produto continua a dizer o que importa agora, o que melhorou e o que ainda bloqueia o proximo passo.",
         }),
         bullets: [
           pickByLang(lang, {
             en: "Top leak fix stays visible.",
+            es: "La correccion del leak principal sigue visible.",
+            fr: "La correction du leak principal reste visible.",
+            de: "Die Korrektur des groessten Leaks bleibt sichtbar.",
+            it: "La correzione del leak principale resta visibile.",
             pt: "A correcao do top leak fica sempre visivel.",
           }),
           pickByLang(lang, {
             en: "Weekly proof connects strategy to outcomes.",
+            es: "La prueba semanal conecta estrategia con resultados.",
+            fr: "La preuve hebdomadaire relie strategie et resultats.",
+            de: "Der woechentliche Nachweis verbindet Strategie mit Ergebnissen.",
+            it: "La prova settimanale collega strategia e risultati.",
             pt: "A prova semanal liga estrategia a resultados.",
           }),
           pickByLang(lang, {
             en: "Review rhythm makes the product feel alive between trades.",
+            es: "El ritmo de revision hace que el producto se sienta vivo entre trades.",
+            fr: "Le rythme de revue donne vie au produit entre les trades.",
+            de: "Der Review-Rhythmus laesst das Produkt zwischen Trades lebendig wirken.",
+            it: "Il ritmo di revisione fa sentire il prodotto vivo tra i trade.",
             pt: "O ritmo de revisao faz o produto parecer vivo entre trades.",
           }),
         ],
@@ -1977,20 +2005,36 @@ export default function AdvisorTab({
             theme="dark"
             eyebrow={pickByLang(lang, {
               en: "Advisor value proof",
+              es: "Prueba de valor de Advisor",
+              fr: "Preuve de valeur d Advisor",
+              de: "Advisor-Wertnachweis",
+              it: "Prova di valore di Advisor",
               pt: "Prova de valor do Advisor",
             })}
             title={pickByLang(lang, {
               en: "Advisor keeps the strategic layer valuable between market moves.",
+              es: "Advisor mantiene valiosa la capa estrategica entre movimientos de mercado.",
+              fr: "Advisor garde la couche strategique utile entre les mouvements de marche.",
+              de: "Advisor haelt die Strategieebene zwischen Marktbewegungen wertvoll.",
+              it: "Advisor mantiene prezioso il livello strategico tra i movimenti di mercato.",
               pt: "O Advisor mantem a camada estrategica valiosa entre movimentos de mercado.",
             })}
             body={pickByLang(lang, {
               en: "This is where Syntrake turns leaks, pressure, and plan coherence into one posture the user can actually follow.",
+              es: "Aqui Syntrake convierte leaks, presion y coherencia del plan en una postura unica que el usuario puede seguir.",
+              fr: "C est ici que Syntrake transforme leaks, pression et coherence du plan en une posture unique que l utilisateur peut suivre.",
+              de: "Hier macht Syntrake aus Leaks, Druck und Plankoharenz eine Haltung, der der Nutzer wirklich folgen kann.",
+              it: "Qui Syntrake trasforma leak, pressione e coerenza del piano in una postura unica che l utente puo seguire.",
               pt: "E aqui que o Syntrake transforma leaks, pressao e coerencia do plano numa postura unica que o utilizador consegue realmente seguir.",
             })}
             stats={advisorProofStats}
             cards={advisorProofCards}
             footnote={pickByLang(lang, {
               en: "Advisor value gets stronger as receipts, holdings, and weekly proof accumulate.",
+              es: "El valor de Advisor se fortalece a medida que se acumulan recibos, posiciones y prueba semanal.",
+              fr: "La valeur d Advisor augmente a mesure que les justificatifs, positions et preuves hebdomadaires s accumulent.",
+              de: "Der Wert von Advisor steigt, wenn Belege, Positionen und woechentliche Nachweise zunehmen.",
+              it: "Il valore di Advisor cresce man mano che si accumulano ricevute, posizioni e prova settimanale.",
               pt: "O valor do Advisor fica mais forte à medida que se acumulam recibos, holdings e prova semanal.",
             })}
           />

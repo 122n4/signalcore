@@ -462,69 +462,117 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         label: pickByLang(lang, {
           en: "Contract",
           pt: "Contrato",
+          es: "Contrato",
+          fr: "Contrat",
+          de: "Vertrag",
+          it: "Contratto",
         }),
         value: hasPlan
-          ? pickByLang(lang, { en: "Active", pt: "Ativo" })
-          : pickByLang(lang, { en: "Draft", pt: "Rascunho" }),
+          ? pickByLang(lang, { en: "Active", pt: "Ativo", es: "Activo", fr: "Actif", de: "Aktiv", it: "Attivo" })
+          : pickByLang(lang, { en: "Draft", pt: "Rascunho", es: "Borrador", fr: "Brouillon", de: "Entwurf", it: "Bozza" }),
         detail: pickByLang(lang, {
           en: "Planning turns goals, risk, and horizon into a live constraint system.",
           pt: "O Planning transforma objetivo, risco e horizonte num sistema de restricoes vivo.",
+          es: "Planning convierte objetivo, riesgo y horizonte en un sistema vivo de restricciones.",
+          fr: "Planning transforme objectif, risque et horizon en un systeme vivant de contraintes.",
+          de: "Planning verwandelt Ziel, Risiko und Horizont in ein aktives System von Leitplanken.",
+          it: "Planning trasforma obiettivo, rischio e orizzonte in un sistema vivo di vincoli.",
         }),
       },
       {
         label: pickByLang(lang, {
           en: "Coverage",
           pt: "Cobertura",
+          es: "Cobertura",
+          fr: "Couverture",
+          de: "Abdeckung",
+          it: "Copertura",
         }),
         value: hasHoldings
           ? pickByLang(lang, {
               en: `${holdingsCount} tracked`,
-              pt: `${holdingsCount} tracked`,
+              pt: `${holdingsCount} acompanhadas`,
+              es: `${holdingsCount} seguidas`,
+              fr: `${holdingsCount} suivies`,
+              de: `${holdingsCount} verfolgt`,
+              it: `${holdingsCount} monitorate`,
             })
           : starterPack.length > 0
             ? pickByLang(lang, {
                 en: `${starterPack.length} starter ideas`,
-                pt: `${starterPack.length} starter ideas`,
+                pt: `${starterPack.length} ideias iniciais`,
+                es: `${starterPack.length} ideas iniciales`,
+                fr: `${starterPack.length} idees de depart`,
+                de: `${starterPack.length} Starter-Ideen`,
+                it: `${starterPack.length} idee iniziali`,
               })
             : pickByLang(lang, {
                 en: "No holdings yet",
                 pt: "Sem holdings ainda",
+                es: "Sin holdings todavia",
+                fr: "Pas encore de positions",
+                de: "Noch keine Positionen",
+                it: "Nessuna posizione ancora",
               }),
         detail: pickByLang(lang, {
           en: "Holdings unlock leak detection, pricing checks, and better daily directives.",
           pt: "As holdings desbloqueiam deteccao de leaks, verificacao de pricing e melhores diretivas diarias.",
+          es: "Las posiciones desbloquean deteccion de fugas, controles de precio y mejores directivas diarias.",
+          fr: "Les positions debloquent la detection des fuites, les controles de prix et de meilleures directives quotidiennes.",
+          de: "Positionen aktivieren Leak-Erkennung, Preispruefungen und bessere taegliche Vorgaben.",
+          it: "Le posizioni sbloccano rilevamento dei leak, controlli di prezzo e direttive giornaliere migliori.",
         }),
       },
       {
         label: pickByLang(lang, {
           en: "Weekly proof",
           pt: "Prova semanal",
+          es: "Prueba semanal",
+          fr: "Preuve hebdomadaire",
+          de: "Woechentlicher Nachweis",
+          it: "Prova settimanale",
         }),
         value:
           weeklyConfirmedEur > 0
             ? fmtEUR(weeklyConfirmedEur)
             : doneToday
-              ? pickByLang(lang, { en: "Loop closed", pt: "Loop fechado" })
-              : pickByLang(lang, { en: "Building", pt: "A construir" }),
+              ? pickByLang(lang, { en: "Loop closed", pt: "Loop fechado", es: "Loop cerrado", fr: "Boucle fermee", de: "Loop geschlossen", it: "Loop chiuso" })
+              : pickByLang(lang, { en: "Building", pt: "A construir", es: "En construccion", fr: "En construction", de: "Im Aufbau", it: "In costruzione" }),
         detail: pickByLang(lang, {
           en: "Receipts and confirmed value turn planning from theory into accountable evidence.",
           pt: "Recibos e valor confirmado transformam o planning de teoria em evidencia auditavel.",
+          es: "Recibos y valor confirmado convierten el planning de teoria en evidencia auditable.",
+          fr: "Les justificatifs et la valeur confirmee transforment le planning de theorie en preuve verifiable.",
+          de: "Belege und bestaetigter Wert machen Planning von Theorie zu nachvollziehbarem Nachweis.",
+          it: "Ricevute e valore confermato trasformano il planning da teoria a prova verificabile.",
         }),
       },
       {
         label: pickByLang(lang, {
           en: "Review rhythm",
           pt: "Ritmo de revisao",
+          es: "Ritmo de revision",
+          fr: "Rythme de revue",
+          de: "Review-Rhythmus",
+          it: "Ritmo di revisione",
         }),
         value: nextReviewAt
           ? fmtTime(nextReviewAt)
           : pickByLang(lang, {
               en: "Daily loop open",
               pt: "Loop diario aberto",
+              es: "Loop diario abierto",
+              fr: "Boucle quotidienne ouverte",
+              de: "Taeglicher Loop offen",
+              it: "Loop giornaliero aperto",
             }),
         detail: pickByLang(lang, {
           en: "Syntrake keeps the plan alive between capital changes, receipts, and daily reviews.",
           pt: "O Syntrake mantem o plano vivo entre mudancas de capital, recibos e revisoes diarias.",
+          es: "Syntrake mantiene vivo el plan entre cambios de capital, recibos y revisiones diarias.",
+          fr: "Syntrake garde le plan vivant entre changements de capital, justificatifs et revues quotidiennes.",
+          de: "Syntrake haelt den Plan zwischen Kapitalaenderungen, Belegen und taeglichen Reviews lebendig.",
+          it: "Syntrake mantiene vivo il piano tra cambi di capitale, ricevute e revisioni giornaliere.",
         }),
       },
     ],
@@ -536,23 +584,43 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         title: pickByLang(lang, {
           en: "What Planning already proves",
           pt: "O que o Planning ja prova",
+          es: "Lo que Planning ya prueba",
+          fr: "Ce que Planning prouve deja",
+          de: "Was Planning bereits beweist",
+          it: "Cosa Planning dimostra gia",
         }),
         body: pickByLang(lang, {
           en: "Planning is not a static form. It actively shapes Daily, Portfolio, and Advisor around one capital contract.",
           pt: "O Planning nao e um formulario estatico. Molda ativamente o Daily, Portfolio e Advisor em torno de um contrato de capital.",
+          es: "Planning no es un formulario estatico. Moldea activamente Daily, Portfolio y Advisor alrededor de un contrato de capital.",
+          fr: "Planning n est pas un formulaire statique. Il structure activement Daily, Portfolio et Advisor autour d un contrat de capital.",
+          de: "Planning ist kein statisches Formular. Es formt Daily, Portfolio und Advisor aktiv um einen Kapitalvertrag.",
+          it: "Planning non e un modulo statico. Modella attivamente Daily, Portfolio e Advisor intorno a un contratto di capitale.",
         }),
         bullets: [
           pickByLang(lang, {
             en: "Goal, risk, and horizon become live guardrails.",
             pt: "Objetivo, risco e horizonte tornam-se guardrails vivos.",
+            es: "Objetivo, riesgo y horizonte se convierten en guardrails vivos.",
+            fr: "Objectif, risque et horizon deviennent des garde-fous actifs.",
+            de: "Ziel, Risiko und Horizont werden zu aktiven Leitplanken.",
+            it: "Obiettivo, rischio e orizzonte diventano guardrail vivi.",
           }),
           pickByLang(lang, {
             en: "Starter pack and holdings turn the plan into something the engine can monitor.",
             pt: "Starter pack e holdings transformam o plano em algo que o motor consegue monitorizar.",
+            es: "Starter pack y posiciones convierten el plan en algo que el motor puede monitorizar.",
+            fr: "Starter pack et positions transforment le plan en quelque chose que le moteur peut surveiller.",
+            de: "Starter Pack und Positionen machen den Plan fuer den Motor ueberwachbar.",
+            it: "Starter pack e posizioni rendono il piano monitorabile dal motore.",
           }),
           pickByLang(lang, {
             en: "Receipts keep the loop accountable over time.",
             pt: "Os recibos mantem o loop responsavel ao longo do tempo.",
+            es: "Los recibos mantienen el loop responsable con el tiempo.",
+            fr: "Les justificatifs gardent la boucle responsable dans le temps.",
+            de: "Belege halten den Loop ueber Zeit nachvollziehbar.",
+            it: "Le ricevute mantengono il loop responsabile nel tempo.",
           }),
         ],
       },
@@ -560,23 +628,43 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         title: pickByLang(lang, {
           en: "Why this supports subscription quality",
           pt: "Porque isto suporta qualidade de subscricao",
+          es: "Por que esto sostiene la calidad de suscripcion",
+          fr: "Pourquoi cela soutient la qualite d abonnement",
+          de: "Warum das Abo-Qualitaet stuetzt",
+          it: "Perche sostiene la qualita dell abbonamento",
         }),
         body: pickByLang(lang, {
           en: "Users stay when the plan keeps improving decision quality every week, not just when markets feel exciting.",
           pt: "Os utilizadores ficam quando o plano melhora a qualidade de decisao todas as semanas, e nao so quando o mercado esta excitante.",
+          es: "Los usuarios se quedan cuando el plan mejora la calidad de decision cada semana, no solo cuando el mercado parece emocionante.",
+          fr: "Les utilisateurs restent quand le plan ameliore la qualite de decision chaque semaine, pas seulement quand les marches semblent excitants.",
+          de: "Nutzer bleiben, wenn der Plan jede Woche die Entscheidungsqualitaet verbessert, nicht nur wenn Maerkte spannend wirken.",
+          it: "Gli utenti restano quando il piano migliora la qualita decisionale ogni settimana, non solo quando i mercati sembrano interessanti.",
         }),
         bullets: [
           pickByLang(lang, {
             en: "Less drift, fewer leaks, cleaner next actions.",
             pt: "Menos drift, menos leaks, proximas acoes mais limpas.",
+            es: "Menos deriva, menos fugas, proximas acciones mas limpias.",
+            fr: "Moins de derive, moins de fuites, prochaines actions plus propres.",
+            de: "Weniger Drift, weniger Leaks, klarere naechste Aktionen.",
+            it: "Meno deriva, meno leak, prossime azioni piu pulite.",
           }),
           pickByLang(lang, {
             en: "Capital path stays visible through trajectory and target checkpoints.",
             pt: "O caminho do capital fica visivel com trajetoria e checkpoints de alvo.",
+            es: "El camino del capital queda visible con trayectoria y checkpoints de objetivo.",
+            fr: "Le chemin du capital reste visible avec trajectoire et points de controle d objectif.",
+            de: "Der Kapitalpfad bleibt durch Verlauf und Ziel-Checkpoints sichtbar.",
+            it: "Il percorso del capitale resta visibile con traiettoria e checkpoint di target.",
           }),
           pickByLang(lang, {
             en: "The user can feel progress before needing Trading Pro depth.",
             pt: "O utilizador consegue sentir progresso antes de precisar da profundidade do Trading Pro.",
+            es: "El usuario puede sentir progreso antes de necesitar la profundidad de Trading Pro.",
+            fr: "L utilisateur peut sentir le progres avant d avoir besoin de la profondeur de Trading Pro.",
+            de: "Der Nutzer spuert Fortschritt, bevor Trading-Pro-Tiefe noetig ist.",
+            it: "L utente puo sentire progresso prima di avere bisogno della profondita Trading Pro.",
           }),
         ],
       },
@@ -1142,20 +1230,36 @@ export default function PlanningTab({ mode }: { mode?: string }) {
             eyebrow={pickByLang(lang, {
               en: "Planning value proof",
               pt: "Prova de valor do Planning",
+              es: "Prueba de valor de Planning",
+              fr: "Preuve de valeur de Planning",
+              de: "Planning-Wertnachweis",
+              it: "Prova di valore di Planning",
             })}
             title={pickByLang(lang, {
               en: "The plan is already doing real work for the user.",
               pt: "O plano ja esta a fazer trabalho real pelo utilizador.",
+              es: "El plan ya esta haciendo trabajo real para el usuario.",
+              fr: "Le plan fait deja un vrai travail pour l utilisateur.",
+              de: "Der Plan leistet bereits echte Arbeit fuer den Nutzer.",
+              it: "Il piano sta gia facendo lavoro reale per l utente.",
             })}
             body={pickByLang(lang, {
               en: "This layer turns vague intent into guardrails, coverage, and a review rhythm that Daily and Advisor can actually enforce.",
               pt: "Esta camada transforma intencao vaga em guardrails, cobertura e ritmo de revisao que o Daily e o Advisor conseguem realmente aplicar.",
+              es: "Esta capa convierte intencion vaga en guardrails, cobertura y ritmo de revision que Daily y Advisor pueden aplicar.",
+              fr: "Cette couche transforme une intention vague en garde-fous, couverture et rythme de revue que Daily et Advisor peuvent appliquer.",
+              de: "Diese Ebene macht aus vager Absicht Leitplanken, Abdeckung und einen Review-Rhythmus, den Daily und Advisor durchsetzen koennen.",
+              it: "Questo livello trasforma un intento vago in guardrail, copertura e ritmo di revisione che Daily e Advisor possono applicare.",
             })}
             stats={planningProofStats}
             cards={planningProofCards}
             footnote={pickByLang(lang, {
               en: "Planning value is strongest when the contract is active and holdings are tracked.",
               pt: "O valor do Planning e mais forte quando o contrato esta ativo e as holdings estao acompanhadas.",
+              es: "El valor de Planning es mas fuerte cuando el contrato esta activo y las posiciones estan seguidas.",
+              fr: "La valeur de Planning est maximale quand le contrat est actif et que les positions sont suivies.",
+              de: "Planning ist am wertvollsten, wenn der Vertrag aktiv ist und Positionen verfolgt werden.",
+              it: "Il valore di Planning e piu forte quando il contratto e attivo e le posizioni sono monitorate.",
             })}
           />
         </div>

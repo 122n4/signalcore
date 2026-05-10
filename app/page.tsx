@@ -1110,12 +1110,20 @@ export default async function Home({
 
             <div className="mt-6 rounded-[26px] border border-cyan-300/15 bg-cyan-300/[0.07] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-100/55">
-                {t(lang, { en: "Monthly value test", pt: "Teste de valor mensal" })}
+                {t(lang, { en: "Monthly value test", pt: "Teste de valor mensal",
+                es: "Prueba de valor mensual",
+                fr: "Test de valeur mensuelle",
+                de: "Monatlicher Werttest",
+                it: "Test di valore mensile", })}
               </div>
               <p className="mt-2 text-sm leading-6 text-white/72">
                 {t(lang, {
                   en: "Syntrake is worth paying for when it improves the broker click: fresh-data gate, no-trade discipline, trigger, invalidation, risk cap, and proof. Not a profit promise.",
                   pt: "O Syntrake vale pagar quando melhora o clique no broker: dados frescos, disciplina de nao operar, trigger, invalidation, limite de risco e prova. Nao e promessa de lucro.",
+                  es: "Vale la pena pagar por Syntrake cuando mejora el clic del broker: puerta de datos nuevos, disciplina de no-trade, activacion, invalidacion, limite de riesgo y prueba. No es una promesa de ganancias.",
+                  fr: "Syntrake vaut la peine d'etre paye lorsqu'il ameliore le clic du broker : portail de donnees fraiches, discipline de no-trade, declencheur, invalidation, plafond de risque et preuve. Pas une promesse de profit.",
+                  de: "Es lohnt sich, fur Syntrake zu bezahlen, wenn es den Broker-Klick verbessert: Fresh-Data-Gate, No-Trade-Disziplin, Trigger, Invalidierung, Risikoobergrenze und Nachweis. Kein Gewinnversprechen.",
+                  it: "Vale la pena pagare per Syntrake quando migliora il clic del broker: gate di dati aggiornati, disciplina di non scambio, trigger, invalidazione, limite di rischio e prova. Non una promessa di profitto.",
                 })}
               </p>
             </div>
@@ -1127,22 +1135,42 @@ export default async function Home({
                 detail={t(lang, {
                   en: "Current baseline snapshot: 243 trades, 44.44% WR, +0.20R expectancy. Not a guarantee.",
                   pt: "Snapshot baseline atual: 243 trades, 44.44% WR, +0.20R expectancy. Nao e garantia.",
+                  es: "Panorama de referencia actual: 243 operaciones, 44,44 % de WR, +0,20 R de expectativa. No es una garantia.",
+                  fr: "Apercu de reference actuel: 243 transactions, 44,44% WR, +0,20R attente. Pas une garantie.",
+                  de: "Aktueller Basis-Snapshot: 243 Trades, 44,44 % WR, +0,20R Erwartung. Keine Garantie.",
+                  it: "Istantanea di base attuale: 243 operazioni, 44,44% WR, +0,20R aspettativa. Non una garanzia.",
                 })}
               />
               <HeroStatCard
                 label={t(lang, { en: "Crisis honesty", pt: "Honestidade em crise", es: "Honestidad en crisis", fr: "Honnetete crise", de: "Krisen-Ehrlichkeit", it: "Onesta in crisi" })}
-                value={t(lang, { en: "Weak is blocked", pt: "Fraco e bloqueado" })}
+                value={t(lang, { en: "Weak is blocked", pt: "Fraco e bloqueado",
+                es: "Debil esta bloqueado",
+                fr: "Le faible est bloque",
+                de: "Schwach ist blockiert",
+                it: "Il debole e bloccato", })}
                 detail={t(lang, {
                   en: "Crisis readings are still weak, so the product must slow execution instead of selling false certainty.",
                   pt: "Em crise ainda esta fraco, por isso o produto deve travar execucao em vez de vender falsa certeza.",
+                  es: "Las lecturas de la crisis aun son debiles, por lo que el producto debe ralentizar la ejecucion en lugar de vender falsas certezas.",
+                  fr: "Les chiffres de la crise sont encore faibles, le produit doit donc ralentir son execution au lieu de vendre de fausses certitudes.",
+                  de: "Die Krisendaten sind immer noch schwach, daher muss das Produkt die Ausfuhrung verlangsamen, anstatt falsche Gewissheit zu verkaufen.",
+                  it: "I dati sulla crisi sono ancora deboli, quindi il prodotto deve rallentare l'esecuzione invece di vendere false certezze.",
                 })}
               />
               <HeroStatCard
                 label={t(lang, { en: "Broker plan", pt: "Plano broker", es: "Plan broker", fr: "Plan broker", de: "Broker-Plan", it: "Piano broker" })}
-                value={t(lang, { en: "Trigger + chart", pt: "Trigger + grafico" })}
+                value={t(lang, { en: "Trigger + chart", pt: "Trigger + grafico",
+                es: "Activador + grafico",
+                fr: "Declencheur + graphique",
+                de: "Ausloser + Diagramm",
+                it: "Trigger + grafico", })}
                 detail={t(lang, {
                   en: "The trigger, entry zone, invalidation, risk, and proof trail stay visible before action.",
                   pt: "Trigger, zona de entrada, invalidation, risco e prova ficam visiveis antes da acao.",
+                  es: "El desencadenante, la zona de entrada, la invalidacion, el riesgo y el rastro de prueba permanecen visibles antes de la accion.",
+                  fr: "Le declencheur, la zone d'entree, l'invalidation, le risque et la piste de preuve restent visibles avant l'action.",
+                  de: "Der Ausloser, die Eintrittszone, die Ungultigmachung, das Risiko und die Beweisspur bleiben vor der Aktion sichtbar.",
+                  it: "Il trigger, la zona di ingresso, l'invalidazione, il rischio e la traccia delle prove rimangono visibili prima dell'azione.",
                 })}
               />
             </div>
@@ -1180,26 +1208,50 @@ export default async function Home({
             {[
               {
                 step: "01",
-                title: t(lang, { en: "Read the call", pt: "Le a decisao" }),
+                title: t(lang, { en: "Read the call", pt: "Le a decisao",
+                es: "leer la convocatoria",
+                fr: "Lire l'appel",
+                de: "Lesen Sie den Anruf",
+                it: "Leggi la chiamata", }),
                 body: t(lang, {
                   en: "Trade, Wait, Prepare only, or Reduce risk. No ambiguity.",
                   pt: "Entrar, Esperar, Preparar apenas ou Reduzir risco. Sem ambiguidade.",
+                  es: "Opere, espere, solo preparese o reduzca el riesgo. Sin ambiguedad.",
+                  fr: "Echangez, attendez, preparez uniquement ou reduisez les risques. Aucune ambiguite.",
+                  de: "Handeln, Warten, Nur Vorbereiten oder Risiko reduzieren. Keine Unklarheiten.",
+                  it: "Scambia, Aspetta, Solo preparazione o Riduci il rischio. Nessuna ambiguita.",
                 }),
               },
               {
                 step: "02",
-                title: t(lang, { en: "Check broker plan", pt: "Confirma plano do broker" }),
+                title: t(lang, { en: "Check broker plan", pt: "Confirma plano do broker",
+                es: "Consultar plan de broker",
+                fr: "Verifier le plan du broker",
+                de: "Uberprufen Sie den Maklerplan",
+                it: "Controlla il piano del broker", }),
                 body: t(lang, {
                   en: "Trigger, entry zone, invalidation, risk, and target stay visible before action.",
                   pt: "Trigger, zona de entrada, invalidation, risco e target ficam visiveis antes da acao.",
+                  es: "El desencadenante, la zona de entrada, la invalidacion, el riesgo y el objetivo permanecen visibles antes de la accion.",
+                  fr: "Le declencheur, la zone d'entree, l'invalidation, le risque et la cible restent visibles avant l'action.",
+                  de: "Ausloser, Eintrittszone, Ungultigmachung, Risiko und Ziel bleiben vor der Aktion sichtbar.",
+                  it: "Trigger, zona di ingresso, invalidazione, rischio e target rimangono visibili prima dell'azione.",
                 }),
               },
               {
                 step: "03",
-                title: t(lang, { en: "Return with proof", pt: "Volta com prova" }),
+                title: t(lang, { en: "Return with proof", pt: "Volta com prova",
+                es: "Regresar con prueba",
+                fr: "Retourner avec justificatif",
+                de: "Rucksendung mit Nachweis",
+                it: "Ritorno con prova", }),
                 body: t(lang, {
                   en: "Save broker reference and execution details so the loop becomes auditable.",
                   pt: "Guarda referencia do broker e detalhes de execucao para o loop ficar auditavel.",
+                  es: "Guarde la referencia del intermediario y los detalles de ejecucion para que el bucle sea auditable.",
+                  fr: "Enregistrez la reference du broker et les details d'execution afin que la boucle devienne auditable.",
+                  de: "Speichern Sie Broker-Referenz- und Ausfuhrungsdetails, damit die Schleife uberprufbar wird.",
+                  it: "Salva il riferimento del broker e i dettagli di esecuzione in modo che il ciclo diventi controllabile.",
                 }),
               },
             ].map((item) => (
@@ -1218,24 +1270,48 @@ export default async function Home({
         <div className="grid gap-4 lg:grid-cols-3">
           {[
             {
-              title: t(lang, { en: "Freshness before action", pt: "Frescura antes da acao" }),
+              title: t(lang, { en: "Freshness before action", pt: "Frescura antes da acao",
+              es: "Frescura antes de la accion",
+              fr: "Fraicheur avant l'action",
+              de: "Frische vor Aktion",
+              it: "Freschezza prima dell'azione", }),
               body: t(lang, {
                 en: "If live data is stale, Syntrake should block broker-ready execution instead of pretending certainty.",
                 pt: "Se os dados live estao stale, o Syntrake deve bloquear execucao pronta para broker em vez de fingir certeza.",
+                es: "Si los datos en vivo estan obsoletos, Syntrake deberia bloquear la ejecucion lista para el broker en lugar de fingir certeza.",
+                fr: "Si les donnees en direct sont obsoletes, Syntrake devrait bloquer l'execution prete pour le broker au lieu de pretendre a la certitude.",
+                de: "Wenn Live-Daten veraltet sind, sollte Syntrake die Broker-bereite Ausfuhrung blockieren, anstatt Gewissheit vorzutauschen.",
+                it: "Se i dati in tempo reale sono obsoleti, Syntrake dovrebbe bloccare l'esecuzione pronta per il broker invece di fingere certezza.",
               }),
             },
             {
-              title: t(lang, { en: "No-trade is a feature", pt: "Nao entrar e uma feature" }),
+              title: t(lang, { en: "No-trade is a feature", pt: "Nao entrar e uma feature",
+              es: "El no intercambio es una caracteristica",
+              fr: "Le no-trade est une fonctionnalite",
+              de: "No-Trade ist eine Funktion",
+              it: "Il no-trade e una caratteristica", }),
               body: t(lang, {
                 en: "The product is valuable when it stops weak trades, not only when it finds entries.",
                 pt: "O produto tem valor quando trava trades fracos, nao so quando encontra entradas.",
+                es: "El producto es valioso cuando detiene operaciones debiles, no solo cuando encuentra entradas.",
+                fr: "Le produit a de la valeur lorsqu'il stoppe les transactions faibles, et pas seulement lorsqu'il trouve des entrees.",
+                de: "Das Produkt ist dann wertvoll, wenn es schwache Trades stoppt und nicht nur, wenn es Einstiege findet.",
+                it: "Il prodotto e prezioso quando blocca le operazioni deboli, non solo quando trova entrate.",
               }),
             },
             {
-              title: t(lang, { en: "Broker independent", pt: "Independente do broker" }),
+              title: t(lang, { en: "Broker independent", pt: "Independente do broker",
+              es: "Corredor independiente",
+              fr: "Courtier independant",
+              de: "Maklerunabhangig",
+              it: "Broker indipendente", }),
               body: t(lang, {
                 en: "Users keep their broker. Syntrake adds the decision layer, checklist, and proof trail around it.",
                 pt: "O utilizador mantem o broker. O Syntrake adiciona decisao, checklist e prova a volta disso.",
+                es: "Los usuarios conservan su broker. Syntrake agrega la capa de decision, la lista de verificacion y el rastro de prueba a su alrededor.",
+                fr: "Les utilisateurs conservent leur broker. Syntrake ajoute la couche de decision, la liste de controle et la piste de preuve autour.",
+                de: "Benutzer behalten ihren Broker. Syntrake fugt die Entscheidungsebene, die Checkliste und den Beweispfad hinzu.",
+                it: "Gli utenti mantengono il proprio broker. Syntrake aggiunge il livello decisionale, la lista di controllo e la traccia di prova attorno ad esso.",
               }),
             },
           ].map((item) => (
@@ -1252,18 +1328,30 @@ export default async function Home({
           <div className="grid gap-8 lg:grid-cols-[1fr_0.8fr] lg:items-center">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-cyan-100/45">
-                {t(lang, { en: "Why pay monthly", pt: "Porque pagar mensalmente" })}
+                {t(lang, { en: "Why pay monthly", pt: "Porque pagar mensalmente",
+                es: "Por que pagar mensualmente?",
+                fr: "Pourquoi payer mensuellement",
+                de: "Warum monatlich zahlen?",
+                it: "Perche pagare mensilmente", })}
               </div>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white md:text-5xl">
                 {t(lang, {
                   en: "Because the expensive moment is not analysis. It is the click inside the broker.",
                   pt: "Porque o momento caro nao e a analise. E o clique dentro do broker.",
+                  es: "Porque el momento caro no es el analisis. Es el clic dentro del broker.",
+                  fr: "Parce que le moment couteux n'est pas l'analyse. C'est le clic a l'interieur du broker.",
+                  de: "Denn der teure Moment ist nicht die Analyse. Es ist der Klick innerhalb des Brokers.",
+                  it: "Perche il momento costoso non e l'analisi. E il clic all'interno del broker.",
                 })}
               </h2>
               <p className="mt-5 max-w-2xl text-base leading-8 text-white/66">
                 {t(lang, {
                   en: "Syntrake earns its place when it makes that click calmer, more selective, and easier to audit.",
                   pt: "O Syntrake ganha lugar quando torna esse clique mais calmo, mais seletivo e mais facil de auditar.",
+                  es: "Syntrake se gana su lugar cuando hace que ese clic sea mas tranquilo, mas selectivo y mas facil de auditar.",
+                  fr: "Syntrake gagne sa place lorsqu'il rend ce clic plus calme, plus selectif et plus facile a auditer.",
+                  de: "Syntrake verdient seinen Platz, wenn es den Klick ruhiger, selektiver und einfacher zu prufen macht.",
+                  it: "Syntrake guadagna il suo posto quando rende quel clic piu calmo, piu selettivo e piu facile da controllare.",
                 })}
               </p>
             </div>
@@ -1275,6 +1363,10 @@ export default async function Home({
                   detail: t(lang, {
                     en: "Current baseline remains profitable, but still needs discipline and freshness gates.",
                     pt: "O baseline atual continua lucrativo, mas ainda precisa de disciplina e gates de frescura.",
+                    es: "La base actual sigue siendo rentable, pero aun necesita disciplina y frescura.",
+                    fr: "La base de reference actuelle reste rentable, mais necessite encore de la discipline et de la fraicheur.",
+                    de: "Die derzeitige Basislinie bleibt profitabel, erfordert jedoch weiterhin Disziplin und Frische-Gates.",
+                    it: "La base attuale rimane redditizia, ma necessita ancora di disciplina e di freschezza.",
                   }),
                 },
                 {
@@ -1283,6 +1375,10 @@ export default async function Home({
                   detail: t(lang, {
                     en: "Crisis mode is the honest warning: reduce action when the regime is not validated.",
                     pt: "O modo crise e o aviso honesto: reduzir acao quando o regime nao esta validado.",
+                    es: "El modo de crisis es la advertencia honesta: reducir la accion cuando el regimen no este validado.",
+                    fr: "Le mode crise est un avertissement honnete : reduire l'action lorsque le regime n'est pas valide.",
+                    de: "Der Krisenmodus ist die ehrliche Warnung: Reduzieren Sie die Massnahmen, wenn das Regime nicht bestatigt ist.",
+                    it: "La modalita crisi e l'onesto avvertimento: ridurre l'azione quando il regime non e convalidato.",
                   }),
                 },
                 {
@@ -1291,6 +1387,10 @@ export default async function Home({
                   detail: t(lang, {
                     en: "Every broker step should start from trigger, entry zone, invalidation, risk, and proof.",
                     pt: "Cada passo no broker deve comecar por trigger, zona de entrada, invalidation, risco e prova.",
+                    es: "Cada paso del broker debe comenzar desde el desencadenante, la zona de entrada, la invalidacion, el riesgo y la prueba.",
+                    fr: "Chaque etape du broker doit commencer par le declencheur, la zone d'entree, l'invalidation, le risque et la preuve.",
+                    de: "Jeder Broker-Schritt sollte mit Ausloser, Eintrittszone, Ungultigmachung, Risiko und Beweis beginnen.",
+                    it: "Ogni fase del broker dovrebbe iniziare dal trigger, dalla zona di ingresso, dall'invalidazione, dal rischio e dalla prova.",
                   }),
                 },
               ].map((item) => (
@@ -1306,7 +1406,11 @@ export default async function Home({
                 eventData={{ location: "home_compact_value", target: "sign_up" }}
                 className="mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#8b6bff,#ff5aa5)] px-6 py-4 text-base font-semibold text-white shadow-[0_22px_60px_rgba(132,89,255,0.28)] transition hover:opacity-95"
               >
-                {t(lang, { en: "Start with today's plan", pt: "Comecar com o plano de hoje" })}
+                {t(lang, { en: "Start with today's plan", pt: "Comecar com o plano de hoje",
+                es: "Comience con el plan de hoy",
+                fr: "Commencez par le plan d'aujourd'hui",
+                de: "Beginnen Sie mit dem heutigen Plan",
+                it: "Inizia con il piano di oggi", })}
               </TrackedLink>
             </div>
           </div>
@@ -1406,6 +1510,10 @@ export default async function Home({
                 detail={t(lang, {
                   en: "Open markets are not treated as executable when snapshots are stale, fallback-only, or not provider-backed.",
                   pt: "Mercados abertos nao sao tratados como executaveis quando o snapshot esta stale, em fallback ou sem provider live.",
+                  es: "Los mercados abiertos no se tratan como ejecutables cuando las instantaneas estan obsoletas, son solo de respaldo o no estan respaldadas por un proveedor.",
+                  fr: "Les marches ouverts ne sont pas traites comme executables lorsque les instantanes sont obsoletes, uniquement de secours ou non soutenus par le fournisseur.",
+                  de: "Offene Markte werden nicht als ausfuhrbar behandelt, wenn Snapshots veraltet, nur als Fallback verfugbar oder nicht vom Anbieter unterstutzt sind.",
+                  it: "I mercati aperti non vengono considerati eseguibili quando gli snapshot sono obsoleti, di solo fallback o non supportati dal provider.",
                 })}
               />
               <HeroStatCard
@@ -1414,6 +1522,10 @@ export default async function Home({
                 detail={t(lang, {
                   en: "A good-looking setup can still become WAIT when regime, freshness, or risk quality is weak.",
                   pt: "Um setup bonito pode continuar a virar WAIT quando regime, frescura ou qualidade de risco estao fracos.",
+                  es: "Una configuracion atractiva aun puede convertirse en ESPERA cuando el regimen, la frescura o la calidad del riesgo son debiles.",
+                  fr: "Une belle configuration peut toujours devenir WAIT lorsque le regime, la fraicheur ou la qualite du risque sont faibles.",
+                  de: "Ein gut aussehendes Setup kann immer noch zu WAIT werden, wenn Regime, Frische oder Risikoqualitat schwach sind.",
+                  it: "Una buona impostazione puo ancora diventare ATTESA quando il regime, la freschezza o la qualita del rischio sono deboli.",
                 })}
               />
               <HeroStatCard
@@ -1422,6 +1534,10 @@ export default async function Home({
                 detail={t(lang, {
                   en: "If action is allowed, the output is designed to be copied into eToro, XTB, or another broker workflow.",
                   pt: "Se a acao for permitida, o output e pensado para ser levado para eToro, XTB ou outro broker.",
+                  es: "Si se permite la accion, el resultado esta disenado para copiarse en eToro, XTB u otro flujo de trabajo de broker.",
+                  fr: "Si l'action est autorisee, la sortie est concue pour etre copiee dans eToro, XTB ou un autre workflow de broker.",
+                  de: "Wenn die Aktion zulassig ist, soll die Ausgabe in eToro, XTB oder einen anderen Broker-Workflow kopiert werden.",
+                  it: "Se l'azione e consentita, l'output e progettato per essere copiato nel flusso di lavoro di eToro, XTB o di un altro broker.",
                 })}
               />
               <HeroStatCard
@@ -1430,6 +1546,10 @@ export default async function Home({
                 detail={t(lang, {
                   en: "The product sells process discipline, not guaranteed profit. Risk and weak conditions stay visible.",
                   pt: "O produto vende disciplina de processo, nao lucro garantido. Risco e condicoes fracas ficam visiveis.",
+                  es: "El producto vende disciplina de proceso, no ganancias garantizadas. Los riesgos y las condiciones debiles siguen siendo visibles.",
+                  fr: "Le produit vend une discipline de processus et non un profit garanti. Les risques et les conditions faibles restent visibles.",
+                  de: "Das Produkt verkauft Prozessdisziplin, keinen garantierten Gewinn. Risiken und Schwachstellen bleiben sichtbar.",
+                  it: "Il prodotto vende disciplina di processo, non profitto garantito. Rischi e condizioni deboli restano visibili.",
                 })}
               />
             </div>
@@ -1471,29 +1591,49 @@ export default async function Home({
         <div className="grid gap-6 rounded-[34px] border border-white/10 bg-[linear-gradient(135deg,rgba(8,17,42,0.96),rgba(16,25,62,0.94))] p-6 shadow-[0_34px_110px_rgba(5,12,34,0.42)] md:p-8 lg:grid-cols-[1.08fr_0.92fr]">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-100/45">
-              {t(lang, { en: "The 30-second broker check", pt: "O check de 30 segundos antes do broker" })}
+              {t(lang, { en: "The 30-second broker check", pt: "O check de 30 segundos antes do broker",
+              es: "El cheque del broker de 30 segundos",
+              fr: "La verification du broker en 30 secondes",
+              de: "Der 30-Sekunden-Makler-Check",
+              it: "Il controllo del broker di 30 secondi", })}
             </div>
             <h2 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white md:text-5xl">
               {t(lang, {
                 en: "The product is not another signal feed. It is a decision gate.",
                 pt: "O produto nao e mais um feed de sinais. E um gate de decisao.",
+                es: "El producto no es una senal mas. Es una puerta de decision.",
+                fr: "Le produit n'est pas un autre flux de signal. C'est une porte de decision.",
+                de: "Bei dem Produkt handelt es sich nicht um eine weitere Signalzufuhrung. Es ist ein Entscheidungstor.",
+                it: "Il prodotto non e un altro segnale di alimentazione. E una porta decisionale.",
               })}
             </h2>
             <p className="mt-4 max-w-2xl text-base leading-7 text-white/64">
               {t(lang, {
                 en: "A monthly product has to earn attention every day. Syntrake does that by making the pre-broker moment brutally clear: trade, wait, or reduce risk.",
                 pt: "Um produto mensal tem de merecer atencao todos os dias. O Syntrake faz isso tornando o momento antes do broker brutalmente claro: entrar, esperar ou reduzir risco.",
+                es: "Un producto mensual tiene que llamar la atencion todos los dias. Syntrake lo hace dejando brutalmente claro el momento previo al broker: negociar, esperar o reducir el riesgo.",
+                fr: "Un produit mensuel doit attirer l'attention chaque jour. Syntrake y parvient en clarifiant le moment precedant le courtage: negocier, attendre ou reduire les risques.",
+                de: "Ein monatliches Produkt muss jeden Tag Aufmerksamkeit erregen. Syntrake erreicht dies, indem es den Moment vor dem Broker brutal klar macht: Handeln, warten oder das Risiko reduzieren.",
+                it: "Un prodotto mensile deve attirare l'attenzione ogni giorno. Syntrake lo fa rendendo brutalmente chiaro il momento pre-broker: fai trading, attendi o riduci il rischio.",
               })}
             </p>
 
             <div className="mt-6 grid gap-4 md:grid-cols-3">
               {[
                 {
-                  command: t(lang, { en: "TRADE", pt: "ENTRAR" }),
+                  command: t(lang, { en: "TRADE", pt: "ENTRAR",
+                  es: "COMERCIO",
+                  fr: "COMMERCE",
+                  de: "HANDEL",
+                  it: "COMMERCIO", }),
                   tone: "border-emerald-300/20 bg-emerald-300/10 text-emerald-100",
                   body: t(lang, {
                     en: "Only when live data, setup quality, risk gate, and execution rules line up.",
                     pt: "So quando dados live, qualidade do setup, gate de risco e regras de execucao alinham.",
+                    es: "Solo cuando los datos en vivo, la calidad de la configuracion, la puerta de riesgo y las reglas de ejecucion se alinean.",
+                    fr: "Uniquement lorsque les donnees en direct, la qualite de la configuration, le controle des risques et les regles d'execution s'alignent.",
+                    de: "Nur wenn Live-Daten, Setup-Qualitat, Risk Gate und Ausfuhrungsregeln ubereinstimmen.",
+                    it: "Solo quando i dati in tempo reale, la qualita della configurazione, il limite di rischio e le regole di esecuzione sono allineati.",
                   }),
                 },
                 {
@@ -1502,14 +1642,26 @@ export default async function Home({
                   body: t(lang, {
                     en: "No-trade is an action when conditions are stale, noisy, closed, or crisis-like.",
                     pt: "Nao operar e uma acao quando as condicoes estao stale, ruidosas, fechadas ou em crise.",
+                    es: "El no-trade es una accion cuando las condiciones son estancadas, ruidosas, cerradas o parecidas a una crisis.",
+                    fr: "Le no-trade est une action lorsque les conditions sont obsoletes, bruyantes, fermees ou proches d'une crise.",
+                    de: "No-Trade ist eine Aktion, wenn die Bedingungen veraltet, laut, geschlossen oder krisenhaft sind.",
+                    it: "Il no-trade e un'azione quando le condizioni sono stantie, rumorose, chiuse o simili alla crisi.",
                   }),
                 },
                 {
-                  command: t(lang, { en: "REDUCE RISK", pt: "REDUZIR RISCO" }),
+                  command: t(lang, { en: "REDUCE RISK", pt: "REDUZIR RISCO",
+                  es: "REDUCIR EL RIESGO",
+                  fr: "REDUIRE LES RISQUES",
+                  de: "RISIKO REDUZIEREN",
+                  it: "RIDURRE IL RISCHIO", }),
                   tone: "border-amber-300/20 bg-amber-300/10 text-amber-100",
                   body: t(lang, {
                     en: "When protection has higher value than adding fresh exposure.",
                     pt: "Quando proteger tem mais valor do que adicionar nova exposicao.",
+                    es: "Cuando la proteccion tiene mayor valor que agregar nueva exposicion.",
+                    fr: "Lorsque la protection a une valeur plus elevee que l'ajout d'une nouvelle exposition.",
+                    de: "Wenn Schutz einen hoheren Wert hat als das Hinzufugen neuer Belichtung.",
+                    it: "Quando la protezione ha un valore maggiore rispetto all'aggiunta di una nuova esposizione.",
                   }),
                 },
               ].map((card) => (
@@ -1525,15 +1677,39 @@ export default async function Home({
 
           <div className="rounded-[30px] border border-white/10 bg-white/[0.04] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="text-sm font-semibold text-white">
-              {t(lang, { en: "What the customer does", pt: "O que o cliente faz" })}
+              {t(lang, { en: "What the customer does", pt: "O que o cliente faz",
+              es: "Lo que hace el cliente",
+              fr: "Ce que fait le client",
+              de: "Was der Kunde tut",
+              it: "Cosa fa il cliente", })}
             </div>
             <div className="mt-4 space-y-3">
               {[
-                t(lang, { en: "Open Syntrake before the broker.", pt: "Abre o Syntrake antes do broker." }),
-                t(lang, { en: "Read the command: TRADE, WAIT, or REDUCE RISK.", pt: "Le o comando: ENTRAR, WAIT ou REDUZIR RISCO." }),
-                t(lang, { en: "Check freshness, invalidation, risk cap, and rationale.", pt: "Confirma frescura, invalidation, limite de risco e racional." }),
-                t(lang, { en: "Execute manually in the broker only if the gate allows it.", pt: "Executa manualmente no broker so se o gate permitir." }),
-                t(lang, { en: "Return to Syntrake, log proof, and keep the loop auditable.", pt: "Volta ao Syntrake, regista prova e mantem o loop auditavel." }),
+                t(lang, { en: "Open Syntrake before the broker.", pt: "Abre o Syntrake antes do broker.",
+                es: "Abra Syntrake antes que el broker.",
+                fr: "Ouvrez Syntrake avant le broker.",
+                de: "Offnen Sie Syntrake vor dem Broker.",
+                it: "Apri Syntrake prima del broker.", }),
+                t(lang, { en: "Read the command: TRADE, WAIT, or REDUCE RISK.", pt: "Le o comando: ENTRAR, WAIT ou REDUZIR RISCO.",
+                es: "Lea el comando: COMERCIAR, ESPERAR o REDUCIR EL RIESGO.",
+                fr: "Lisez la commande : COMMERCE, ATTENDRE ou REDUIRE LE RISQUE.",
+                de: "Lesen Sie den Befehl: TRADE, WAIT oder REDUCE RISK.",
+                it: "Leggi il comando: COMMERCIO, ATTESA o RIDURRE IL RISCHIO.", }),
+                t(lang, { en: "Check freshness, invalidation, risk cap, and rationale.", pt: "Confirma frescura, invalidation, limite de risco e racional.",
+                es: "Verifique la actualidad, invalidacion, limite de riesgo y justificacion.",
+                fr: "Verifiez la fraicheur, l'invalidation, le plafond de risque et la justification.",
+                de: "Uberprufen Sie Aktualitat, Ungultigkeit, Risikoobergrenze und Begrundung.",
+                it: "Controllare l'aggiornamento, l'invalidazione, il limite di rischio e la logica.", }),
+                t(lang, { en: "Execute manually in the broker only if the gate allows it.", pt: "Executa manualmente no broker so se o gate permitir.",
+                es: "Ejecutar manualmente en el broker solo si la puerta lo permite.",
+                fr: "Executez manuellement dans le broker uniquement si la porte le permet.",
+                de: "Fuhren Sie die manuelle Ausfuhrung im Broker nur dann durch, wenn das Gate dies zulasst.",
+                it: "Esegui manualmente nel broker solo se il gate lo consente.", }),
+                t(lang, { en: "Return to Syntrake, log proof, and keep the loop auditable.", pt: "Volta ao Syntrake, regista prova e mantem o loop auditavel.",
+                es: "Regrese a Syntrake, registre la prueba y mantenga el bucle auditable.",
+                fr: "Retournez a Syntrake, enregistrez la preuve et gardez la boucle verifiable.",
+                de: "Kehren Sie zu Syntrake zuruck, protokollieren Sie es und halten Sie die Schleife uberprufbar.",
+                it: "Ritorna a Syntrake, verifica il log e mantieni il ciclo verificabile.", }),
               ].map((step, index) => (
                 <div key={step} className="grid grid-cols-[44px_1fr] gap-3 rounded-2xl border border-white/8 bg-[#08122e]/70 p-3 text-sm leading-6 text-white/74">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 font-semibold text-cyan-100">
@@ -1547,6 +1723,10 @@ export default async function Home({
               {t(lang, {
                 en: "Educational decision-support only. Syntrake helps structure the decision; users remain responsible for execution and risk.",
                 pt: "Suporte educacional a decisao. O Syntrake ajuda a estruturar a decisao; o utilizador continua responsavel pela execucao e pelo risco.",
+                es: "Solo apoyo a las decisiones educativas. Syntrake ayuda a estructurar la decision; los usuarios siguen siendo responsables de la ejecucion y el riesgo.",
+                fr: "Aide a la decision educative uniquement. Syntrake aide a structurer la decision; les utilisateurs restent responsables de l'execution et des risques.",
+                de: "Nur padagogische Entscheidungsunterstutzung. Syntrake hilft bei der Strukturierung der Entscheidung; Fur die Ausfuhrung und das Risiko bleibt der Nutzer verantwortlich.",
+                it: "Solo supporto decisionale educativo. Syntrake aiuta a strutturare la decisione; gli utenti rimangono responsabili dell'esecuzione e del rischio.",
               })}
             </p>
           </div>
