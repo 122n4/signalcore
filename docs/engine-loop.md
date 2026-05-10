@@ -18,12 +18,33 @@ This loop runs broker sync + reconcile for users with:
 
 ```json
 {
-  "crons": [{ "path": "/api/engine/loop", "schedule": "15 3 * * *" }]
+  "crons": [
+    { "path": "/api/trading/scanner-refresh", "schedule": "*/5 * * * *" },
+    { "path": "/api/engine/loop", "schedule": "15 3 * * *" }
+  ]
 }
 ```
 
-Note: on Vercel Hobby, cron frequency is limited (daily).  
-For 5-minute loop, use Vercel Pro or an external cron caller hitting `/api/engine/loop`.
+`/api/trading/scanner-refresh` is the freshness-critical endpoint. It should run every 2-5
+minutes while trading markets are open, otherwise the product can correctly block execution
+because the live snapshot is stale.
+
+Note: if the active Vercel plan does not run sub-hourly cron jobs, keep this Vercel cron as a
+fallback and use an external cron caller such as cron-job.org every 2 minutes.
+
+External cron targets:
+
+- `POST https://www.syntrake.com/api/trading/scanner-refresh`
+- `POST https://www.syntrake.com/api/engine/loop`
+
+Headers:
+
+- `Authorization: Bearer <CRON_SECRET>`
+
+Validation:
+
+- Run `npm run qa:post-deploy` after deploy.
+- The smoke test fails if `/api/trading/scanner-refresh` cannot refresh open markets with fresh snapshots.
 
 ## Security
 

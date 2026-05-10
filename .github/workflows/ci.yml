@@ -29,6 +29,22 @@ jobs:
       - name: Prod dependency audit
         run: npm run audit:prod
 
+      - name: Post-deploy production smoke
+        env:
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ENGINE_LOOP_SECRET: ${{ secrets.ENGINE_LOOP_SECRET }}
+        run: |
+          if [ -z "$QA_BASE_URL" ]; then
+            echo "Skipping post-deploy smoke: QA_BASE_URL is not configured."
+            exit 0
+          fi
+          if [ -z "$CRON_SECRET" ] && [ -z "$ENGINE_LOOP_SECRET" ]; then
+            echo "Skipping post-deploy smoke: refresh secret is not configured."
+            exit 0
+          fi
+          npm run qa:post-deploy
+
       - name: Trading production audit
         env:
           QA_BASE_URL: ${{ secrets.QA_BASE_URL }}

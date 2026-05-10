@@ -64,6 +64,20 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function sourceTone(source: string) {
+  if (source === "stripe") return "border-emerald-300/40 bg-emerald-400/10 text-emerald-100";
+  if (source === "owner_override" || source === "local_qa") return "border-blue-300/40 bg-blue-400/10 text-blue-100";
+  if (source === "manual_metadata") return "border-amber-300/40 bg-amber-400/10 text-amber-100";
+  if (source === "trial") return "border-cyan-300/40 bg-cyan-400/10 text-cyan-100";
+  return "border-slate-500/40 bg-slate-900/70 text-slate-200";
+}
+
+function maskStripeId(value: string | null | undefined) {
+  if (!value) return "none";
+  if (value.length <= 10) return value;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
 export default async function OpsPage() {
   const { userId } = await auth();
   if (!userId || !isOwnerUserId(userId)) {
@@ -91,6 +105,16 @@ export default async function OpsPage() {
   const billingError = settledError(billing);
   const billingWarnings = billingValue?.summary.warn ?? 0;
   const billingFailures = billingValue?.summary.fail ?? 0;
+  const entitlementUsers = (billingValue?.users ?? [])
+    .slice()
+    .sort((a, b) => {
+      const score = (user: typeof a) =>
+        (user.issues.length > 0 ? 100 : 0) +
+        (user.effectivePremium ? 20 : 0) +
+        (user.source === "manual_metadata" ? 10 : 0);
+      return score(b) - score(a);
+    })
+    .slice(0, 16);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#123654_0,#07111f_36%,#030712_100%)] px-5 py-8 text-white md:px-10">
@@ -175,6 +199,74 @@ export default async function OpsPage() {
                   ))}
               </div>
             ) : null}
+          </Card>
+        </div>
+
+        <div className="mt-6">
+          <Card eyebrow="Entitlements" title="User access audit">
+            {billingValue ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Metric
+                    label="Generated"
+                    value={new Date(billingValue.generatedAt).toLocaleString("en-GB", { timeZone: "UTC" })}
+                  />
+                  <Metric label="Stripe linked" value={billingValue.users.filter((user) => user.stripeCustomerId || user.stripeSubscriptionId).length} />
+                  <Metric label="Issue users" value={billingValue.users.filter((user) => user.issues.length > 0).length} />
+                </div>
+
+                <div className="mt-5 overflow-x-auto rounded-3xl border border-white/10">
+                  <div className="grid min-w-[840px] grid-cols-[minmax(180px,1.2fr)_110px_120px_140px_minmax(180px,1fr)] gap-3 bg-slate-950/70 px-4 py-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                    <span>User</span>
+                    <span>Access</span>
+                    <span>Source</span>
+                    <span>Stripe</span>
+                    <span>Issues</span>
+                  </div>
+                  <div className="divide-y divide-white/10">
+                    {entitlementUsers.map((user) => (
+                      <div
+                        key={user.userId}
+                        className="grid min-w-[840px] grid-cols-[minmax(180px,1.2fr)_110px_120px_140px_minmax(180px,1fr)] gap-3 px-4 py-4 text-sm text-slate-200"
+                      >
+                        <div>
+                          <p className="font-semibold text-white">{user.email ?? "No email"}</p>
+                          <p className="mt-1 break-all text-xs text-slate-500">{user.userId}</p>
+                        </div>
+                        <span className={user.effectivePremium ? "font-bold text-emerald-200" : "text-slate-400"}>
+                          {user.effectivePremium ? "Premium" : "Free"}
+                        </span>
+                        <span className={`h-fit w-fit rounded-full border px-2.5 py-1 text-xs font-bold ${sourceTone(user.source)}`}>
+                          {user.source}
+                        </span>
+                        <div className="text-xs text-slate-400">
+                          <p>{user.stripeStatus ?? "no status"}</p>
+                          <p>{maskStripeId(user.stripeSubscriptionId ?? user.stripeCustomerId)}</p>
+                        </div>
+                        <div className="space-y-1">
+                          {user.issues.length > 0 ? (
+                            user.issues.map((issue) => (
+                              <p
+                                key={`${user.userId}-${issue.code}`}
+                                className={`rounded-xl border px-2 py-1 text-xs ${statusTone(issue.severity)}`}
+                              >
+                                {issue.code}
+                              </p>
+                            ))
+                          ) : (
+                            <span className="text-slate-500">clear</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-amber-100">
+                {billingError}
+              </p>
+            )}
           </Card>
         </div>
       </div>

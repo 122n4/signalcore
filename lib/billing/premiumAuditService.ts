@@ -23,6 +23,8 @@ export type PremiumAuditReport = {
     effectivePremium: boolean;
     metadataIsPaid: boolean;
     stripeStatus: string | null;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
     issues: PremiumAuditResult["issues"];
   }>;
 };
@@ -153,6 +155,8 @@ export async function buildPremiumAuditReport(options: {
       effectivePremium: result.access.effectivePremium,
       metadataIsPaid: result.access.metadataIsPaid,
       stripeStatus: result.stripe?.status ?? null,
+      stripeCustomerId: result.stripe?.customerId ?? null,
+      stripeSubscriptionId: result.stripe?.id ?? null,
       issues: result.issues,
     })),
   };
