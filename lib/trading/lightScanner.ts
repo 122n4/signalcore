@@ -1038,7 +1038,7 @@ async function scanInstrument(
     (timeframe) => (timeframes[timeframe]?.length ?? 0) > 0,
   );
 
-  if (!hasAnyCandles && (currentSession.marketOpen || !options?.includeInactiveMarkets)) {
+  if (!hasAnyCandles && !options?.includeInactiveMarkets) {
     return null;
   }
 

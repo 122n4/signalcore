@@ -438,6 +438,41 @@ describe("trading light scanner", () => {
     expect(input).toBeUndefined();
   });
 
+  it("keeps open-market stale placeholders during explicit refresh visibility checks", async () => {
+    delete process.env.TWELVEDATA_API_KEY;
+    delete process.env.FINNHUB_API_KEY;
+    setTradingLightScannerFallbackCatalogForTests({
+      generatedAt: "2026-03-31T16:00:00.000Z",
+      instruments: {},
+    });
+
+    const [input] = await buildTradingLightScannerInputs({
+      asOf: "2026-03-25T10:45:00.000Z",
+      forceRefresh: true,
+      includeInactiveMarkets: true,
+      instruments: [
+        {
+          instrument: "EURUSD",
+          dataSymbol: "EUR/USD",
+          dataSymbols: [{ symbol: "EUR/USD", relation: "direct" }],
+          marketType: "forex",
+          sessionProfile: "forex",
+          provider: "twelvedata",
+          focusGroup: "forex",
+        },
+      ],
+    });
+
+    expect(input?.snapshot.instrument).toBe("EURUSD");
+    expect(input?.market.session.marketOpen).toBe(true);
+    expect(input?.scannerSnapshot).toMatchObject({
+      source: "empty",
+      providerError: "missing_market_data_provider",
+      actionableFreshness: false,
+    });
+    expect(input?.executionPlan.executionStatus.executionStatus).toBe("restricted");
+  });
+
   it("can include closed markets as non-executable placeholders for product visibility", async () => {
     const inputs = await buildTradingLightScannerInputs({
       asOf: "2026-05-10T06:32:00.000Z",
