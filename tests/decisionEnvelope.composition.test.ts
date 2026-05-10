@@ -218,6 +218,51 @@ function makeInput(overrides: DeepPartial<ComposeDecisionEnvelopeInput> = {}): C
         horizonMonths: 60,
       },
       trace: [],
+      decisionTrace: {
+        version: "v4",
+        chosen: {
+          kind: "DEPLOY_CASH",
+          title: "Deploy measured capital",
+          desc: "Measured add remains the best path.",
+          cta: {
+            label: "Open Daily execution",
+            action: "open_daily_execution",
+            href: "/app?tab=daily&mode=investing",
+          },
+        },
+        rankedTop: [
+          {
+            action: {
+              kind: "DEPLOY_CASH",
+              title: "Deploy cash within your active plan",
+              reason: ["Measured deployment remains aligned with the active plan."],
+            },
+            score: 100,
+          },
+        ],
+        blockers: [],
+        reasons: [
+          "Measured deployment remains aligned with the active plan.",
+          "Priority class: GROWTH.",
+          "Data coverage: 96%.",
+          "Confidence: 64%.",
+        ],
+        stateSnapshot: {
+          mode: "investing",
+          cashPct: 10,
+          exposurePct: 90,
+          holdingsPresent: true,
+          brokerExecutionPending: true,
+          dailyClosed: false,
+          loopStage: "DAY1_NBA",
+          priorityClass: "GROWTH",
+          aggression: "NORMAL",
+          dataQualityStatus: "good",
+          dataCoveragePct: 96,
+          topRiskLeakSeverity: null,
+        },
+        inputHash: "hash-123",
+      },
       fallbackUsed: false,
     },
   };

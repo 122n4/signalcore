@@ -11,6 +11,7 @@ import type {
   EngineContext,
   Guardrail,
   RiskLeak,
+  StructuredDecisionTrace,
 } from "./types";
 
 function clamp01(value: number) {
@@ -119,6 +120,155 @@ function buildActionDesc(action: ActionKind, ctx: EngineContext, reason: string)
     return `${reason}. Pricing coverage ${ctx.market.dataQuality.coveragePct}%.`;
   }
   return reason;
+}
+
+function traceAction(kind: ActionKind, reason: string): StructuredDecisionTrace["rankedTop"][number]["action"] {
+  return {
+    kind,
+    title: buildActionTitle(kind),
+    reason: [reason].filter(Boolean),
+  };
+}
+
+function buildDecisionBlockers(args: {
+  governors: ReturnType<typeof applySafetyGovernors>;
+  guardrails: Guardrail[];
+}) {
+  const governorBlockers = (args.governors.trace || [])
+    .filter((item) => item.outcome === "override")
+    .map((item) => [item.step, item.detail].filter(Boolean).join(": "));
+  const guardrailBlockers = args.guardrails
+    .filter((item) => item.severity === "high")
+    .map((item) => `${item.code}: ${item.message}`);
+
+  return Array.from(new Set([...governorBlockers, ...guardrailBlockers])).slice(0, 8);
+}
+
+function scoreTraceCandidate(args: {
+  kind: ActionKind;
+  chosen: ActionKind;
+  ctx: EngineContext;
+  loopStage: DailyBundleV4["loopStage"];
+  priorityClass: DailyBundleV4["decision"]["priorityClass"];
+  aggression: AggressionLevel;
+}) {
+  const base: Record<ActionKind, number> = {
+    EXECUTE_STARTER_PACK: 82,
+    MANUAL_BROKER_CHECKLIST: 86,
+    DEPLOY_CASH: 72,
+    REBALANCE: 70,
+    REDUCE_CONCENTRATION: 88,
+    HEDGE_RISK: 74,
+    ENTER_POSITION: 66,
+    EXIT_POSITION: 78,
+    ADJUST_STOPS: 68,
+    WAIT: 60,
+    HOLD: 58,
+    PAUSE: 45,
+  };
+  let score = base[args.kind] ?? 50;
+
+  if (args.kind === args.chosen) score += 35;
+  if (args.priorityClass === "SURVIVAL" && ["PAUSE", "WAIT", "HOLD", "REDUCE_CONCENTRATION", "EXIT_POSITION"].includes(args.kind)) score += 12;
+  if (args.priorityClass === "GROWTH" && ["DEPLOY_CASH", "ENTER_POSITION", "EXECUTE_STARTER_PACK"].includes(args.kind)) score += 8;
+  if (args.loopStage === "DAY0_EXECUTE" && ["EXECUTE_STARTER_PACK", "MANUAL_BROKER_CHECKLIST"].includes(args.kind)) score += 10;
+  if (args.ctx.market.dataQuality.status === "poor" && ["DEPLOY_CASH", "ENTER_POSITION"].includes(args.kind)) score -= 30;
+  if (!args.ctx.plan.hasPlan && args.kind !== "PAUSE") score -= 40;
+  if (args.ctx.dayState.doneToday && args.kind !== "HOLD") score -= 40;
+  if (args.aggression === "LOW" && ["DEPLOY_CASH", "ENTER_POSITION"].includes(args.kind)) score -= 8;
+
+  return clampPct(score);
+}
+
+function buildStructuredDecisionTrace(args: {
+  ctx: EngineContext;
+  action: { kind: ActionKind; reason: string };
+  nextBestAction: DailyBundleV4["decision"]["nextBestAction"];
+  loopStage: DailyBundleV4["loopStage"];
+  priorityClass: DailyBundleV4["decision"]["priorityClass"];
+  aggression: AggressionLevel;
+  confidence: number;
+  governors: ReturnType<typeof applySafetyGovernors>;
+  guardrails: Guardrail[];
+  inputHash: string;
+}): StructuredDecisionTrace {
+  const totalValue = Math.max(0, Number(args.ctx.portfolio.totalValueEur || 0));
+  const cashPct = totalValue > 0 ? clampPct((Math.max(0, args.ctx.portfolio.cashEur) / totalValue) * 100) : 100;
+  const exposurePct = clampPct(100 - cashPct);
+  const coreAlternatives: ActionKind[] = [
+    args.action.kind,
+    "WAIT",
+    "HOLD",
+    "PAUSE",
+    "REDUCE_CONCENTRATION",
+    "DEPLOY_CASH",
+    "MANUAL_BROKER_CHECKLIST",
+  ];
+  const uniqueAlternatives = Array.from(new Set(coreAlternatives));
+  const rankedTop = uniqueAlternatives
+    .map((kind) => ({
+      action: traceAction(
+        kind,
+        kind === args.action.kind
+          ? args.action.reason
+          : kind === "WAIT"
+            ? "Alternative if data quality or timing is not strong enough."
+            : kind === "HOLD"
+              ? "Alternative if no capital move is required."
+              : kind === "PAUSE"
+                ? "Alternative when setup, plan, or access blocks execution."
+                : kind === "REDUCE_CONCENTRATION"
+                  ? "Alternative if the dominant risk leak must be fixed first."
+                  : kind === "MANUAL_BROKER_CHECKLIST"
+                    ? "Alternative when execution proof is pending."
+                    : "Alternative when cash deployment is allowed by the plan.",
+      ),
+      score: scoreTraceCandidate({
+        kind,
+        chosen: args.action.kind,
+        ctx: args.ctx,
+        loopStage: args.loopStage,
+        priorityClass: args.priorityClass,
+        aggression: args.aggression,
+      }),
+    }))
+    .sort((a, b) => b.score - a.score || a.action.kind.localeCompare(b.action.kind))
+    .slice(0, 5);
+  const blockers = buildDecisionBlockers({ governors: args.governors, guardrails: args.guardrails });
+  const reasons = Array.from(
+    new Set(
+      [
+        args.action.reason,
+        `Priority class: ${args.priorityClass}.`,
+        `Data coverage: ${clampPct(args.ctx.market.dataQuality.coveragePct)}%.`,
+        `Confidence: ${Math.round(clamp01(args.confidence) * 100)}%.`,
+        args.ctx.signals.topRiskLeakSeverity ? `Top risk leak severity: ${args.ctx.signals.topRiskLeakSeverity}.` : null,
+      ].filter((item): item is string => Boolean(item)),
+    ),
+  ).slice(0, 7);
+
+  return {
+    version: "v4",
+    chosen: args.nextBestAction,
+    rankedTop,
+    blockers,
+    reasons,
+    stateSnapshot: {
+      mode: args.ctx.mode,
+      cashPct,
+      exposurePct,
+      holdingsPresent: args.ctx.portfolio.hasHoldings,
+      brokerExecutionPending: !args.ctx.dayState.doneToday && !["WAIT", "PAUSE", "HOLD"].includes(args.action.kind),
+      dailyClosed: args.ctx.dayState.doneToday,
+      loopStage: args.loopStage,
+      priorityClass: args.priorityClass,
+      aggression: args.aggression,
+      dataQualityStatus: args.ctx.market.dataQuality.status,
+      dataCoveragePct: clampPct(args.ctx.market.dataQuality.coveragePct),
+      topRiskLeakSeverity: args.ctx.signals.topRiskLeakSeverity,
+    },
+    inputHash: args.inputHash,
+  };
 }
 
 function buildGuardrailsBase(ctx: EngineContext): Guardrail[] {
@@ -300,6 +450,18 @@ export function computeDailyBundleV4(ctx: EngineContext): DailyBundleV4 {
 
   const inputHash = buildInputHash(ctx);
   trace = pushTrace(trace, "hash", "computed", inputHash.slice(0, 12));
+  const decisionTrace = buildStructuredDecisionTrace({
+    ctx,
+    action,
+    nextBestAction,
+    loopStage,
+    priorityClass: priority.priorityClass,
+    aggression,
+    confidence,
+    governors,
+    guardrails,
+    inputHash,
+  });
 
   return {
     ok: true,
@@ -355,6 +517,7 @@ export function computeDailyBundleV4(ctx: EngineContext): DailyBundleV4 {
       horizonMonths: ctx.plan.horizonMonths,
     },
     trace: capTrace(trace),
+    decisionTrace,
     fallbackUsed: false,
   };
 }

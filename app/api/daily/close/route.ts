@@ -49,6 +49,13 @@ function asString(value: any) {
   return s.length > 0 ? s : null;
 }
 
+function readDecisionTrace(engineV4: any) {
+  const structured = (engineV4 as any)?.decisionTrace;
+  return structured && typeof structured === "object" && !Array.isArray(structured) && Object.keys(structured).length > 0
+    ? structured
+    : asArray((engineV4 as any)?.trace).slice(0, 10);
+}
+
 function pickLifecycleFirstDailyAt(previousSnapshotRow: any | null, snapshot: any, nowIso: string) {
   const prevMeta = asObject(previousSnapshotRow?.meta);
   const prevLifecycle = asObject((prevMeta as any)?.decisionLifecycle);
@@ -147,7 +154,7 @@ function buildPerfectLoopSnapshotMeta(args: {
       narrative: asString((progression as any)?.narrative),
       overnightChanges: asArray((overnightChanges as any)?.items).slice(0, 6),
     },
-    decisionTrace: asArray((engineV4 as any)?.trace).slice(0, 10),
+    decisionTrace: readDecisionTrace(engineV4),
     decisionIntent: decisionLifecycle.decisionIntent,
     inputHash: asString((engineV4 as any)?.inputHash),
     engineV4Audit: Object.keys(engineV4Audit).length ? engineV4Audit : null,

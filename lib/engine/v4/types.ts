@@ -106,6 +106,38 @@ export type DecisionTraceItem = {
   detail?: string | null;
 };
 
+export type DecisionTraceAction = {
+  kind: ActionKind;
+  title: string;
+  reason: string[];
+};
+
+export type StructuredDecisionTrace = {
+  version: "v4";
+  chosen: NextBestAction;
+  rankedTop: Array<{
+    action: DecisionTraceAction;
+    score: number;
+  }>;
+  blockers: string[];
+  reasons: string[];
+  stateSnapshot: {
+    mode: AutopilotMode;
+    cashPct: number;
+    exposurePct: number;
+    holdingsPresent: boolean;
+    brokerExecutionPending: boolean;
+    dailyClosed: boolean;
+    loopStage: LoopStage;
+    priorityClass: PriorityClass;
+    aggression: AggressionLevel;
+    dataQualityStatus: EngineContextMarket["dataQuality"]["status"];
+    dataCoveragePct: number;
+    topRiskLeakSeverity: EngineContextSignals["topRiskLeakSeverity"];
+  };
+  inputHash: string;
+};
+
 export type DailyBundleV4 = {
   ok: true;
   engineVersion: "v4-ultra";
@@ -120,6 +152,7 @@ export type DailyBundleV4 = {
   portfolio: PortfolioSummary;
   plan: PlanSummary;
   trace: DecisionTraceItem[];
+  decisionTrace: StructuredDecisionTrace;
   fallbackUsed: boolean;
 };
 

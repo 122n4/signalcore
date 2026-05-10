@@ -60,6 +60,10 @@ describe("engine v4 ultra (determinism)", () => {
     expect(outA.inputHash).toBe(outB.inputHash);
     expect(outA.decision.nextBestAction.kind).toBe(outB.decision.nextBestAction.kind);
     expect(outA.decision.whyNow).toBe(outB.decision.whyNow);
+    expect(outA.decisionTrace.inputHash).toBe(outA.inputHash);
+    expect(outA.decisionTrace.chosen.kind).toBe(outA.decision.nextBestAction.kind);
+    expect(outA.decisionTrace.rankedTop[0]?.action.kind).toBe(outA.decision.nextBestAction.kind);
+    expect(outA.decisionTrace).toEqual(outB.decisionTrace);
   });
 
   it("forces HOLD when the day is already closed", () => {
@@ -72,5 +76,23 @@ describe("engine v4 ultra (determinism)", () => {
 
     expect(out.decision.nextBestAction.kind).toBe("HOLD");
     expect(out.loopStage).toBe("DAY1_NBA");
+    expect(out.decisionTrace.stateSnapshot.dailyClosed).toBe(true);
+    expect(out.decisionTrace.blockers).toContain("governor.day_closed: Day already closed");
+  });
+
+  it("records structured blockers when setup is not executable", () => {
+    const ctx = buildEngineContext({
+      ...sources,
+      setupStatus: "draft",
+      plan: null,
+    });
+
+    const out = computeDailyBundleV4(ctx);
+
+    expect(out.decision.nextBestAction.kind).toBe("PAUSE");
+    expect(out.decisionTrace.version).toBe("v4");
+    expect(out.decisionTrace.stateSnapshot.holdingsPresent).toBe(true);
+    expect(out.decisionTrace.blockers.some((blocker) => blocker.includes("plan"))).toBe(true);
+    expect(out.decisionTrace.rankedTop[0]?.action.kind).toBe("PAUSE");
   });
 });

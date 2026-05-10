@@ -26,6 +26,13 @@ function asString(v: any) {
   return s.length > 0 ? s : null;
 }
 
+function readDecisionTrace(engineV4: any) {
+  const structured = (engineV4 as any)?.decisionTrace;
+  return structured && typeof structured === "object" && !Array.isArray(structured) && Object.keys(structured).length > 0
+    ? structured
+    : asArray((engineV4 as any)?.trace);
+}
+
 function asNum(v: any, fallback = 0) {
   const n = typeof v === "number" ? v : Number(String(v ?? "").replace(",", "."));
   return Number.isFinite(n) ? n : fallback;
@@ -235,7 +242,7 @@ export async function POST(req: Request) {
       engineVersion: (replayV4 as any).engineVersion || "v4-ultra",
       asOf: (replayV4 as any).asOf || (ctx as any).asOf,
     },
-    decisionTrace: Array.isArray((replayV4 as any).trace) ? (replayV4 as any).trace : [],
+    decisionTrace: readDecisionTrace(replayV4),
     scores: replayScoreAudit.scores,
     capitalStatus: replayCapitalStatus,
     auditTrail: {

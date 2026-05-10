@@ -857,6 +857,7 @@ function applyScoresReplayAuditExtensions(args: {
       ...(dailyNode as any),
       nextBestAction: patchedNextBestAction,
       capitalStatus: patchedCapitalStatus,
+      decisionTrace: readStructuredDecisionTrace(engineV4),
       scores: scoreNode,
       scoreAudit: scoreAuditNode,
       auditTrail: auditTrailNode,
@@ -3490,6 +3491,11 @@ function computePerformance(
 
 function safeObj(x: any) {
   return x && typeof x === "object" ? x : {};
+}
+
+function readStructuredDecisionTrace(engineV4: any) {
+  const trace = (engineV4 as any)?.decisionTrace;
+  return trace && typeof trace === "object" && !Array.isArray(trace) && Object.keys(trace).length > 0 ? trace : null;
 }
 
 export function attachDecisionEnvelopeToDailyBundleRouteResponse<
