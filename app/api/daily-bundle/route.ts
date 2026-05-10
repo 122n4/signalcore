@@ -866,6 +866,10 @@ function applyScoresReplayAuditExtensions(args: {
   };
 }
 
+export function shouldLoadTradingWatchlistForDailyBundle(mode: AutopilotMode) {
+  return mode === "trading";
+}
+
 function buildUnlockedMode(args: { mode: AutopilotMode; hasProAccess: boolean }) {
   const hasProAccess = !!args.hasProAccess;
   const modes: AutopilotMode[] = ["investing"];
@@ -956,7 +960,7 @@ function buildInstantPortfolioScore(args: {
   };
 }
 
-function buildDailyPaywallState(args: {
+export function buildDailyPaywallState(args: {
   asOf: string;
   mode: AutopilotMode;
   billing: {
@@ -996,6 +1000,7 @@ function buildDailyPaywallState(args: {
 
   const day0 = receiptsCount === 0;
   const day0Operational = day0 && !doneToday && ["EXECUTE_BROKER", "CLOSE_DAY"].includes(actionType);
+  const investingFreeForever = args.mode === "investing";
   const decisionReady =
     !doneToday &&
     hasPlan &&
@@ -1004,7 +1009,12 @@ function buildDailyPaywallState(args: {
     !["PAUSE"].includes(actionType) &&
     gateStatus !== "blocked";
 
-  const shouldPreviewOnly = !args.billing.proActive && !day0Operational && receiptsCount >= 1 && decisionReady;
+  const shouldPreviewOnly =
+    !investingFreeForever &&
+    !args.billing.proActive &&
+    !day0Operational &&
+    receiptsCount >= 1 &&
+    decisionReady;
   const previewStatus: "READY" | "COLLECTING" | "NO_DATA" =
     !hasPlan || !hasHoldings ? "NO_DATA" : decisionReady && receiptsCount >= 1 ? "READY" : "COLLECTING";
 
@@ -1016,6 +1026,7 @@ function buildDailyPaywallState(args: {
   const primaryReason = primaryReasonRaw ? primaryReasonRaw.slice(0, 180) : undefined;
 
   const canShowPaywall =
+    !investingFreeForever &&
     !args.billing.proActive &&
     !day0Operational &&
     (Boolean((paywallActivation as any)?.eligibleNow) || (receiptsCount >= 1 && previewStatus === "READY"));
@@ -1041,12 +1052,16 @@ function buildDailyPaywallState(args: {
       reason,
       cta,
       decisionExposure: shouldPreviewOnly ? "PREVIEW_ONLY" : "FULL",
-      continuityPolicy: "continuity_first",
+      continuityPolicy: investingFreeForever ? "investing_free_forever" : "continuity_first",
       day0OperationalAllowed: true,
       copy: {
-        title: "Your Autopilot is ready.",
-        subtitle: "Syntrake completed overnight evaluation for your portfolio. Activate Pro to receive continuous daily decisions.",
-        trust: "Cancel anytime. No promises. Decisions are explainable and auditable.",
+        title: investingFreeForever ? "Investing stays open." : "Your Autopilot is ready.",
+        subtitle: investingFreeForever
+          ? "Daily investing decisions stay visible without requiring a paid trading subscription."
+          : "Syntrake completed overnight evaluation for your portfolio. Activate Pro to receive continuous daily decisions.",
+        trust: investingFreeForever
+          ? "Free investing remains educational decision support. No guarantees, no custody, no forced broker action."
+          : "Cancel anytime. No promises. Decisions are explainable and auditable.",
       },
     },
     nextBestActionPreview: {
@@ -4061,51 +4076,53 @@ export async function GET(req: Request) {
     const forceTradingLiveRefresh =
       url.searchParams.get("tradingRefresh") === "live" ||
       url.searchParams.get("forceTradingRefresh") === "1";
-    try {
-      if (!forceTradingLiveRefresh) {
-        const storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
-        const hasActionableOpenStoredSnapshot = storedScannerSnapshots.inputs.some(
-          (input) =>
-            input.market.session.marketOpen === true &&
-            input.scannerSnapshot?.actionableFreshness === true,
-        );
-        if (
-          storedScannerSnapshots.inputs.length > 0 &&
-          storedScannerSnapshots.excludedStaleOpenCount === 0 &&
-          hasActionableOpenStoredSnapshot
-        ) {
-          tradingWatchlistInputs = storedScannerSnapshots.inputs;
-        }
-      }
-
-      if (!tradingWatchlistInputs) {
-        tradingWatchlistInputs = await buildTradingLightScannerInputs({
-          asOf,
-          forceRefresh: true,
-          forceProviderRefresh: forceTradingLiveRefresh,
-          includeInactiveMarkets: true,
-        });
-
-        if (tradingWatchlistInputs.length > 0) {
-          const scannerPersist = await writeTradingScannerSnapshots({
-            inputs: tradingWatchlistInputs,
-            generatedAt: asOf,
-          });
-
-          if (!scannerPersist.persisted) {
-            console.warn(
-              "[daily-bundle] trading scanner opportunistic persist skipped",
-              scannerPersist.error ?? "persist_failed",
-            );
+    if (shouldLoadTradingWatchlistForDailyBundle(modeKey)) {
+      try {
+        if (!forceTradingLiveRefresh) {
+          const storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
+          const hasActionableOpenStoredSnapshot = storedScannerSnapshots.inputs.some(
+            (input) =>
+              input.market.session.marketOpen === true &&
+              input.scannerSnapshot?.actionableFreshness === true,
+          );
+          if (
+            storedScannerSnapshots.inputs.length > 0 &&
+            storedScannerSnapshots.excludedStaleOpenCount === 0 &&
+            hasActionableOpenStoredSnapshot
+          ) {
+            tradingWatchlistInputs = storedScannerSnapshots.inputs;
           }
         }
+
+        if (!tradingWatchlistInputs) {
+          tradingWatchlistInputs = await buildTradingLightScannerInputs({
+            asOf,
+            forceRefresh: true,
+            forceProviderRefresh: forceTradingLiveRefresh,
+            includeInactiveMarkets: true,
+          });
+
+          if (tradingWatchlistInputs.length > 0) {
+            const scannerPersist = await writeTradingScannerSnapshots({
+              inputs: tradingWatchlistInputs,
+              generatedAt: asOf,
+            });
+
+            if (!scannerPersist.persisted) {
+              console.warn(
+                "[daily-bundle] trading scanner opportunistic persist skipped",
+                scannerPersist.error ?? "persist_failed",
+              );
+            }
+          }
+        }
+      } catch (scannerError: any) {
+        console.warn(
+          "[daily-bundle] trading light scanner fallback",
+          scannerError?.message ?? scannerError,
+        );
+        tradingWatchlistInputs = [];
       }
-    } catch (scannerError: any) {
-      console.warn(
-        "[daily-bundle] trading light scanner fallback",
-        scannerError?.message ?? scannerError,
-      );
-      tradingWatchlistInputs = [];
     }
 
   // --- streak (journal)

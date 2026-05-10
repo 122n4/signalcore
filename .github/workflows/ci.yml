@@ -59,6 +59,20 @@ jobs:
           fi
           npm run qa:trading:prod
 
+      - name: Investing production audit
+        env:
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          QA_SIGN_IN_URL: ${{ secrets.QA_SIGN_IN_URL }}
+          QA_CLERK_USER_ID: ${{ secrets.QA_CLERK_USER_ID }}
+          QA_CLERK_EMAIL: ${{ secrets.QA_CLERK_EMAIL }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+        run: |
+          if [ -z "$QA_SIGN_IN_URL" ] && { [ -z "$CLERK_SECRET_KEY" ] || { [ -z "$QA_CLERK_USER_ID" ] && [ -z "$QA_CLERK_EMAIL" ]; }; }; then
+            echo "Skipping investing production audit: QA auth is not configured."
+            exit 0
+          fi
+          npm run qa:investing:prod
+
       - name: Billing entitlement audit
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
