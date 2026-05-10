@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/trading/scanner-refresh",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/engine/loop",

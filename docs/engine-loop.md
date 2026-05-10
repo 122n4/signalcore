@@ -19,7 +19,7 @@ This loop runs broker sync + reconcile for users with:
 ```json
 {
   "crons": [
-    { "path": "/api/trading/scanner-refresh", "schedule": "*/5 * * * *" },
+    { "path": "/api/trading/scanner-refresh", "schedule": "0 0 * * *" },
     { "path": "/api/engine/loop", "schedule": "15 3 * * *" }
   ]
 }
@@ -29,13 +29,19 @@ This loop runs broker sync + reconcile for users with:
 minutes while trading markets are open, otherwise the product can correctly block execution
 because the live snapshot is stale.
 
-Note: if the active Vercel plan does not run sub-hourly cron jobs, keep this Vercel cron as a
-fallback and use an external cron caller such as cron-job.org every 2 minutes.
+The current Vercel Hobby plan rejects sub-daily cron expressions, so the Vercel cron stays as
+a daily fallback. The production refresh should be handled by an external cron caller such as
+cron-job.org every 2 minutes.
 
 External cron targets:
 
 - `POST https://www.syntrake.com/api/trading/scanner-refresh`
 - `POST https://www.syntrake.com/api/engine/loop`
+
+Schedule:
+
+- scanner refresh: every 2 minutes
+- engine loop: every 5-15 minutes, or daily if broker automation is not active
 
 Headers:
 
