@@ -5,6 +5,8 @@ import type { ComposeTradingLiveDecisionInput } from "@/lib/trading/state";
 export const TRADING_SCANNER_SNAPSHOT_TABLE = "trading_scanner_snapshots";
 export const TRADING_SCANNER_STORED_SNAPSHOT_MAX_AGE_MS =
   TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS;
+export const TRADING_SCANNER_LAST_VALID_SNAPSHOT_MAX_AGE_MS =
+  36 * 60 * 60 * 1000;
 
 type TradingScannerSnapshotRow = {
   instrument: string;
@@ -245,6 +247,86 @@ export async function readFreshTradingScannerSnapshots(args: {
       inputs,
       generatedAt,
       excludedStaleOpenCount,
+      error: null,
+    };
+  } catch (error: any) {
+    if (isMissingSchemaError(error)) {
+      return {
+        schemaReady: false,
+        inputs: [],
+        generatedAt: null,
+        excludedStaleOpenCount: 0,
+        error: error?.message ?? "missing_trading_scanner_snapshot_schema",
+      };
+    }
+
+    return {
+      schemaReady: true,
+      inputs: [],
+      generatedAt: null,
+      excludedStaleOpenCount: 0,
+      error: error?.message ?? "trading_scanner_snapshot_read_failed",
+    };
+  }
+}
+
+export async function readLatestTradingScannerSnapshots(args: {
+  asOf?: string | Date | null;
+  maxAgeMs?: number;
+} = {}): Promise<TradingScannerSnapshotReadResult> {
+  const asOfIso = normalizeIso(args.asOf);
+  const maxAgeMs = Math.max(
+    TRADING_SCANNER_STORED_SNAPSHOT_MAX_AGE_MS,
+    Math.round(args.maxAgeMs ?? TRADING_SCANNER_LAST_VALID_SNAPSHOT_MAX_AGE_MS),
+  );
+  const cutoffIso = new Date(Date.parse(asOfIso) - maxAgeMs).toISOString();
+
+  try {
+    const sb = getSupabaseAdmin();
+    const { data, error } = await sb
+      .from(TRADING_SCANNER_SNAPSHOT_TABLE)
+      .select("instrument,generated_at,payload")
+      .gte("generated_at", cutoffIso)
+      .order("generated_at", { ascending: false });
+
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        return {
+          schemaReady: false,
+          inputs: [],
+          generatedAt: null,
+          excludedStaleOpenCount: 0,
+          error: error.message ?? "missing_trading_scanner_snapshot_schema",
+        };
+      }
+      throw new Error(error.message ?? "trading_scanner_snapshot_read_failed");
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const validRows = rows.filter((row: any) => isScannerInput(row?.payload));
+    const seen = new Set<string>();
+    const inputs: ComposeTradingLiveDecisionInput[] = [];
+
+    for (const row of validRows) {
+      const input = row.payload as ComposeTradingLiveDecisionInput;
+      const instrument = normalizeInstrument(input.snapshot.instrument);
+      if (!instrument || seen.has(instrument)) continue;
+      seen.add(instrument);
+      inputs.push(input);
+    }
+
+    const generatedAt =
+      validRows
+        .map((row: any) => String(row?.generated_at ?? ""))
+        .filter(Boolean)
+        .sort()
+        .at(-1) ?? null;
+
+    return {
+      schemaReady: true,
+      inputs,
+      generatedAt,
+      excludedStaleOpenCount: 0,
       error: null,
     };
   } catch (error: any) {

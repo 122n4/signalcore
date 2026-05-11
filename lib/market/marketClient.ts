@@ -14,6 +14,68 @@ import { tdQuoteNormalized, tdCandles } from "@/lib/market/providers/twelvedata"
 
 export type ProviderPref = "auto" | "binance" | "coinbase" | "finnhub" | "twelvedata";
 type ConcreteProviderPref = Exclude<ProviderPref, "auto">;
+type ProviderCooldown = {
+  until: number;
+  reason: string;
+};
+
+const g = globalThis as any;
+if (!g.__sc_market_provider_cooldowns) {
+  g.__sc_market_provider_cooldowns = new Map<ConcreteProviderPref, ProviderCooldown>();
+}
+
+const PROVIDER_COOLDOWNS: Map<ConcreteProviderPref, ProviderCooldown> =
+  g.__sc_market_provider_cooldowns;
+
+function rateLimitCooldownMs(message: string) {
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("current minute") ||
+    normalized.includes("minute") ||
+    normalized.includes("(429)") ||
+    normalized.includes("rate limit")
+  ) {
+    return 75_000;
+  }
+
+  if (
+    normalized.includes("api credits") ||
+    normalized.includes("quota") ||
+    normalized.includes("limit")
+  ) {
+    return 10 * 60_000;
+  }
+
+  return 0;
+}
+
+function registerProviderFailure(provider: ConcreteProviderPref, error: unknown) {
+  const message = String((error as any)?.message ?? error ?? "provider_failed");
+  const cooldownMs = rateLimitCooldownMs(message);
+  if (cooldownMs > 0) {
+    PROVIDER_COOLDOWNS.set(provider, {
+      until: Date.now() + cooldownMs,
+      reason: message,
+    });
+  }
+
+  return message;
+}
+
+function isProviderCoolingDown(provider: ConcreteProviderPref) {
+  const cooldown = PROVIDER_COOLDOWNS.get(provider);
+  if (!cooldown) return null;
+  if (Date.now() >= cooldown.until) {
+    PROVIDER_COOLDOWNS.delete(provider);
+    return null;
+  }
+
+  return cooldown;
+}
+
+export function resetMarketClientProviderCooldownsForTests() {
+  PROVIDER_COOLDOWNS.clear();
+}
 
 function hasProviderKey(provider: ConcreteProviderPref) {
   if (provider === "binance") {
@@ -97,13 +159,19 @@ export async function getQuote(
   }
 
   for (const p of order) {
+    const cooldown = isProviderCoolingDown(p);
+    if (cooldown) {
+      providerErrors[p] = `cooldown_active:${cooldown.reason}`;
+      continue;
+    }
+
     try {
       if (p === "coinbase") return await coinbaseQuote(symbol, undefined, options);
       if (p === "binance") return await binanceQuote(symbol, undefined, options);
       if (p === "finnhub") return await finnhubQuote(symbol, undefined, options);
       if (p === "twelvedata") return await tdQuoteNormalized(symbol, undefined, options);
     } catch (e: any) {
-      providerErrors[p] = e?.message ?? "provider_failed";
+      providerErrors[p] = registerProviderFailure(p, e);
     }
   }
 
@@ -125,13 +193,19 @@ export async function getCandles(
   }
 
   for (const p of order) {
+    const cooldown = isProviderCoolingDown(p);
+    if (cooldown) {
+      providerErrors[p] = `cooldown_active:${cooldown.reason}`;
+      continue;
+    }
+
     try {
       if (p === "coinbase") return await coinbaseCandles(symbol, tf, undefined, options);
       if (p === "binance") return await binanceCandles(symbol, tf, undefined, options);
       if (p === "finnhub") return await finnhubCandles(symbol, tf, undefined, options);
       if (p === "twelvedata") return await tdCandles(symbol, tf, undefined, options);
     } catch (e: any) {
-      providerErrors[p] = e?.message ?? "provider_failed";
+      providerErrors[p] = registerProviderFailure(p, e);
     }
   }
 

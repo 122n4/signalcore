@@ -40,7 +40,7 @@ vi.mock("@/lib/market/providers/twelvedata", () => ({
   tdQuoteNormalized: tdQuoteMock,
 }));
 
-import { getCandles } from "@/lib/market/marketClient";
+import { getCandles, resetMarketClientProviderCooldownsForTests } from "@/lib/market/marketClient";
 
 describe("market client provider routing", () => {
   const originalTwelveDataKey = process.env.TWELVEDATA_API_KEY;
@@ -48,6 +48,7 @@ describe("market client provider routing", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetMarketClientProviderCooldownsForTests();
     process.env.TWELVEDATA_API_KEY = "td-test-key";
     process.env.FINNHUB_API_KEY = "fh-test-key";
   });
@@ -118,5 +119,20 @@ describe("market client provider routing", () => {
     await expect(
       getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto"),
     ).rejects.toThrow("twelvedata:rate_limited | finnhub:quota_exceeded");
+  });
+
+  it("skips a provider briefly after rate-limit failures", async () => {
+    tdCandlesMock.mockRejectedValue(
+      new Error("You have run out of API credits for the current minute."),
+    );
+    finnhubCandlesMock.mockResolvedValue([
+      { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
+    ]);
+
+    await getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto");
+    await getCandles("GBP/USD", { interval: "5min", points: 2 }, "auto");
+
+    expect(tdCandlesMock).toHaveBeenCalledTimes(1);
+    expect(finnhubCandlesMock).toHaveBeenCalledTimes(2);
   });
 });

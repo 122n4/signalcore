@@ -29,6 +29,7 @@ import { checkAndRecordFeatureUsage } from "@/lib/signalcore/usageLimits";
 import { resolveModeAccess } from "@/lib/signalcore/modeAccess";
 import { buildTradingLightScannerInputs } from "@/lib/trading/lightScanner";
 import {
+  readLatestTradingScannerSnapshots,
   readFreshTradingScannerSnapshots,
   writeTradingScannerSnapshots,
 } from "@/lib/trading/scannerSnapshotStore";
@@ -4175,6 +4176,10 @@ export async function GET(req: Request) {
             hasActionableOpenStoredSnapshot
           ) {
             tradingWatchlistInputs = storedScannerSnapshots.inputs;
+          }
+
+          if (!tradingWatchlistInputs && storedScannerSnapshots.inputs.length === 0) {
+            storedScannerSnapshots = await readLatestTradingScannerSnapshots({ asOf });
           }
         }
 

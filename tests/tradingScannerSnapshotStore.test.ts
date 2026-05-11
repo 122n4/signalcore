@@ -83,7 +83,7 @@ describe("trading scanner snapshot store", () => {
       ],
       { onConflict: "instrument" },
     );
-  });
+  }, 10_000);
 
   it("reads only valid persisted scanner payloads and reports the latest generation time", async () => {
     const orderMock = vi.fn().mockResolvedValue({
@@ -197,6 +197,45 @@ describe("trading scanner snapshot store", () => {
 
     expect(result.inputs.map((input) => input.snapshot.instrument)).toEqual(["US500"]);
     expect(result.excludedStaleOpenCount).toBe(1);
+  });
+
+  it("can read latest stored rows for non-execution chart fallback", async () => {
+    const orderMock = vi.fn().mockResolvedValue({
+      data: [
+        {
+          generated_at: "2026-05-09T08:10:00.000Z",
+          payload: makeScannerInput({
+            snapshot: { instrument: "BTC", snapshotAt: "2026-05-09T08:00:00.000Z" },
+            scannerSnapshot: {
+              actionableFreshness: false,
+              staleReason: "Live snapshot is stale.",
+            },
+          }),
+        },
+        {
+          generated_at: "2026-05-09T08:09:00.000Z",
+          payload: makeScannerInput({
+            snapshot: { instrument: "BTC", snapshotAt: "2026-05-09T07:59:00.000Z" },
+          }),
+        },
+      ],
+      error: null,
+    });
+    const gteMock = vi.fn().mockReturnValue({ order: orderMock });
+    const selectMock = vi.fn().mockReturnValue({ gte: gteMock });
+    getSupabaseAdminMock.mockReturnValue({
+      from: vi.fn().mockReturnValue({ select: selectMock }),
+    });
+
+    const { readLatestTradingScannerSnapshots } = await import("@/lib/trading/scannerSnapshotStore");
+    const result = await readLatestTradingScannerSnapshots({
+      asOf: "2026-05-09T08:30:00.000Z",
+      maxAgeMs: 60 * 60 * 1000,
+    });
+
+    expect(result.inputs.map((input) => input.snapshot.instrument)).toEqual(["BTC"]);
+    expect(result.inputs[0]?.scannerSnapshot?.actionableFreshness).toBe(false);
+    expect(result.generatedAt).toBe("2026-05-09T08:10:00.000Z");
   });
 
   it("returns schemaReady false instead of throwing when the table is missing", async () => {

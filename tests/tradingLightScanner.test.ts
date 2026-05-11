@@ -217,6 +217,58 @@ describe("trading light scanner", () => {
     expect(inputs[0]?.scannerSnapshot?.providerError).toBe("live_fetch_deferred");
   });
 
+  it("keeps a stale stored chart visible when live fetching is disabled", async () => {
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      includeInactiveMarkets: true,
+      allowLiveFetch: false,
+      instruments: [
+        {
+          instrument: "EURUSD",
+          dataSymbol: "EUR/USD",
+          marketType: "forex",
+          sessionProfile: "forex",
+          provider: "twelvedata",
+          focusGroup: "forex",
+        },
+      ],
+      storedInputs: [
+        {
+          snapshot: {
+            instrument: "EURUSD",
+            marketType: "forex",
+            sessionProfile: "forex",
+            snapshotAt: "2026-03-10T13:30:00.000Z",
+            timeframes: {
+              "5m": buildTradingCandles(1.08),
+              "15m": buildTradingCandles(1.09),
+              "1h": buildTradingCandles(1.1),
+              "4h": buildTradingCandles(1.11),
+              "1d": buildTradingCandles(1.12),
+            },
+            availableTimeframes: ["5m", "15m", "1h", "4h", "1d"],
+          },
+          market: { session: { marketOpen: true } },
+          scannerSnapshot: {
+            source: "provider",
+            providerError: null,
+            dataSymbol: "EUR/USD",
+            dataRelation: "direct",
+            snapshotAgeMs: 30 * 60_000,
+            actionableFreshness: false,
+            staleReason: "Live snapshot is stale.",
+          },
+        } as any,
+      ],
+    });
+
+    expect(getCandlesMock).not.toHaveBeenCalled();
+    expect(inputs[0]?.snapshot.availableTimeframes).toContain("5m");
+    expect(inputs[0]?.scannerSnapshot?.source).toBe("cache");
+    expect(inputs[0]?.scannerSnapshot?.actionableFreshness).toBe(false);
+  });
+
   it("reuses fresh stored scanner inputs for open markets outside the live fetch budget", async () => {
     process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT = "1";
 

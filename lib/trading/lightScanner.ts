@@ -620,6 +620,9 @@ function resolveTradingLightScannerOpenMarketLiveFetchLimit() {
 function resolveStoredScannerPayload(
   input: ComposeTradingLiveDecisionInput | null | undefined,
   asOf: string,
+  options?: {
+    allowStale?: boolean;
+  },
 ): TradingLightScannerTimeframePayload | null {
   if (!input?.snapshot || !input.scannerSnapshot) {
     return null;
@@ -631,7 +634,7 @@ function resolveStoredScannerPayload(
     source: input.scannerSnapshot.source,
   });
 
-  if (!freshness.actionable) {
+  if (!freshness.actionable && options?.allowStale !== true) {
     return null;
   }
 
@@ -1032,30 +1035,15 @@ async function fetchInstrumentTimeframes(
 
   const cached = await readTradingLightScannerProviderCache(config.instrument, asOf);
   if (cached) {
-    const freshness = assessTradingLightScannerFreshness({
-      asOf,
-      snapshotAt: cached.snapshotAt,
-      source: cached.source,
-    });
-
-    if (options?.marketOpen && !freshness.actionable) {
-      return {
-        timeframes: {},
-        snapshotAt: asOf,
-        source: "empty",
-        providerError,
-        dataSymbol: cached.dataSymbol ?? null,
-        dataRelation: cached.dataRelation ?? null,
-      };
-    }
-
     return {
       ...cached,
       providerError,
     };
   }
 
-  const storedPayload = resolveStoredScannerPayload(options?.storedInput, asOf);
+  const storedPayload = resolveStoredScannerPayload(options?.storedInput, asOf, {
+    allowStale: !allowLiveFetch,
+  });
   if (storedPayload) {
     return {
       ...storedPayload,
