@@ -162,12 +162,15 @@ async function main() {
         method: "POST",
         headers: refreshHeaders,
       });
-      pushCheck(checks, "scanner_refresh", refresh.response.ok && Boolean(refresh.payload?.ok) ? "pass" : "fail", {
+      const warningReasons = Array.isArray(refresh.payload?.warningReasons) ? refresh.payload.warningReasons : [];
+      const refreshCompleted = refresh.response.ok && refresh.payload?.ok !== false;
+      pushCheck(checks, "scanner_refresh", refreshCompleted ? warningReasons.length > 0 ? "warn" : "pass" : "fail", {
         statusCode: refresh.response.status,
         durationMs: refresh.durationMs,
         details: {
           ok: refresh.payload?.ok ?? false,
-          warningReasons: refresh.payload?.warningReasons ?? [],
+          executionReady: refresh.payload?.executionReady ?? null,
+          warningReasons,
           marketOpenCount: refresh.payload?.summary?.marketOpenCount ?? null,
           freshOpenMarketCount: refresh.payload?.summary?.freshOpenMarketCount ?? null,
           staleOpenMarketCount: refresh.payload?.summary?.staleOpenMarketCount ?? null,

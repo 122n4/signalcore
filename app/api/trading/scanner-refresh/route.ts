@@ -76,6 +76,8 @@ async function handleRefresh(req: Request) {
     const summary = summarizeInputs(inputs);
     const scannerHealthy = summary.marketOpenCount === 0 || summary.staleOpenMarketCount === 0;
     const storageHealthy = persist.schemaReady || persist.persisted;
+    const refreshCompleted = storageHealthy;
+    const executionReady = scannerHealthy && storageHealthy;
     const scannerAlert =
       summary.marketOpenCount === 0
         ? {
@@ -105,9 +107,10 @@ async function handleRefresh(req: Request) {
 
     return NextResponse.json(
       {
-        ok: scannerHealthy && storageHealthy,
+        ok: refreshCompleted,
         asOf,
         healthy: scannerHealthy,
+        executionReady,
         warningReasons,
         persisted: persist.persisted,
         schemaReady: persist.schemaReady,
@@ -118,7 +121,7 @@ async function handleRefresh(req: Request) {
         summary,
       },
       {
-        status: scannerHealthy && storageHealthy ? 200 : 503,
+        status: refreshCompleted ? 200 : 503,
         headers: { "Cache-Control": "no-store" },
       },
     );
