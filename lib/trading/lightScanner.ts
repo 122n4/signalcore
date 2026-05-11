@@ -79,11 +79,12 @@ const TRADING_LIGHT_SCANNER_TIMEFRAME_MS: Record<TradingTimeframe, number> = {
 const TRADING_LIGHT_SCANNER_CACHE_TTL_MS = 90_000;
 const TRADING_LIGHT_SCANNER_PROVIDER_CACHE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 const TRADING_LIGHT_SCANNER_FALLBACK_CATALOG_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS = 8 * 60 * 1000;
+export const TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS = 8 * 60 * 1000;
 const TRADING_LIGHT_SCANNER_PROVIDER_FRESH_CACHE_MAX_AGE_MS =
   TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS;
 const TRADING_LIGHT_SCANNER_PROVIDER_PERSISTENT_CACHE_TTL_SEC =
   TRADING_LIGHT_SCANNER_PROVIDER_FRESH_CACHE_MAX_AGE_MS / 1000;
+const TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT_DEFAULT = 8;
 
 type TradingLightScannerCacheEntry = {
   value: ComposeTradingLiveDecisionInput[];
@@ -603,6 +604,47 @@ function resolveTradingLightScannerLiveFetchLimit() {
   return 5;
 }
 
+function resolveTradingLightScannerOpenMarketLiveFetchLimit() {
+  const configured = Number(process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.max(1, Math.round(configured));
+  }
+
+  if (process.env.NODE_ENV === "test") {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT_DEFAULT;
+}
+
+function resolveStoredScannerPayload(
+  input: ComposeTradingLiveDecisionInput | null | undefined,
+  asOf: string,
+): TradingLightScannerTimeframePayload | null {
+  if (!input?.snapshot || !input.scannerSnapshot) {
+    return null;
+  }
+
+  const freshness = assessTradingLightScannerFreshness({
+    asOf,
+    snapshotAt: input.snapshot.snapshotAt,
+    source: input.scannerSnapshot.source,
+  });
+
+  if (!freshness.actionable) {
+    return null;
+  }
+
+  return {
+    timeframes: input.snapshot.timeframes,
+    snapshotAt: input.snapshot.snapshotAt,
+    source: "cache",
+    providerError: input.scannerSnapshot.providerError ?? null,
+    dataSymbol: input.scannerSnapshot.dataSymbol ?? null,
+    dataRelation: input.scannerSnapshot.dataRelation ?? null,
+  };
+}
+
 async function ensureTradingLightScannerEnvLoaded() {
   if (
     tradingLightScannerEnvLoaded ||
@@ -863,6 +905,7 @@ async function fetchInstrumentTimeframes(
     forceProviderRefresh?: boolean;
     marketOpen?: boolean;
     session?: SessionState;
+    storedInput?: ComposeTradingLiveDecisionInput | null;
   },
 ): Promise<TradingLightScannerTimeframePayload> {
   await ensureTradingLightScannerEnvLoaded();
@@ -999,6 +1042,14 @@ async function fetchInstrumentTimeframes(
     };
   }
 
+  const storedPayload = resolveStoredScannerPayload(options?.storedInput, asOf);
+  if (storedPayload) {
+    return {
+      ...storedPayload,
+      providerError: providerError ?? storedPayload.providerError,
+    };
+  }
+
   const catalogFallback = await readTradingLightScannerFallbackCatalog(config.instrument, asOf);
   if (catalogFallback) {
     return {
@@ -1025,6 +1076,7 @@ async function scanInstrument(
     allowLiveFetch?: boolean;
     forceProviderRefresh?: boolean;
     includeInactiveMarkets?: boolean;
+    storedInput?: ComposeTradingLiveDecisionInput | null;
   },
 ): Promise<ComposeTradingLiveDecisionInput | null> {
   const currentSession = resolveLightScannerSession(config, asOf);
@@ -1189,6 +1241,7 @@ export async function buildTradingLightScannerInputs(args: {
   forceRefresh?: boolean;
   forceProviderRefresh?: boolean;
   includeInactiveMarkets?: boolean;
+  storedInputs?: ComposeTradingLiveDecisionInput[] | null;
 }): Promise<ComposeTradingLiveDecisionInput[]> {
   const coverageMap = await readTradingProductCoverageMap();
   const instruments = prioritizeTradingScannerInstruments(
@@ -1196,7 +1249,11 @@ export async function buildTradingLightScannerInputs(args: {
     args.asOf,
     coverageMap,
   );
+  const storedInputMap = new Map(
+    (args.storedInputs ?? []).map((input) => [input.snapshot.instrument.trim().toUpperCase(), input]),
+  );
   const liveFetchLimit = resolveTradingLightScannerLiveFetchLimit();
+  const openMarketLiveFetchLimit = resolveTradingLightScannerOpenMarketLiveFetchLimit();
   const cacheKey = buildTradingLightScannerCacheKey(instruments, args.asOf);
   const cached = TRADING_LIGHT_SCANNER_CACHE.get(cacheKey);
 
@@ -1204,19 +1261,68 @@ export async function buildTradingLightScannerInputs(args: {
     return cached.value;
   }
 
+  const instrumentStates = instruments.map((instrument, index) => {
+    const session = resolveLightScannerSession(instrument, args.asOf);
+    const storedInput =
+      storedInputMap.get(instrument.instrument.trim().toUpperCase()) ?? null;
+    const storedPayload = resolveStoredScannerPayload(storedInput, args.asOf);
+    const storedFreshness = storedPayload
+      ? assessTradingLightScannerFreshness({
+          asOf: args.asOf,
+          snapshotAt: storedPayload.snapshotAt,
+          source: storedPayload.source,
+        })
+      : null;
+
+    return {
+      instrument,
+      index,
+      session,
+      storedInput,
+      storedPayload,
+      storedFreshness,
+    };
+  });
+
+  const openMarketFetchTargets = new Set(
+    instrumentStates
+      .filter((entry) => entry.session.marketOpen)
+      .sort((left, right) => {
+        const leftMissingFresh = left.storedPayload ? 0 : 1;
+        const rightMissingFresh = right.storedPayload ? 0 : 1;
+        if (leftMissingFresh !== rightMissingFresh) {
+          return rightMissingFresh - leftMissingFresh;
+        }
+
+        const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+        const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+        if (leftAgeMs !== rightAgeMs) {
+          return rightAgeMs - leftAgeMs;
+        }
+
+        return left.index - right.index;
+      })
+      .slice(0, openMarketLiveFetchLimit)
+      .map((entry) => entry.instrument.instrument),
+  );
+
   const results = await Promise.allSettled(
-    instruments.map((instrument, index) =>
+    instrumentStates.map((entry) =>
       {
-        const session = resolveLightScannerSession(instrument, args.asOf);
+        const shouldFetchOpenMarketLive =
+          entry.session.marketOpen && openMarketFetchTargets.has(entry.instrument.instrument);
 
         return scanInstrument(
-          instrument,
+          entry.instrument,
           args.asOf,
-          resolveTradingProductCoverage(instrument.instrument, coverageMap),
+          resolveTradingProductCoverage(entry.instrument.instrument, coverageMap),
           {
-            allowLiveFetch: session.marketOpen || (!args.forceRefresh && index < liveFetchLimit),
-            forceProviderRefresh: args.forceProviderRefresh === true && session.marketOpen,
+            allowLiveFetch:
+              shouldFetchOpenMarketLive || (!args.forceRefresh && entry.index < liveFetchLimit),
+            forceProviderRefresh:
+              args.forceProviderRefresh === true && shouldFetchOpenMarketLive,
             includeInactiveMarkets: args.includeInactiveMarkets === true,
+            storedInput: entry.storedInput,
           },
         );
       },

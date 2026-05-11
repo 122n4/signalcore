@@ -4084,8 +4084,11 @@ export async function GET(req: Request) {
       url.searchParams.get("forceTradingRefresh") === "1";
     if (shouldLoadTradingWatchlistForDailyBundle(modeKey)) {
       try {
+        let storedScannerSnapshots:
+          | Awaited<ReturnType<typeof readFreshTradingScannerSnapshots>>
+          | null = null;
         if (!forceTradingLiveRefresh) {
-          const storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
+          storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
           const hasActionableOpenStoredSnapshot = storedScannerSnapshots.inputs.some(
             (input) =>
               input.market.session.marketOpen === true &&
@@ -4106,6 +4109,7 @@ export async function GET(req: Request) {
             forceRefresh: true,
             forceProviderRefresh: forceTradingLiveRefresh,
             includeInactiveMarkets: true,
+            storedInputs: storedScannerSnapshots?.inputs ?? [],
           });
 
           if (tradingWatchlistInputs.length > 0) {

@@ -1,8 +1,10 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS } from "@/lib/trading/lightScanner";
 import type { ComposeTradingLiveDecisionInput } from "@/lib/trading/state";
 
 export const TRADING_SCANNER_SNAPSHOT_TABLE = "trading_scanner_snapshots";
-export const TRADING_SCANNER_STORED_SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
+export const TRADING_SCANNER_STORED_SNAPSHOT_MAX_AGE_MS =
+  TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS;
 
 type TradingScannerSnapshotRow = {
   instrument: string;

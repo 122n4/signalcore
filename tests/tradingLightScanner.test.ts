@@ -57,6 +57,8 @@ describe("trading light scanner", () => {
   const originalKey = process.env.TWELVEDATA_API_KEY;
   const originalFinnhubKey = process.env.FINNHUB_API_KEY;
   const originalLiveFetchLimit = process.env.TRADING_LIGHT_SCANNER_LIVE_FETCH_LIMIT;
+  const originalOpenMarketLiveFetchLimit =
+    process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT;
 
   beforeEach(async () => {
     resetTradingLightScannerTestState();
@@ -107,6 +109,8 @@ describe("trading light scanner", () => {
     process.env.TWELVEDATA_API_KEY = originalKey;
     process.env.FINNHUB_API_KEY = originalFinnhubKey;
     process.env.TRADING_LIGHT_SCANNER_LIVE_FETCH_LIMIT = originalLiveFetchLimit;
+    process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT =
+      originalOpenMarketLiveFetchLimit;
     resetTradingLightScannerTestState();
     setTradingLightScannerFallbackCatalogForTests(null);
     getCandlesMock.mockReset();
@@ -172,6 +176,94 @@ describe("trading light scanner", () => {
     });
 
     expect(getCandlesMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("caps open-market live fetches to the configured budget", async () => {
+    process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT = "3";
+
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      includeInactiveMarkets: true,
+    });
+
+    expect(inputs).toHaveLength(19);
+    expect(getCandlesMock).toHaveBeenCalledTimes(3);
+    expect(inputs.filter((input) => input.scannerSnapshot?.source === "provider")).toHaveLength(3);
+    expect(inputs.filter((input) => input.scannerSnapshot?.source === "empty").length).toBeGreaterThan(0);
+  });
+
+  it("reuses fresh stored scanner inputs for open markets outside the live fetch budget", async () => {
+    process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT = "1";
+
+    const storedInputs = [
+      {
+        snapshot: {
+          instrument: "GBPUSD",
+          marketType: "forex",
+          sessionProfile: "forex",
+          snapshotAt: "2026-03-10T13:56:00.000Z",
+          timeframes: {
+            "5m": buildTradingCandles(1.27),
+            "15m": buildTradingCandles(1.28),
+            "1h": buildTradingCandles(1.29),
+            "4h": buildTradingCandles(1.3),
+            "1d": buildTradingCandles(1.31),
+          },
+          availableTimeframes: ["5m", "15m", "1h", "4h", "1d"],
+        },
+        market: {
+          session: {
+            marketOpen: true,
+          },
+        },
+        scannerSnapshot: {
+          source: "provider",
+          providerError: null,
+          dataSymbol: "GBP/USD",
+          dataRelation: "direct",
+          snapshotAgeMs: 4 * 60_000,
+          actionableFreshness: true,
+          staleReason: null,
+        },
+      } as any,
+    ];
+
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      includeInactiveMarkets: true,
+      instruments: [
+        {
+          instrument: "EURUSD",
+          dataSymbol: "EUR/USD",
+          marketType: "forex",
+          sessionProfile: "forex",
+          provider: "twelvedata",
+          focusGroup: "forex",
+        },
+        {
+          instrument: "GBPUSD",
+          dataSymbol: "GBP/USD",
+          marketType: "forex",
+          sessionProfile: "forex",
+          provider: "twelvedata",
+          focusGroup: "forex",
+        },
+      ],
+      storedInputs,
+    });
+
+    expect(getCandlesMock).toHaveBeenCalledTimes(1);
+    expect(inputs.map((input) => input.snapshot.instrument)).toEqual(["EURUSD", "GBPUSD"]);
+    expect(inputs.find((input) => input.snapshot.instrument === "EURUSD")?.scannerSnapshot?.source)
+      .toBe("provider");
+    expect(inputs.find((input) => input.snapshot.instrument === "GBPUSD")?.scannerSnapshot?.source)
+      .toBe("cache");
+    expect(
+      inputs.find((input) => input.snapshot.instrument === "GBPUSD")?.scannerSnapshot
+        ?.actionableFreshness,
+    ).toBe(true);
   });
 
   it("reuses a short scanner cache to avoid re-pulling the same market set on rapid refreshes", async () => {

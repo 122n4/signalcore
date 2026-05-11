@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { isEngineLoopAuthorized } from "@/lib/engine/loopAuth";
 import { buildTradingLightScannerInputs } from "@/lib/trading/lightScanner";
-import { writeTradingScannerSnapshots } from "@/lib/trading/scannerSnapshotStore";
+import {
+  readFreshTradingScannerSnapshots,
+  writeTradingScannerSnapshots,
+} from "@/lib/trading/scannerSnapshotStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,11 +66,13 @@ async function handleRefresh(req: Request) {
   const asOf = new Date().toISOString();
 
   try {
+    const storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
     const inputs = await buildTradingLightScannerInputs({
       asOf,
       forceRefresh: true,
       forceProviderRefresh: true,
       includeInactiveMarkets: true,
+      storedInputs: storedScannerSnapshots.inputs,
     });
     const persist = await writeTradingScannerSnapshots({
       inputs,
