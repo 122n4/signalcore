@@ -7,6 +7,7 @@ import type {
   MarketingContentStatus,
   MarketingLead,
 } from "@/lib/marketing/marketingOps";
+import type { MarketingCreativeKind } from "@/lib/marketing/marketingIntegrations";
 
 type MarketingOpsClientProps = {
   initialContent: MarketingContentItem[];
@@ -30,6 +31,13 @@ function safetyClasses(severity: string | null | undefined) {
   if (severity === "block") return "border-red-300/40 bg-red-400/10 text-red-100";
   if (severity === "warn") return "border-amber-300/40 bg-amber-400/10 text-amber-100";
   return "border-emerald-300/40 bg-emerald-400/10 text-emerald-100";
+}
+
+function creativeClasses(status: string | null | undefined) {
+  if (status === "ready" || status === "published") return "border-emerald-300/40 bg-emerald-400/10 text-emerald-100";
+  if (status === "rendering" || status === "brief_ready" || status === "queued" || status === "scheduled") return "border-cyan-300/40 bg-cyan-400/10 text-cyan-100";
+  if (status === "failed") return "border-red-300/40 bg-red-400/10 text-red-100";
+  return "border-slate-500/40 bg-slate-900/80 text-slate-200";
 }
 
 async function postMarketing(payload: Record<string, unknown>) {
@@ -74,6 +82,11 @@ export default function MarketingOpsClient({
     email: "",
     source: "manual",
     notes: "",
+  });
+  const [assetForm, setAssetForm] = useState({
+    assetUrl: "",
+    thumbnailUrl: "",
+    kind: "image" as Exclude<MarketingCreativeKind, "copy">,
   });
 
   const selected = useMemo(
@@ -152,6 +165,79 @@ export default function MarketingOpsClient({
     });
   }
 
+  function requestCreative(id: string, kind: Exclude<MarketingCreativeKind, "copy">) {
+    setToast(null);
+    startTransition(async () => {
+      try {
+        const data = await postMarketing({
+          action: "creative",
+          id,
+          kind,
+        });
+        updateItem(data.item);
+        setToast(
+          data.item.creative_status === "brief_ready"
+            ? "Creative brief ready. Add Creatomate keys/template ids to render automatically."
+            : `${kind} creative request sent.`,
+        );
+      } catch (error: any) {
+        setToast(error?.message ?? "Could not request creative.");
+      }
+    });
+  }
+
+  function refreshCreative(id: string) {
+    setToast(null);
+    startTransition(async () => {
+      try {
+        const data = await postMarketing({
+          action: "creative-status",
+          id,
+        });
+        updateItem(data.item);
+        setToast(data.item.asset_url ? "Creative asset is ready." : "Creative status refreshed.");
+      } catch (error: any) {
+        setToast(error?.message ?? "Could not refresh creative status.");
+      }
+    });
+  }
+
+  function attachAsset(id: string) {
+    setToast(null);
+    startTransition(async () => {
+      try {
+        const data = await postMarketing({
+          action: "asset",
+          id,
+          ...assetForm,
+        });
+        updateItem(data.item);
+        setAssetForm({ assetUrl: "", thumbnailUrl: "", kind: assetForm.kind });
+        setToast("Asset attached. You can now approve and publish it through the gateway.");
+      } catch (error: any) {
+        setToast(error?.message ?? "Could not attach asset.");
+      }
+    });
+  }
+
+  function publish(id: string, publishNow: boolean) {
+    setToast(null);
+    startTransition(async () => {
+      try {
+        const data = await postMarketing({
+          action: "publish",
+          id,
+          provider: "buffer",
+          publishNow,
+        });
+        updateItem(data.item);
+        setToast(publishNow ? "Approved content sent to Buffer for immediate publish." : "Approved content sent to Buffer queue.");
+      } catch (error: any) {
+        setToast(error?.message ?? "Could not publish externally.");
+      }
+    });
+  }
+
   function addLead() {
     setToast(null);
     startTransition(async () => {
@@ -187,7 +273,7 @@ export default function MarketingOpsClient({
             <p className="text-xs font-bold uppercase tracking-[0.28em] text-cyan-200/70">Campaign factory</p>
             <h2 className="mt-2 text-2xl font-black text-white">Generate safe marketing drafts</h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">
-              Creates draft copy only. No email, DM, or external publish happens from this MVP.
+              Creates reviewable campaigns for copy, image, video and social scheduling. External actions still require approval.
             </p>
           </div>
           <button
@@ -277,6 +363,9 @@ export default function MarketingOpsClient({
                     safety {item.safety?.severity ?? "ok"}
                   </span>
                   <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-bold text-slate-300">{item.channel}</span>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${creativeClasses(item.creative_status)}`}>
+                    creative {item.creative_status ?? "not_requested"}
+                  </span>
                 </div>
                 <p className="mt-3 font-bold text-white">{item.title}</p>
                 <p className="mt-1 text-sm text-slate-400">{item.campaign}</p>
@@ -328,9 +417,101 @@ export default function MarketingOpsClient({
                   Reject
                 </button>
               </div>
-              <p className="mt-4 text-xs leading-5 text-slate-500">
-                External publishing is intentionally disabled until Buffer/Metricool is connected. Approval here is an internal gate, not an automatic post.
-              </p>
+              <div className="mt-5 rounded-3xl border border-white/10 bg-slate-950/50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-cyan-200/70">Creative studio</p>
+                    <h3 className="mt-1 text-lg font-black text-white">Image/video asset</h3>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${creativeClasses(selected.creative_status)}`}>
+                    {selected.creative_kind ?? "copy"} · {selected.creative_status ?? "not_requested"}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => requestCreative(selected.id, "image")} className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-3 text-sm font-bold text-cyan-100">
+                    Create image brief/render
+                  </button>
+                  <button type="button" onClick={() => requestCreative(selected.id, "video")} className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 px-4 py-3 text-sm font-bold text-cyan-100">
+                    Create video brief/render
+                  </button>
+                  <button type="button" onClick={() => refreshCreative(selected.id)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white sm:col-span-2">
+                    Refresh render status
+                  </button>
+                </div>
+                {selected.creative_prompt ? (
+                  <pre className="mt-4 max-h-[220px] overflow-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-black/30 p-3 text-xs leading-5 text-slate-200">
+                    {selected.creative_prompt}
+                  </pre>
+                ) : null}
+                {selected.asset_url ? (
+                  <a href={selected.asset_url} target="_blank" rel="noreferrer" className="mt-3 block rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-3 text-sm font-bold text-emerald-100">
+                    Open attached creative asset
+                  </a>
+                ) : null}
+                <div className="mt-4 grid gap-2">
+                  <input
+                    value={assetForm.assetUrl}
+                    onChange={(event) => setAssetForm((value) => ({ ...value, assetUrl: event.target.value }))}
+                    placeholder="https://... image/video asset URL"
+                    className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <input
+                      value={assetForm.thumbnailUrl}
+                      onChange={(event) => setAssetForm((value) => ({ ...value, thumbnailUrl: event.target.value }))}
+                      placeholder="Optional thumbnail URL"
+                      className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none"
+                    />
+                    <select
+                      value={assetForm.kind}
+                      onChange={(event) => setAssetForm((value) => ({ ...value, kind: event.target.value as Exclude<MarketingCreativeKind, "copy"> }))}
+                      className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-white outline-none"
+                    >
+                      <option value="image">image</option>
+                      <option value="video">video</option>
+                    </select>
+                  </div>
+                  <button type="button" onClick={() => attachAsset(selected.id)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white">
+                    Attach manual asset
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-white/10 bg-slate-950/50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-cyan-200/70">Publishing gateway</p>
+                    <h3 className="mt-1 text-lg font-black text-white">Human-approved external action</h3>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-bold ${creativeClasses(selected.external_status)}`}>
+                    {selected.external_provider ?? "no provider"} · {selected.external_status ?? "not_sent"}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Works with Buffer profile IDs when configured. It never auto-DMs, never auto-emails, and only sends approved/scheduled content.
+                </p>
+                {selected.last_external_error ? (
+                  <p className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+                    {selected.last_external_error}
+                  </p>
+                ) : null}
+                {selected.external_url ? (
+                  <a href={selected.external_url} target="_blank" rel="noreferrer" className="mt-3 block text-sm font-bold text-cyan-200">
+                    Open external post/update
+                  </a>
+                ) : null}
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => publish(selected.id, false)} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white">
+                    Send to Buffer queue
+                  </button>
+                  <button type="button" onClick={() => publish(selected.id, true)} className="rounded-2xl bg-emerald-300 px-4 py-3 text-sm font-black text-slate-950">
+                    Publish now via Buffer
+                  </button>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  Required env: BUFFER_ACCESS_TOKEN plus BUFFER_PROFILE_ID_LINKEDIN, BUFFER_PROFILE_ID_X, or BUFFER_PROFILE_ID_FACEBOOK.
+                </p>
+              </div>
             </>
           ) : (
             <p className="mt-3 text-slate-300">Select or generate a draft to review.</p>
@@ -379,4 +560,3 @@ export default function MarketingOpsClient({
     </div>
   );
 }
-

@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 
 import {
+  attachMarketingAsset,
   createMarketingContent,
   createMarketingLead,
   listMarketingOps,
+  publishMarketingContent,
+  refreshMarketingCreative,
+  requestMarketingCreative,
   updateMarketingContent,
 } from "@/lib/marketing/marketingOps";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
@@ -90,6 +94,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, lead }, { headers: { "Cache-Control": "no-store" } });
     }
 
+    if (action === "creative") {
+      const item = await requestMarketingCreative({
+        ownerUserId: owner.userId,
+        id: body.id,
+        kind: body.kind,
+      });
+      return NextResponse.json({ ok: true, item }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (action === "creative-status") {
+      const item = await refreshMarketingCreative({
+        ownerUserId: owner.userId,
+        id: body.id,
+      });
+      return NextResponse.json({ ok: true, item }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (action === "asset") {
+      const item = await attachMarketingAsset({
+        ownerUserId: owner.userId,
+        id: body.id,
+        kind: body.kind,
+        assetUrl: body.assetUrl,
+        thumbnailUrl: body.thumbnailUrl,
+      });
+      return NextResponse.json({ ok: true, item }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (action === "publish") {
+      const item = await publishMarketingContent({
+        ownerUserId: owner.userId,
+        id: body.id,
+        provider: body.provider,
+        publishNow: body.publishNow,
+      });
+      return NextResponse.json({ ok: true, item }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     return NextResponse.json({ ok: false, error: "unknown_action" }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json(
@@ -98,4 +140,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

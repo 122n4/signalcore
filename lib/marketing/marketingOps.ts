@@ -1,4 +1,12 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  type MarketingCreativeKind,
+  type MarketingCreativeStatus,
+  type MarketingExternalStatus,
+  publishViaBuffer,
+  refreshCreativeAsset,
+  requestCreativeAsset,
+} from "@/lib/marketing/marketingIntegrations";
 
 export const MARKETING_CONTENT_TABLE = "marketing_content_items";
 export const MARKETING_LEADS_TABLE = "marketing_leads";
@@ -31,6 +39,18 @@ export type MarketingContentItem = {
   published_at: string | null;
   metrics: Record<string, unknown>;
   notes: string | null;
+  creative_kind: MarketingCreativeKind;
+  creative_status: MarketingCreativeStatus;
+  creative_provider: string | null;
+  creative_prompt: string | null;
+  creative_render_id: string | null;
+  asset_url: string | null;
+  asset_thumbnail_url: string | null;
+  external_provider: string | null;
+  external_status: MarketingExternalStatus;
+  external_id: string | null;
+  external_url: string | null;
+  last_external_error: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -85,6 +105,23 @@ function safeStatus(input: unknown): MarketingContentStatus {
     return value;
   }
   return "draft";
+}
+
+function safeCreativeKind(input: unknown): Exclude<MarketingCreativeKind, "copy"> {
+  const value = normalizeText(input).toLowerCase();
+  return value === "video" ? "video" : "image";
+}
+
+async function getOwnedMarketingContent(ownerUserId: string, id: string) {
+  const { data, error } = await getSupabaseAdmin()
+    .from(MARKETING_CONTENT_TABLE)
+    .select("*")
+    .eq("id", id)
+    .eq("owner_user_id", ownerUserId)
+    .single();
+
+  if (error) throw new Error(error.message ?? "marketing_content_read_failed");
+  return data as MarketingContentItem;
 }
 
 export function runMarketingSafetyCheck(body: string): MarketingSafetyCheck {
@@ -336,6 +373,147 @@ export async function updateMarketingContent(args: {
     .single();
 
   if (error) throw new Error(error.message ?? "marketing_content_update_failed");
+  return data as MarketingContentItem;
+}
+
+export async function requestMarketingCreative(args: {
+  ownerUserId: string;
+  id: unknown;
+  kind?: unknown;
+}) {
+  const id = normalizeText(args.id);
+  if (!id) throw new Error("missing_content_id");
+
+  const existing = await getOwnedMarketingContent(args.ownerUserId, id);
+  if (existing.safety?.severity === "block" || existing.safety?.ok === false) {
+    throw new Error("blocked_content_requires_revision");
+  }
+
+  const result = await requestCreativeAsset({
+    item: existing,
+    kind: safeCreativeKind(args.kind),
+  });
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(MARKETING_CONTENT_TABLE)
+    .update({
+      ...result,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("owner_user_id", args.ownerUserId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message ?? "marketing_creative_update_failed");
+  return data as MarketingContentItem;
+}
+
+export async function refreshMarketingCreative(args: {
+  ownerUserId: string;
+  id: unknown;
+}) {
+  const id = normalizeText(args.id);
+  if (!id) throw new Error("missing_content_id");
+
+  const existing = await getOwnedMarketingContent(args.ownerUserId, id);
+  const result = await refreshCreativeAsset(existing);
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(MARKETING_CONTENT_TABLE)
+    .update({
+      ...result,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("owner_user_id", args.ownerUserId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message ?? "marketing_creative_refresh_failed");
+  return data as MarketingContentItem;
+}
+
+export async function attachMarketingAsset(args: {
+  ownerUserId: string;
+  id: unknown;
+  assetUrl?: unknown;
+  thumbnailUrl?: unknown;
+  kind?: unknown;
+}) {
+  const id = normalizeText(args.id);
+  if (!id) throw new Error("missing_content_id");
+
+  const assetUrl = normalizeText(args.assetUrl);
+  if (!assetUrl || !/^https:\/\//i.test(assetUrl)) {
+    throw new Error("asset_url_must_be_https");
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(MARKETING_CONTENT_TABLE)
+    .update({
+      creative_kind: safeCreativeKind(args.kind),
+      creative_status: "ready",
+      creative_provider: "manual",
+      asset_url: assetUrl,
+      asset_thumbnail_url: normalizeText(args.thumbnailUrl) || null,
+      last_external_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("owner_user_id", args.ownerUserId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message ?? "marketing_asset_attach_failed");
+  return data as MarketingContentItem;
+}
+
+export async function publishMarketingContent(args: {
+  ownerUserId: string;
+  id: unknown;
+  provider?: unknown;
+  publishNow?: unknown;
+}) {
+  const id = normalizeText(args.id);
+  if (!id) throw new Error("missing_content_id");
+
+  const existing = await getOwnedMarketingContent(args.ownerUserId, id);
+  if (existing.safety?.severity === "block" || existing.safety?.ok === false) {
+    throw new Error("blocked_content_requires_revision");
+  }
+  if (existing.status !== "approved" && existing.status !== "scheduled") {
+    throw new Error("content_must_be_approved_before_external_publish");
+  }
+
+  const provider = normalizeText(args.provider).toLowerCase() || "buffer";
+  if (provider !== "buffer") throw new Error("unsupported_marketing_publish_provider");
+
+  const result = await publishViaBuffer({
+    item: existing,
+    publishNow: args.publishNow === true || normalizeText(args.publishNow).toLowerCase() === "true",
+  });
+
+  const patch: Record<string, unknown> = {
+    ...result,
+    updated_at: new Date().toISOString(),
+  };
+  if (result.external_status === "published") {
+    patch.status = "published";
+    patch.published_at = result.published_at ?? new Date().toISOString();
+  } else if (result.external_status === "scheduled" || result.external_status === "queued") {
+    patch.status = existing.status === "approved" ? "scheduled" : existing.status;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from(MARKETING_CONTENT_TABLE)
+    .update(patch)
+    .eq("id", id)
+    .eq("owner_user_id", args.ownerUserId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message ?? "marketing_publish_update_failed");
   return data as MarketingContentItem;
 }
 

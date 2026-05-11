@@ -4,6 +4,7 @@ import {
   generateMarketingDraft,
   runMarketingSafetyCheck,
 } from "@/lib/marketing/marketingOps";
+import { buildCreativePrompt } from "@/lib/marketing/marketingIntegrations";
 
 describe("marketing ops safety", () => {
   it("blocks fake performance and guaranteed profit claims", () => {
@@ -30,5 +31,52 @@ describe("marketing ops safety", () => {
     expect(draft.body).toContain("broker");
     expect(draft.safety.severity).not.toBe("block");
   });
-});
 
+  it("creates compliant image and video creative prompts", () => {
+    const draft = generateMarketingDraft({
+      channel: "linkedin",
+      campaign: "snapshot freshness",
+      audience: "manual traders",
+      objective: "start trial without hype",
+    });
+    const item = {
+      id: "content_1",
+      owner_user_id: "owner_1",
+      title: draft.title,
+      campaign: "snapshot freshness",
+      channel: "linkedin",
+      status: "approved",
+      audience: "manual traders",
+      objective: "start trial without hype",
+      body: draft.body,
+      safety: draft.safety,
+      utm_url: null,
+      scheduled_for: null,
+      published_at: null,
+      metrics: {},
+      notes: null,
+      creative_kind: "copy",
+      creative_status: "not_requested",
+      creative_provider: null,
+      creative_prompt: null,
+      creative_render_id: null,
+      asset_url: null,
+      asset_thumbnail_url: null,
+      external_provider: null,
+      external_status: "not_sent",
+      external_id: null,
+      external_url: null,
+      last_external_error: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    } as const;
+
+    const imagePrompt = buildCreativePrompt(item, "image");
+    const videoPrompt = buildCreativePrompt(item, "video");
+
+    expect(imagePrompt).toContain("no hype");
+    expect(imagePrompt).toContain("exact financial promises");
+    expect(videoPrompt).toContain("no profit promises");
+    expect(runMarketingSafetyCheck(`${imagePrompt}\n${videoPrompt}`).severity).not.toBe("block");
+  });
+});
