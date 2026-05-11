@@ -266,6 +266,44 @@ describe("trading light scanner", () => {
     ).toBe(true);
   });
 
+  it("stops proxy fallback churn once the live provider is rate-limited", async () => {
+    process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT = "1";
+    getCandlesMock.mockImplementation(async (symbol: string) => {
+      if (symbol === "NDX") {
+        throw new Error(
+          "twelvedata:You have run out of API credits for the current minute. 9 API credits were used, with the current limit being 8.",
+        );
+      }
+
+      return buildTrendCandles(100);
+    });
+
+    const [input] = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      includeInactiveMarkets: true,
+      instruments: [
+        {
+          instrument: "NAS100",
+          dataSymbol: "NDX",
+          dataSymbols: [
+            { symbol: "NDX", relation: "direct" },
+            { symbol: "QQQ", relation: "proxy" },
+          ],
+          marketType: "equities",
+          sessionProfile: "ny_equities",
+          provider: "twelvedata",
+          focusGroup: "equities",
+        },
+      ],
+    });
+
+    expect(getCandlesMock).toHaveBeenCalledTimes(1);
+    expect(input?.snapshot.instrument).toBe("NAS100");
+    expect(input?.scannerSnapshot?.source).toBe("empty");
+    expect(input?.scannerSnapshot?.providerError).toContain("run out of API credits");
+  });
+
   it("reuses a short scanner cache to avoid re-pulling the same market set on rapid refreshes", async () => {
     await buildTradingLightScannerInputs({
       asOf: "2026-03-10T14:00:00.000Z",

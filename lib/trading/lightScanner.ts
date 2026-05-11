@@ -84,7 +84,7 @@ const TRADING_LIGHT_SCANNER_PROVIDER_FRESH_CACHE_MAX_AGE_MS =
   TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS;
 const TRADING_LIGHT_SCANNER_PROVIDER_PERSISTENT_CACHE_TTL_SEC =
   TRADING_LIGHT_SCANNER_PROVIDER_FRESH_CACHE_MAX_AGE_MS / 1000;
-const TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT_DEFAULT = 8;
+const TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT_DEFAULT = 5;
 
 type TradingLightScannerCacheEntry = {
   value: ComposeTradingLiveDecisionInput[];
@@ -645,6 +645,16 @@ function resolveStoredScannerPayload(
   };
 }
 
+function isMarketDataRateLimitedError(error: unknown) {
+  const message = String((error as any)?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("run out of api credits") ||
+    message.includes("current limit being") ||
+    message.includes("rate limit") ||
+    message.includes("(429)")
+  );
+}
+
 async function ensureTradingLightScannerEnvLoaded() {
   if (
     tradingLightScannerEnvLoaded ||
@@ -1003,6 +1013,9 @@ async function fetchInstrumentTimeframes(
         providerErrors.push(
           `${dataCandidate.symbol}:${error?.message ?? "provider_fetch_failed"}`,
         );
+        if (isMarketDataRateLimitedError(error)) {
+          break;
+        }
       }
     }
     providerError =
