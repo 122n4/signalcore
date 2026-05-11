@@ -143,11 +143,20 @@ export type TradingWatchlistEntry = {
   currentState: TradingState;
   currentHeadline: string;
   executionStatus: TradingLiveDecision["executionStatus"];
+  operationalReadiness: TradingOperationalReadiness;
   contextSummary: TradingContextSummary;
   liveDecision: TradingLiveDecision;
   chart: TradingChartSnapshot | null;
   workspace: TradingWorkspaceSnapshot;
   watchlistPlacement: TradingWatchlistPlacement | null;
+};
+
+export type TradingOperationalReadiness = {
+  status: "broker_ready" | "watch_only" | "provider_limited";
+  label: string;
+  detail: string;
+  brokerReady: boolean;
+  tone: "good" | "warn" | "bad";
 };
 
 export type TradingWatchlistSectionKey = "look_first" | "forming" | "waiting" | "closed";

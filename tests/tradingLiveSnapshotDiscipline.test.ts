@@ -15,6 +15,13 @@ function buildEntry(snapshotAt: string): TradingWatchlistEntry {
     currentState: "TRADE_VALID",
     currentHeadline: "Clean trigger and execution aligned.",
     executionStatus: "allowed",
+    operationalReadiness: {
+      status: "broker_ready",
+      label: "Ready to execute",
+      detail: "Live data, research coverage, and execution gate are aligned.",
+      brokerReady: true,
+      tone: "good",
+    },
     contextSummary: {
       sessionLabel: "London / NY overlap",
       contextLabel: "Trend continuation with open market.",
