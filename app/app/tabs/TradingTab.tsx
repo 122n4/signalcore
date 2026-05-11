@@ -120,7 +120,7 @@ function hasQualifiedBrokerLevels(entry: TradingWatchlistEntry) {
   const invalidation =
     entry.liveDecision.invalidationLevel ??
     entry.workspace.execution.invalidation.invalidationLevel;
-  return entry.operationalReadiness.brokerReady && hasBrokerTrigger(entry) && isFiniteNumber(invalidation);
+  return hasBrokerTrigger(entry) && isFiniteNumber(invalidation);
 }
 
 function intentToneClasses(intent: ReturnType<typeof resolveTradingActionGuidance>["intent"]) {
@@ -156,16 +156,7 @@ function intentToneClasses(intent: ReturnType<typeof resolveTradingActionGuidanc
 }
 
 function resolveBrokerPlan(entry: TradingWatchlistEntry, snapshotBlocked: boolean) {
-  const baseAction = resolveTradingActionGuidance(entry);
-  const action = entry.operationalReadiness.brokerReady
-    ? baseAction
-    : {
-        ...baseAction,
-        intent: "monitor_now" as const,
-        label: entry.operationalReadiness.label,
-        headline: entry.operationalReadiness.label,
-        summary: entry.operationalReadiness.detail,
-      };
+  const action = resolveTradingActionGuidance(entry);
   const execution = entry.workspace.execution;
   const liveDecision = entry.liveDecision;
   const trigger = liveDecision.triggerLevel ?? execution.entryZone.triggerLevel ?? null;
@@ -176,7 +167,6 @@ function resolveBrokerPlan(entry: TradingWatchlistEntry, snapshotBlocked: boolea
   const riskReady = typeof risk === "number" && Number.isFinite(risk) && risk > 0;
   const canExecute =
     !snapshotBlocked &&
-    entry.operationalReadiness.brokerReady &&
     action.intent === "execute_now" &&
     liveDecision.executionStatus === "allowed" &&
     trigger != null &&
@@ -184,7 +174,6 @@ function resolveBrokerPlan(entry: TradingWatchlistEntry, snapshotBlocked: boolea
     riskReady;
   const canPrepare =
     !snapshotBlocked &&
-    entry.operationalReadiness.brokerReady &&
     (action.intent === "execute_now" || action.intent === "prepare_now") &&
     trigger != null &&
     invalidation != null;
@@ -358,17 +347,6 @@ function buildBrokerReadyChecklist(args: {
   const executionStatus = entry.workspace.execution.executionStatus;
 
   return [
-    {
-      label: "Market readiness",
-      status: entry.operationalReadiness.label,
-      detail: entry.operationalReadiness.detail,
-      tone:
-        entry.operationalReadiness.tone === "good"
-          ? "good"
-          : entry.operationalReadiness.tone === "warn"
-            ? "warn"
-            : "bad",
-    },
     {
       label: "Live snapshot",
       status: snapshotBlocked ? "Blocked" : "Fresh",
@@ -686,11 +664,15 @@ function TradingDecisionCockpit({
           />
           <ReasonCard
             label="Broker gate"
-            value={entry.operationalReadiness.label}
+            value={plan.state}
             detail={
-              entry.operationalReadiness.detail
+              plan.state === "READY"
+                ? "Broker checklist can be used now."
+                : plan.state === "DRAFT"
+                  ? "Plan is visible, but order submission stays locked."
+                  : "No broker action should be taken from this state."
             }
-            tone={entry.operationalReadiness.tone}
+            tone={riskTone}
           />
         </div>
 
@@ -705,7 +687,7 @@ function TradingDecisionCockpit({
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${tone.pill}`}>
-                  {entry.operationalReadiness.label}
+                  {plan.state}
                 </span>
                 <Link
                   href={executionCtaHref}
@@ -839,13 +821,7 @@ function TradingDecisionCockpit({
         </div>
         <div className="mt-4 max-h-[640px] space-y-2 overflow-y-auto pr-1">
           {visibleQueueEntries.map((row) => {
-            const rowAction = row.operationalReadiness.brokerReady
-              ? resolveTradingActionGuidance(row)
-              : {
-                  ...resolveTradingActionGuidance(row),
-                  label: row.operationalReadiness.label,
-                  intent: "monitor_now" as const,
-                };
+            const rowAction = resolveTradingActionGuidance(row);
             const rowTone = intentToneClasses(rowAction.intent);
             return (
               <button

@@ -6,7 +6,6 @@ import type {
   ComposeTradingLiveDecisionInput,
   TradingChartSnapshot,
   TradingLiveDecision,
-  TradingOperationalReadiness,
   TradingWatchlistCoverageSummary,
   TradingWatchlistFocus,
   TradingWatchlistEntry,
@@ -142,64 +141,6 @@ function isTradingClosedOrRestricted(
     entry.currentState === "MARKET_CLOSED" ||
     entry.currentState === "SESSION_END"
   );
-}
-
-function resolveTradingOperationalReadiness(args: {
-  input: ComposeTradingLiveDecisionInput;
-  liveDecision: TradingLiveDecision;
-  workspace: TradingWorkspaceSnapshot;
-}): TradingOperationalReadiness {
-  const { input, liveDecision, workspace } = args;
-  const scannerSnapshot = input.scannerSnapshot ?? null;
-  const providerLimited =
-    scannerSnapshot?.actionableFreshness === false ||
-    scannerSnapshot?.source === "empty" ||
-    scannerSnapshot?.source === "catalog" ||
-    Boolean(scannerSnapshot?.providerError);
-
-  if (providerLimited) {
-    return {
-      status: "provider_limited",
-      label: "Provider limited",
-      detail:
-        scannerSnapshot?.staleReason ??
-        scannerSnapshot?.providerError ??
-        "Live market data is not fresh enough for broker execution.",
-      brokerReady: false,
-      tone: "bad",
-    };
-  }
-
-  if (
-    liveDecision.currentState === "TRADE_VALID" &&
-    liveDecision.executionStatus === "allowed" &&
-    workspace.contextSummary.marketOpen &&
-    workspace.contextSummary.coverageStatus === "coverage_backed"
-  ) {
-    return {
-      status: "broker_ready",
-      label: "Ready to execute",
-      detail: "Live data, research coverage, and execution gate are aligned.",
-      brokerReady: true,
-      tone: "good",
-    };
-  }
-
-  const detail =
-    workspace.contextSummary.coverageStatus === "coverage_backed"
-      ? liveDecision.nextDisciplineStep ||
-        workspace.execution.executionStatus.nextDisciplineStep ||
-        "Monitor until the setup earns broker execution."
-      : workspace.contextSummary.coverageReason ||
-        "This market is visible for monitoring, but it is not research-backed for broker execution.";
-
-  return {
-    status: "watch_only",
-    label: "Watch only",
-    detail,
-    brokerReady: false,
-    tone: "warn",
-  };
 }
 
 function tradingUtilityStateBase(entry: TradingWatchlistEntry) {
@@ -721,7 +662,6 @@ export function createTradingWatchlistEntry(input: {
   liveDecision: TradingLiveDecision;
   chart: TradingChartSnapshot | null;
   workspace: TradingWorkspaceSnapshot;
-  operationalReadiness?: TradingOperationalReadiness;
   fallbackInstrument?: string | null;
 }): TradingWatchlistEntry {
   const instrument =
@@ -738,17 +678,6 @@ export function createTradingWatchlistEntry(input: {
     currentState: input.liveDecision.currentState,
     currentHeadline: input.liveDecision.currentHeadline,
     executionStatus: input.liveDecision.executionStatus,
-    operationalReadiness:
-      input.operationalReadiness ?? {
-        status: input.liveDecision.executionStatus === "allowed" ? "broker_ready" : "watch_only",
-        label: input.liveDecision.executionStatus === "allowed" ? "Ready to execute" : "Watch only",
-        detail:
-          input.workspace.execution.executionStatus.nextDisciplineStep ??
-          input.workspace.execution.executionStatus.reasons[0] ??
-          "Follow the execution gate before broker action.",
-        brokerReady: input.liveDecision.executionStatus === "allowed",
-        tone: input.liveDecision.executionStatus === "allowed" ? "good" : "warn",
-      },
     contextSummary: input.workspace.contextSummary,
     liveDecision: input.liveDecision,
     chart: input.chart,
@@ -772,11 +701,6 @@ export function composeTradingWatchlistEntry(
     liveDecision: composed.liveDecision,
     chart,
     workspace,
-    operationalReadiness: resolveTradingOperationalReadiness({
-      input,
-      liveDecision: composed.liveDecision,
-      workspace,
-    }),
     fallbackInstrument: input.market.instrument,
   });
 }

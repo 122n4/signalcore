@@ -66,8 +66,6 @@ describe("TradingTab", () => {
     expect(html).toContain("No-trade guardrails");
     expect(html).toContain("Plain-English read");
     expect(html).toContain("Live refresh monitor");
-    expect(html).toContain("Watch only");
-    expect(html).toContain("Market readiness");
     expect(html).toContain("Force live refresh");
     expect(html).toContain("Snapshot alert");
     expect(html).toContain("Broker execution is locked until live data refreshes.");
