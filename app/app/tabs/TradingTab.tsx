@@ -427,14 +427,20 @@ function buildNoTradeGuardrails(args: {
 function TradingSnapshotReliabilityPanel({
   assessment,
   isRefreshing,
+  liveRefreshLocked = false,
+  lockedReason = null,
   onRefresh,
 }: {
   assessment: TradingLiveSnapshotAssessment;
   isRefreshing: boolean;
+  liveRefreshLocked?: boolean;
+  lockedReason?: string | null;
   onRefresh: () => Promise<void> | void;
 }) {
   const statusLabel = isRefreshing
     ? "Refreshing provider"
+    : liveRefreshLocked
+      ? "Shared snapshot"
     : assessment.blocked
       ? "Broker blocked"
       : "Auto-refresh armed";
@@ -442,8 +448,14 @@ function TradingSnapshotReliabilityPanel({
   const ageLabel = formatSnapshotAgeLabel(assessment.ageMs);
   const maxAgeLabel = formatSnapshotAgeLabel(TRADING_LIVE_SNAPSHOT_MAX_AGE_MS);
   const guidance = assessment.blocked
-    ? "Syntrake keeps the plan readable, but broker execution stays blocked until a fresh live snapshot arrives."
-    : "The desk refreshes automatically. Use force refresh before broker action if the market moved fast.";
+    ? liveRefreshLocked
+      ? lockedReason ??
+        "Free uses the shared market snapshot to protect provider credits. Pro unlocks priority live refresh before broker action."
+      : "Syntrake keeps the plan readable, but broker execution stays blocked until a fresh live snapshot arrives."
+    : liveRefreshLocked
+      ? lockedReason ??
+        "Free stays on the shared scanner snapshot. Upgrade when you need priority live refresh and full execution workflow."
+      : "The desk refreshes automatically. Use force refresh before broker action if the market moved fast.";
 
   return (
     <div className="rounded-[22px] border border-slate-800 bg-[#07101c] p-3">
@@ -479,7 +491,7 @@ function TradingSnapshotReliabilityPanel({
         disabled={isRefreshing}
         className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/16 disabled:opacity-50"
       >
-        {isRefreshing ? "Refreshing live..." : "Force live refresh"}
+        {isRefreshing ? "Refreshing..." : liveRefreshLocked ? "Refresh shared snapshot" : "Force live refresh"}
       </button>
     </div>
   );
@@ -488,10 +500,12 @@ function TradingSnapshotReliabilityPanel({
 function TradingSnapshotAlertBanner({
   assessment,
   isRefreshing,
+  liveRefreshLocked = false,
   onRefresh,
 }: {
   assessment: TradingLiveSnapshotAssessment;
   isRefreshing: boolean;
+  liveRefreshLocked?: boolean;
   onRefresh: () => Promise<void> | void;
 }) {
   if (!assessment.blocked) return null;
@@ -507,7 +521,9 @@ function TradingSnapshotAlertBanner({
             Snapshot alert
           </div>
           <div className="mt-1 text-base font-semibold text-white">
-            Broker execution is locked until live data refreshes.
+            {liveRefreshLocked
+              ? "Broker execution is locked on the shared snapshot."
+              : "Broker execution is locked until live data refreshes."}
           </div>
           <div className="mt-1 text-sm leading-6 text-rose-50/78">
             {assessment.reason ??
@@ -520,7 +536,7 @@ function TradingSnapshotAlertBanner({
           disabled={isRefreshing}
           className="inline-flex shrink-0 items-center justify-center rounded-xl border border-rose-200/30 bg-rose-100/12 px-4 py-2.5 text-sm font-semibold text-rose-50 transition hover:bg-rose-100/18 disabled:opacity-50"
         >
-          {isRefreshing ? "Refreshing live..." : "Refresh live data"}
+          {isRefreshing ? "Refreshing..." : liveRefreshLocked ? "Refresh shared snapshot" : "Refresh live data"}
         </button>
       </div>
     </section>
@@ -535,6 +551,8 @@ function TradingDecisionCockpit({
   snapshotBlocked,
   snapshotFootnote,
   isRefreshing,
+  liveRefreshLocked,
+  liveRefreshLockedReason,
   executionHref,
   isDiscoveryMode,
   onRefresh,
@@ -547,6 +565,8 @@ function TradingDecisionCockpit({
   snapshotBlocked: boolean;
   snapshotFootnote: string | null;
   isRefreshing: boolean;
+  liveRefreshLocked: boolean;
+  liveRefreshLockedReason: string | null;
   executionHref: string;
   isDiscoveryMode: boolean;
   onRefresh: () => Promise<void> | void;
@@ -719,6 +739,8 @@ function TradingDecisionCockpit({
               <TradingSnapshotReliabilityPanel
                 assessment={snapshotDiscipline}
                 isRefreshing={isRefreshing}
+                liveRefreshLocked={liveRefreshLocked}
+                lockedReason={liveRefreshLockedReason}
                 onRefresh={onRefresh}
               />
             </div>
@@ -880,6 +902,34 @@ export default function TradingTab({
   const tradingAccess = useMemo(() => {
     return daily?.tradingAccess ?? null;
   }, [daily]);
+  const tradingLiveRefreshAccess = useMemo(() => {
+    return daily?.dataRefreshAccess?.tradingLiveRefresh ?? null;
+  }, [daily]);
+  const liveRefreshLocked = useMemo(() => {
+    if (tradingLiveRefreshAccess?.sharedSnapshotOnly) return true;
+    if (
+      tradingLiveRefreshAccess?.dailyLimit != null &&
+      tradingLiveRefreshAccess.remainingToday === 0
+    ) {
+      return true;
+    }
+    return false;
+  }, [tradingLiveRefreshAccess]);
+  const liveRefreshLockedReason = useMemo(() => {
+    if (tradingLiveRefreshAccess?.sharedSnapshotOnly) {
+      return "Free uses a shared scanner snapshot so one account cannot burn live data credits. Pro unlocks priority live refresh.";
+    }
+    if (
+      tradingLiveRefreshAccess?.dailyLimit != null &&
+      tradingLiveRefreshAccess.remainingToday === 0
+    ) {
+      return `Daily live-refresh limit reached. It resets at ${tradingLiveRefreshAccess.resetAt ?? "the next UTC day"}.`;
+    }
+    if (tradingLiveRefreshAccess?.blockedReason === "cooldown_active") {
+      return `Live refresh is cooling down for ${tradingLiveRefreshAccess.retryAfterSeconds ?? 0}s to protect data quality.`;
+    }
+    return null;
+  }, [tradingLiveRefreshAccess]);
   const tradingWatchlistSections = useMemo<TradingWatchlistSection[]>(
     () => limitSectionsForDiscovery(tradingSupport?.watchlistSections ?? [], discoveryLimit),
     [discoveryLimit, tradingSupport],
@@ -984,10 +1034,10 @@ export default function TradingTab({
   }, [isRefreshing, lastUpdatedAt, selectedSnapshotDiscipline]);
   const refreshTradingLive = useCallback(async () => {
     lastForcedLiveRefreshAtRef.current = Date.now();
-    await refresh({ forceTradingRefresh: true });
-  }, [refresh]);
+    await refresh(liveRefreshLocked ? undefined : { forceTradingRefresh: true });
+  }, [liveRefreshLocked, refresh]);
   useEffect(() => {
-    if (!selectedEntry || !selectedSnapshotDiscipline.blocked || isRefreshing) {
+    if (!selectedEntry || !selectedSnapshotDiscipline.blocked || isRefreshing || liveRefreshLocked) {
       return;
     }
 
@@ -1000,6 +1050,7 @@ export default function TradingTab({
     void refresh({ forceTradingRefresh: true });
   }, [
     isRefreshing,
+    liveRefreshLocked,
     refresh,
     selectedEntry,
     selectedSnapshotDiscipline.blocked,
@@ -1086,6 +1137,7 @@ export default function TradingTab({
       <TradingSnapshotAlertBanner
         assessment={selectedSnapshotDiscipline}
         isRefreshing={isRefreshing}
+        liveRefreshLocked={liveRefreshLocked}
         onRefresh={refreshTradingLive}
       />
 
@@ -1100,6 +1152,8 @@ export default function TradingTab({
           snapshotFootnote={snapshotFootnote}
           executionHref={selectedExecutionHref}
           isDiscoveryMode={Boolean(discoveryLimit)}
+          liveRefreshLocked={liveRefreshLocked}
+          liveRefreshLockedReason={liveRefreshLockedReason}
           onRefresh={refreshTradingLive}
           onSelectInstrument={setPreferredInstrument}
         />

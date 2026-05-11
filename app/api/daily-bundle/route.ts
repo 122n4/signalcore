@@ -23,6 +23,9 @@ import {
   type AccessTier,
 } from "@/lib/signalcore/entitlements";
 import { applyDailyBundleEntitlements } from "@/lib/signalcore/dailyBundleEntitlements";
+import { getPlanLimitsForTier } from "@/lib/signalcore/planLimits";
+import type { FeatureUsageDecision } from "@/lib/signalcore/usageLimits";
+import { checkAndRecordFeatureUsage } from "@/lib/signalcore/usageLimits";
 import { resolveModeAccess } from "@/lib/signalcore/modeAccess";
 import { buildTradingLightScannerInputs } from "@/lib/trading/lightScanner";
 import {
@@ -3498,6 +3501,36 @@ function readStructuredDecisionTrace(engineV4: any) {
   return trace && typeof trace === "object" && !Array.isArray(trace) && Object.keys(trace).length > 0 ? trace : null;
 }
 
+function buildDataRefreshAccessSnapshot(args: {
+  tier: AccessTier;
+  requestedTradingLiveRefresh: boolean;
+  effectiveTradingLiveRefresh: boolean;
+  usage: FeatureUsageDecision | null;
+}) {
+  const limits = getPlanLimitsForTier(args.tier);
+  return {
+    tier: args.tier,
+    tradingLiveRefresh: {
+      requested: args.requestedTradingLiveRefresh,
+      allowed: args.effectiveTradingLiveRefresh,
+      sharedSnapshotOnly: limits.dataRefresh.sharedTradingSnapshotOnly,
+      dailyLimit: limits.dataRefresh.forceTradingRefreshDailyLimit,
+      cooldownSeconds: limits.dataRefresh.forceTradingRefreshCooldownSeconds,
+      usedToday: args.usage?.usedToday ?? 0,
+      remainingToday:
+        args.usage?.remainingToday ??
+        limits.dataRefresh.forceTradingRefreshDailyLimit,
+      resetAt: args.usage?.resetAt ?? null,
+      blockedReason:
+        args.requestedTradingLiveRefresh && !args.effectiveTradingLiveRefresh
+          ? args.usage?.reason ?? "plan_limit"
+          : null,
+      retryAfterSeconds: args.usage?.retryAfterSeconds ?? null,
+      trackingReady: args.usage?.tracked ?? null,
+    },
+  };
+}
+
 export function attachDecisionEnvelopeToDailyBundleRouteResponse<
   T extends {
     mode: AutopilotMode;
@@ -3521,10 +3554,31 @@ function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; de
     mode: AutopilotMode;
     asOf: string;
     accessTier: AccessTier;
+    dataRefreshAccess?: ReturnType<typeof buildDataRefreshAccessSnapshot> | null;
   },
 ): T {
   if (!args) return response;
-  return applyDailyBundleEntitlements(response, {
+  const responseWithDataAccess = args.dataRefreshAccess
+    ? ({
+        ...response,
+        daily: {
+          ...(response.daily ?? {}),
+          dataRefreshAccess: args.dataRefreshAccess,
+        },
+        ...(Object.prototype.hasOwnProperty.call(response, "derived")
+          ? {
+              derived: response.derived
+                ? {
+                    ...response.derived,
+                    dataRefreshAccess: args.dataRefreshAccess,
+                  }
+                : response.derived,
+            }
+          : {}),
+      } as T)
+    : response;
+
+  return applyDailyBundleEntitlements(responseWithDataAccess, {
     mode: args.mode,
     tier: args.accessTier,
     entitlements: getEntitlementsForTier(args.accessTier),
@@ -4022,6 +4076,9 @@ export async function GET(req: Request) {
   const asOf = new Date().toISOString();
   let accessTier: AccessTier = "free";
   let tradingWatchlistInputs: ComposeTradingLiveDecisionInput[] | null = null;
+  let requestedTradingLiveRefresh = false;
+  let effectiveTradingLiveRefresh = false;
+  let tradingLiveRefreshUsage: FeatureUsageDecision | null = null;
   let hasProAccess = false;
   let billingState: {
     plan: "free" | "pro";
@@ -4079,15 +4136,33 @@ export async function GET(req: Request) {
       trialActive: billingState.trialActive,
     });
     const modeKey = modeAccess.mode;
-    const forceTradingLiveRefresh =
+    requestedTradingLiveRefresh =
       url.searchParams.get("tradingRefresh") === "live" ||
       url.searchParams.get("forceTradingRefresh") === "1";
+    effectiveTradingLiveRefresh = requestedTradingLiveRefresh;
+    if (requestedTradingLiveRefresh) {
+      const planLimits = getPlanLimitsForTier(accessTier);
+      tradingLiveRefreshUsage = await checkAndRecordFeatureUsage({
+        supabase,
+        userId,
+        feature: "trading_live_refresh",
+        tier: accessTier,
+        dailyLimit: planLimits.dataRefresh.forceTradingRefreshDailyLimit,
+        cooldownSeconds: planLimits.dataRefresh.forceTradingRefreshCooldownSeconds,
+        metadata: {
+          mode: modeKey,
+          requestedPath: "daily-bundle",
+        },
+      });
+      effectiveTradingLiveRefresh =
+        !planLimits.dataRefresh.sharedTradingSnapshotOnly && tradingLiveRefreshUsage.allowed;
+    }
     if (shouldLoadTradingWatchlistForDailyBundle(modeKey)) {
       try {
         let storedScannerSnapshots:
           | Awaited<ReturnType<typeof readFreshTradingScannerSnapshots>>
           | null = null;
-        if (!forceTradingLiveRefresh) {
+        if (!effectiveTradingLiveRefresh) {
           storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
           const hasActionableOpenStoredSnapshot = storedScannerSnapshots.inputs.some(
             (input) =>
@@ -4107,7 +4182,8 @@ export async function GET(req: Request) {
           tradingWatchlistInputs = await buildTradingLightScannerInputs({
             asOf,
             forceRefresh: true,
-            forceProviderRefresh: forceTradingLiveRefresh,
+            forceProviderRefresh: effectiveTradingLiveRefresh,
+            allowLiveFetch: accessTier !== "free" || effectiveTradingLiveRefresh,
             includeInactiveMarkets: true,
             storedInputs: storedScannerSnapshots?.inputs ?? [],
           });
@@ -4686,6 +4762,12 @@ export async function GET(req: Request) {
         mode,
         asOf,
         accessTier,
+        dataRefreshAccess: buildDataRefreshAccessSnapshot({
+          tier: accessTier,
+          requestedTradingLiveRefresh,
+          effectiveTradingLiveRefresh,
+          usage: tradingLiveRefreshUsage,
+        }),
       }),
     );
   }
@@ -5113,6 +5195,12 @@ export async function GET(req: Request) {
         mode,
         asOf,
         accessTier,
+        dataRefreshAccess: buildDataRefreshAccessSnapshot({
+          tier: accessTier,
+          requestedTradingLiveRefresh,
+          effectiveTradingLiveRefresh,
+          usage: tradingLiveRefreshUsage,
+        }),
       }),
     );
   }
@@ -6019,6 +6107,12 @@ export async function GET(req: Request) {
       mode,
       asOf,
       accessTier,
+      dataRefreshAccess: buildDataRefreshAccessSnapshot({
+        tier: accessTier,
+        requestedTradingLiveRefresh,
+        effectiveTradingLiveRefresh,
+        usage: tradingLiveRefreshUsage,
+      }),
     }),
   );
   } catch (error: any) {
@@ -6805,6 +6899,12 @@ export async function GET(req: Request) {
         mode,
         asOf,
         accessTier,
+        dataRefreshAccess: buildDataRefreshAccessSnapshot({
+          tier: accessTier,
+          requestedTradingLiveRefresh,
+          effectiveTradingLiveRefresh,
+          usage: tradingLiveRefreshUsage,
+        }),
       }),
     );
   }

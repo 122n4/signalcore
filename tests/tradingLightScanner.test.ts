@@ -193,6 +193,30 @@ describe("trading light scanner", () => {
     expect(inputs.filter((input) => input.scannerSnapshot?.source === "empty").length).toBeGreaterThan(0);
   });
 
+  it("can build scanner inputs without touching live providers", async () => {
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      includeInactiveMarkets: true,
+      allowLiveFetch: false,
+      instruments: [
+        {
+          instrument: "EURUSD",
+          dataSymbol: "EUR/USD",
+          marketType: "forex",
+          sessionProfile: "forex",
+          provider: "twelvedata",
+          focusGroup: "forex",
+        },
+      ],
+    });
+
+    expect(getCandlesMock).not.toHaveBeenCalled();
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]?.scannerSnapshot?.source).toBe("empty");
+    expect(inputs[0]?.scannerSnapshot?.providerError).toBe("live_fetch_deferred");
+  });
+
   it("reuses fresh stored scanner inputs for open markets outside the live fetch budget", async () => {
     process.env.TRADING_LIGHT_SCANNER_OPEN_MARKET_LIVE_FETCH_LIMIT = "1";
 

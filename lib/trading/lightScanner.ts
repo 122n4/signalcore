@@ -1254,6 +1254,7 @@ export async function buildTradingLightScannerInputs(args: {
   forceRefresh?: boolean;
   forceProviderRefresh?: boolean;
   includeInactiveMarkets?: boolean;
+  allowLiveFetch?: boolean;
   storedInputs?: ComposeTradingLiveDecisionInput[] | null;
 }): Promise<ComposeTradingLiveDecisionInput[]> {
   const coverageMap = await readTradingProductCoverageMap();
@@ -1297,26 +1298,29 @@ export async function buildTradingLightScannerInputs(args: {
     };
   });
 
+  const liveFetchAllowed = args.allowLiveFetch !== false;
   const openMarketFetchTargets = new Set(
-    instrumentStates
-      .filter((entry) => entry.session.marketOpen)
-      .sort((left, right) => {
-        const leftMissingFresh = left.storedPayload ? 0 : 1;
-        const rightMissingFresh = right.storedPayload ? 0 : 1;
-        if (leftMissingFresh !== rightMissingFresh) {
-          return rightMissingFresh - leftMissingFresh;
-        }
+    liveFetchAllowed
+      ? instrumentStates
+          .filter((entry) => entry.session.marketOpen)
+          .sort((left, right) => {
+            const leftMissingFresh = left.storedPayload ? 0 : 1;
+            const rightMissingFresh = right.storedPayload ? 0 : 1;
+            if (leftMissingFresh !== rightMissingFresh) {
+              return rightMissingFresh - leftMissingFresh;
+            }
 
-        const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
-        const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
-        if (leftAgeMs !== rightAgeMs) {
-          return rightAgeMs - leftAgeMs;
-        }
+            const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+            const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+            if (leftAgeMs !== rightAgeMs) {
+              return rightAgeMs - leftAgeMs;
+            }
 
-        return left.index - right.index;
-      })
-      .slice(0, openMarketLiveFetchLimit)
-      .map((entry) => entry.instrument.instrument),
+            return left.index - right.index;
+          })
+          .slice(0, openMarketLiveFetchLimit)
+          .map((entry) => entry.instrument.instrument)
+      : [],
   );
 
   const results = await Promise.allSettled(
@@ -1331,7 +1335,8 @@ export async function buildTradingLightScannerInputs(args: {
           resolveTradingProductCoverage(entry.instrument.instrument, coverageMap),
           {
             allowLiveFetch:
-              shouldFetchOpenMarketLive || (!args.forceRefresh && entry.index < liveFetchLimit),
+              liveFetchAllowed &&
+              (shouldFetchOpenMarketLive || (!args.forceRefresh && entry.index < liveFetchLimit)),
             forceProviderRefresh:
               args.forceProviderRefresh === true && shouldFetchOpenMarketLive,
             includeInactiveMarkets: args.includeInactiveMarkets === true,
