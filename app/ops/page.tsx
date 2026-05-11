@@ -128,19 +128,27 @@ export default async function OpsPage() {
               data backfill and premium entitlement integrity.
             </p>
           </div>
-          <span className={`rounded-full border px-4 py-2 text-sm font-bold ${statusTone(
-            billingFailures > 0 || researchValue?.severity === "error"
-              ? "fail"
-              : billingWarnings > 0 || researchValue?.severity === "warn"
-                ? "warn"
-                : "ok",
-          )}`}>
-            {billingFailures > 0 || researchValue?.severity === "error"
-              ? "Action needed"
-              : billingWarnings > 0 || researchValue?.severity === "warn"
-                ? "Watch"
-                : "Healthy"}
-          </span>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/ops/marketing"
+              className="rounded-full border border-cyan-200/30 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15"
+            >
+              Marketing Ops
+            </a>
+            <span className={`rounded-full border px-4 py-2 text-sm font-bold ${statusTone(
+              billingFailures > 0 || researchValue?.severity === "error"
+                ? "fail"
+                : billingWarnings > 0 || researchValue?.severity === "warn"
+                  ? "warn"
+                  : "ok",
+            )}`}>
+              {billingFailures > 0 || researchValue?.severity === "error"
+                ? "Action needed"
+                : billingWarnings > 0 || researchValue?.severity === "warn"
+                  ? "Watch"
+                  : "Healthy"}
+            </span>
+          </div>
         </header>
 
         <div className="mt-7 grid gap-6 lg:grid-cols-2">
