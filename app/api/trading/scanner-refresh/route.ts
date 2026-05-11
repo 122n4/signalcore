@@ -22,6 +22,8 @@ function summarizeInputs(
   let freshOpenMarketCount = 0;
   let actionableSnapshotCount = 0;
   let staleOpenMarketCount = 0;
+  const freshOpenInstruments: string[] = [];
+  const staleOpenInstruments: string[] = [];
 
   for (const input of inputs) {
     const source = input.scannerSnapshot?.source ?? "unknown";
@@ -30,8 +32,10 @@ function summarizeInputs(
       marketOpenCount += 1;
       if (!input.scannerSnapshot?.actionableFreshness) {
         staleOpenMarketCount += 1;
+        staleOpenInstruments.push(input.snapshot.instrument);
       } else {
         freshOpenMarketCount += 1;
+        freshOpenInstruments.push(input.snapshot.instrument);
       }
     }
     if (input.scannerSnapshot?.actionableFreshness) {
@@ -45,6 +49,8 @@ function summarizeInputs(
     freshOpenMarketCount,
     actionableSnapshotCount,
     staleOpenMarketCount,
+    freshOpenInstruments,
+    staleOpenInstruments,
     sourceCounts,
     instruments: inputs.map((input) => ({
       instrument: input.snapshot.instrument,

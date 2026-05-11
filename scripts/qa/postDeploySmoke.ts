@@ -174,6 +174,7 @@ async function main() {
           marketOpenCount: refresh.payload?.summary?.marketOpenCount ?? null,
           freshOpenMarketCount: refresh.payload?.summary?.freshOpenMarketCount ?? null,
           staleOpenMarketCount: refresh.payload?.summary?.staleOpenMarketCount ?? null,
+          staleOpenInstruments: refresh.payload?.summary?.staleOpenInstruments ?? [],
           persistedCount: refresh.payload?.persistedCount ?? null,
         },
       });
