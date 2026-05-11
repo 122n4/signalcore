@@ -1297,57 +1297,82 @@ export async function buildTradingLightScannerInputs(args: {
     };
   });
 
+  const prioritizedOpenMarketStates = instrumentStates
+    .filter((entry) => entry.session.marketOpen)
+    .sort((left, right) => {
+      const leftMissingFresh = left.storedPayload ? 0 : 1;
+      const rightMissingFresh = right.storedPayload ? 0 : 1;
+      if (leftMissingFresh !== rightMissingFresh) {
+        return rightMissingFresh - leftMissingFresh;
+      }
+
+      const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+      const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+      if (leftAgeMs !== rightAgeMs) {
+        return rightAgeMs - leftAgeMs;
+      }
+
+      return left.index - right.index;
+    });
+
   const openMarketFetchTargets = new Set(
-    instrumentStates
-      .filter((entry) => entry.session.marketOpen)
-      .sort((left, right) => {
-        const leftMissingFresh = left.storedPayload ? 0 : 1;
-        const rightMissingFresh = right.storedPayload ? 0 : 1;
-        if (leftMissingFresh !== rightMissingFresh) {
-          return rightMissingFresh - leftMissingFresh;
-        }
-
-        const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
-        const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
-        if (leftAgeMs !== rightAgeMs) {
-          return rightAgeMs - leftAgeMs;
-        }
-
-        return left.index - right.index;
-      })
+    prioritizedOpenMarketStates
       .slice(0, openMarketLiveFetchLimit)
       .map((entry) => entry.instrument.instrument),
   );
+  const resultByInstrument = new Map<string, ComposeTradingLiveDecisionInput>();
 
-  const results = await Promise.allSettled(
-    instrumentStates.map((entry) =>
+  for (const entry of prioritizedOpenMarketStates) {
+    if (!openMarketFetchTargets.has(entry.instrument.instrument)) {
+      continue;
+    }
+
+    const value = await scanInstrument(
+      entry.instrument,
+      args.asOf,
+      resolveTradingProductCoverage(entry.instrument.instrument, coverageMap),
       {
-        const shouldFetchOpenMarketLive =
-          entry.session.marketOpen && openMarketFetchTargets.has(entry.instrument.instrument);
+        allowLiveFetch: true,
+        forceProviderRefresh: args.forceProviderRefresh === true,
+        includeInactiveMarkets: args.includeInactiveMarkets === true,
+        storedInput: entry.storedInput,
+      },
+    );
 
-        return scanInstrument(
+    if (value) {
+      resultByInstrument.set(entry.instrument.instrument, value);
+    }
+  }
+
+  const passiveResults = await Promise.allSettled(
+    instrumentStates
+      .filter((entry) => !openMarketFetchTargets.has(entry.instrument.instrument))
+      .map((entry) =>
+        scanInstrument(
           entry.instrument,
           args.asOf,
           resolveTradingProductCoverage(entry.instrument.instrument, coverageMap),
           {
-            allowLiveFetch:
-              shouldFetchOpenMarketLive || (!args.forceRefresh && entry.index < liveFetchLimit),
-            forceProviderRefresh:
-              args.forceProviderRefresh === true && shouldFetchOpenMarketLive,
+            allowLiveFetch: !args.forceRefresh && entry.index < liveFetchLimit,
+            forceProviderRefresh: false,
             includeInactiveMarkets: args.includeInactiveMarkets === true,
             storedInput: entry.storedInput,
           },
-        );
-      },
-    ),
+        ),
+      ),
   );
 
-  const value = results.flatMap((result) => {
+  for (const result of passiveResults) {
     if (result.status !== "fulfilled" || !result.value) {
-      return [];
+      continue;
     }
 
-    return [result.value];
+    resultByInstrument.set(result.value.snapshot.instrument, result.value);
+  }
+
+  const value = instrumentStates.flatMap((entry) => {
+    const hit = resultByInstrument.get(entry.instrument.instrument);
+    return hit ? [hit] : [];
   });
 
   TRADING_LIGHT_SCANNER_CACHE.set(cacheKey, {
