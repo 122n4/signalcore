@@ -41,21 +41,27 @@ vi.mock("@/lib/market/providers/twelvedata", () => ({
 }));
 
 import { getCandles, resetMarketClientProviderCooldownsForTests } from "@/lib/market/marketClient";
+import { resetTwelveDataKeyPoolForTests } from "@/lib/market/providers/twelvedataKeyPool";
 
 describe("market client provider routing", () => {
   const originalTwelveDataKey = process.env.TWELVEDATA_API_KEY;
+  const originalTwelveDataKeys = process.env.TWELVEDATA_API_KEYS;
   const originalFinnhubKey = process.env.FINNHUB_API_KEY;
 
   beforeEach(() => {
     vi.clearAllMocks();
     resetMarketClientProviderCooldownsForTests();
+    resetTwelveDataKeyPoolForTests();
     process.env.TWELVEDATA_API_KEY = "td-test-key";
+    delete process.env.TWELVEDATA_API_KEYS;
     process.env.FINNHUB_API_KEY = "fh-test-key";
   });
 
   afterEach(() => {
     process.env.TWELVEDATA_API_KEY = originalTwelveDataKey;
+    process.env.TWELVEDATA_API_KEYS = originalTwelveDataKeys;
     process.env.FINNHUB_API_KEY = originalFinnhubKey;
+    resetTwelveDataKeyPoolForTests();
   });
 
   it("uses the configured fallback provider when the primary key is absent", async () => {
@@ -73,6 +79,25 @@ describe("market client provider routing", () => {
       undefined,
       undefined,
     );
+    expect(candles).toHaveLength(1);
+  });
+
+  it("treats TWELVEDATA_API_KEYS as a configured Twelve Data provider", async () => {
+    delete process.env.TWELVEDATA_API_KEY;
+    process.env.TWELVEDATA_API_KEYS = "td-pool-key-1,td-pool-key-2";
+    tdCandlesMock.mockResolvedValue([
+      { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
+    ]);
+
+    const candles = await getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto");
+
+    expect(tdCandlesMock).toHaveBeenCalledWith(
+      "EUR/USD",
+      { interval: "5min", points: 2 },
+      undefined,
+      undefined,
+    );
+    expect(finnhubCandlesMock).not.toHaveBeenCalled();
     expect(candles).toHaveLength(1);
   });
 

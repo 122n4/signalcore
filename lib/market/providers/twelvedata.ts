@@ -7,12 +7,7 @@ import type {
 } from "@/lib/market/types";
 import { cacheGet, cacheSet } from "@/lib/market/cache";
 import { inferAssetKind, toTwelveDataSymbol, normSymbol } from "@/lib/market/symbols";
-
-function apiKey() {
-  const k = process.env.TWELVEDATA_API_KEY;
-  if (!k) throw new Error("Missing TWELVEDATA_API_KEY");
-  return k;
-}
+import { withTwelveDataKeyPool } from "@/lib/market/providers/twelvedataKeyPool";
 
 function baseUrl() {
   return "https://api.twelvedata.com";
@@ -115,13 +110,15 @@ export async function tdQuoteNormalized(
   if (options?.extendedHours && supportsExtendedHours(kind)) {
     url.searchParams.set("prepost", "true");
   }
-  url.searchParams.set("apikey", apiKey());
+  const data = await withTwelveDataKeyPool(async (key) => {
+    url.searchParams.set("apikey", key);
+    const res = await fetch(url.toString(), buildProviderFetchInit(options));
+    const payload: TDQuote | null = await res.json().catch(() => null);
 
-  const res = await fetch(url.toString(), buildProviderFetchInit(options));
-  const data: TDQuote | null = await res.json().catch(() => null);
-
-  if (!res.ok || !data) throw new Error(`TwelveData quote failed (${res.status})`);
-  if ((data as any)?.status === "error") throw new Error((data as any)?.message ?? "TwelveData error");
+    if (!res.ok || !payload) throw new Error(`TwelveData quote failed (${res.status})`);
+    if ((payload as any)?.status === "error") throw new Error((payload as any)?.message ?? "TwelveData error");
+    return payload;
+  });
 
   const price = parseNum(data.close);
   if (price == null) throw new Error("TwelveData quote missing price");
@@ -182,13 +179,15 @@ export async function tdCandles(
   if (options?.extendedHours && supportsExtendedHours(kind)) {
     url.searchParams.set("prepost", "true");
   }
-  url.searchParams.set("apikey", apiKey());
+  const data = await withTwelveDataKeyPool(async (key) => {
+    url.searchParams.set("apikey", key);
+    const res = await fetch(url.toString(), buildProviderFetchInit(options));
+    const payload: TDTimeSeries | null = await res.json().catch(() => null);
 
-  const res = await fetch(url.toString(), buildProviderFetchInit(options));
-  const data: TDTimeSeries | null = await res.json().catch(() => null);
-
-  if (!res.ok || !data) throw new Error(`TwelveData time_series failed (${res.status})`);
-  if ((data as any)?.status === "error") throw new Error((data as any)?.message ?? "TwelveData error");
+    if (!res.ok || !payload) throw new Error(`TwelveData time_series failed (${res.status})`);
+    if ((payload as any)?.status === "error") throw new Error((payload as any)?.message ?? "TwelveData error");
+    return payload;
+  });
 
   const values = Array.isArray(data.values) ? data.values : [];
   // TwelveData devolve do mais recente -> mais antigo; invert para ordem temporal

@@ -8,6 +8,7 @@ import {
 } from "@/lib/trading/lightScanner";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
+import { getTwelveDataApiKeys, getTwelveDataKeyPoolStatus } from "@/lib/market/providers/twelvedataKeyPool";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,13 +59,14 @@ export async function GET(req: Request) {
   ]);
   const summary = summarizeTradingLightScannerDiagnostics(diagnostics);
 
-  const twelvedataKey = String(process.env.TWELVEDATA_API_KEY || "").trim();
+  const twelvedataKeys = getTwelveDataApiKeys();
+  const twelvedataKeyPool = getTwelveDataKeyPoolStatus();
   const finnhubKey = String(process.env.FINNHUB_API_KEY || "").trim();
 
-  const twelvedataProbe = twelvedataKey
+  const twelvedataProbe = twelvedataKeys[0]
     ? await probeProvider(
         `https://api.twelvedata.com/time_series?symbol=EUR/USD&interval=5min&outputsize=2&apikey=${encodeURIComponent(
-          twelvedataKey,
+          twelvedataKeys[0],
         )}`,
       )
     : {
@@ -87,8 +89,10 @@ export async function GET(req: Request) {
     ok: true,
     asOf,
     env: {
-      hasTwelveDataKey: twelvedataKey.length > 0,
-      twelveDataKeyLength: twelvedataKey.length,
+      hasTwelveDataKey: twelvedataKeys.length > 0,
+      twelveDataKeyCount: twelvedataKeyPool.configuredCount,
+      twelveDataActiveKeyCount: twelvedataKeyPool.activeCount,
+      twelveDataCooldownKeyCount: twelvedataKeyPool.cooldownCount,
       hasFinnhubKey: finnhubKey.length > 0,
       finnhubKeyLength: finnhubKey.length,
     },

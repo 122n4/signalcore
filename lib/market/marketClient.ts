@@ -11,6 +11,7 @@ import { binanceQuote, binanceCandles } from "@/lib/market/providers/binance";
 import { coinbaseCandles, coinbaseQuote } from "@/lib/market/providers/coinbase";
 import { finnhubQuote, finnhubCandles } from "@/lib/market/providers/finnhub";
 import { tdQuoteNormalized, tdCandles } from "@/lib/market/providers/twelvedata";
+import { hasTwelveDataApiKey } from "@/lib/market/providers/twelvedataKeyPool";
 
 export type ProviderPref = "auto" | "binance" | "coinbase" | "finnhub" | "twelvedata";
 type ConcreteProviderPref = Exclude<ProviderPref, "auto">;
@@ -90,7 +91,7 @@ function hasProviderKey(provider: ConcreteProviderPref) {
     return String(process.env.FINNHUB_API_KEY || "").trim().length > 0;
   }
 
-  return String(process.env.TWELVEDATA_API_KEY || "").trim().length > 0;
+  return hasTwelveDataApiKey();
 }
 
 export function hasAnyMarketDataProviderConfigured() {

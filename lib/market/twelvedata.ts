@@ -1,10 +1,5 @@
 import { cacheGet, cacheSet } from "@/lib/market/cache";
-
-function apiKey() {
-  const k = process.env.TWELVEDATA_API_KEY;
-  if (!k) throw new Error("Missing TWELVEDATA_API_KEY");
-  return k;
-}
+import { withTwelveDataKeyPool } from "@/lib/market/providers/twelvedataKeyPool";
 
 function baseUrl() {
   return "https://api.twelvedata.com";
@@ -39,13 +34,15 @@ export async function tdQuote(symbol: string, ttlMs = 15_000): Promise<TDQuote> 
 
   const url = new URL(`${baseUrl()}/quote`);
   url.searchParams.set("symbol", sym);
-  url.searchParams.set("apikey", apiKey());
+  const data = await withTwelveDataKeyPool(async (key) => {
+    url.searchParams.set("apikey", key);
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    const payload: any = await res.json().catch(() => null);
 
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  const data: any = await res.json().catch(() => null);
-
-  if (!res.ok || !data) throw new Error(`TwelveData quote failed (${res.status})`);
-  if (data?.status === "error") throw new Error(data?.message ?? "TwelveData error");
+    if (!res.ok || !payload) throw new Error(`TwelveData quote failed (${res.status})`);
+    if (payload?.status === "error") throw new Error(payload?.message ?? "TwelveData error");
+    return payload;
+  });
 
   cacheSet(key, data as TDQuote, ttlMs);
   return data as TDQuote;
@@ -86,13 +83,15 @@ export async function tdTimeSeries(opts: {
   url.searchParams.set("symbol", sym);
   url.searchParams.set("interval", interval);
   url.searchParams.set("outputsize", String(outputsize));
-  url.searchParams.set("apikey", apiKey());
+  const data = await withTwelveDataKeyPool(async (key) => {
+    url.searchParams.set("apikey", key);
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    const payload: any = await res.json().catch(() => null);
 
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  const data: any = await res.json().catch(() => null);
-
-  if (!res.ok || !data) throw new Error(`TwelveData time_series failed (${res.status})`);
-  if (data?.status === "error") throw new Error(data?.message ?? "TwelveData error");
+    if (!res.ok || !payload) throw new Error(`TwelveData time_series failed (${res.status})`);
+    if (payload?.status === "error") throw new Error(payload?.message ?? "TwelveData error");
+    return payload;
+  });
 
   cacheSet(key, data as TDTimeSeries, ttlMs);
   return data as TDTimeSeries;

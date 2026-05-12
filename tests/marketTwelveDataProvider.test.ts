@@ -1,16 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { tdQuoteNormalized } from "@/lib/market/providers/twelvedata";
+import { resetTwelveDataKeyPoolForTests } from "@/lib/market/providers/twelvedataKeyPool";
 
 describe("twelvedata provider", () => {
   const originalKey = process.env.TWELVEDATA_API_KEY;
+  const originalKeys = process.env.TWELVEDATA_API_KEYS;
 
   beforeEach(() => {
     process.env.TWELVEDATA_API_KEY = "test-key";
+    delete process.env.TWELVEDATA_API_KEYS;
+    resetTwelveDataKeyPoolForTests();
   });
 
   afterEach(() => {
     process.env.TWELVEDATA_API_KEY = originalKey;
+    process.env.TWELVEDATA_API_KEYS = originalKeys;
+    resetTwelveDataKeyPoolForTests();
     vi.unstubAllGlobals();
   });
 
@@ -67,5 +73,37 @@ describe("twelvedata provider", () => {
 
     const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
     expect(requestUrl.searchParams.get("prepost")).toBe("true");
+  });
+
+  it("falls through to the next Twelve Data key when one key is rate limited", async () => {
+    delete process.env.TWELVEDATA_API_KEY;
+    process.env.TWELVEDATA_API_KEYS = "limited-key, fresh-key";
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: "error",
+          message: "You have run out of API credits for the current minute.",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          symbol: "EUR/USD",
+          close: "1.0912",
+          timestamp: 1768204680,
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const quote = await tdQuoteNormalized("EUR/USD", 0);
+
+    const firstUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    const secondUrl = new URL(String(fetchMock.mock.calls[1]?.[0]));
+    expect(firstUrl.searchParams.get("apikey")).toBe("limited-key");
+    expect(secondUrl.searchParams.get("apikey")).toBe("fresh-key");
+    expect(quote.price).toBe(1.0912);
   });
 });
