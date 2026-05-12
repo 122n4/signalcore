@@ -62,6 +62,7 @@ export async function GET(req: Request) {
   const twelvedataKeys = getTwelveDataApiKeys();
   const twelvedataKeyPool = getTwelveDataKeyPoolStatus();
   const finnhubKey = String(process.env.FINNHUB_API_KEY || "").trim();
+  const fmpKey = String(process.env.FMP_API_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || "").trim();
 
   const twelvedataProbe = twelvedataKeys[0]
     ? await probeProvider(
@@ -95,6 +96,8 @@ export async function GET(req: Request) {
       twelveDataCooldownKeyCount: twelvedataKeyPool.cooldownCount,
       hasFinnhubKey: finnhubKey.length > 0,
       finnhubKeyLength: finnhubKey.length,
+      hasFmpKey: fmpKey.length > 0,
+      fmpKeyLength: fmpKey.length,
     },
     probes: {
       twelvedata: twelvedataProbe,

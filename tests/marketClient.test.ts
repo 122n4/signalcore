@@ -7,6 +7,8 @@ const {
   coinbaseQuoteMock,
   finnhubCandlesMock,
   finnhubQuoteMock,
+  fmpCandlesMock,
+  fmpQuoteMock,
   tdCandlesMock,
   tdQuoteMock,
 } = vi.hoisted(() => ({
@@ -16,6 +18,8 @@ const {
   coinbaseQuoteMock: vi.fn(),
   finnhubCandlesMock: vi.fn(),
   finnhubQuoteMock: vi.fn(),
+  fmpCandlesMock: vi.fn(),
+  fmpQuoteMock: vi.fn(),
   tdCandlesMock: vi.fn(),
   tdQuoteMock: vi.fn(),
 }));
@@ -35,6 +39,11 @@ vi.mock("@/lib/market/providers/finnhub", () => ({
   finnhubQuote: finnhubQuoteMock,
 }));
 
+vi.mock("@/lib/market/providers/fmp", () => ({
+  fmpCandles: fmpCandlesMock,
+  fmpQuote: fmpQuoteMock,
+}));
+
 vi.mock("@/lib/market/providers/twelvedata", () => ({
   tdCandles: tdCandlesMock,
   tdQuoteNormalized: tdQuoteMock,
@@ -47,6 +56,7 @@ describe("market client provider routing", () => {
   const originalTwelveDataKey = process.env.TWELVEDATA_API_KEY;
   const originalTwelveDataKeys = process.env.TWELVEDATA_API_KEYS;
   const originalFinnhubKey = process.env.FINNHUB_API_KEY;
+  const originalFmpKey = process.env.FMP_API_KEY;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,17 +65,20 @@ describe("market client provider routing", () => {
     process.env.TWELVEDATA_API_KEY = "td-test-key";
     delete process.env.TWELVEDATA_API_KEYS;
     process.env.FINNHUB_API_KEY = "fh-test-key";
+    process.env.FMP_API_KEY = "fmp-test-key";
   });
 
   afterEach(() => {
     process.env.TWELVEDATA_API_KEY = originalTwelveDataKey;
     process.env.TWELVEDATA_API_KEYS = originalTwelveDataKeys;
     process.env.FINNHUB_API_KEY = originalFinnhubKey;
+    process.env.FMP_API_KEY = originalFmpKey;
     resetTwelveDataKeyPoolForTests();
   });
 
   it("uses the configured fallback provider when the primary key is absent", async () => {
     delete process.env.TWELVEDATA_API_KEY;
+    delete process.env.FMP_API_KEY;
     finnhubCandlesMock.mockResolvedValue([
       { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
     ]);
@@ -101,9 +114,29 @@ describe("market client provider routing", () => {
     expect(candles).toHaveLength(1);
   });
 
+  it("falls back to FMP when Twelve Data is limited for forex candles", async () => {
+    tdCandlesMock.mockRejectedValue(new Error("You have run out of API credits for the current minute."));
+    fmpCandlesMock.mockResolvedValue([
+      { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
+    ]);
+
+    const candles = await getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto");
+
+    expect(tdCandlesMock).toHaveBeenCalled();
+    expect(fmpCandlesMock).toHaveBeenCalledWith(
+      "EUR/USD",
+      { interval: "5min", points: 2 },
+      undefined,
+      undefined,
+    );
+    expect(finnhubCandlesMock).not.toHaveBeenCalled();
+    expect(candles).toHaveLength(1);
+  });
+
   it("uses Coinbase public candles first for crypto auto routing", async () => {
     delete process.env.TWELVEDATA_API_KEY;
     delete process.env.FINNHUB_API_KEY;
+    delete process.env.FMP_API_KEY;
     coinbaseCandlesMock.mockResolvedValue([
       { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
     ]);
@@ -125,6 +158,7 @@ describe("market client provider routing", () => {
   it("falls back to Binance if Coinbase crypto candles fail", async () => {
     delete process.env.TWELVEDATA_API_KEY;
     delete process.env.FINNHUB_API_KEY;
+    delete process.env.FMP_API_KEY;
     coinbaseCandlesMock.mockRejectedValue(new Error("coinbase_unavailable"));
     binanceCandlesMock.mockResolvedValue([
       { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
@@ -138,6 +172,7 @@ describe("market client provider routing", () => {
   });
 
   it("surfaces aggregated provider errors when all providers fail", async () => {
+    delete process.env.FMP_API_KEY;
     tdCandlesMock.mockRejectedValue(new Error("rate_limited"));
     finnhubCandlesMock.mockRejectedValue(new Error("quota_exceeded"));
 
@@ -147,6 +182,7 @@ describe("market client provider routing", () => {
   });
 
   it("skips a provider briefly after rate-limit failures", async () => {
+    delete process.env.FMP_API_KEY;
     tdCandlesMock.mockRejectedValue(
       new Error("You have run out of API credits for the current minute."),
     );

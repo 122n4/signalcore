@@ -20,7 +20,7 @@ export type QuoteNormalized = {
 
   currency?: string;
   timestamp?: number; // ms
-  provider: "binance" | "coinbase" | "finnhub" | "twelvedata";
+  provider: "binance" | "coinbase" | "finnhub" | "fmp" | "twelvedata";
 };
 
 export type Candle = {

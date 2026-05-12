@@ -10,10 +10,11 @@ import { inferAssetKind } from "@/lib/market/symbols";
 import { binanceQuote, binanceCandles } from "@/lib/market/providers/binance";
 import { coinbaseCandles, coinbaseQuote } from "@/lib/market/providers/coinbase";
 import { finnhubQuote, finnhubCandles } from "@/lib/market/providers/finnhub";
+import { fmpCandles, fmpQuote } from "@/lib/market/providers/fmp";
 import { tdQuoteNormalized, tdCandles } from "@/lib/market/providers/twelvedata";
 import { hasTwelveDataApiKey } from "@/lib/market/providers/twelvedataKeyPool";
 
-export type ProviderPref = "auto" | "binance" | "coinbase" | "finnhub" | "twelvedata";
+export type ProviderPref = "auto" | "binance" | "coinbase" | "finnhub" | "fmp" | "twelvedata";
 type ConcreteProviderPref = Exclude<ProviderPref, "auto">;
 type ProviderCooldown = {
   until: number;
@@ -91,6 +92,10 @@ function hasProviderKey(provider: ConcreteProviderPref) {
     return String(process.env.FINNHUB_API_KEY || "").trim().length > 0;
   }
 
+  if (provider === "fmp") {
+    return String(process.env.FMP_API_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || "").trim().length > 0;
+  }
+
   return hasTwelveDataApiKey();
 }
 
@@ -102,10 +107,10 @@ function resolveProviderOrder(kind: AssetKind, pref: ProviderPref): ConcreteProv
   const baseOrder: ConcreteProviderPref[] =
     pref === "auto"
       ? kind === "crypto"
-        ? ["coinbase", "binance", "twelvedata", "finnhub"]
+        ? ["coinbase", "binance", "fmp", "twelvedata", "finnhub"]
         : kind === "equity"
-          ? ["finnhub", "twelvedata"]
-          : ["twelvedata", "finnhub"]
+          ? ["finnhub", "fmp", "twelvedata"]
+          : ["twelvedata", "fmp", "finnhub"]
       : resolveExplicitProviderOrder(kind, pref);
 
   const configured = baseOrder.filter((provider, index, values) => {
@@ -137,13 +142,19 @@ function resolveExplicitProviderOrder(
 
   if (pref === "finnhub") {
     return kind === "crypto"
-      ? ["finnhub", "binance", "twelvedata"]
-      : ["finnhub", "twelvedata"];
+      ? ["finnhub", "binance", "fmp", "twelvedata"]
+      : ["finnhub", "fmp", "twelvedata"];
+  }
+
+  if (pref === "fmp") {
+    return kind === "crypto"
+      ? ["fmp", "coinbase", "binance", "twelvedata", "finnhub"]
+      : ["fmp", "twelvedata", "finnhub"];
   }
 
   return kind === "crypto"
-    ? ["twelvedata", "coinbase", "binance", "finnhub"]
-    : ["twelvedata", "finnhub"];
+    ? ["twelvedata", "coinbase", "binance", "fmp", "finnhub"]
+    : ["twelvedata", "fmp", "finnhub"];
 }
 
 export async function getQuote(
@@ -170,6 +181,7 @@ export async function getQuote(
       if (p === "coinbase") return await coinbaseQuote(symbol, undefined, options);
       if (p === "binance") return await binanceQuote(symbol, undefined, options);
       if (p === "finnhub") return await finnhubQuote(symbol, undefined, options);
+      if (p === "fmp") return await fmpQuote(symbol, undefined, options);
       if (p === "twelvedata") return await tdQuoteNormalized(symbol, undefined, options);
     } catch (e: any) {
       providerErrors[p] = registerProviderFailure(p, e);
@@ -204,6 +216,7 @@ export async function getCandles(
       if (p === "coinbase") return await coinbaseCandles(symbol, tf, undefined, options);
       if (p === "binance") return await binanceCandles(symbol, tf, undefined, options);
       if (p === "finnhub") return await finnhubCandles(symbol, tf, undefined, options);
+      if (p === "fmp") return await fmpCandles(symbol, tf, undefined, options);
       if (p === "twelvedata") return await tdCandles(symbol, tf, undefined, options);
     } catch (e: any) {
       providerErrors[p] = registerProviderFailure(p, e);
