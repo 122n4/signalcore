@@ -10,7 +10,10 @@ import type {
   ResearchTaskStatus,
 } from "./types";
 
-export async function readResearchQueue(config: ResearchConfig): Promise<ResearchQueue> {
+export async function readResearchQueue(
+  config: ResearchConfig,
+  options: { createIfMissing?: boolean } = {},
+): Promise<ResearchQueue> {
   const queue = await readJsonIfExists<ResearchQueue>(config.paths.queuePath);
 
   if (!queue) {
@@ -18,7 +21,9 @@ export async function readResearchQueue(config: ResearchConfig): Promise<Researc
       queueId: config.queueId,
       liveBaselineId: config.liveBaselineSource.baselineId,
     });
-    await writeResearchQueue(config, created);
+    if (options.createIfMissing !== false) {
+      await writeResearchQueue(config, created);
+    }
     return created;
   }
 

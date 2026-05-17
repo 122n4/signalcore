@@ -256,7 +256,7 @@ export async function buildResearchRuntimeHealth(args: {
   const config = args.config ?? await loadResearchConfig();
   const now = args.now ?? new Date();
   const [queue, lock] = await Promise.all([
-    readResearchQueue(config),
+    readResearchQueue(config, { createIfMissing: false }),
     readResearchLock(config),
   ]);
   const queueSummary = summarizeQueue(queue);
