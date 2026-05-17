@@ -5,7 +5,7 @@ import { buildResearchCampaignMap, readResearchCampaignLibrary } from "./campaig
 import { isResearchCandidateScopeCoverageEligible, readResearchCoverageEligibility } from "./dataQuality";
 import { computeResearchTaskFingerprint, readFingerprintIndexEntry } from "./idempotency";
 import { appendResearchTask, readResearchQueue, setResearchQueueIdleReason, writeResearchQueue } from "./queue";
-import { readJsonIfExists, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import { readJsonIfExists, sanitizeFileSegment, stableStringify, writeJsonAtomic } from "./fs";
 import type {
   ResearchCampaignDefinition,
   ResearchCandidateFamily,
@@ -313,6 +313,218 @@ async function replenishCandidateLibraryFromReserve(config: ResearchConfig): Pro
   }
 
   return additions;
+}
+
+function resolveAutoRefuelMaxAdditions(config: ResearchConfig): number {
+  const raw = config.automation.autoRefuel?.maxAdditionsPerRefuel;
+  return Number.isFinite(raw) ? Math.max(1, Math.min(64, Math.floor(raw as number))) : 16;
+}
+
+function taskSignature(template: Pick<ResearchCandidateTemplate, "type" | "candidate_scope" | "candidate_mutation">) {
+  return `${template.type}:${stableStringify(template.candidate_scope)}:${stableStringify(template.candidate_mutation)}`;
+}
+
+function createRiskMultiplierGridValues(): number[] {
+  const values: number[] = [];
+  for (let value = 0.5; value <= 0.95; value += 0.01) {
+    values.push(Number(value.toFixed(2)));
+  }
+  return values;
+}
+
+function createAggressiveRiskCapGridValues(): number[] {
+  const values: number[] = [];
+  for (let value = 0.24; value <= 0.6; value += 0.01) {
+    values.push(Number(value.toFixed(2)));
+  }
+  return values;
+}
+
+function getOrCreateGeneratedFamily(args: {
+  library: ResearchCandidateLibrary;
+  familyById: Map<string, ResearchCandidateFamily>;
+  id: string;
+  priority: number;
+  campaignId: string;
+}) {
+  let family = args.familyById.get(args.id);
+  if (!family) {
+    family = {
+      id: args.id,
+      enabled: true,
+      priority: args.priority,
+      campaign_id: args.campaignId,
+      templates: [],
+    };
+    args.library.families.push(family);
+    args.familyById.set(args.id, family);
+  }
+  return family;
+}
+
+async function refuelCandidateLibraryFromGeneratedGrid(config: ResearchConfig): Promise<number> {
+  if (!config.automation.autoRefuel?.enabled) {
+    return 0;
+  }
+
+  const activeLibrary = await readCandidateLibrary(config);
+  const maxAdditions = resolveAutoRefuelMaxAdditions(config);
+  const familyById = new Map(activeLibrary.families.map((family) => [family.id, family] as const));
+  const existingTemplateIds = new Set(
+    activeLibrary.families.flatMap((family) => family.templates.map((template) => template.id)),
+  );
+  const existingSignatures = new Set(
+    activeLibrary.families.flatMap((family) => family.templates.map((template) => taskSignature(template))),
+  );
+  const instruments = config.study.instruments;
+  const sessions = [
+    "pre_market",
+    "london_open",
+    "london_session",
+    "london_ny_overlap",
+    "ny_open",
+    "midday_lull",
+    "late_us",
+    "asia_flow",
+    "weekend_drift",
+  ];
+  let additions = 0;
+
+  const addTemplate = (family: ResearchCandidateFamily, template: ResearchCandidateTemplate) => {
+    const signature = taskSignature(template);
+    if (existingTemplateIds.has(template.id) || existingSignatures.has(signature)) {
+      return;
+    }
+    family.templates.push(template);
+    existingTemplateIds.add(template.id);
+    existingSignatures.add(signature);
+    additions += 1;
+  };
+
+  const riskFamily = getOrCreateGeneratedFamily({
+    library: activeLibrary,
+    familyById,
+    id: "perpetual_risk_multiplier_grid",
+    priority: 58,
+    campaignId: "improve_crisis",
+  });
+  for (const value of createRiskMultiplierGridValues()) {
+    for (const instrument of instruments) {
+      for (const session of sessions) {
+        addTemplate(riskFamily, {
+          id: `${instrument.toLowerCase()}_${session}_risk_${String(Math.round(value * 100)).padStart(2, "0")}`,
+          enabled: true,
+          type: "risk_shaping",
+          priority: Math.round(100 - value * 20),
+          dataset_profile: config.liveBaselineSource.datasetProfile,
+          validation_profile: config.liveBaselineSource.validationProfile,
+          candidate_scope: {
+            instruments: [instrument],
+            sessions: [session],
+            setup_types: ["breakout_continuation"],
+          },
+          candidate_mutation: {
+            kind: "risk_multiplier",
+            value,
+          },
+        });
+        if (additions >= maxAdditions) break;
+      }
+      if (additions >= maxAdditions) break;
+    }
+    if (additions >= maxAdditions) break;
+  }
+
+  if (additions < maxAdditions) {
+    const contextFamily = getOrCreateGeneratedFamily({
+      library: activeLibrary,
+      familyById,
+      id: "perpetual_crisis_context_grid",
+      priority: 57,
+      campaignId: "improve_crisis",
+    });
+    for (const instrument of instruments) {
+      for (const session of sessions) {
+        addTemplate(contextFamily, {
+          id: `${instrument.toLowerCase()}_${session}_weak_context_block`,
+          enabled: true,
+          type: "context_filter",
+          priority: 86,
+          dataset_profile: config.liveBaselineSource.datasetProfile,
+          validation_profile: config.liveBaselineSource.validationProfile,
+          candidate_scope: {
+            instruments: [instrument],
+            sessions: [session],
+            setup_types: ["breakout_continuation"],
+            quality_grades: ["C", "D"],
+            clarity_levels: ["low", "medium"],
+            environment_states: ["neutral", "unfavorable"],
+          },
+          candidate_mutation: {
+            kind: "blocked_context",
+          },
+        });
+        if (additions >= maxAdditions) break;
+      }
+      if (additions >= maxAdditions) break;
+    }
+  }
+
+  if (additions < maxAdditions) {
+    const aggressiveFamily = getOrCreateGeneratedFamily({
+      library: activeLibrary,
+      familyById,
+      id: "perpetual_aggressive_cap_grid",
+      priority: 56,
+      campaignId: "improve_crisis",
+    });
+    for (const value of createAggressiveRiskCapGridValues()) {
+      for (const instrument of instruments) {
+        for (const session of sessions) {
+          addTemplate(aggressiveFamily, {
+            id: `${instrument.toLowerCase()}_${session}_aggressive_cap_${String(Math.round(value * 100)).padStart(2, "0")}`,
+            enabled: true,
+            type: "risk_shaping",
+            priority: Math.round(90 - value * 10),
+            dataset_profile: config.liveBaselineSource.datasetProfile,
+            validation_profile: config.liveBaselineSource.validationProfile,
+            candidate_scope: {
+              instruments: [instrument],
+              sessions: [session],
+              setup_types: ["breakout_continuation"],
+              risk_modes: ["aggressive"],
+              environment_states: ["favorable"],
+            },
+            candidate_mutation: {
+              kind: "aggressive_risk_cap",
+              value,
+            },
+          });
+          if (additions >= maxAdditions) break;
+        }
+        if (additions >= maxAdditions) break;
+      }
+      if (additions >= maxAdditions) break;
+    }
+  }
+
+  if (additions > 0) {
+    await writeResearchQueue(
+      config,
+      setResearchQueueIdleReason(await readResearchQueue(config), null),
+    );
+    await writeJsonAtomic(config.paths.candidateLibraryPath, activeLibrary);
+  }
+
+  return additions;
+}
+
+async function replenishCandidateLibrary(config: ResearchConfig): Promise<number> {
+  const reserveAdditions = await replenishCandidateLibraryFromReserve(config);
+  if (reserveAdditions > 0) {
+    return reserveAdditions;
+  }
+  return refuelCandidateLibraryFromGeneratedGrid(config);
 }
 
 function defaultEngineScopeForType(type: ResearchTaskType): ResearchTask["engine_scope"] {
@@ -1136,7 +1348,7 @@ export async function autoEnqueueNextResearchTask(args: {
   const library = await readCandidateLibrary(args.config);
 
   if (library.families.length === 0) {
-    if (allowReserveRefill && (await replenishCandidateLibraryFromReserve(args.config)) > 0) {
+    if (allowReserveRefill && (await replenishCandidateLibrary(args.config)) > 0) {
       return autoEnqueueNextResearchTask({
         ...args,
         allowReserveRefill: false,
@@ -1180,7 +1392,7 @@ export async function autoEnqueueNextResearchTask(args: {
 
   const campaignQualifiedTemplates = analysis.campaignQualifiedTemplates;
   if (campaignQualifiedTemplates.length === 0) {
-    if (allowReserveRefill && (await replenishCandidateLibraryFromReserve(args.config)) > 0) {
+    if (allowReserveRefill && (await replenishCandidateLibrary(args.config)) > 0) {
       return autoEnqueueNextResearchTask({
         ...args,
         allowReserveRefill: false,
@@ -1195,7 +1407,7 @@ export async function autoEnqueueNextResearchTask(args: {
 
   const dataQualityQualifiedTemplates = analysis.dataQualityQualifiedTemplates;
   if (dataQualityQualifiedTemplates.length === 0) {
-    if (allowReserveRefill && (await replenishCandidateLibraryFromReserve(args.config)) > 0) {
+    if (allowReserveRefill && (await replenishCandidateLibrary(args.config)) > 0) {
       return autoEnqueueNextResearchTask({
         ...args,
         allowReserveRefill: false,
@@ -1209,7 +1421,7 @@ export async function autoEnqueueNextResearchTask(args: {
   }
 
   if (analysis.dedupedTemplates.length === 0) {
-    if (allowReserveRefill && (await replenishCandidateLibraryFromReserve(args.config)) > 0) {
+    if (allowReserveRefill && (await replenishCandidateLibrary(args.config)) > 0) {
       return autoEnqueueNextResearchTask({
         ...args,
         allowReserveRefill: false,

@@ -481,6 +481,10 @@ export type ResearchConfig = {
       maxSelectionsPerWindow: number;
       decisionWindowSize: number;
     };
+    autoRefuel?: {
+      enabled: boolean;
+      maxAdditionsPerRefuel?: number;
+    };
   };
   liveBaselineSource: ResearchLiveBaselineSource;
   validationProfiles: Record<ResearchValidationProfileId, ResearchValidationProfile>;

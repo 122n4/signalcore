@@ -565,6 +565,56 @@ describe("trading research planner", () => {
     expect(queue.tasks[1]?.planner_source?.family_id).toBe("reserve-family");
   });
 
+  it("auto-refuels generated candidates when active and reserve candidates are exhausted", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    config.automation.autoRefuel = {
+      enabled: true,
+      maxAdditionsPerRefuel: 3,
+    };
+    const existingTask = createResearchTask({ id: "existing-task" });
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([existingTask]));
+    await writeResearchCandidateLibrary(config, {
+      version: 1,
+      families: [
+        {
+          id: "risk-core",
+          enabled: true,
+          priority: 100,
+          campaign_id: "improve_crisis",
+          templates: [
+            {
+              id: "existing-template",
+              enabled: true,
+              type: "risk_shaping",
+              priority: 100,
+              dataset_profile: "core_20y",
+              validation_profile: "default_live_safe",
+              candidate_scope: existingTask.candidate_scope,
+              candidate_mutation: existingTask.candidate_mutation,
+            },
+          ],
+        },
+      ],
+    });
+    await writeResearchCandidateReserveLibrary(config, {
+      version: 1,
+      families: [],
+    });
+
+    const result = await autoEnqueueNextResearchTask({
+      config,
+      supportedTypes: new Set(["risk_shaping", "context_filter"]),
+      now: () => new Date("2026-03-19T13:00:00.000Z"),
+    });
+
+    expect(result.action).toBe("enqueued");
+    const queue = await readResearchQueue(config);
+    expect(queue.idle_reason).toBeNull();
+    expect(queue.tasks).toHaveLength(2);
+    expect(queue.tasks[1]?.planner_source?.family_id).toBe("perpetual_risk_multiplier_grid");
+  });
+
   it("filters out candidates for instruments that fail the coverage audit", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);

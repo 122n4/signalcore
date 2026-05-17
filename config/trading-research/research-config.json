@@ -43,6 +43,10 @@
       "enabled": true,
       "maxSelectionsPerWindow": 4,
       "decisionWindowSize": 12
+    },
+    "autoRefuel": {
+      "enabled": true,
+      "maxAdditionsPerRefuel": 24
     }
   },
   "liveBaselineSource": {
