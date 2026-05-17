@@ -7,13 +7,9 @@ import { normalizeMode } from "@/lib/signalcore/modes";
 import PremiumAsyncStateCard, {
   buildSnapshotFootnote,
 } from "@/components/PremiumAsyncStateCard";
-import TradingWorkspaceSurface, {
-  type TradingWorkspaceSection,
-} from "@/components/daily/TradingWorkspaceSurface";
 import TradingLiveDecisionSimpleChart from "@/components/daily/TradingLiveDecisionSimpleChart";
 import TradingDiscoveryValueRail from "@/components/trading/TradingDiscoveryValueRail";
 import TradingNotificationPreviewRail from "@/components/trading/TradingNotificationPreviewRail";
-import TradingWorkspaceContinuityCard from "@/components/trading/TradingWorkspaceContinuityCard";
 import type { DecisionEnvelope } from "@/lib/decision/types";
 import { useDailyBundle } from "@/lib/signalcore/useDailyBundle";
 import {
@@ -23,7 +19,17 @@ import {
 } from "@/lib/trading/liveSnapshotDiscipline";
 import { deriveTradingNotificationEvents, deriveTradingNotificationPreview } from "@/lib/trading/notifications";
 import type { TradingNotificationEvent } from "@/lib/trading/notifications";
-import { useFollowedTradingInstruments } from "@/lib/trading/useFollowedTradingInstruments";
+import {
+  canUseBrowserNotifications,
+  getTradingNotificationPermission,
+  readTradingNotificationsEnabled,
+  requestTradingNotificationPermission,
+  writeTradingNotificationsEnabled,
+} from "@/lib/trading/browserNotifications";
+import {
+  useFollowedTradingInstruments,
+  type FollowedTradingPosition,
+} from "@/lib/trading/useFollowedTradingInstruments";
 import {
   resolveTradingActionGuidance,
   type TradingWatchlistEntry,
@@ -34,6 +40,7 @@ import {
   compactPrice,
   formatExecutionStatus,
   formatTradingState,
+  toneClasses,
 } from "./tradingWorkspace";
 
 function limitSectionsForDiscovery(
@@ -678,8 +685,7 @@ function TradingSnapshotAlertBanner({
 
 function TradingDecisionCockpit({
   entry,
-  entries,
-  selectedInstrument,
+  recommendedInstrument,
   snapshotDiscipline,
   snapshotBlocked,
   snapshotFootnote,
@@ -690,13 +696,18 @@ function TradingDecisionCockpit({
   executionHref,
   isDiscoveryMode,
   isFollowed,
+  followedPosition,
+  notificationPromptInstrument,
   onRefresh,
-  onSelectInstrument,
+  onBackToRadar,
+  onDismissNotificationPrompt,
+  onEnableNotifications,
+  onConfirmEntry,
+  onCloseTrade,
   onToggleFollow,
 }: {
   entry: TradingWatchlistEntry;
-  entries: TradingWatchlistEntry[];
-  selectedInstrument: string | null;
+  recommendedInstrument: string | null;
   snapshotDiscipline: TradingLiveSnapshotAssessment;
   snapshotBlocked: boolean;
   snapshotFootnote: string | null;
@@ -707,11 +718,16 @@ function TradingDecisionCockpit({
   executionHref: string;
   isDiscoveryMode: boolean;
   isFollowed: boolean;
+  followedPosition: FollowedTradingPosition | null;
+  notificationPromptInstrument: string | null;
   onRefresh: () => Promise<void> | void;
-  onSelectInstrument: (instrument: string) => void;
+  onBackToRadar: () => void;
+  onDismissNotificationPrompt: () => void;
+  onEnableNotifications: () => Promise<void> | void;
+  onConfirmEntry: (entry: TradingWatchlistEntry) => void;
+  onCloseTrade: (entry: TradingWatchlistEntry) => void;
   onToggleFollow: (entry: TradingWatchlistEntry) => void;
 }) {
-  const [queueExpanded, setQueueExpanded] = useState(false);
   const plan = resolveBrokerPlan(entry, snapshotBlocked);
   const tone = intentToneClasses(plan.action.intent);
   const setupQuality = entry.workspace.setupCore.quality.score;
@@ -744,12 +760,30 @@ function TradingDecisionCockpit({
   const executionCtaHref = isDiscoveryMode
     ? `/pricing?source=trading_desk_broker_checklist_gate&instrument=${encodeURIComponent(entry.instrument)}`
     : executionHref;
-  const executionCtaLabel = isDiscoveryMode ? "Unlock checklist" : "Open checklist";
+  const executionCtaLabel = isDiscoveryMode ? "Unlock journal" : "Log proof";
   const followCtaLabel = isDiscoveryMode
     ? "Unlock follow alerts"
     : isFollowed
       ? "Following until close"
       : "Follow until close";
+  const showNotificationPrompt = notificationPromptInstrument === entry.instrument;
+  const lifecycleStatus = followedPosition?.lifecycleStatus ?? (isFollowed ? "watching" : "not_followed");
+  const lifecycleLabel =
+    lifecycleStatus === "active"
+      ? "Position active"
+      : lifecycleStatus === "entry_confirmed"
+        ? "Entry confirmed"
+        : lifecycleStatus === "close_review"
+          ? "Close review"
+          : isFollowed
+            ? "Watching trigger"
+            : "Not followed";
+  const lifecycleBody =
+    lifecycleStatus === "active" || lifecycleStatus === "entry_confirmed"
+      ? "Syntrake treats this as an active trade and keeps the follow loop focused on hold, warning, invalidation, and close-review states."
+      : isFollowed
+        ? "Syntrake is watching this market until you confirm entry, close it, or remove it from the follow loop."
+        : "Start follow if you want this market to become part of the tracked trade lifecycle.";
   const checklist = buildBrokerReadyChecklist({
     entry,
     plan,
@@ -769,13 +803,32 @@ function TradingDecisionCockpit({
   const whyNotNow =
     noTradeReasons[0] ??
     "No additional no-trade blocker is attached, but the broker checklist must still be followed.";
-  const visibleQueueEntries = queueExpanded ? entries : entries.slice(0, 6);
-  const hiddenQueueCount = Math.max(0, entries.length - visibleQueueEntries.length);
-  const openQueueCount = entries.filter((row) => row.contextSummary.marketOpen).length;
-
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_336px]">
+    <section>
       <div className={`rounded-[28px] border p-4 shadow-[0_22px_70px_rgba(0,0,0,0.28)] md:p-5 ${tone.shell}`}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Trade plan
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="text-lg font-semibold text-white">{entry.instrument}</span>
+              {entry.instrument === recommendedInstrument ? (
+                <span className="rounded-full border border-emerald-300/35 bg-emerald-400/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-50">
+                  Syntrake pick
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onBackToRadar}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-sky-400/35"
+          >
+            Back to Market Radar
+          </button>
+        </div>
+
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
@@ -944,6 +997,94 @@ function TradingDecisionCockpit({
               </div>
             </div>
 
+            <div className="mt-4 rounded-[22px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(8,18,32,0.9))] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/70">
+                    Trade lifecycle
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-white">{lifecycleLabel}</div>
+                  <div className="mt-2 text-sm leading-6 text-slate-300">{lifecycleBody}</div>
+                  {followedPosition?.entryConfirmedAt ? (
+                    <div className="mt-2 text-xs text-slate-400">
+                      Entry confirmed at {followedPosition.entryConfirmedAt}
+                    </div>
+                  ) : null}
+                </div>
+                <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-50">
+                  {lifecycleStatus}
+                </span>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {!isFollowed ? (
+                  <button
+                    type="button"
+                    onClick={() => onToggleFollow(entry)}
+                    className="inline-flex items-center justify-center rounded-xl border border-emerald-300/35 bg-emerald-400/12 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-400/18"
+                  >
+                    Follow first
+                  </button>
+                ) : lifecycleStatus === "active" || lifecycleStatus === "entry_confirmed" ? (
+                  <button
+                    type="button"
+                    onClick={() => onCloseTrade(entry)}
+                    className="inline-flex items-center justify-center rounded-xl border border-rose-300/30 bg-rose-400/12 px-4 py-2 text-sm font-semibold text-rose-50 transition hover:bg-rose-400/18"
+                  >
+                    Close trade
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onConfirmEntry(entry)}
+                      className="inline-flex items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-400/12 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-400/18"
+                    >
+                      Confirm entry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onCloseTrade(entry)}
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600"
+                    >
+                      Close / remove
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {showNotificationPrompt ? (
+              <div className="mt-4 rounded-[22px] border border-sky-300/24 bg-[linear-gradient(135deg,rgba(14,165,233,0.16),rgba(8,18,32,0.9))] p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-100/70">
+                  Follow alerts
+                </div>
+                <div className="mt-2 text-base font-semibold text-white">
+                  Receive notifications when {entry.instrument} changes state?
+                </div>
+                <div className="mt-2 text-sm leading-6 text-slate-300">
+                  Syntrake will alert only for this followed market when the plan changes to wait,
+                  execute, close review, or invalidation. The follow stays active even if you choose
+                  not now.
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void onEnableNotifications()}
+                    className="inline-flex items-center justify-center rounded-xl border border-sky-300/35 bg-sky-400/16 px-4 py-2 text-sm font-semibold text-sky-50 transition hover:bg-sky-400/22"
+                  >
+                    Enable notifications
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onDismissNotificationPrompt}
+                    className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600"
+                  >
+                    Not now
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-4">
               <TradingSnapshotReliabilityPanel
                 assessment={snapshotDiscipline}
@@ -1001,7 +1142,7 @@ function TradingDecisionCockpit({
                 href={executionCtaHref}
                 className="inline-flex items-center justify-center rounded-xl border border-sky-400/35 bg-sky-400/12 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/18"
               >
-                {isDiscoveryMode ? "Unlock broker checklist" : "Open broker checklist"}
+                {isDiscoveryMode ? "Unlock proof journal" : "Log execution proof"}
               </Link>
               <button
                 type="button"
@@ -1035,61 +1176,167 @@ function TradingDecisionCockpit({
           </div>
         </div>
       </div>
+    </section>
+  );
+}
 
-      <aside className="self-start rounded-[28px] border border-slate-800/80 bg-[#0d1628] p-5 shadow-[0_22px_70px_rgba(0,0,0,0.22)] xl:sticky xl:top-24">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              Opportunity queue
-            </div>
-            <div className="mt-1 text-sm text-slate-300">
-              {openQueueCount} live now, {Math.max(0, entries.length - openQueueCount)} waiting or closed.
-            </div>
+function resolveRadarPriority(entry: TradingWatchlistEntry, recommendedInstrument: string | null) {
+  const action = resolveTradingActionGuidance(entry);
+
+  if (entry.instrument === recommendedInstrument) {
+    return { label: "Best now", tone: "good" as const };
+  }
+
+  if (action.intent === "execute_now") {
+    return { label: "Actionable", tone: "good" as const };
+  }
+
+  if (action.intent === "prepare_now" || action.intent === "monitor_now") {
+    return { label: "Watch", tone: "warn" as const };
+  }
+
+  return { label: "Avoid", tone: "bad" as const };
+}
+
+function MarketRadar({
+  entries,
+  selectedInstrument,
+  recommendedInstrument,
+  onSelectInstrument,
+}: {
+  entries: TradingWatchlistEntry[];
+  selectedInstrument: string | null;
+  recommendedInstrument: string | null;
+  onSelectInstrument: (instrument: string) => void;
+}) {
+  const openCount = entries.filter((entry) => entry.contextSummary.marketOpen).length;
+  const validCount = entries.filter((entry) => entry.currentState === "TRADE_VALID").length;
+  const monitoringCount = entries.filter(
+    (entry) => entry.currentState === "SETUP_FORMING" || entry.currentState === "WAIT",
+  ).length;
+
+  return (
+    <section className="rounded-[28px] border border-slate-800/80 bg-[linear-gradient(180deg,rgba(13,24,43,0.96),rgba(7,16,29,0.98))] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.24)] md:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-200/70">
+            Market radar
           </div>
-          <span className="rounded-full border border-slate-700 bg-[#101b30] px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-            {entries.length}
-          </span>
+          <div className="mt-2 text-3xl font-semibold tracking-tight text-white">
+            Choose the market before opening the plan.
+          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            Start here: Syntrake ranks the full market list, shows what is valid, what is only
+            monitoring, and what should be ignored. Open a market only when you want the full plan.
+          </p>
         </div>
-        <div className="mt-4 max-h-[640px] space-y-2 overflow-y-auto pr-1">
-          {visibleQueueEntries.map((row) => {
-            const rowAction = resolveTradingActionGuidance(row);
-            const rowTone = intentToneClasses(rowAction.intent);
-            return (
-              <button
-                key={row.instrument}
-                type="button"
-                onClick={() => onSelectInstrument(row.instrument)}
-                className={`w-full rounded-2xl border p-3 text-left transition ${
-                  row.instrument === selectedInstrument
-                    ? "border-sky-400/55 bg-sky-400/10"
-                    : "border-slate-800 bg-[#101b30] hover:border-slate-700"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-white">{row.instrument}</span>
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${rowTone.pill}`}>
-                    {rowAction.label}
+        <div className="grid min-w-[260px] grid-cols-3 gap-2">
+          <div className="rounded-2xl border border-slate-800 bg-[#101b30] p-3 text-center">
+            <div className="text-lg font-semibold text-white">{entries.length}</div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-500">Markets</div>
+          </div>
+          <div className="rounded-2xl border border-emerald-400/18 bg-emerald-400/8 p-3 text-center">
+            <div className="text-lg font-semibold text-emerald-100">{openCount}</div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-emerald-100/60">Open</div>
+          </div>
+          <div className="rounded-2xl border border-sky-400/18 bg-sky-400/8 p-3 text-center">
+            <div className="text-lg font-semibold text-sky-100">{validCount}</div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-sky-100/60">Valid</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 xl:grid-cols-2">
+        {entries.map((entry) => {
+          const action = resolveTradingActionGuidance(entry);
+          const actionTone = intentToneClasses(action.intent);
+          const priority = resolveRadarPriority(entry, recommendedInstrument);
+          const priorityClass = toneClasses(priority.tone);
+          const isSelected = entry.instrument === selectedInstrument;
+          const plan = resolveBrokerPlan(entry, false);
+          const reason =
+            entry.liveDecision.nextDisciplineStep ||
+            entry.workspace.whySummary.whyNow ||
+            entry.workspace.whySummary.whyNotNow ||
+            entry.currentHeadline;
+
+          return (
+            <button
+              key={entry.instrument}
+              type="button"
+              onClick={() => onSelectInstrument(entry.instrument)}
+              className={`rounded-3xl border p-4 text-left transition ${
+                isSelected
+                  ? "border-sky-300/55 bg-sky-400/12 shadow-[0_18px_45px_rgba(14,165,233,0.14)]"
+                  : "border-slate-800 bg-[#101b30] hover:border-sky-400/30 hover:bg-[#12203a]"
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xl font-semibold text-white">{entry.instrument}</span>
+                    {entry.instrument === recommendedInstrument ? (
+                      <span className="rounded-full border border-emerald-300/35 bg-emerald-400/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-50">
+                        Syntrake pick
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
+                    <span>{formatTradingState(entry.currentState)}</span>
+                    <span>|</span>
+                    <span>{formatExecutionStatus(entry.executionStatus)}</span>
+                    <span>|</span>
+                    <span>{entry.contextSummary.marketOpen ? "Market open" : "Market closed"}</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${priorityClass}`}>
+                    {priority.label}
+                  </span>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${actionTone.pill}`}>
+                    {action.label}
                   </span>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400">
-                  <span>{formatTradingState(row.currentState)}</span>
-                  <span>|</span>
-                  <span>{formatExecutionStatus(row.executionStatus)}</span>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Trigger</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{compactPrice(plan.trigger)}</div>
                 </div>
-              </button>
-            );
-          })}
+                <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Risk</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{formatRisk(plan.risk)}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Quality</div>
+                  <div className="mt-1 text-sm font-semibold text-white">
+                    {Math.round(entry.workspace.setupCore.quality.score)}/100
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Session</div>
+                  <div className="mt-1 truncate text-sm font-semibold text-white">
+                    {entry.contextSummary.sessionLabel}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 text-sm leading-6 text-slate-300">{reason}</div>
+              <div className="mt-4 inline-flex items-center justify-center rounded-xl border border-sky-400/30 bg-sky-400/10 px-4 py-2 text-sm font-semibold text-sky-100">
+                {isSelected ? "Trade plan open below" : "Open trade plan"}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {monitoringCount > 0 ? (
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-[#08111f] px-4 py-3 text-xs leading-5 text-slate-400">
+          {monitoringCount} markets are monitoring/forming. They stay visible, but Syntrake should
+          not push the client into a broker action until the plan is clean.
         </div>
-        {entries.length > 6 ? (
-          <button
-            type="button"
-            onClick={() => setQueueExpanded((value) => !value)}
-            className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600"
-          >
-            {queueExpanded ? "Show priority markets" : `Show all markets (${hiddenQueueCount} more)`}
-          </button>
-        ) : null}
-      </aside>
+      ) : null}
     </section>
   );
 }
@@ -1155,15 +1402,15 @@ export default function TradingTab({
     () => tradingWatchlist.filter((entry) => entry.contextSummary.marketOpen).length,
     [tradingWatchlist],
   );
-  const marketCoverageSummary = useMemo(
-    () => tradingSupport?.marketCoverageSummary ?? null,
-    [tradingSupport],
-  );
   const [preferredInstrument, setPreferredInstrument] = useState<string | null>(null);
-  const { toggle: toggleFollowedInstrument, isFollowed: isFollowedInstrument } =
-    useFollowedTradingInstruments();
-  const [activeSection, setActiveSection] = useState<TradingWorkspaceSection>("live-decision");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [notificationPromptInstrument, setNotificationPromptInstrument] = useState<string | null>(null);
+  const {
+    toggle: toggleFollowedInstrument,
+    confirmEntry: confirmFollowedEntry,
+    close: closeFollowedTrade,
+    getPosition: getFollowedPosition,
+    isFollowed: isFollowedInstrument,
+  } = useFollowedTradingInstruments();
   const lastForcedLiveRefreshAtRef = useRef(0);
   const notificationEvents = useMemo(
     () => deriveTradingNotificationEvents(tradingWatchlist),
@@ -1173,16 +1420,9 @@ export default function TradingTab({
     () => deriveTradingNotificationPreview(notificationEvents, 1),
     [notificationEvents],
   );
-  const selectedInstrument = useMemo(() => {
+  const recommendedInstrument = useMemo(() => {
     if (!tradingWatchlist.length) {
       return null;
-    }
-
-    if (
-      preferredInstrument &&
-      tradingWatchlist.some((entry) => entry.instrument === preferredInstrument)
-    ) {
-      return preferredInstrument;
     }
 
     const focusedEntry = tradingWatchlistFocus?.anchorInstrument
@@ -1216,12 +1456,22 @@ export default function TradingTab({
     }
 
     return tradingWatchlist[0]?.instrument ?? null;
-  }, [preferredInstrument, tradingWatchlist, tradingWatchlistFocus]);
+  }, [tradingWatchlist, tradingWatchlistFocus]);
+  const selectedInstrument = useMemo(() => {
+    if (
+      preferredInstrument &&
+      tradingWatchlist.some((entry) => entry.instrument === preferredInstrument)
+    ) {
+      return preferredInstrument;
+    }
+
+    return null;
+  }, [preferredInstrument, tradingWatchlist]);
   const selectedEntry = useMemo<TradingWatchlistEntry | null>(
     () =>
       selectedInstrument
         ? tradingWatchlist.find((entry) => entry.instrument === selectedInstrument) ?? null
-        : tradingWatchlist[0] ?? null,
+        : null,
     [selectedInstrument, tradingWatchlist],
   );
   const selectedNotification = useMemo(
@@ -1234,8 +1484,12 @@ export default function TradingTab({
   const selectedIsFollowed = selectedEntry
     ? isFollowedInstrument(selectedEntry.instrument)
     : false;
+  const selectedFollowedPosition = selectedEntry
+    ? getFollowedPosition(selectedEntry.instrument)
+    : null;
   const handleToggleFollow = useCallback(
     (entry: TradingWatchlistEntry) => {
+      const wasFollowed = isFollowedInstrument(entry.instrument);
       void toggleFollowedInstrument(entry.instrument, {
         currentState: entry.currentState,
         executionStatus: entry.executionStatus,
@@ -1249,8 +1503,61 @@ export default function TradingTab({
         riskPct: entry.liveDecision.riskPct ?? entry.workspace.execution.riskFraming.riskPct ?? null,
         headline: entry.currentHeadline,
       });
+      if (
+        !wasFollowed &&
+        canUseBrowserNotifications() &&
+        (getTradingNotificationPermission() !== "granted" || !readTradingNotificationsEnabled())
+      ) {
+        setNotificationPromptInstrument(entry.instrument);
+      }
     },
-    [toggleFollowedInstrument],
+    [isFollowedInstrument, toggleFollowedInstrument],
+  );
+  const handleEnableFollowNotifications = useCallback(async () => {
+    if (!canUseBrowserNotifications()) {
+      setNotificationPromptInstrument(null);
+      return;
+    }
+
+    const permission = getTradingNotificationPermission();
+    const nextPermission =
+      permission === "granted" ? permission : await requestTradingNotificationPermission();
+
+    if (nextPermission === "granted") {
+      writeTradingNotificationsEnabled(true);
+    }
+    setNotificationPromptInstrument(null);
+  }, []);
+  const handleConfirmEntry = useCallback(
+    (entry: TradingWatchlistEntry) => {
+      void confirmFollowedEntry(entry.instrument, {
+        currentState: entry.currentState,
+        executionStatus: entry.executionStatus,
+        direction: entry.liveDecision.direction ?? null,
+        triggerLevel: entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null,
+        invalidationLevel:
+          entry.liveDecision.invalidationLevel ??
+          entry.workspace.execution.invalidation.invalidationLevel ??
+          null,
+        targetZone: entry.liveDecision.targetZone ?? entry.workspace.execution.tradePath.targetZone ?? null,
+        riskPct: entry.liveDecision.riskPct ?? entry.workspace.execution.riskFraming.riskPct ?? null,
+        headline: entry.currentHeadline,
+        entryPrice: entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null,
+      });
+    },
+    [confirmFollowedEntry],
+  );
+  const handleCloseTrade = useCallback(
+    (entry: TradingWatchlistEntry) => {
+      void closeFollowedTrade(
+        entry.instrument,
+        entry.liveDecision.nextDisciplineStep ||
+          entry.liveDecision.reasons[0] ||
+          "Closed from Trade Plan",
+      );
+      setNotificationPromptInstrument(null);
+    },
+    [closeFollowedTrade],
   );
   const selectedSnapshotDiscipline = useMemo(
     () =>
@@ -1299,8 +1606,8 @@ export default function TradingTab({
     selectedSnapshotDiscipline.blocked,
   ]);
   const selectedExecutionHref = selectedEntry
-    ? `/app?mode=trading&tab=execution&instrument=${encodeURIComponent(selectedEntry.instrument)}`
-    : "/app?mode=trading&tab=execution";
+    ? `/app?mode=trading&tab=journal&instrument=${encodeURIComponent(selectedEntry.instrument)}`
+    : "/app?mode=trading&tab=journal";
   const asyncMeta = (
     <div className="grid gap-3 md:grid-cols-3">
       <div className="rounded-2xl border border-slate-800 bg-[#101b30] p-4 text-left">
@@ -1326,8 +1633,8 @@ export default function TradingTab({
           Continuity
         </div>
         <div className="mt-2 text-sm text-slate-300">
-          Desk, Execution, and Alerts follow the same lead market so the operator does not lose the
-          thread mid-session.
+          Market Radar, Trade Plan, Alerts, and Journal keep the same selected market so the operator
+          does not lose the thread mid-session.
         </div>
       </div>
     </div>
@@ -1377,33 +1684,49 @@ export default function TradingTab({
 
   return (
     <div className="space-y-4 pt-2">
-      <TradingSnapshotAlertBanner
-        assessment={selectedSnapshotDiscipline}
-        isRefreshing={isRefreshing}
-        liveRefreshLocked={liveRefreshLocked}
-        onRefresh={refreshTradingLive}
-      />
-
-      {selectedEntry ? (
-        <TradingDecisionCockpit
-          entry={selectedEntry}
+      {!selectedEntry ? (
+        <MarketRadar
           entries={tradingWatchlist}
           selectedInstrument={selectedInstrument}
-          isRefreshing={isRefreshing}
-          snapshotDiscipline={selectedSnapshotDiscipline}
-          snapshotBlocked={selectedSnapshotDiscipline.blocked}
-          snapshotFootnote={snapshotFootnote}
-          executionHref={selectedExecutionHref}
-          isDiscoveryMode={Boolean(discoveryLimit)}
-          isFollowed={selectedIsFollowed}
-          liveRefreshLocked={liveRefreshLocked}
-          liveRefreshLockedReason={liveRefreshLockedReason}
-          topNotification={selectedNotification}
-          onRefresh={refreshTradingLive}
+          recommendedInstrument={recommendedInstrument}
           onSelectInstrument={setPreferredInstrument}
-          onToggleFollow={handleToggleFollow}
         />
-      ) : null}
+      ) : (
+        <>
+          <TradingSnapshotAlertBanner
+            assessment={selectedSnapshotDiscipline}
+            isRefreshing={isRefreshing}
+            liveRefreshLocked={liveRefreshLocked}
+            onRefresh={refreshTradingLive}
+          />
+          <TradingDecisionCockpit
+            entry={selectedEntry}
+            recommendedInstrument={recommendedInstrument}
+            isRefreshing={isRefreshing}
+            snapshotDiscipline={selectedSnapshotDiscipline}
+            snapshotBlocked={selectedSnapshotDiscipline.blocked}
+            snapshotFootnote={snapshotFootnote}
+            executionHref={selectedExecutionHref}
+            isDiscoveryMode={Boolean(discoveryLimit)}
+            isFollowed={selectedIsFollowed}
+            followedPosition={selectedFollowedPosition}
+            liveRefreshLocked={liveRefreshLocked}
+            liveRefreshLockedReason={liveRefreshLockedReason}
+            topNotification={selectedNotification}
+            notificationPromptInstrument={notificationPromptInstrument}
+            onRefresh={refreshTradingLive}
+            onBackToRadar={() => {
+              setNotificationPromptInstrument(null);
+              setPreferredInstrument(null);
+            }}
+            onDismissNotificationPrompt={() => setNotificationPromptInstrument(null)}
+            onEnableNotifications={handleEnableFollowNotifications}
+            onConfirmEntry={handleConfirmEntry}
+            onCloseTrade={handleCloseTrade}
+            onToggleFollow={handleToggleFollow}
+          />
+        </>
+      )}
 
       {discoveryLimit ? (
         <TradingDiscoveryValueRail
@@ -1417,80 +1740,10 @@ export default function TradingTab({
         />
       ) : null}
 
-      <section className="rounded-[22px] border border-slate-800/80 bg-[#0d1628] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.18)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-white">Advanced desk</div>
-            <div className="mt-1 text-xs text-slate-400">
-              Open full feed, playbook, context, performance, alert continuity, and coverage details.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAdvancedOpen((value) => !value)}
-            className="rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-600"
-          >
-            {advancedOpen ? "Hide advanced" : "Show advanced"}
-          </button>
-        </div>
-      </section>
-
-      {advancedOpen ? (
-        <div className="space-y-4">
-          <TradingWorkspaceSurface
-            sections={tradingWatchlistSections}
-            watchlistFocus={tradingWatchlistFocus}
-            selectedInstrument={selectedInstrument}
-            activeSection={activeSection}
-            onSelectInstrument={setPreferredInstrument}
-            onSelectSection={setActiveSection}
-          />
-
-          <TradingWorkspaceContinuityCard
-            surface="desk"
-            entry={selectedEntry}
-            isRefreshing={isRefreshing}
-            snapshotBlocked={selectedSnapshotDiscipline.blocked}
-            snapshotFootnote={snapshotFootnote}
-            primaryHref={selectedExecutionHref}
-            primaryLabel="Open Broker Checklist"
-            secondaryHref="/app?mode=trading&tab=alerts"
-            secondaryLabel="Open Alerts"
-          />
-
-          <TradingNotificationPreviewRail
-            preview={notificationPreview}
-            hasProAlerts={Boolean(tradingAccess?.alertsEnabled)}
-          />
-
-          {marketCoverageSummary ? (
-            <section className="rounded-[22px] border border-slate-800/80 bg-[#0d1628] p-4 text-sm text-slate-300 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
-                  Coverage-backed {marketCoverageSummary.coverageBackedCount}
-                </span>
-                {marketCoverageSummary.stagedOnlyCount > 0 ? (
-                  <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-200">
-                    Staged/live {marketCoverageSummary.stagedOnlyCount}
-                  </span>
-                ) : null}
-                {marketCoverageSummary.liveOnlyCount > 0 ? (
-                  <span className="rounded-full border border-rose-500/25 bg-rose-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-rose-200">
-                    Live-only {marketCoverageSummary.liveOnlyCount}
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-3 text-xs text-slate-400">
-                Coverage-backed markets are aligned with the audited research archive. Staged/live and live-only markets can still appear in the scanner, but they are not equally proven in research yet.
-              </div>
-            </section>
-          ) : null}
-        </div>
-      ) : (
-        <div className="rounded-[18px] border border-slate-800/80 bg-[#08111f] px-4 py-3 text-xs text-slate-400">
-          Advanced context is hidden to keep the trading screen short. The full desk is still one click away.
-        </div>
-      )}
+      <TradingNotificationPreviewRail
+        preview={notificationPreview}
+        hasProAlerts={Boolean(tradingAccess?.alertsEnabled)}
+      />
     </div>
   );
 }

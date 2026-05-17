@@ -3,6 +3,10 @@
 import React from "react";
 
 import { formatTradingState, useTradingWorkspace } from "./tradingWorkspace";
+import {
+  useFollowedTradingInstruments,
+  type FollowedTradingPosition,
+} from "@/lib/trading/useFollowedTradingInstruments";
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
@@ -26,8 +30,23 @@ function formatWhen(timestamp: string) {
   }).format(date);
 }
 
+function formatOptionalWhen(timestamp: string | null | undefined) {
+  return timestamp ? formatWhen(timestamp) : "-";
+}
+
+function lifecycleLabel(position: FollowedTradingPosition) {
+  if (position.lifecycleStatus === "active" || position.lifecycleStatus === "entry_confirmed") {
+    return "Position active";
+  }
+  if (position.lifecycleStatus === "close_review") return "Close review";
+  if (position.lifecycleStatus === "closed") return "Closed";
+  if (position.lifecycleStatus === "removed") return "Removed";
+  return "Watching";
+}
+
 export default function JournalTab() {
   const { status, error, refresh, feed, entries } = useTradingWorkspace("trading");
+  const { positions } = useFollowedTradingInstruments();
   const [query, setQuery] = React.useState("");
   const [instrument, setInstrument] = React.useState("all");
 
@@ -52,6 +71,10 @@ export default function JournalTab() {
         .includes(needle);
     });
   }, [feed, instrument, query]);
+  const filteredPositions = React.useMemo(() => {
+    if (instrument === "all") return positions;
+    return positions.filter((position) => position.instrument === instrument);
+  }, [instrument, positions]);
 
   if (status === "idle" || status === "loading") {
     return (
@@ -91,8 +114,73 @@ export default function JournalTab() {
           <div className="flex flex-wrap gap-2">
             <Pill>Events: {feed.length}</Pill>
             <Pill>Instruments: {instruments.length}</Pill>
+            <Pill>Lifecycle: {positions.length}</Pill>
             <Pill>Filtered: {filteredFeed.length}</Pill>
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-[22px] border border-cyan-300/16 bg-[linear-gradient(135deg,rgba(34,211,238,0.1),rgba(13,23,41,0.94)_58%,rgba(16,185,129,0.07))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/70">
+              Trade lifecycle ledger
+            </div>
+            <div className="mt-2 text-2xl font-semibold text-white">
+              Followed trades and active positions
+            </div>
+            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+              This connects the decision workflow to the journal: followed markets, confirmed
+              entries, active positions, and close actions stay visible as an operating trail.
+            </div>
+          </div>
+          <Pill>{filteredPositions.length} tracked</Pill>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {filteredPositions.length ? (
+            filteredPositions.map((position) => (
+              <article key={`${position.instrument}-${position.updatedAt ?? position.openedAt ?? "open"}`} className="rounded-3xl border border-slate-800 bg-[#101b30] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-semibold text-white">{position.instrument}</div>
+                    <div className="mt-1 text-sm text-slate-400">{position.direction ?? "neutral"} direction</div>
+                  </div>
+                  <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-50">
+                    {lifecycleLabel(position)}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Opened</div>
+                    <div className="mt-1 text-sm font-semibold text-white">{formatOptionalWhen(position.openedAt)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Entry</div>
+                    <div className="mt-1 text-sm font-semibold text-white">
+                      {position.entryConfirmedAt ? formatOptionalWhen(position.entryConfirmedAt) : "Pending"}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-3">
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Risk</div>
+                    <div className="mt-1 text-sm font-semibold text-white">
+                      {typeof position.riskPct === "number" ? `${position.riskPct.toFixed(2)}%` : "-"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-slate-800 bg-[#07101c] p-4 text-sm leading-6 text-slate-300">
+                  {position.lastHeadline || "No lifecycle note attached yet."}
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-[#101b30] p-6 text-sm leading-6 text-slate-300">
+              No followed trades are currently tracked. Open Trading, choose a market, and use
+              Follow until close to start a lifecycle trail.
+            </div>
+          )}
         </div>
       </section>
 

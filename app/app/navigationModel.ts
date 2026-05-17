@@ -26,7 +26,8 @@ function asNavItem(key: ViewKey, label: string, locked: boolean): ShellNavItem {
 }
 
 const INVESTING_VIEWS: ViewKey[] = ["daily", "planning", "portfolio", "advisor", "autonomy"];
-const TRADING_VIEWS: ViewKey[] = ["trading", "opportunities", "execution", "risk", "journal", "alerts"];
+const TRADING_VIEWS: ViewKey[] = ["trading", "alerts", "journal"];
+const LEGACY_TRADING_VIEWS: ViewKey[] = ["opportunities", "execution", "risk"];
 
 function getModeViews(mode: AutopilotMode): ViewKey[] {
   return mode === "trading" ? TRADING_VIEWS : INVESTING_VIEWS;
@@ -47,7 +48,12 @@ export function inferModeFromView(rawView: string | null | undefined): Autopilot
           ? "alerts"
           : raw;
 
-  if (TRADING_VIEWS.includes(normalized as ViewKey)) return "trading";
+  if (
+    TRADING_VIEWS.includes(normalized as ViewKey) ||
+    LEGACY_TRADING_VIEWS.includes(normalized as ViewKey)
+  ) {
+    return "trading";
+  }
   if (INVESTING_VIEWS.includes(normalized as ViewKey)) return "investing";
   return null;
 }
@@ -72,6 +78,9 @@ export function resolveModeAwareView(args: {
           : raw;
 
   const allowedViews = new Set<ViewKey>(getModeViews(args.mode));
+  if (args.mode === "trading" && LEGACY_TRADING_VIEWS.includes(normalized as ViewKey)) {
+    return "trading" as const;
+  }
   if (normalized === "portfolio" && args.allowHiddenPortfolio && args.mode === "investing") {
     return "portfolio" as const;
   }
@@ -104,62 +113,14 @@ export function buildModeAwareNavItems(args: {
       asNavItem(
         "trading",
         pickByLang(args.lang, {
-          en: "Desk",
-          pt: "Desk",
-          es: "Desk",
-          fr: "Desk",
-          de: "Desk",
-          it: "Desk",
+          en: "Trading",
+          pt: "Trading",
+          es: "Trading",
+          fr: "Trading",
+          de: "Trading",
+          it: "Trading",
         }),
         locked.has("trading"),
-      ),
-      asNavItem(
-        "opportunities",
-        pickByLang(args.lang, {
-          en: "Opportunities",
-          pt: "Oportunidades",
-          es: "Oportunidades",
-          fr: "Opportunites",
-          de: "Chancen",
-          it: "Opportunita",
-        }),
-        locked.has("opportunities"),
-      ),
-      asNavItem(
-        "execution",
-        pickByLang(args.lang, {
-          en: "Execution",
-          pt: "Execucao",
-          es: "Ejecucion",
-          fr: "Execution",
-          de: "Ausfuhrung",
-          it: "Esecuzione",
-        }),
-        locked.has("execution"),
-      ),
-      asNavItem(
-        "risk",
-        pickByLang(args.lang, {
-          en: "Risk",
-          pt: "Risco",
-          es: "Riesgo",
-          fr: "Risque",
-          de: "Risiko",
-          it: "Rischio",
-        }),
-        locked.has("risk"),
-      ),
-      asNavItem(
-        "journal",
-        pickByLang(args.lang, {
-          en: "Journal",
-          pt: "Journal",
-          es: "Journal",
-          fr: "Journal",
-          de: "Journal",
-          it: "Journal",
-        }),
-        locked.has("journal"),
       ),
       asNavItem(
         "alerts",
@@ -172,6 +133,18 @@ export function buildModeAwareNavItems(args: {
           it: "Avvisi",
         }),
         locked.has("alerts"),
+      ),
+      asNavItem(
+        "journal",
+        pickByLang(args.lang, {
+          en: "Journal",
+          pt: "Journal",
+          es: "Journal",
+          fr: "Journal",
+          de: "Journal",
+          it: "Journal",
+        }),
+        locked.has("journal"),
       ),
     ];
   }

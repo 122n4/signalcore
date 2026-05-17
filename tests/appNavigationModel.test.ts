@@ -19,12 +19,9 @@ describe("app navigation model", () => {
     ]);
 
     expect(buildModeAwareNavItems({ mode: "trading", lang: "en" })).toEqual([
-      { key: "trading", label: "Desk" },
-      { key: "opportunities", label: "Opportunities" },
-      { key: "execution", label: "Execution" },
-      { key: "risk", label: "Risk" },
-      { key: "journal", label: "Journal" },
+      { key: "trading", label: "Trading" },
       { key: "alerts", label: "Alerts" },
+      { key: "journal", label: "Journal" },
     ]);
   });
 
@@ -35,7 +32,9 @@ describe("app navigation model", () => {
     expect(resolveModeAwareView({ rawView: "portfolio", mode: "investing" })).toBe("portfolio");
     expect(resolveModeAwareView({ rawView: "autonomy", mode: "investing" })).toBe("autonomy");
     expect(resolveModeAwareView({ rawView: "unknown", mode: "investing" })).toBe("daily");
-    expect(resolveModeAwareView({ rawView: "execution", mode: "trading" })).toBe("execution");
+    expect(resolveModeAwareView({ rawView: "execution", mode: "trading" })).toBe("trading");
+    expect(resolveModeAwareView({ rawView: "opportunities", mode: "trading" })).toBe("trading");
+    expect(resolveModeAwareView({ rawView: "risk", mode: "trading" })).toBe("trading");
     expect(resolveModeAwareView({ rawView: "portfolio", mode: "trading" })).toBe("trading");
   });
 
@@ -46,7 +45,7 @@ describe("app navigation model", () => {
     expect(toModeAwareTab({ view: "autonomy", mode: "investing" })).toBe("autonomy");
     expect(toModeAwareTab({ view: "daily", mode: "investing" })).toBe("daily");
     expect(toModeAwareTab({ view: "portfolio", mode: "trading" })).toBe("trading");
-    expect(toModeAwareTab({ view: "risk", mode: "trading" })).toBe("risk");
+    expect(toModeAwareTab({ view: "risk", mode: "trading" })).toBe("trading");
   });
 
   it("can infer the workspace mode directly from a tab key", () => {

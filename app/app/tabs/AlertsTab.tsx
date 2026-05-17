@@ -2,7 +2,10 @@
 
 import React from "react";
 import { resolveTradingAlertGuidance, type TradingWatchlistEntry } from "@/lib/trading/state";
-import { useFollowedTradingInstruments } from "@/lib/trading/useFollowedTradingInstruments";
+import {
+  useFollowedTradingInstruments,
+  type FollowedTradingPosition,
+} from "@/lib/trading/useFollowedTradingInstruments";
 
 import PremiumAsyncStateCard, {
   buildSnapshotFootnote,
@@ -115,6 +118,27 @@ function resolveFollowUpLabel(entry: TradingWatchlistEntry) {
   return "Hold / re-check";
 }
 
+function resolveLifecycleLabel(position: FollowedTradingPosition | null) {
+  if (!position) return "Watching";
+  if (position.lifecycleStatus === "active" || position.lifecycleStatus === "entry_confirmed") {
+    return "Position active";
+  }
+  if (position.lifecycleStatus === "close_review") return "Close review";
+  if (position.lifecycleStatus === "closed") return "Closed";
+  if (position.lifecycleStatus === "removed") return "Removed";
+  return "Watching";
+}
+
+function lifecycleTone(position: FollowedTradingPosition | null) {
+  if (!position) return "neutral" as const;
+  if (position.lifecycleStatus === "active" || position.lifecycleStatus === "entry_confirmed") {
+    return "good" as const;
+  }
+  if (position.lifecycleStatus === "close_review") return "warn" as const;
+  if (position.lifecycleStatus === "closed" || position.lifecycleStatus === "removed") return "bad" as const;
+  return "neutral" as const;
+}
+
 export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
   const t = copy(locale);
   const {
@@ -130,7 +154,9 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
   } = useTradingWorkspace("trading");
   const {
     instruments: followedInstruments,
+    confirmEntry: confirmFollowedEntry,
     close: closeFollowedInstrument,
+    getPosition: getFollowedPosition,
     isFollowed: isFollowedInstrument,
   } = useFollowedTradingInstruments();
   const snapshotFootnote = React.useMemo(() => {
@@ -258,9 +284,9 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
           snapshotBlocked={snapshotDiscipline?.blocked}
           snapshotFootnote={snapshotFootnote}
           primaryHref="/app?mode=trading&tab=trading"
-          primaryLabel="Back to Desk"
-          secondaryHref="/app?mode=trading&tab=execution"
-          secondaryLabel="Open Execution"
+          primaryLabel="Back to Trading"
+          secondaryHref="/app?mode=trading&tab=journal"
+          secondaryLabel="Open Journal"
         />
       </div>
 
@@ -283,40 +309,97 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
 
         <div className="mt-5 grid gap-3 lg:grid-cols-2">
           {followedEntries.length ? (
-            followedEntries.map((entry) => (
-              <article key={entry.instrument} className="rounded-3xl border border-emerald-400/16 bg-[#091524] p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold text-white">{entry.instrument}</div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      {formatTradingState(entry.currentState)} | {formatExecutionStatus(entry.executionStatus)}
+            followedEntries.map((entry) => {
+              const position = getFollowedPosition(entry.instrument);
+              const isActive =
+                position?.lifecycleStatus === "active" ||
+                position?.lifecycleStatus === "entry_confirmed";
+
+              return (
+                <article key={entry.instrument} className="rounded-3xl border border-emerald-400/16 bg-[#091524] p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-lg font-semibold text-white">{entry.instrument}</div>
+                      <div className="mt-1 text-sm text-slate-400">
+                        {formatTradingState(entry.currentState)} | {formatExecutionStatus(entry.executionStatus)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold ${toneClasses(
+                          lifecycleTone(position),
+                        )}`}
+                      >
+                        {resolveLifecycleLabel(position)}
+                      </span>
+                      <span className="rounded-full border border-emerald-300/35 bg-emerald-400/12 px-3 py-1 text-xs font-semibold text-emerald-50">
+                        {resolveFollowUpLabel(entry)}
+                      </span>
                     </div>
                   </div>
-                  <span className="rounded-full border border-emerald-300/35 bg-emerald-400/12 px-3 py-1 text-xs font-semibold text-emerald-50">
-                    {resolveFollowUpLabel(entry)}
-                  </span>
-                </div>
-                <div className="mt-4 rounded-2xl border border-slate-800 bg-[#07101c] p-4 text-sm leading-6 text-slate-300">
-                  {entry.liveDecision.nextDisciplineStep ||
-                    entry.liveDecision.reasons[0] ||
-                    entry.currentHeadline}
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void closeFollowedInstrument(
-                      entry.instrument,
-                      entry.liveDecision.nextDisciplineStep ||
-                        entry.liveDecision.reasons[0] ||
-                        "Removed from follow list",
-                    )
-                  }
-                  className="mt-4 inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-400/35"
-                >
-                  Close / remove from follow list
-                </button>
-              </article>
-            ))
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Lifecycle</div>
+                      <div className="mt-2 text-sm font-semibold text-white">{resolveLifecycleLabel(position)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Entry</div>
+                      <div className="mt-2 text-sm font-semibold text-white">
+                        {position?.entryConfirmedAt ? "Confirmed" : "Not confirmed"}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-800 bg-[#07101c] p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Alert mode</div>
+                      <div className="mt-2 text-sm font-semibold text-white">
+                        {isActive ? "Hold / warning / close" : "Entry / wait / invalidation"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-slate-800 bg-[#07101c] p-4 text-sm leading-6 text-slate-300">
+                    {entry.liveDecision.nextDisciplineStep ||
+                      entry.liveDecision.reasons[0] ||
+                      entry.currentHeadline}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {!isActive ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void confirmFollowedEntry(entry.instrument, {
+                            currentState: entry.currentState,
+                            executionStatus: entry.executionStatus,
+                            direction: entry.liveDecision.direction ?? null,
+                            triggerLevel: entry.liveDecision.triggerLevel ?? null,
+                            invalidationLevel: entry.liveDecision.invalidationLevel ?? null,
+                            targetZone: entry.liveDecision.targetZone ?? null,
+                            riskPct: entry.liveDecision.riskPct ?? null,
+                            headline: entry.currentHeadline,
+                            entryPrice: entry.liveDecision.triggerLevel ?? null,
+                          })
+                        }
+                        className="inline-flex items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-400/12 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-400/18"
+                      >
+                        Confirm entry
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void closeFollowedInstrument(
+                          entry.instrument,
+                          entry.liveDecision.nextDisciplineStep ||
+                            entry.liveDecision.reasons[0] ||
+                            "Removed from follow list",
+                        )
+                      }
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-400/35"
+                    >
+                      {isActive ? "Close trade" : "Close / remove"}
+                    </button>
+                  </div>
+                </article>
+              );
+            })
           ) : (
             <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-[#101b30] p-5 text-sm leading-6 text-slate-300">
               No followed instruments yet. Open the Trading Desk and choose Follow until close

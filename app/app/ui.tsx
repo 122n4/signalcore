@@ -26,9 +26,6 @@ import PlanningTab from "@/app/app/tabs/PlanningTab";
 import AdvisorTab from "@/app/app/tabs/AdvisorTab";
 import PortfolioTab from "@/app/app/tabs/PortfolioTab";
 import AutonomyTab from "@/app/app/tabs/AutonomyTab";
-import ExecutionTab from "@/app/app/tabs/ExecutionTab";
-import OpportunitiesTab from "@/app/app/tabs/OpportunitiesTab";
-import RiskTab from "@/app/app/tabs/RiskTab";
 import JournalTab from "@/app/app/tabs/JournalTab";
 import AlertsTab from "@/app/app/tabs/AlertsTab";
 import BrokerPageClient from "@/app/app/broker/BrokerPageClient";
@@ -273,12 +270,12 @@ function FirstValueRail(props: {
       props.mode === "trading"
         ? props.tier === "free"
           ? pickByLang(props.lang, {
-              en: "Desk and Opportunities can stay open while you finish the profile. Syntrake becomes much better at risk framing once these basics are in place.",
-              pt: "Desk e Opportunities podem continuar abertos enquanto acabas o perfil. O Syntrake melhora muito no enquadramento de risco quando estes basicos estao feitos.",
-              es: "Desk y Opportunities pueden seguir abiertos mientras terminas el perfil. Syntrake mejora mucho el marco de riesgo cuando estas bases estan listas.",
-              fr: "Desk et Opportunities peuvent rester ouverts pendant que vous terminez le profil. Syntrake devient bien meilleur en cadrage du risque une fois ces bases en place.",
-              de: "Desk und Opportunities koennen offen bleiben, waehrend du das Profil abschliesst. Syntrake wird beim Risikorahmen deutlich besser, sobald diese Basics stehen.",
-              it: "Desk e Opportunities possono restare aperti mentre completi il profilo. Syntrake migliora molto nella cornice di rischio quando queste basi sono pronte.",
+              en: "Trading can stay open while you finish the profile. Syntrake becomes much better at risk framing once these basics are in place.",
+              pt: "Trading pode continuar aberto enquanto acabas o perfil. O Syntrake melhora muito no enquadramento de risco quando estes basicos estao feitos.",
+              es: "Trading puede seguir abierto mientras terminas el perfil. Syntrake mejora mucho el marco de riesgo cuando estas bases estan listas.",
+              fr: "Trading peut rester ouvert pendant que vous terminez le profil. Syntrake devient bien meilleur en cadrage du risque une fois ces bases en place.",
+              de: "Trading kann offen bleiben, waehrend du das Profil abschliesst. Syntrake wird beim Risikorahmen deutlich besser, sobald diese Basics stehen.",
+              it: "Trading puo restare aperto mentre completi il profilo. Syntrake migliora molto nella cornice di rischio quando queste basi sono pronte.",
             })
           : pickByLang(props.lang, {
               en: "You can already read the live flow. Finish these inputs so Syntrake can make sizing, risk caps, and broker checklists more specific.",
@@ -378,12 +375,12 @@ function FirstValueRail(props: {
           >
             {props.mode === "trading"
               ? pickByLang(props.lang, {
-                  en: "Open Opportunities",
-                  pt: "Abrir Opportunities",
-                  es: "Abrir Opportunities",
-                  fr: "Ouvrir Opportunities",
-                  de: "Opportunities oeffnen",
-                  it: "Apri Opportunities",
+                  en: "Open Trading",
+                  pt: "Abrir Trading",
+                  es: "Abrir Trading",
+                  fr: "Ouvrir Trading",
+                  de: "Trading oeffnen",
+                  it: "Apri Trading",
                 })
               : pickByLang(props.lang, {
                   en: "Open Daily",
@@ -425,12 +422,12 @@ function FirstValueRail(props: {
           </div>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-300">
             {pickByLang(props.lang, {
-              en: "Use Desk and Opportunities for flow and context. Upgrade only when you want execution packs, deeper risk, journal memory, alerts, and longer continuity.",
-              pt: "Usa Desk e Opportunities para flow e contexto. Faz upgrade so quando quiseres execution packs, risco mais profundo, memoria de journal, alerts e mais continuidade.",
-              es: "Usa Desk y Opportunities para flujo y contexto. Haz upgrade solo cuando quieras execution packs, riesgo mas profundo, memoria de journal, alerts y mas continuidad.",
-              fr: "Utilisez Desk et Opportunities pour le flow et le contexte. Passez a niveau seulement quand vous voulez execution packs, risque plus profond, memoire du journal, alertes et plus de continuite.",
-              de: "Nutze Desk und Opportunities fuer Flow und Kontext. Upgrade erst, wenn du Execution-Pakete, tieferes Risiko, Journal-Gedaechtnis, Alerts und mehr Kontinuitaet willst.",
-              it: "Usa Desk e Opportunities per flow e contesto. Fai upgrade solo quando vuoi execution pack, rischio piu profondo, memoria del journal, alert e piu continuita.",
+              en: "Use Trading for the market radar and trade plan. Upgrade only when you want execution depth, journal memory, alerts, and longer continuity.",
+              pt: "Usa Trading para o radar de mercados e o plano do trade. Faz upgrade so quando quiseres profundidade de execucao, memoria de journal, alerts e mais continuidade.",
+              es: "Usa Trading para el radar de mercados y el plan del trade. Haz upgrade solo cuando quieras profundidad de ejecucion, memoria de journal, alerts y mas continuidad.",
+              fr: "Utilisez Trading pour le radar des marches et le plan du trade. Passez a niveau seulement quand vous voulez plus de profondeur d execution, memoire du journal, alertes et continuite.",
+              de: "Nutze Trading fuer Market Radar und Trade Plan. Upgrade erst, wenn du Execution-Tiefe, Journal-Gedaechtnis, Alerts und mehr Kontinuitaet willst.",
+              it: "Usa Trading per market radar e trade plan. Fai upgrade solo quando vuoi piu profondita di esecuzione, memoria del journal, alert e continuita.",
             })}
           </p>
         </div>
@@ -442,12 +439,12 @@ function FirstValueRail(props: {
           className="inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#3f82ff,#5ea1ff)] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_36px_rgba(49,115,255,0.22)]"
         >
           {pickByLang(props.lang, {
-            en: "Open Opportunities",
-            pt: "Abrir Opportunities",
-            es: "Abrir Opportunities",
-            fr: "Ouvrir Opportunities",
-            de: "Opportunities oeffnen",
-            it: "Apri Opportunities",
+            en: "Open Trading",
+            pt: "Abrir Trading",
+            es: "Abrir Trading",
+            fr: "Ouvrir Trading",
+            de: "Trading oeffnen",
+            it: "Apri Trading",
           })}
         </button>
         <button
@@ -566,12 +563,12 @@ function TrustProofRail(props: {
             body:
               props.tier === "free"
                 ? pickByLang(props.lang, {
-                    en: "Desk and Opportunities stay open before Pro.",
-                    pt: "Desk e Opportunities ficam abertas antes do Pro.",
-                    es: "Desk y Opportunities permanecen abiertas antes de Pro.",
-                    fr: "Desk et Opportunities restent ouverts avant Pro.",
-                    de: "Desk und Opportunities bleiben vor Pro offen.",
-                    it: "Desk e Opportunities restano aperte prima del Pro.",
+                    en: "Market Radar and the first trade plan stay visible before Pro.",
+                    pt: "Market Radar e o primeiro trade plan ficam visiveis antes do Pro.",
+                    es: "Market Radar y el primer trade plan permanecen visibles antes de Pro.",
+                    fr: "Market Radar et le premier trade plan restent visibles avant Pro.",
+                    de: "Market Radar und der erste Trade Plan bleiben vor Pro sichtbar.",
+                    it: "Market Radar e il primo trade plan restano visibili prima del Pro.",
                   })
                 : pickByLang(props.lang, {
                     en: "You already have the desk; Pro adds deeper execution layers.",
@@ -855,7 +852,7 @@ export default function AppUI() {
     !loadingAccess &&
     !modeLoading;
   const firstValuePrimaryHref =
-    workspaceMode === "trading" ? `/app?tab=opportunities&mode=${workspaceMode}` : `/app?tab=daily&mode=${workspaceMode}`;
+    workspaceMode === "trading" ? `/app?tab=trading&mode=${workspaceMode}` : `/app?tab=daily&mode=${workspaceMode}`;
   const setupHref = `/app?tab=planning&welcomeSetup=1&mode=${workspaceMode}`;
   const pricingHref = "/pricing?source=app_first_value";
   const trustHref = "/trust?source=app_shell";
@@ -1056,14 +1053,6 @@ export default function AppUI() {
               {view === "trading" && (
                 <TradingTab mode={workspaceMode} discoveryLimit={entitlements.trading.discoveryInstrumentLimit} />
               )}
-              {view === "opportunities" && (
-                <OpportunitiesTab
-                  discoveryLimit={entitlements.trading.discoveryInstrumentLimit}
-                  executionEnabled={entitlements.trading.executionEnabled}
-                />
-              )}
-              {view === "execution" && <ExecutionTab />}
-              {view === "risk" && <RiskTab />}
               {view === "journal" && <JournalTab />}
               {view === "alerts" && <AlertsTab locale={lang === "pt" ? "pt" : "en"} />}
             </>
@@ -1099,7 +1088,7 @@ export default function AppUI() {
         title={lockedNavUpgradeModel?.modalTitle || "Unlock full trading depth"}
         subtitle={
           lockedNavUpgradeModel?.modalSubtitle ||
-          "Investing stays free forever. Trading Desk and Opportunities stay open in discovery mode. Upgrade when you want execution, risk, journal, alerts, and deeper history."
+          "Investing stays free forever. Trading opens with Market Radar in discovery mode. Upgrade when you want execution depth, journal, alerts, and deeper history."
         }
         primaryHref={lockedNavUpgradeModel?.pricingHref || "/pricing?source=app_locked_nav"}
         primaryText={lockedNavUpgradeModel?.primaryCta || "See trading plans"}

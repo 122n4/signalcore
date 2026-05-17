@@ -60,30 +60,16 @@ describe("TradingTab", () => {
 
     const html = renderToStaticMarkup(<TradingTab mode="investing" />);
 
-    expect(html).toContain("What to do now");
-    expect(html).toContain("Trade card");
-    expect(html).toContain("Broker-ready checklist");
-    expect(html).toContain("No-trade guardrails");
-    expect(html).toContain("Plain-English read");
-    expect(html).toContain("Pro operating brief");
-    expect(html).toContain("Follow until close");
-    expect(html).toContain("Start following");
-    expect(html).toContain("Premium cockpit");
-    expect(html).toContain("Next operator move");
-    expect(html).toContain("Proof trail");
-    expect(html).toContain("Alert watch");
-    expect(html).toContain("Live refresh monitor");
-    expect(html).toContain("Force live refresh");
-    expect(html).toContain("Snapshot alert");
-    expect(html).toContain("Broker execution is locked until live data refreshes.");
-    expect(html).toContain("Chart + trigger");
-    expect(html).toContain("Opportunity queue");
-    expect(html).toContain("Advanced desk");
+    expect(html).toContain("Market radar");
+    expect(html).toContain("Choose the market before opening the plan.");
+    expect(html).toContain("Syntrake pick");
+    expect(html).toContain("Open trade plan");
+    expect(html).toContain("Signal pulse");
     expect(html).toContain("EURUSD");
     expect(html).toContain("BTCUSD");
     expect(html).toContain("Setup aligned");
-    expect(html).toContain("Open broker checklist");
-    expect(html).toContain("Show advanced");
+    expect(html).not.toContain("What to do now");
+    expect(html).not.toContain("Advanced desk");
     expect(html).not.toContain("Trading discovery");
     expect(html).not.toContain("undefined");
   });

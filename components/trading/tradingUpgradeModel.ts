@@ -72,7 +72,7 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
     primaryCta: "Unlock journal memory",
     compareCta: "Compare Trading Pro",
     freeTitle: "Free now",
-    freeBody: "Desk and Opportunities stay open, but the long-form trading memory stays intentionally light in discovery mode.",
+    freeBody: "Market Radar stays open, but the long-form trading memory stays intentionally light in discovery mode.",
     trialTitle: "Unlock with trial",
     trialBody: "Open the journal and see searchable session memory, feed continuity, and deeper trade-state history before paying.",
     proTitle: "What Pro keeps unlocked",

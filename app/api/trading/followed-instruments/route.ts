@@ -53,6 +53,12 @@ function mapPosition(row: any) {
     invalidationLevel: row.invalidation_level == null ? null : Number(row.invalidation_level),
     targetZone: row.target_zone ?? null,
     riskPct: row.risk_pct == null ? null : Number(row.risk_pct),
+    lifecycleStatus: row.lifecycle_status ?? "watching",
+    entryConfirmedAt: row.entry_confirmed_at ?? null,
+    entryPrice: row.entry_price == null ? null : Number(row.entry_price),
+    exitPrice: row.exit_price == null ? null : Number(row.exit_price),
+    resultR: row.result_r == null ? null : Number(row.result_r),
+    closeReason: row.close_reason ?? null,
     lastState: row.last_state ?? null,
     lastExecutionStatus: row.last_execution_status ?? null,
     lastHeadline: row.last_headline ?? null,
@@ -164,9 +170,11 @@ export async function POST(req: Request) {
 
       const payload = {
         status: "open",
+        lifecycle_status: "watching",
         source: "manual_follow",
         ...context,
         closed_at: null,
+        close_reason: null,
         updated_at: new Date().toISOString(),
       };
       const writeResult = existing?.id
@@ -184,13 +192,41 @@ export async function POST(req: Request) {
       const { error } = writeResult;
       if (error) throw new Error(error.message || "followed_position_upsert_failed");
       await writeFollowJournal({ sb, userId, mode, action: "started", instrument, context });
+    } else if (action === "confirm_entry") {
+      const context = normalizeContext(body?.context);
+      const { error } = await sb
+        .from("trading_followed_positions")
+        .update({
+          lifecycle_status: "active",
+          entry_confirmed_at: new Date().toISOString(),
+          entry_price: finiteNumber(body?.entryPrice ?? body?.context?.entryPrice),
+          ...context,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("mode", mode)
+        .eq("instrument", instrument)
+        .eq("status", "open");
+      if (error) throw new Error(error.message || "followed_position_confirm_failed");
+      await writeFollowJournal({
+        sb,
+        userId,
+        mode,
+        action: "entry_confirmed",
+        instrument,
+        context,
+      });
     } else if (action === "unfollow" || action === "close") {
       const status = action === "close" ? "closed" : "removed";
       const { error } = await sb
         .from("trading_followed_positions")
         .update({
           status,
+          lifecycle_status: action === "close" ? "closed" : "removed",
           closed_at: new Date().toISOString(),
+          exit_price: finiteNumber(body?.exitPrice),
+          result_r: finiteNumber(body?.resultR),
+          close_reason: cleanText(body?.reason, 240) || null,
           updated_at: new Date().toISOString(),
           last_headline: cleanText(body?.reason, 240) || null,
         })

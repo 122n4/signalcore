@@ -80,7 +80,7 @@ describe("AlertsTab", () => {
     expect(html).toContain("Followed until close");
     expect(html).toContain("No followed instruments yet");
     expect(html).toContain("Proximas reavaliacoes");
-    expect(html).toContain("Back to Desk");
+    expect(html).toContain("Back to Trading");
     expect(html).toContain("Logica de automacao");
     expect(html).toContain("Permissao nao e obrigacao.");
     expect(html).toContain("GBPUSD");
