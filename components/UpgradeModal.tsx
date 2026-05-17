@@ -81,6 +81,17 @@ export default function UpgradeModal({
             </ul>
           </div>
 
+          <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 text-xs leading-5 text-sky-950">
+            <div className="font-semibold">Why Pro exists</div>
+            <p className="mt-1">
+              Pro is not more noise. It is the decision-control layer before execution: live verification, risk framing,
+              broker preparation, and proof after the click.
+            </p>
+            <p className="mt-2 text-sky-800">
+              Educational decision support only. No profit promises and no automatic broker execution.
+            </p>
+          </div>
+
           <div className="flex flex-wrap gap-2 pt-1">
             <a
               href={primaryHref}

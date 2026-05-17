@@ -22,8 +22,8 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
   execution: {
     surface: "execution",
     eyebrow: "Trading Pro",
-    title: "Execution is where Syntrake stops being discovery and starts being operational",
-    body: "Free trading keeps the desk open so the user can see flow. Pro adds trigger levels, invalidation, trade path, sizing, and the execution pack that actually turns a setup into a disciplined broker action.",
+    title: "Execution is where Syntrake becomes the pre-broker control layer",
+    body: "Free trading keeps the desk open so the user can see flow. Pro adds trigger levels, invalidation, trade path, sizing, freshness checks, and the execution pack that turns a setup into a disciplined broker action.",
     pricingHref: "/pricing?source=trading_execution_gate",
     primaryCta: "Unlock execution depth",
     compareCta: "Compare Trading Pro",
@@ -34,12 +34,12 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
     proTitle: "What Pro keeps unlocked",
     proBullets: [
       "Execution cockpit with trigger, invalidation, and target framing",
+      "Freshness gate before any market looks broker-ready",
       "Sizing, trade path, and risk-aware broker preparation",
-      "Deeper continuity after trial instead of a one-off preview",
-      "Full workflow coverage when timing actually matters",
+      "Proof trail across setup, checklist, and aftermath",
     ],
     modalTitle: "Unlock execution when the setup becomes real",
-    modalSubtitle: "Investing stays free forever. Trading discovery stays open. Pro starts where disciplined execution begins.",
+    modalSubtitle: "Investing stays free forever. Trading discovery stays open. Pro starts where disciplined execution protects the broker click.",
   },
   risk: {
     surface: "risk",
@@ -57,8 +57,8 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
     proBullets: [
       "Risk posture across the live watchlist",
       "Pressure mapping, guardrails, and size discipline",
-      "Clear separation between allowed, caution, and restricted risk states",
-      "Deeper continuity around operator protection",
+      "Clear separation between allowed, caution, restricted, and stale states",
+      "Operator protection when markets are open but confidence is not",
     ],
     modalTitle: "Unlock the risk operating layer",
     modalSubtitle: "Discovery shows the flow. Pro is where Syntrake makes risk feel operational and explicit.",
@@ -79,7 +79,7 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
     proBullets: [
       "Searchable trade-state memory and deeper history",
       "Session continuity across setup, execution, and aftermath",
-      "Stronger post-trade learning instead of snapshot-only usage",
+      "Decision proof instead of relying on memory after pressure",
       "A trading cockpit that compounds context over time",
     ],
     modalTitle: "Unlock trading memory and continuity",
@@ -100,7 +100,7 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
     proTitle: "What Pro keeps unlocked",
     proBullets: [
       "Discipline alerts tied to live market state changes",
-      "Escalation when setups degrade or become dangerous",
+      "Escalation when setups degrade, become stale, or become dangerous",
       "Clearer operator monitoring between sessions",
       "A more active cockpit instead of manual refresh dependence",
     ],

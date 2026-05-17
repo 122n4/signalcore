@@ -634,6 +634,33 @@ export default function Pricing() {
     [money, valueModel.breakEvenPct, valueModel.portfolio]
   );
 
+  const proProofStack = useMemo(
+    () =>
+      [
+        {
+          label: "Live data control",
+          title: "Fresh enough, or blocked",
+          body: "Pro should not let an open market look executable when the live snapshot is stale, degraded, or provider-limited.",
+        },
+        {
+          label: "Broker decision",
+          title: "Trigger, invalidation, risk",
+          body: "Every serious trade needs a reason to enter, a reason to stop, and a risk frame before the broker click.",
+        },
+        {
+          label: "Execution memory",
+          title: "Proof after the click",
+          body: "The paid layer keeps the decision, checklist, journal, and alert trail together so the process can improve over time.",
+        },
+        {
+          label: "No-trade value",
+          title: "Wait is a paid feature",
+          body: "A system that stops bad or incomplete trades is often more valuable than one that keeps inventing action.",
+        },
+      ] as const,
+    []
+  );
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(216,232,255,0.7),transparent_34%),linear-gradient(180deg,#f7f9fc_0%,#eef3fb_42%,#f7f9fc_100%)] text-ink-900">
       <section className="mx-auto max-w-6xl px-4 py-14 md:py-20">
@@ -642,10 +669,10 @@ export default function Pricing() {
             <div className="max-w-3xl">
               <p className="text-xs font-semibold text-ink-500">Pricing</p>
               <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-                Start free. Pay when broker-ready depth is worth it.
+                Start free. Pay when Pro protects the broker click.
               </h1>
               <p className="mt-4 text-ink-700">
-                The free layer lets you inspect the product. Trading Pro is for the expensive moment:
+                The free layer lets you inspect the product. Trading Pro is the operating layer for the expensive moment:
                 live Trade/Wait decisions, trigger and invalidation, stale-data blocking, broker checklists,
                 alerts, and a journal that remembers what happened after execution.
               </p>
@@ -674,7 +701,7 @@ export default function Pricing() {
                           ? "Redirecting..."
                           : canStartTrial
                             ? "Start 7-day Pro trial"
-                            : "Unlock broker-ready depth"}
+                            : "Unlock Pro decision control"}
                   </button>
                 )}
                 <button
@@ -754,7 +781,7 @@ export default function Pricing() {
                   Subscription test
                 </div>
                 <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-                  Pay only if it changes the broker click.
+                  Pay only if it changes the decision before the broker click.
                 </h2>
                 <div className="mt-5 space-y-3 text-sm leading-6">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
@@ -884,6 +911,39 @@ export default function Pricing() {
             ))}
           </div>
 
+          <div className="mt-8 rounded-3xl border border-ink-900/10 bg-[linear-gradient(135deg,#08111f_0%,#10294a_58%,#0d3b45_100%)] p-6 text-white shadow-soft md:p-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-100/60">
+                  What the monthly plan really buys
+                </div>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+                  Not more noise. A professional control layer before money leaves your account.
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-white/74">
+                  {formatPriceEUR(monthlyPrice)}/month should feel small compared with the cost of one avoidable bad decision:
+                  stale data, no invalidation, oversized risk, or a trade taken without proof. Syntrake Pro is priced to
+                  make that decision process feel obvious, repeatable, and worth keeping.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-cyan-200/20 bg-cyan-200/10 px-3 py-2 text-xs font-semibold text-cyan-50">
+                Process edge. No profit promises.
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              {proProofStack.map((item) => (
+                <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100/55">
+                    {item.label}
+                  </div>
+                  <div className="mt-2 text-sm font-semibold text-white">{item.title}</div>
+                  <p className="mt-2 text-xs leading-5 text-white/66">{item.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="mt-10 grid gap-6 lg:grid-cols-2">
             <div className="rounded-3xl border border-border-soft bg-white p-8 shadow-soft">
               <div className="flex items-start justify-between gap-4">
@@ -938,8 +998,10 @@ export default function Pricing() {
                 <li>- Investing free forever: Daily, Plan, Portfolio, Advisor, and Autonomy</li>
                 <li>- Trading Discovery free: Desk + Opportunities preview</li>
                 <li>- Pro: Trade/Wait gate, Execution, Risk, Journal, Alerts, and live verification</li>
-                <li>- Manual broker playbooks for eToro, XTB, or a generic broker flow</li>
+                <li>- Manual broker playbooks with trigger, invalidation, risk cap, and execution proof</li>
+                <li>- Provider freshness checks so stale or degraded data cannot quietly masquerade as confidence</li>
                 <li>- Deeper continuity, proof capture, history, and discipline stack</li>
+                <li>- Built to reduce unforced mistakes, not to promise profits</li>
               </ul>
 
               {showManage ? (
@@ -995,7 +1057,7 @@ export default function Pricing() {
                     disabled={loading || loadingPaid || startingTrial}
                     className={`${canStartTrial ? "mt-2" : "mt-8"} inline-flex w-full items-center justify-center rounded-2xl bg-signal-700 px-6 py-3 text-sm font-semibold text-white hover:bg-signal-800 shadow-soft disabled:opacity-60`}
                   >
-                    {loadingPaid ? "Checking membership..." : loading ? "Redirecting..." : "Unlock broker-ready depth"}
+                    {loadingPaid ? "Checking membership..." : loading ? "Redirecting..." : "Unlock Pro decision control"}
                   </button>
                   <div className="mt-2 text-center text-xs text-ink-600">
                     {earlyOfferActive ? (
@@ -1152,7 +1214,6 @@ export default function Pricing() {
             </div>
           </div>
 
-          {false ? (
           <div className="mt-8 rounded-3xl border border-border-soft bg-white p-6 shadow-soft md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="max-w-3xl">
@@ -1252,7 +1313,6 @@ export default function Pricing() {
               </div>
             </div>
           </div>
-          ) : null}
         </div>
       </section>
     </main>
