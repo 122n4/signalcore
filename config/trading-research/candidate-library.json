@@ -3106,6 +3106,132 @@
           }
         }
       ]
+    },
+    {
+      "id": "aggressive_risk_cap_live_safe",
+      "enabled": true,
+      "priority": 130,
+      "campaign_id": "improve_crisis",
+      "templates": [
+        {
+          "id": "aggressive_breakout_crisis_surface_cap_035",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 120,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": ["NAS100", "US500", "XAUUSD", "BTCUSD", "ETHUSD"],
+            "sessions": ["ny_open", "london_ny_overlap", "late_us", "weekend_drift"],
+            "setup_types": ["breakout_continuation"],
+            "risk_modes": ["aggressive"],
+            "environment_states": ["favorable"]
+          },
+          "candidate_mutation": {
+            "kind": "aggressive_risk_cap",
+            "value": 0.35
+          }
+        },
+        {
+          "id": "aggressive_indices_open_overlap_cap_040",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 115,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": ["NAS100", "US500"],
+            "sessions": ["ny_open", "london_ny_overlap"],
+            "setup_types": ["breakout_continuation"],
+            "risk_modes": ["aggressive"],
+            "quality_grades": ["A"],
+            "clarity_levels": ["high"]
+          },
+          "candidate_mutation": {
+            "kind": "aggressive_risk_cap",
+            "value": 0.4
+          }
+        },
+        {
+          "id": "aggressive_crypto_weekend_cap_030",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 110,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": ["BTCUSD", "ETHUSD"],
+            "sessions": ["weekend_drift"],
+            "setup_types": ["breakout_continuation"],
+            "risk_modes": ["aggressive"],
+            "quality_grades": ["A"],
+            "clarity_levels": ["high"]
+          },
+          "candidate_mutation": {
+            "kind": "aggressive_risk_cap",
+            "value": 0.3
+          }
+        },
+        {
+          "id": "aggressive_xau_late_us_cap_035",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 105,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": ["XAUUSD"],
+            "sessions": ["late_us"],
+            "setup_types": ["breakout_continuation"],
+            "risk_modes": ["aggressive"],
+            "quality_grades": ["A"],
+            "clarity_levels": ["high"]
+          },
+          "candidate_mutation": {
+            "kind": "aggressive_risk_cap",
+            "value": 0.35
+          }
+        },
+        {
+          "id": "aggressive_fx_london_cap_045",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 100,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": ["EURUSD", "GBPUSD", "USDJPY"],
+            "sessions": ["london_session", "london_open"],
+            "setup_types": ["breakout_continuation"],
+            "risk_modes": ["aggressive"],
+            "quality_grades": ["A"],
+            "clarity_levels": ["high"]
+          },
+          "candidate_mutation": {
+            "kind": "aggressive_risk_cap",
+            "value": 0.45
+          }
+        },
+        {
+          "id": "aggressive_multi_asset_cap_050",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 95,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "NAS100", "US500", "BTCUSD", "ETHUSD"],
+            "setup_types": ["breakout_continuation"],
+            "risk_modes": ["aggressive"],
+            "quality_grades": ["A"],
+            "clarity_levels": ["high"]
+          },
+          "candidate_mutation": {
+            "kind": "aggressive_risk_cap",
+            "value": 0.5
+          }
+        }
+      ]
     }
   ]
 }
