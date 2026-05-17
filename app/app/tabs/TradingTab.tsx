@@ -501,6 +501,140 @@ function buildProOperatingBrief(args: {
   ] as const;
 }
 
+type TradeThesisItem = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "good" | "warn" | "bad" | "neutral";
+};
+
+function formatListLabel(values: Array<string | null | undefined>, fallback = "-") {
+  const labels = values
+    .map((value) => formatReadableLabel(value))
+    .filter((value) => value && value !== "-");
+
+  return labels.length ? labels.join(" / ") : fallback;
+}
+
+function toneForScore(score: number | null | undefined): TradeThesisItem["tone"] {
+  if (!isFiniteNumber(score)) return "neutral";
+  if (score >= 70) return "good";
+  if (score >= 55) return "warn";
+  return "bad";
+}
+
+function buildTradeThesis(args: {
+  entry: TradingWatchlistEntry;
+  plan: ReturnType<typeof resolveBrokerPlan>;
+  whyNow: string;
+  whyNotNow: string;
+}): TradeThesisItem[] {
+  const { entry, plan, whyNow, whyNotNow } = args;
+  const market = entry.workspace.market;
+  const decision = entry.workspace.decisionCore;
+  const setup = entry.workspace.setupCore;
+  const execution = entry.workspace.execution;
+  const timeframe = entry.chart?.timeframe ?? market.timeframes[0] ?? null;
+  const direction =
+    entry.liveDecision.direction && entry.liveDecision.direction !== "neutral"
+      ? entry.liveDecision.direction
+      : setup.setup.direction && setup.setup.direction !== "neutral"
+        ? setup.setup.direction
+        : decision.bias.direction;
+
+  return [
+    {
+      label: "Context",
+      value: formatListLabel([market.structure.state, market.regime.state]),
+      detail: `Bias ${formatReadableLabel(decision.bias.direction)} (${Math.round(decision.bias.score)}/100), direction ${formatReadableLabel(direction)}.`,
+      tone: toneForScore(decision.bias.score),
+    },
+    {
+      label: "Timeframe / session",
+      value: `${timeframe ?? "Live"} / ${entry.contextSummary.sessionLabel}`,
+      detail: `${market.session.marketOpen ? "Market open" : "Market closed"} with ${formatReadableLabel(market.session.session)} conditions.`,
+      tone: market.session.marketOpen ? "good" : "bad",
+    },
+    {
+      label: "Liquidity / volume",
+      value: formatReadableLabel(market.liquidity.state),
+      detail: `Participation score ${Math.round(market.liquidity.score)}/100, volatility ${formatReadableLabel(market.volatility.state)}.`,
+      tone: toneForScore(market.liquidity.score),
+    },
+    {
+      label: "Trade thesis",
+      value: formatReadableLabel(setup.setup.type),
+      detail: whyNow,
+      tone: toneForScore(setup.quality.score),
+    },
+    {
+      label: "Execution trigger",
+      value: compactPrice(plan.trigger),
+      detail: `Entry zone ${formatPlanRange(plan.entryLow, plan.entryHigh)}. Do not chase if price moves away from the zone.`,
+      tone: isFiniteNumber(plan.trigger) ? "good" : "bad",
+    },
+    {
+      label: "Invalidation",
+      value: compactPrice(plan.invalidation),
+      detail: `Numerical stop plus thesis breaker: ${whyNotNow}`,
+      tone: isFiniteNumber(plan.invalidation) ? "warn" : "bad",
+    },
+    {
+      label: "Target / path",
+      value: formatTargetLabel(plan.target),
+      detail:
+        execution.tradePath.primaryPath ??
+        execution.tradePath.secondaryPath ??
+        "Use the defined target zone and reassess if the state changes before target.",
+      tone: plan.target && plan.target !== "-" ? "good" : "neutral",
+    },
+    {
+      label: "Stand aside if",
+      value: plan.action.intent === "stand_aside" ? "Already blocked" : "Guardrails fail",
+      detail: execution.executionStatus.nextDisciplineStep ?? entry.liveDecision.nextDisciplineStep ?? whyNotNow,
+      tone: plan.action.intent === "execute_now" ? "warn" : plan.action.intent === "stand_aside" ? "bad" : "neutral",
+    },
+  ];
+}
+
+function thesisToneClasses(tone: TradeThesisItem["tone"]) {
+  if (tone === "good") return "border-emerald-400/18 bg-emerald-400/8";
+  if (tone === "warn") return "border-amber-400/18 bg-amber-400/8";
+  if (tone === "bad") return "border-rose-400/18 bg-rose-400/8";
+  return "border-slate-800 bg-[#101b30]";
+}
+
+function TradeThesisPanel({ items }: { items: TradeThesisItem[] }) {
+  return (
+    <div className="mt-4 rounded-[24px] border border-slate-800 bg-[#07101c]/92 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Trade thesis
+          </div>
+          <div className="mt-1 text-sm text-slate-300">
+            The compact trader view: context, timing, liquidity, trigger, invalidation and path.
+          </div>
+        </div>
+        <span className="rounded-full border border-sky-400/25 bg-sky-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-sky-100">
+          Review before broker
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.label} className={`rounded-2xl border p-3 ${thesisToneClasses(item.tone)}`}>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              {item.label}
+            </div>
+            <div className="mt-1 break-words text-sm font-semibold text-white">{item.value}</div>
+            <div className="mt-2 text-xs leading-5 text-slate-300">{item.detail}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TradingSnapshotReliabilityPanel({
   assessment,
   isRefreshing,
@@ -803,6 +937,12 @@ function TradingDecisionCockpit({
   const whyNotNow =
     noTradeReasons[0] ??
     "No additional no-trade blocker is attached, but the broker checklist must still be followed.";
+  const tradeThesisItems = buildTradeThesis({
+    entry,
+    plan,
+    whyNow,
+    whyNotNow,
+  });
   return (
     <section>
       <div className={`rounded-[28px] border p-4 shadow-[0_22px_70px_rgba(0,0,0,0.28)] md:p-5 ${tone.shell}`}>
@@ -865,6 +1005,8 @@ function TradingDecisionCockpit({
             </span>
           </div>
         </div>
+
+        <TradeThesisPanel items={tradeThesisItems} />
 
         <div className="mt-5 grid gap-3 lg:grid-cols-3">
           <ReasonCard
