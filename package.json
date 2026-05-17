@@ -16,6 +16,7 @@
     "qa:trading:prod": "node scripts/qa/trading-production-audit.mjs",
     "qa:investing:prod": "node scripts/qa/investing-production-audit.mjs",
     "qa:post-deploy": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/postDeploySmoke.ts",
+    "qa:post-deploy:auth": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/authenticatedPostDeployGate.ts",
     "qa:billing": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/billingPremiumAudit.ts",
     "qa:billing:strict": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/billingPremiumAudit.ts --fail-on-issues --fail-on-warnings",
     "qa:billing:fix-premium": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/qa/fixPremiumMetadata.ts",
