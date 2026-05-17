@@ -79,6 +79,11 @@ describe("ExecutionTab", () => {
     expect(html).toContain("Open Alerts");
     expect(html).toContain("Execution Queue");
     expect(html).toContain("Execution Cockpit");
+    expect(html).toContain("Position lifecycle");
+    expect(html).toContain("Follow until close");
+    expect(html).toContain("Buy -&gt; monitor -&gt; sell");
+    expect(html).toContain("Save entry proof");
+    expect(html).toContain("SELL / CLOSE");
     expect(html).toContain("EURUSD");
     expect(html).toContain("Next re-check");
   });

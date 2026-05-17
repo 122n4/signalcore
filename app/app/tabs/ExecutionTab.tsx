@@ -51,6 +51,12 @@ function resolveOrderAction(direction: TradingWatchlistEntry["liveDecision"]["di
   return "MANUAL";
 }
 
+function resolveCloseAction(direction: TradingWatchlistEntry["liveDecision"]["direction"]) {
+  if (direction === "short") return "BUY / COVER";
+  if (direction === "long") return "SELL / CLOSE";
+  return "CLOSE MANUALLY";
+}
+
 function resolveBrokerReadiness(entry: TradingWatchlistEntry, snapshotBlocked?: boolean) {
   const actionGuidance = resolveTradingActionGuidance(entry);
   const liveDecision = entry.liveDecision;
@@ -161,6 +167,91 @@ function BrokerRunwayStep({
       </div>
       <div className="mt-3 text-sm leading-6 text-slate-300">{body}</div>
     </div>
+  );
+}
+
+function PositionLifecyclePanel({
+  entry,
+  snapshotBlocked,
+}: {
+  entry: TradingWatchlistEntry;
+  snapshotBlocked?: boolean;
+}) {
+  const direction = entry.liveDecision.direction ?? "neutral";
+  const openAction = resolveOrderAction(direction);
+  const closeAction = resolveCloseAction(direction);
+  const triggerLevel = entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null;
+  const invalidationLevel =
+    entry.liveDecision.invalidationLevel ?? entry.workspace.execution.invalidation.invalidationLevel ?? null;
+  const targetZone = entry.liveDecision.targetZone || entry.workspace.execution.tradePath.targetZone || "-";
+  const isLong = direction === "long";
+  const isShort = direction === "short";
+  const lifecycleTitle = isLong
+    ? "Buy -> monitor -> sell"
+    : isShort
+      ? "Short -> monitor -> cover"
+      : "Plan -> monitor -> close";
+  const holdRule = isLong
+    ? `Hold only while price respects invalidation ${compactPrice(invalidationLevel)} and the setup remains valid.`
+    : isShort
+      ? `Hold short only while price stays below invalidation ${compactPrice(invalidationLevel)} and bearish structure remains valid.`
+      : "Hold nothing until Syntrake gives a clear direction and the broker gate is allowed.";
+  const closeRule = isLong
+    ? `Sell or close if invalidation breaks, target ${targetZone} is reached, or Syntrake downgrades the setup.`
+    : isShort
+      ? `Buy back / cover if invalidation breaks, target ${targetZone} is reached, or Syntrake downgrades the setup.`
+      : "Close only from the broker plan once a real position exists.";
+
+  return (
+    <section className="rounded-[26px] border border-cyan-300/18 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_34%),linear-gradient(180deg,rgba(10,24,43,0.98),rgba(7,15,28,0.98))] p-6 text-slate-100 shadow-[0_22px_70px_rgba(0,0,0,0.3)]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200/75">
+            Position lifecycle
+          </div>
+          <div className="mt-2 text-2xl font-semibold tracking-tight text-white">
+            {lifecycleTitle}
+          </div>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
+            Syntrake should not stop at the entry. Once you confirm the broker fill, this instrument becomes a position to monitor until the exit is also planned and journaled.
+          </p>
+        </div>
+        <span className="rounded-full border border-cyan-300/24 bg-cyan-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-50">
+          Follow until close
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-slate-800 bg-[#101b30]/88 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">1. Open</div>
+          <div className="mt-2 text-base font-semibold text-white">{openAction}</div>
+          <div className="mt-2 text-xs leading-5 text-slate-300">
+            Open only if trigger {compactPrice(triggerLevel)} is still valid, snapshot is fresh, and execution gate is allowed.
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-[#101b30]/88 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">2. Confirm</div>
+          <div className="mt-2 text-base font-semibold text-white">Save entry proof</div>
+          <div className="mt-2 text-xs leading-5 text-slate-300">
+            Save broker reference, fill price, size, fees, and slippage so the journal knows a real position exists.
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-[#101b30]/88 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">3. Monitor</div>
+          <div className="mt-2 text-base font-semibold text-white">Hold only while valid</div>
+          <div className="mt-2 text-xs leading-5 text-slate-300">{snapshotBlocked ? "Refresh live data before trusting follow-up decisions. " : ""}{holdRule}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-800 bg-[#101b30]/88 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">4. Exit</div>
+          <div className="mt-2 text-base font-semibold text-white">{closeAction}</div>
+          <div className="mt-2 text-xs leading-5 text-slate-300">{closeRule}</div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-amber-300/18 bg-amber-300/8 px-4 py-3 text-xs leading-5 text-amber-50/82">
+        For normal cash shares, a user usually buys first and sells later to close. Short selling depends on broker and product type; if the broker does not support shorting, treat SELL as exit/trim only.
+      </div>
+    </section>
   );
 }
 
@@ -726,6 +817,11 @@ export default function ExecutionTab() {
           snapshotBlocked={snapshotDiscipline?.blocked}
           snapshotFootnote={snapshotFootnote}
           onRefresh={() => void refresh()}
+        />
+
+        <PositionLifecyclePanel
+          entry={selectedEntry}
+          snapshotBlocked={snapshotDiscipline?.blocked}
         />
 
         <TradingWorkspaceContinuityCard
