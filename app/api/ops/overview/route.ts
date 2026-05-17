@@ -3,6 +3,9 @@ import { getRequestUserId } from "@/lib/auth/requestUser";
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
+import { buildPremiumAuditReport } from "@/lib/billing/premiumAuditService";
+import { getMarketProviderStatuses } from "@/lib/market/providerStatus";
+import { buildProductReadinessReport } from "@/lib/ops/productReadiness";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
 import { computeOwnerLoopKpis } from "@/lib/signalcore/ownerLoopKpis";
 import { buildOwnerOpsOverview } from "@/lib/signalcore/ownerObservability";
@@ -58,7 +61,8 @@ export async function GET(req: Request) {
     const asOf = new Date().toISOString();
     const sb = getSupabaseAdmin();
 
-    const [conversionQuery, engineQuery, snapshotQuery, scannerDiagnostics, researchLab] =
+    const marketProviders = getMarketProviderStatuses();
+    const [conversionQuery, engineQuery, snapshotQuery, scannerDiagnostics, researchLab, billingAudit] =
       await Promise.all([
         sb
           .from("journal_entries")
@@ -87,6 +91,10 @@ export async function GET(req: Request) {
           generatedAt: new Date().toISOString(),
           error: error instanceof Error ? error.message : String(error),
         })),
+        buildPremiumAuditReport({ limit: 1000 }).catch((error) => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        })),
       ]);
 
     if (conversionQuery.error) {
@@ -100,6 +108,16 @@ export async function GET(req: Request) {
     }
 
     const scannerSummary = summarizeTradingLightScannerDiagnostics(scannerDiagnostics);
+    const researchForReadiness = "queue" in researchLab ? researchLab : null;
+    const billingForReadiness = "summary" in billingAudit ? billingAudit : null;
+    const readiness = buildProductReadinessReport({
+      billing: billingForReadiness,
+      billingError: "error" in billingAudit ? billingAudit.error : null,
+      marketProviders,
+      research: researchForReadiness,
+      researchError: "error" in researchLab ? researchLab.error : null,
+      scanner: scannerSummary,
+    });
     const loopKpis = computeOwnerLoopKpis({
       days,
       conversionEvents: Array.isArray(conversionQuery.data) ? (conversionQuery.data as any[]) : [],
@@ -126,6 +144,8 @@ export async function GET(req: Request) {
         since,
         scannerSummary,
         researchLab,
+        marketProviders,
+        readiness,
         overview,
       },
       {

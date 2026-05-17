@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 
 import { buildPremiumAuditReport } from "@/lib/billing/premiumAuditService";
+import { getMarketProviderStatuses, summarizeMarketProviderStatuses } from "@/lib/market/providerStatus";
+import { buildProductReadinessReport } from "@/lib/ops/productReadiness";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
+import {
+  inspectTradingLightScanner,
+  summarizeTradingLightScannerDiagnostics,
+} from "@/lib/trading/lightScanner";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 
 export const metadata: Metadata = {
@@ -78,6 +84,27 @@ function maskStripeId(value: string | null | undefined) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
+async function inspectTradingScannerForOps(asOf: string) {
+  const diagnostics = await inspectTradingLightScanner({
+    asOf,
+    liveFetch: true,
+    openMarketsOnlyLiveFetch: true,
+  });
+  const summary = summarizeTradingLightScannerDiagnostics(diagnostics);
+  const needsHardRefresh =
+    summary.openMarketCount > 0 &&
+    summary.freshOpenMarketCount === 0;
+
+  if (!needsHardRefresh) return diagnostics;
+
+  return inspectTradingLightScanner({
+    asOf,
+    liveFetch: true,
+    forceProviderRefresh: true,
+    openMarketsOnlyLiveFetch: true,
+  }).catch(() => diagnostics);
+}
+
 export default async function OpsPage() {
   const { userId } = await auth();
   if (!userId || !isOwnerUserId(userId)) {
@@ -94,15 +121,31 @@ export default async function OpsPage() {
     );
   }
 
-  const [research, billing] = await Promise.all([
+  const asOf = new Date().toISOString();
+  const marketProviders = getMarketProviderStatuses();
+  const providerSummary = summarizeMarketProviderStatuses(marketProviders);
+  const [research, billing, scanner] = await Promise.all([
     settle(buildResearchRuntimeHealth()),
     settle(buildPremiumAuditReport({ limit: 1000 })),
+    settle(inspectTradingScannerForOps(asOf)),
   ]);
 
   const researchValue = research.ok ? research.value : null;
   const researchError = settledError(research);
   const billingValue = billing.ok ? billing.value : null;
   const billingError = settledError(billing);
+  const scannerDiagnostics = scanner.ok ? scanner.value : null;
+  const scannerError = settledError(scanner);
+  const scannerSummary = scannerDiagnostics ? summarizeTradingLightScannerDiagnostics(scannerDiagnostics) : null;
+  const readiness = buildProductReadinessReport({
+    billing: billingValue,
+    billingError,
+    marketProviders,
+    research: researchValue,
+    researchError,
+    scanner: scannerSummary,
+    scannerError,
+  });
   const billingWarnings = billingValue?.summary.warn ?? 0;
   const billingFailures = billingValue?.summary.fail ?? 0;
   const entitlementUsers = (billingValue?.users ?? [])
@@ -136,22 +179,60 @@ export default async function OpsPage() {
               Marketing Ops
             </a>
             <span className={`rounded-full border px-4 py-2 text-sm font-bold ${statusTone(
-              billingFailures > 0 || researchValue?.severity === "error"
+              readiness.severity === "fail"
                 ? "fail"
-                : billingWarnings > 0 || researchValue?.severity === "warn"
+                : readiness.severity === "warn"
                   ? "warn"
                   : "ok",
             )}`}>
-              {billingFailures > 0 || researchValue?.severity === "error"
+              {readiness.severity === "fail"
                 ? "Action needed"
-                : billingWarnings > 0 || researchValue?.severity === "warn"
+                : readiness.severity === "warn"
                   ? "Watch"
-                  : "Healthy"}
+                  : "Ready"}
             </span>
           </div>
         </header>
 
-        <div className="mt-7 grid gap-6 lg:grid-cols-2">
+        <div className="mt-7 grid gap-6 lg:grid-cols-3">
+          <Card eyebrow="Readiness" title="Sell/operate status">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              <Metric label="Score" value={`${readiness.score}/100`} />
+              <Metric label="Severity" value={readiness.severity} />
+            </div>
+            <div className="mt-4 space-y-2">
+              {readiness.checks.map((check) => (
+                <div key={check.id} className={`rounded-2xl border p-3 text-sm ${statusTone(check.severity)}`}>
+                  <p className="font-bold">{check.label}</p>
+                  <p className="mt-1 opacity-80">{check.detail}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card eyebrow="Market data" title="Provider resilience">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+              <Metric label="Configured providers" value={`${providerSummary.configured}/${providerSummary.total}`} />
+              <Metric label="Open markets fresh" value={scannerSummary ? `${scannerSummary.freshOpenMarketCount}/${scannerSummary.openMarketCount}` : "n/a"} />
+              <Metric label="Provider errors" value={scannerSummary ? Object.values(scannerSummary.providerErrorCounts).reduce((a, b) => a + b, 0) : "n/a"} />
+              <Metric label="Last-good fallback" value={`${Math.round(Number(process.env.MARKET_DATA_STALE_FALLBACK_MS ?? 21600000) / 60 / 60_000)}h`} />
+            </div>
+            {scannerError ? (
+              <p className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">{scannerError}</p>
+            ) : null}
+            <div className="mt-4 space-y-2">
+              {marketProviders.map((provider) => (
+                <div key={provider.provider} className={`rounded-2xl border p-3 text-sm ${statusTone(provider.configured ? "ok" : provider.role === "last_resort" ? "warn" : "warn")}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold">{provider.label}</p>
+                    <span>{provider.configured ? "ready" : "missing key"}</span>
+                  </div>
+                  <p className="mt-1 text-xs opacity-80">{provider.detail}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+
           <Card eyebrow="Lab" title="Research runtime">
             {researchValue ? (
               <div className="grid gap-4 sm:grid-cols-2">
