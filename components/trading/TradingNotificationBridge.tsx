@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import {
+  TRADING_NOTIFICATIONS_ENABLED_EVENT,
   dispatchTradingBrowserNotification,
   hasSeenTradingNotification,
   readTradingNotificationsEnabled,
@@ -18,6 +19,19 @@ export default function TradingNotificationBridge({
   enabled,
   events,
 }: TradingNotificationBridgeProps) {
+  const [settingsVersion, setSettingsVersion] = useState(0);
+
+  useEffect(() => {
+    const bumpSettingsVersion = () => setSettingsVersion((value) => value + 1);
+
+    window.addEventListener(TRADING_NOTIFICATIONS_ENABLED_EVENT, bumpSettingsVersion);
+    window.addEventListener("storage", bumpSettingsVersion);
+    return () => {
+      window.removeEventListener(TRADING_NOTIFICATIONS_ENABLED_EVENT, bumpSettingsVersion);
+      window.removeEventListener("storage", bumpSettingsVersion);
+    };
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
     if (!readTradingNotificationsEnabled()) return;
@@ -25,9 +39,9 @@ export default function TradingNotificationBridge({
     for (const event of events) {
       if (!event.browserEligible) continue;
       if (hasSeenTradingNotification(event.id)) continue;
-      dispatchTradingBrowserNotification(event);
+      dispatchTradingBrowserNotification(event, { allowVisible: true });
     }
-  }, [enabled, events]);
+  }, [enabled, events, settingsVersion]);
 
   return null;
 }
