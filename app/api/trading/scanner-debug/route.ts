@@ -40,6 +40,15 @@ function buildFinnhubProbeUrl(token: string) {
   )}`;
 }
 
+function buildAlphaVantageProbeUrl(token: string) {
+  const url = new URL("https://www.alphavantage.co/query");
+  url.searchParams.set("function", "CURRENCY_EXCHANGE_RATE");
+  url.searchParams.set("from_currency", "EUR");
+  url.searchParams.set("to_currency", "USD");
+  url.searchParams.set("apikey", token);
+  return url.toString();
+}
+
 export async function GET(req: Request) {
   const userId = await getRequestUserId(req);
   if (!userId || (!isOwnerUserId(userId) && !isLocalQaUserId(userId))) {
@@ -87,6 +96,14 @@ export async function GET(req: Request) {
         bodySnippet: "missing_finnhub_api_key",
       };
 
+  const alphaVantageProbe = alphaVantageKey
+    ? await probeProvider(buildAlphaVantageProbeUrl(alphaVantageKey))
+    : {
+        ok: false,
+        status: 0,
+        bodySnippet: "missing_alphavantage_api_key",
+      };
+
   return NextResponse.json({
     ok: true,
     asOf,
@@ -106,6 +123,7 @@ export async function GET(req: Request) {
     probes: {
       twelvedata: twelvedataProbe,
       finnhub: finnhubProbe,
+      alphavantage: alphaVantageProbe,
     },
     summary,
     inputCount: inputs.length,

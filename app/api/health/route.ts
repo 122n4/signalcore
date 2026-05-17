@@ -4,6 +4,7 @@ import {
   inspectTradingLightScanner,
   summarizeTradingLightScannerDiagnostics,
 } from "@/lib/trading/lightScanner";
+import { getTwelveDataApiKeys } from "@/lib/market/providers/twelvedataKeyPool";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,9 +94,12 @@ export async function GET(req: Request) {
   const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
   const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
   const exposeErrors = process.env.NODE_ENV !== "production";
+  const twelveDataKeyCount = getTwelveDataApiKeys().length;
   const keyedMarketDataConfigured = Boolean(
-    String(process.env.TWELVEDATA_API_KEY || "").trim() ||
-      String(process.env.FINNHUB_API_KEY || "").trim(),
+    twelveDataKeyCount > 0 ||
+      String(process.env.FINNHUB_API_KEY || "").trim() ||
+      String(process.env.FMP_API_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || "").trim() ||
+      String(process.env.ALPHAVANTAGE_API_KEY || process.env.ALPHA_VANTAGE_API_KEY || "").trim(),
   );
   const publicCryptoMarketDataConfigured = true;
   const marketDataConfigured = keyedMarketDataConfigured || publicCryptoMarketDataConfigured;
