@@ -9,6 +9,9 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_Y2xlcmsuY2kuZHVtbXkk' }}
+      NEXT_TELEMETRY_DISABLED: "1"
 
     steps:
       - name: Checkout
