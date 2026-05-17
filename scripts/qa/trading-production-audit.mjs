@@ -336,6 +336,47 @@ async function auditPage(page, name, route, requiredSignals) {
   return body;
 }
 
+async function auditFocusedTradePlan(page) {
+  const openPlanButton = page.getByRole("button", { name: /open trade plan/i }).first();
+  if (!(await openPlanButton.isVisible().catch(() => false))) {
+    fail("Market Radar did not expose an Open trade plan action.");
+    return;
+  }
+
+  await openPlanButton.click();
+  await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => null);
+  await page.waitForTimeout(1_000);
+
+  const body = await getBodyText(page);
+  const requiredSignals = {
+    focusedPlan: /TRADE PLAN|Trade plan|Execute only the defined plan/i,
+    chartTrigger: /Chart trigger|Chart \+ trigger|TRIGGER/i,
+    brokerPlan: /Broker plan|Broker checklist|Open broker checklist|Broker gate|broker action/i,
+    followUntilClose: /Follow until close|followed|alert/i,
+    backToRadar: /Back to Market Radar|Market Radar/i,
+  };
+  const pageReport = {
+    name: "Focused Trade Plan",
+    route: "/app?mode=trading&lang=pt -> open trade plan",
+    url: redactUrl(page.url()),
+    status: null,
+    title: await page.title().catch(() => null),
+    signals: {},
+    snippet: cleanText(body, 700),
+  };
+
+  for (const [signal, pattern] of Object.entries(requiredSignals)) {
+    pageReport.signals[signal] = pattern.test(body);
+    if (!pageReport.signals[signal]) {
+      fail(`Missing required focused trade plan signal: ${signal}`, {
+        pattern: String(pattern),
+      });
+    }
+  }
+
+  report.pages.push(pageReport);
+}
+
 async function main() {
   const signInUrl = await resolveSignInUrl();
   if (!signInUrl) {
@@ -383,12 +424,13 @@ async function main() {
 
     await auditPage(page, "Trading Desk", "/app?mode=trading&lang=pt", {
       tradingDesk: /Trading Desk/i,
-      tradeCard: /What to do now|Trade card/i,
-      brokerChecklist: /Broker-ready checklist|Broker checklist/i,
-      liveRefresh: /Live refresh monitor/i,
-      chartTrigger: /Chart trigger|Chart \+ trigger/i,
-      marketQueue: /Opportunity queue/i,
+      marketRadar: /Market Radar/i,
+      chooseMarket: /Choose the market before opening the plan|Open a market only when/i,
+      openTradePlan: /Open trade plan/i,
+      instrument: /BTCUSD|ETHUSD|EURUSD|XAUUSD/i,
     });
+
+    await auditFocusedTradePlan(page);
 
     const showAllButton = page.getByRole("button", { name: /show all markets/i });
     if (await showAllButton.isVisible().catch(() => false)) {
@@ -400,16 +442,16 @@ async function main() {
 
     await screenshot(page, "trading-desk");
 
-    await auditPage(page, "Execution", "/app?mode=trading&tab=execution&lang=pt", {
-      execution: /Execution|Execucao|Broker/i,
+    await auditPage(page, "Legacy Execution Redirect", "/app?mode=trading&tab=execution&lang=pt", {
+      trading: /Market Radar|Trade plan|Trading/i,
       instrument: /BTCUSD|ETHUSD|EURUSD|XAUUSD/i,
     });
-    await auditPage(page, "Opportunities", "/app?mode=trading&tab=opportunities&lang=pt", {
-      opportunities: /Opportunities|Oportunidades|Tracked instruments/i,
+    await auditPage(page, "Legacy Opportunities Redirect", "/app?mode=trading&tab=opportunities&lang=pt", {
+      trading: /Market Radar|Trade plan|Trading/i,
       instrument: /BTCUSD|ETHUSD|EURUSD|XAUUSD/i,
     });
-    await auditPage(page, "Risk", "/app?mode=trading&tab=risk&lang=pt", {
-      risk: /Risk|Risco|Allowed|Restricted/i,
+    await auditPage(page, "Legacy Risk Redirect", "/app?mode=trading&tab=risk&lang=pt", {
+      trading: /Market Radar|Trade plan|Trading/i,
       instrument: /BTCUSD|ETHUSD|EURUSD|XAUUSD/i,
     });
     await auditPage(page, "Alerts", "/app?mode=trading&tab=alerts&lang=pt", {
