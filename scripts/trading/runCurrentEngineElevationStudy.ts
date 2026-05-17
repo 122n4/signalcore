@@ -11,6 +11,7 @@ import {
   type TradingBacktestTrade,
 } from "@/lib/trading/backtest";
 import type { TradingTimeframe } from "@/lib/trading/data";
+import { runResearchMonteCarloFromSlices } from "@/lib/trading/research";
 
 type Scenario = {
   id: string;
@@ -38,6 +39,12 @@ const BASELINE_CRISIS_PATH = path.resolve(
 const OUTPUT_DIR = path.resolve("artifacts/trading-backtests");
 const REPORT_PATH = path.join(OUTPUT_DIR, "trading-current-engine-elevation-study.json");
 const DEFAULT_TIMEFRAMES: TradingTimeframe[] = ["4h", "1h", "15m"];
+const MONTE_CARLO_SETTINGS = {
+  iterations: 256,
+  percentile: 0.15,
+  seed: 20260517,
+};
+const COST_STRESS_R = 0.08;
 
 const SCENARIOS: Scenario[] = [
   {
@@ -281,15 +288,51 @@ function filterScenarioTrades(
   };
 }
 
+function applyCostStress(
+  collected: { trades: TradingBacktestTrade[]; evaluatedBars: number },
+  roundTripCostR = COST_STRESS_R,
+): { trades: TradingBacktestTrade[]; evaluatedBars: number } {
+  return {
+    evaluatedBars: collected.evaluatedBars,
+    trades: collected.trades.map((trade) => {
+      const costPnlPct = (trade.riskPct ?? 0) * roundTripCostR;
+      const pnlR = round((trade.pnlR ?? 0) - roundTripCostR) ?? 0;
+      const pnlPct = round((trade.pnlPct ?? 0) - costPnlPct) ?? 0;
+      return {
+        ...trade,
+        costPnlR: round((trade.costPnlR ?? 0) + roundTripCostR),
+        costPnlPct: round((trade.costPnlPct ?? 0) + costPnlPct),
+        pnlR,
+        pnlPct,
+        outcome: pnlR > 0 ? "win" : pnlR < 0 ? "loss" : "scratch",
+      };
+    }),
+  };
+}
+
 function runFastScenario(
   scenario: Scenario,
   baselineYearly: TradingBacktestComparativeReport,
   baselineCrisis: TradingBacktestComparativeReport,
 ) {
-  const yearlySummary = summaryFromTrades(filterScenarioTrades(baselineYearly, scenario));
-  const crisisSummary = summaryFromTrades(filterScenarioTrades(baselineCrisis, scenario));
+  const baselineYearlySlice = collectTrades(baselineYearly);
+  const baselineCrisisSlice = collectTrades(baselineCrisis);
+  const currentYearlySlice = filterScenarioTrades(baselineYearly, scenario);
+  const currentCrisisSlice = filterScenarioTrades(baselineCrisis, scenario);
+  const yearlySummary = summaryFromTrades(currentYearlySlice);
+  const crisisSummary = summaryFromTrades(currentCrisisSlice);
   const baselineYearlySummary = summary(baselineYearly);
   const baselineCrisisSummary = summary(baselineCrisis);
+  const monteCarlo = runResearchMonteCarloFromSlices({
+    baselineSlice: baselineYearlySlice,
+    currentSlice: currentYearlySlice,
+    ...MONTE_CARLO_SETTINGS,
+    label: scenario.id,
+  });
+  const costStressBaseline = summaryFromTrades(applyCostStress(baselineYearlySlice));
+  const costStressCurrent = summaryFromTrades(applyCostStress(currentYearlySlice));
+  const crisisCostStressBaseline = summaryFromTrades(applyCostStress(baselineCrisisSlice));
+  const crisisCostStressCurrent = summaryFromTrades(applyCostStress(currentCrisisSlice));
 
   return {
     id: scenario.id,
@@ -314,6 +357,36 @@ function runFastScenario(
         crisisSummary.expectancy >= baselineCrisisSummary.expectancy &&
         (crisisSummary.profitFactor ?? 0) >= (baselineCrisisSummary.profitFactor ?? 0),
       crisisBreakEven: crisisSummary.expectancy >= 0 && (crisisSummary.profitFactor ?? 0) >= 1,
+      monteCarloStable:
+        monteCarlo.current.expectancy >= monteCarlo.baseline.expectancy &&
+        (monteCarlo.current.profitFactor ?? 0) >= (monteCarlo.baseline.profitFactor ?? 0),
+      costStressStable:
+        costStressCurrent.expectancy >= costStressBaseline.expectancy &&
+        (costStressCurrent.profitFactor ?? 0) >= (costStressBaseline.profitFactor ?? 0),
+      crisisCostStressBreakEven:
+        crisisCostStressCurrent.expectancy >= 0 &&
+        (crisisCostStressCurrent.profitFactor ?? 0) >= 1,
+    },
+    robustness: {
+      monteCarlo: {
+        settings: MONTE_CARLO_SETTINGS,
+        baseline: monteCarlo.baseline,
+        current: monteCarlo.current,
+        diagnostics: monteCarlo.diagnostics,
+      },
+      costStress: {
+        roundTripCostR: COST_STRESS_R,
+        aggregate: {
+          baseline: costStressBaseline,
+          current: costStressCurrent,
+          delta: delta(costStressCurrent, costStressBaseline),
+        },
+        crisis: {
+          baseline: crisisCostStressBaseline,
+          current: crisisCostStressCurrent,
+          delta: delta(crisisCostStressCurrent, crisisCostStressBaseline),
+        },
+      },
     },
     artifacts: null,
   };
