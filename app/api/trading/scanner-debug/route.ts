@@ -63,6 +63,7 @@ export async function GET(req: Request) {
   const twelvedataKeyPool = getTwelveDataKeyPoolStatus();
   const finnhubKey = String(process.env.FINNHUB_API_KEY || "").trim();
   const fmpKey = String(process.env.FMP_API_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || "").trim();
+  const alphaVantageKey = String(process.env.ALPHAVANTAGE_API_KEY || process.env.ALPHA_VANTAGE_API_KEY || "").trim();
 
   const twelvedataProbe = twelvedataKeys[0]
     ? await probeProvider(
@@ -98,6 +99,9 @@ export async function GET(req: Request) {
       finnhubKeyLength: finnhubKey.length,
       hasFmpKey: fmpKey.length > 0,
       fmpKeyLength: fmpKey.length,
+      hasAlphaVantageKey: alphaVantageKey.length > 0,
+      alphaVantageKeyLength: alphaVantageKey.length,
+      hasKrakenPublicProvider: true,
     },
     probes: {
       twelvedata: twelvedataProbe,
