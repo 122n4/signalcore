@@ -1,7 +1,13 @@
 "use client";
 
-import React from "react";
-import { resolveTradingAlertGuidance } from "@/lib/trading/state";
+import React, { useSyncExternalStore } from "react";
+import {
+  isTradingInstrumentFollowed,
+  readFollowedTradingInstruments,
+  subscribeFollowedTradingInstruments,
+  toggleFollowedTradingInstrument,
+} from "@/lib/trading/followedInstruments";
+import { resolveTradingAlertGuidance, type TradingWatchlistEntry } from "@/lib/trading/state";
 
 import PremiumAsyncStateCard, {
   buildSnapshotFootnote,
@@ -93,6 +99,27 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
+function resolveFollowUpLabel(entry: TradingWatchlistEntry) {
+  if (
+    entry.currentState === "EXIT" ||
+    entry.currentState === "TOO_LATE" ||
+    entry.currentState === "BLOCKED" ||
+    entry.executionStatus === "restricted"
+  ) {
+    return "Sell / close review";
+  }
+
+  if (entry.executionStatus === "allowed" && entry.currentState === "TRADE_VALID") {
+    return entry.liveDecision.direction === "short" ? "Sell / short plan" : "Buy / execute plan";
+  }
+
+  if (entry.executionStatus === "caution") {
+    return "Wait / monitor";
+  }
+
+  return "Hold / re-check";
+}
+
 export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
   const t = copy(locale);
   const {
@@ -106,6 +133,11 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
     lastUpdatedAt,
     snapshotDiscipline,
   } = useTradingWorkspace("trading");
+  const followedInstruments = useSyncExternalStore(
+    subscribeFollowedTradingInstruments,
+    readFollowedTradingInstruments,
+    () => [],
+  );
   const snapshotFootnote = React.useMemo(() => {
     const baseFootnote = buildSnapshotFootnote({
       isRefreshing,
@@ -185,6 +217,13 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
           entry.currentHeadline,
       }));
   }, [entries]);
+  const followedEntries = React.useMemo(
+    () =>
+      entries.filter((entry) =>
+        isTradingInstrumentFollowed(entry.instrument, followedInstruments),
+      ),
+    [entries, followedInstruments],
+  );
 
   if (status === "idle" || status === "loading") {
     return (
@@ -229,6 +268,61 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
           secondaryLabel="Open Execution"
         />
       </div>
+
+      <section className="xl:col-span-2 rounded-[22px] border border-emerald-400/18 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(13,23,41,0.94)_52%,rgba(14,165,233,0.08))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100/70">
+              Followed until close
+            </div>
+            <div className="mt-2 text-2xl font-semibold text-white">
+              Markets you chose to keep watching
+            </div>
+            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+              Only markets you choose to follow stay pinned here. Syntrake escalates wait,
+              act, invalidation, and close-review alerts for these instruments.
+            </div>
+          </div>
+          <Pill>{followedEntries.length} followed</Pill>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {followedEntries.length ? (
+            followedEntries.map((entry) => (
+              <article key={entry.instrument} className="rounded-3xl border border-emerald-400/16 bg-[#091524] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-semibold text-white">{entry.instrument}</div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      {formatTradingState(entry.currentState)} | {formatExecutionStatus(entry.executionStatus)}
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-emerald-300/35 bg-emerald-400/12 px-3 py-1 text-xs font-semibold text-emerald-50">
+                    {resolveFollowUpLabel(entry)}
+                  </span>
+                </div>
+                <div className="mt-4 rounded-2xl border border-slate-800 bg-[#07101c] p-4 text-sm leading-6 text-slate-300">
+                  {entry.liveDecision.nextDisciplineStep ||
+                    entry.liveDecision.reasons[0] ||
+                    entry.currentHeadline}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleFollowedTradingInstrument(entry.instrument)}
+                  className="mt-4 inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-400/35"
+                >
+                  Remove from follow list
+                </button>
+              </article>
+            ))
+          ) : (
+            <div className="lg:col-span-2 rounded-3xl border border-slate-800 bg-[#101b30] p-5 text-sm leading-6 text-slate-300">
+              No followed instruments yet. Open the Trading Desk and choose Follow until close
+              on a market you want Syntrake to track after the buy/entry decision.
+            </div>
+          )}
+        </div>
+      </section>
 
       <section className="rounded-[22px] border border-slate-800/80 bg-[linear-gradient(180deg,rgba(17,28,49,0.88)_0%,rgba(13,23,41,0.94)_100%)] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

@@ -66,6 +66,8 @@ describe("TradingTab", () => {
     expect(html).toContain("No-trade guardrails");
     expect(html).toContain("Plain-English read");
     expect(html).toContain("Pro operating brief");
+    expect(html).toContain("Follow until close");
+    expect(html).toContain("Start following");
     expect(html).toContain("Premium cockpit");
     expect(html).toContain("Next operator move");
     expect(html).toContain("Proof trail");

@@ -112,6 +112,72 @@ export function deriveTradingNotificationEvents(
     });
 }
 
+export function deriveTradingFollowUpEvents(
+  entries: TradingWatchlistEntry[],
+  followedInstruments: string[],
+): TradingNotificationEvent[] {
+  const followed = new Set(followedInstruments.map((instrument) => instrument.toUpperCase()));
+
+  return entries
+    .filter((entry) => followed.has(entry.instrument.toUpperCase()))
+    .map((entry) => {
+      const action = resolveTradingActionGuidance(entry);
+      const alert = resolveTradingAlertGuidance(entry);
+      const utilityScore = computeTradingOpportunityUtilityScore(entry);
+      const needsCloseReview =
+        entry.currentState === "EXIT" ||
+        entry.currentState === "TOO_LATE" ||
+        entry.currentState === "BLOCKED" ||
+        entry.executionStatus === "restricted";
+      const kind: TradingNotificationKind = needsCloseReview
+        ? "stand_aside"
+        : action.intent === "execute_now"
+          ? "execute_now"
+          : action.intent === "prepare_now"
+            ? "prepare_now"
+            : "session_recheck";
+      const severity: TradingNotificationSeverity =
+        kind === "execute_now" ? "high" : needsCloseReview || kind === "prepare_now" ? "medium" : "low";
+      const actionLabel = needsCloseReview
+        ? "Review close"
+        : kind === "session_recheck"
+          ? "Hold / re-check"
+          : action.label;
+      const title = needsCloseReview
+        ? `${entry.instrument}: close or stand-aside review`
+        : `${entry.instrument}: followed trade update`;
+      const body = needsCloseReview
+        ? `${action.summary} ${alert.nextAlertCondition}`
+        : `${action.summary} ${entry.liveDecision.nextDisciplineStep ?? alert.recheckWindow}`;
+
+      return {
+        id: [
+          "follow",
+          entry.instrument,
+          entry.currentState,
+          entry.executionStatus,
+          entry.liveDecision.triggerLevel ?? "na",
+          entry.liveDecision.invalidationLevel ?? "na",
+        ].join(":"),
+        instrument: entry.instrument,
+        kind,
+        severity,
+        title,
+        body,
+        sessionLabel: entry.contextSummary.sessionLabel,
+        actionLabel,
+        browserEligible: true,
+        requiresProDelivery: true,
+        utilityScore,
+      } satisfies TradingNotificationEvent;
+    })
+    .sort((left, right) => {
+      const severityDelta = severityRank(left.severity) - severityRank(right.severity);
+      if (severityDelta !== 0) return severityDelta;
+      return right.utilityScore - left.utilityScore;
+    });
+}
+
 export function deriveTradingNotificationPreview(
   events: TradingNotificationEvent[],
   limit = 1,

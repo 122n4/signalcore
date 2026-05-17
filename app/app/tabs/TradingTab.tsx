@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { normalizeMode } from "@/lib/signalcore/modes";
 
 import PremiumAsyncStateCard, {
@@ -21,6 +21,12 @@ import {
   TRADING_LIVE_SNAPSHOT_MAX_AGE_MS,
   type TradingLiveSnapshotAssessment,
 } from "@/lib/trading/liveSnapshotDiscipline";
+import {
+  isTradingInstrumentFollowed,
+  readFollowedTradingInstruments,
+  subscribeFollowedTradingInstruments,
+  toggleFollowedTradingInstrument,
+} from "@/lib/trading/followedInstruments";
 import { deriveTradingNotificationEvents, deriveTradingNotificationPreview } from "@/lib/trading/notifications";
 import type { TradingNotificationEvent } from "@/lib/trading/notifications";
 import {
@@ -688,8 +694,10 @@ function TradingDecisionCockpit({
   topNotification,
   executionHref,
   isDiscoveryMode,
+  isFollowed,
   onRefresh,
   onSelectInstrument,
+  onToggleFollow,
 }: {
   entry: TradingWatchlistEntry;
   entries: TradingWatchlistEntry[];
@@ -703,8 +711,10 @@ function TradingDecisionCockpit({
   topNotification: TradingNotificationEvent | null;
   executionHref: string;
   isDiscoveryMode: boolean;
+  isFollowed: boolean;
   onRefresh: () => Promise<void> | void;
   onSelectInstrument: (instrument: string) => void;
+  onToggleFollow: (instrument: string) => void;
 }) {
   const [queueExpanded, setQueueExpanded] = useState(false);
   const plan = resolveBrokerPlan(entry, snapshotBlocked);
@@ -740,6 +750,11 @@ function TradingDecisionCockpit({
     ? `/pricing?source=trading_desk_broker_checklist_gate&instrument=${encodeURIComponent(entry.instrument)}`
     : executionHref;
   const executionCtaLabel = isDiscoveryMode ? "Unlock checklist" : "Open checklist";
+  const followCtaLabel = isDiscoveryMode
+    ? "Unlock follow alerts"
+    : isFollowed
+      ? "Following until close"
+      : "Follow until close";
   const checklist = buildBrokerReadyChecklist({
     entry,
     plan,
@@ -853,6 +868,26 @@ function TradingDecisionCockpit({
                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${tone.pill}`}>
                   {plan.state}
                 </span>
+                {isDiscoveryMode ? (
+                  <Link
+                    href={`/pricing?source=trading_follow_until_close&instrument=${encodeURIComponent(entry.instrument)}`}
+                    className="inline-flex items-center justify-center rounded-full border border-emerald-400/35 bg-emerald-400/12 px-3 py-1 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-400/18"
+                  >
+                    {followCtaLabel}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onToggleFollow(entry.instrument)}
+                    className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                      isFollowed
+                        ? "border-emerald-300/45 bg-emerald-400/16 text-emerald-50"
+                        : "border-emerald-400/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/16"
+                    }`}
+                  >
+                    {followCtaLabel}
+                  </button>
+                )}
                 <Link
                   href={executionCtaHref}
                   className="inline-flex items-center justify-center rounded-full border border-sky-400/35 bg-sky-400/12 px-3 py-1 text-[11px] font-semibold text-sky-100 transition hover:bg-sky-400/18"
@@ -877,6 +912,41 @@ function TradingDecisionCockpit({
               <BrokerMetric label="Invalidation" value={compactPrice(plan.invalidation)} tone="warn" />
               <BrokerMetric label="Risk" value={formatRisk(plan.risk)} />
               <BrokerMetric label="Target" value={targetLabel} />
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-emerald-400/18 bg-emerald-400/8 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">Follow until close</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-300">
+                    {isDiscoveryMode
+                      ? "Trial/Pro keeps this market pinned and alerts you when the next move is wait, act, or close."
+                      : isFollowed
+                        ? "Syntrake will keep this market pinned in Alerts until you remove it or the trade is closed."
+                        : "Pin this market if you want Syntrake to keep watching it after the buy/entry decision."}
+                  </div>
+                </div>
+                {isDiscoveryMode ? (
+                  <Link
+                    href={`/pricing?source=trading_follow_until_close_card&instrument=${encodeURIComponent(entry.instrument)}`}
+                    className="inline-flex items-center justify-center rounded-xl border border-emerald-300/35 bg-emerald-400/12 px-3 py-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-400/18"
+                  >
+                    Unlock
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onToggleFollow(entry.instrument)}
+                    className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      isFollowed
+                        ? "border-emerald-300/45 bg-emerald-400/16 text-emerald-50"
+                        : "border-slate-700 bg-[#101b30] text-slate-200 hover:border-emerald-400/35"
+                    }`}
+                  >
+                    {isFollowed ? "Stop following" : "Start following"}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="mt-4">
@@ -1095,6 +1165,11 @@ export default function TradingTab({
     [tradingSupport],
   );
   const [preferredInstrument, setPreferredInstrument] = useState<string | null>(null);
+  const followedInstruments = useSyncExternalStore(
+    subscribeFollowedTradingInstruments,
+    readFollowedTradingInstruments,
+    () => [],
+  );
   const [activeSection, setActiveSection] = useState<TradingWorkspaceSection>("live-decision");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const lastForcedLiveRefreshAtRef = useRef(0);
@@ -1164,6 +1239,12 @@ export default function TradingTab({
         : notificationPreview[0] ?? null,
     [notificationEvents, notificationPreview, selectedInstrument],
   );
+  const selectedIsFollowed = selectedEntry
+    ? isTradingInstrumentFollowed(selectedEntry.instrument, followedInstruments)
+    : false;
+  const handleToggleFollow = useCallback((instrument: string) => {
+    toggleFollowedTradingInstrument(instrument);
+  }, []);
   const selectedSnapshotDiscipline = useMemo(
     () =>
       assessTradingLiveSnapshot({
@@ -1307,11 +1388,13 @@ export default function TradingTab({
           snapshotFootnote={snapshotFootnote}
           executionHref={selectedExecutionHref}
           isDiscoveryMode={Boolean(discoveryLimit)}
+          isFollowed={selectedIsFollowed}
           liveRefreshLocked={liveRefreshLocked}
           liveRefreshLockedReason={liveRefreshLockedReason}
           topNotification={selectedNotification}
           onRefresh={refreshTradingLive}
           onSelectInstrument={setPreferredInstrument}
+          onToggleFollow={handleToggleFollow}
         />
       ) : null}
 
