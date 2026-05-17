@@ -106,6 +106,64 @@ describe("trading playbook check engine", () => {
     );
   });
 
+  it("blocks the current engine-elevation crisis contexts", () => {
+    const cases = [
+      {
+        instrument: "GBPUSD",
+        session: "london_open" as const,
+        setupType: "breakout_continuation" as const,
+        reason: "GBPUSD is blocked during London open after current engine elevation validation.",
+      },
+      {
+        instrument: "NAS100",
+        session: "london_ny_overlap" as const,
+        setupType: "breakout_continuation" as const,
+        reason: "NAS100 overlap breakouts are blocked after current crisis validation.",
+      },
+      {
+        instrument: "XAUUSD",
+        session: "late_us" as const,
+        setupType: "breakout_continuation" as const,
+        reason: "XAUUSD late US breakouts are blocked after current crisis validation.",
+      },
+      {
+        instrument: "BTCUSD",
+        session: "weekend_drift" as const,
+        setupType: "breakout_continuation" as const,
+        reason: "BTCUSD weekend-drift breakouts are blocked after current crisis validation.",
+      },
+    ];
+
+    for (const item of cases) {
+      const input = createOperationalInput({
+        marketOverrides: {
+          instrument: item.instrument,
+          session: {
+            marketOpen: true,
+            session: item.session,
+            confidence: 91,
+          },
+        },
+        setupCoreOverrides: {
+          setup: {
+            type: item.setupType,
+            direction: "long",
+            triggerLevel: 103.9,
+            invalidationLevel: 102.6,
+            confidence: 84,
+          },
+        },
+      });
+      input.snapshot.instrument = item.instrument;
+
+      const result = runPlaybookCheck(input);
+
+      expect(result.rulesAligned).toBe(false);
+      expect(result.executionAllowed).toBe(false);
+      expect(result.reasons).toContain(item.reason);
+    }
+  });
+
   it("supports selective blocked contexts by quality and clarity without blocking stronger variants", () => {
     const blockedInput = createOperationalInput({
       marketOverrides: {
