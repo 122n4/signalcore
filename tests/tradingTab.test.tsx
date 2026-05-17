@@ -65,6 +65,11 @@ describe("TradingTab", () => {
     expect(html).toContain("Broker-ready checklist");
     expect(html).toContain("No-trade guardrails");
     expect(html).toContain("Plain-English read");
+    expect(html).toContain("Pro operating brief");
+    expect(html).toContain("Premium cockpit");
+    expect(html).toContain("Next operator move");
+    expect(html).toContain("Proof trail");
+    expect(html).toContain("Alert watch");
     expect(html).toContain("Live refresh monitor");
     expect(html).toContain("Force live refresh");
     expect(html).toContain("Snapshot alert");

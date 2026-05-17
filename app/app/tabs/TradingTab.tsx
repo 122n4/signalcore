@@ -22,6 +22,7 @@ import {
   type TradingLiveSnapshotAssessment,
 } from "@/lib/trading/liveSnapshotDiscipline";
 import { deriveTradingNotificationEvents, deriveTradingNotificationPreview } from "@/lib/trading/notifications";
+import type { TradingNotificationEvent } from "@/lib/trading/notifications";
 import {
   resolveTradingActionGuidance,
   type TradingWatchlistEntry,
@@ -424,6 +425,74 @@ function buildNoTradeGuardrails(args: {
   );
 }
 
+function latestEventForEntry(entry: TradingWatchlistEntry) {
+  return [...(entry.liveDecision.feed ?? [])].sort(
+    (left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp),
+  )[0] ?? null;
+}
+
+function buildProOperatingBrief(args: {
+  entry: TradingWatchlistEntry;
+  plan: ReturnType<typeof resolveBrokerPlan>;
+  notification: TradingNotificationEvent | null;
+  snapshotBlocked: boolean;
+  snapshotFootnote: string | null;
+}) {
+  const { entry, plan, notification, snapshotBlocked, snapshotFootnote } = args;
+  const latestEvent = latestEventForEntry(entry);
+  const riskLabel = isFiniteNumber(plan.risk) ? formatRisk(plan.risk) : "Not sized";
+  const alertLabel = notification?.actionLabel ?? "No urgent alert";
+  const alertBody =
+    notification?.body ??
+    "Alerts stay quiet until Syntrake sees a real action, preparation, or stand-aside reason worth escalating.";
+
+  return [
+    {
+      label: "Next operator move",
+      value:
+        plan.state === "READY"
+          ? "Execute checklist"
+          : plan.state === "DRAFT"
+            ? "Prepare only"
+            : "Stand aside",
+      body:
+        plan.state === "READY"
+          ? "Use the broker checklist, submit only the defined plan, then capture proof inside Syntrake."
+          : plan.state === "DRAFT"
+            ? "Build the order ticket, but keep submission locked until the gate turns ready."
+            : "No broker order. The paid layer is protecting you from forcing weak conditions.",
+      tone: plan.state === "READY" ? "good" : plan.state === "DRAFT" ? "warn" : "bad",
+    },
+    {
+      label: "Risk command",
+      value: riskLabel,
+      body:
+        plan.state === "READY"
+          ? `Risk is framed before execution. Invalidation stays fixed at ${compactPrice(plan.invalidation)}.`
+          : snapshotBlocked
+            ? selectedSnapshotReason(snapshotFootnote)
+            : "Risk is not actionable until trigger, invalidation, market state, and execution gate align.",
+      tone: plan.state === "READY" ? "good" : plan.state === "DRAFT" ? "warn" : "bad",
+    },
+    {
+      label: "Proof trail",
+      value: plan.canExecute ? "Proof required" : "Proof pending",
+      body: plan.canExecute
+        ? "After broker execution, save reference, fill price, fees, slippage, and note so the journal remembers the decision."
+        : latestEvent?.headline
+          ? `Latest memory: ${latestEvent.headline}`
+          : "Journal memory will attach the next real state change once the setup moves.",
+      tone: plan.canExecute ? "good" : "warn",
+    },
+    {
+      label: "Alert watch",
+      value: alertLabel,
+      body: alertBody,
+      tone: notification?.severity === "high" ? "good" : notification?.severity === "medium" ? "warn" : "neutral",
+    },
+  ] as const;
+}
+
 function TradingSnapshotReliabilityPanel({
   assessment,
   isRefreshing,
@@ -497,6 +566,69 @@ function TradingSnapshotReliabilityPanel({
   );
 }
 
+function ProOperatingBrief({
+  entry,
+  plan,
+  notification,
+  snapshotBlocked,
+  snapshotFootnote,
+}: {
+  entry: TradingWatchlistEntry;
+  plan: ReturnType<typeof resolveBrokerPlan>;
+  notification: TradingNotificationEvent | null;
+  snapshotBlocked: boolean;
+  snapshotFootnote: string | null;
+}) {
+  const items = buildProOperatingBrief({
+    entry,
+    plan,
+    notification,
+    snapshotBlocked,
+    snapshotFootnote,
+  });
+
+  return (
+    <section className="mt-5 rounded-[24px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(14,165,233,0.12),rgba(8,18,32,0.86)_55%,rgba(16,185,129,0.08))] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-100/60">
+            Pro operating brief
+          </div>
+          <div className="mt-1 text-lg font-semibold text-white">
+            Decision, risk, proof, and alert watch in one control layer.
+          </div>
+        </div>
+        <span className="rounded-full border border-cyan-300/24 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-50">
+          Premium cockpit
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => {
+          const toneClass =
+            item.tone === "good"
+              ? "border-emerald-400/22 bg-emerald-400/8"
+              : item.tone === "warn"
+                ? "border-amber-400/22 bg-amber-400/8"
+                : item.tone === "bad"
+                  ? "border-rose-400/22 bg-rose-400/8"
+                  : "border-slate-700 bg-[#101b30]/82";
+
+          return (
+            <div key={item.label} className={`rounded-2xl border p-4 ${toneClass}`}>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {item.label}
+              </div>
+              <div className="mt-2 text-base font-semibold text-white">{item.value}</div>
+              <div className="mt-2 text-xs leading-5 text-slate-300">{item.body}</div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function TradingSnapshotAlertBanner({
   assessment,
   isRefreshing,
@@ -553,6 +685,7 @@ function TradingDecisionCockpit({
   isRefreshing,
   liveRefreshLocked,
   liveRefreshLockedReason,
+  topNotification,
   executionHref,
   isDiscoveryMode,
   onRefresh,
@@ -567,6 +700,7 @@ function TradingDecisionCockpit({
   isRefreshing: boolean;
   liveRefreshLocked: boolean;
   liveRefreshLockedReason: string | null;
+  topNotification: TradingNotificationEvent | null;
   executionHref: string;
   isDiscoveryMode: boolean;
   onRefresh: () => Promise<void> | void;
@@ -695,6 +829,16 @@ function TradingDecisionCockpit({
             tone={riskTone}
           />
         </div>
+
+        {!isDiscoveryMode ? (
+          <ProOperatingBrief
+            entry={entry}
+            plan={plan}
+            notification={topNotification}
+            snapshotBlocked={snapshotBlocked}
+            snapshotFootnote={snapshotFootnote}
+          />
+        ) : null}
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
           <div className="rounded-[24px] border border-slate-800 bg-[#08111f]/86 p-4">
@@ -954,9 +1098,13 @@ export default function TradingTab({
   const [activeSection, setActiveSection] = useState<TradingWorkspaceSection>("live-decision");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const lastForcedLiveRefreshAtRef = useRef(0);
-  const notificationPreview = useMemo(
-    () => deriveTradingNotificationPreview(deriveTradingNotificationEvents(tradingWatchlist), 1),
+  const notificationEvents = useMemo(
+    () => deriveTradingNotificationEvents(tradingWatchlist),
     [tradingWatchlist],
+  );
+  const notificationPreview = useMemo(
+    () => deriveTradingNotificationPreview(notificationEvents, 1),
+    [notificationEvents],
   );
   const selectedInstrument = useMemo(() => {
     if (!tradingWatchlist.length) {
@@ -1008,6 +1156,13 @@ export default function TradingTab({
         ? tradingWatchlist.find((entry) => entry.instrument === selectedInstrument) ?? null
         : tradingWatchlist[0] ?? null,
     [selectedInstrument, tradingWatchlist],
+  );
+  const selectedNotification = useMemo(
+    () =>
+      selectedInstrument
+        ? notificationEvents.find((event) => event.instrument === selectedInstrument) ?? null
+        : notificationPreview[0] ?? null,
+    [notificationEvents, notificationPreview, selectedInstrument],
   );
   const selectedSnapshotDiscipline = useMemo(
     () =>
@@ -1154,6 +1309,7 @@ export default function TradingTab({
           isDiscoveryMode={Boolean(discoveryLimit)}
           liveRefreshLocked={liveRefreshLocked}
           liveRefreshLockedReason={liveRefreshLockedReason}
+          topNotification={selectedNotification}
           onRefresh={refreshTradingLive}
           onSelectInstrument={setPreferredInstrument}
         />
