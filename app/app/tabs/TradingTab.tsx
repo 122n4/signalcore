@@ -1163,7 +1163,7 @@ function TradingDecisionCockpit({
                   : "border-amber-400/22 bg-amber-400/10 text-amber-100"
               }`}
             >
-              <span className="font-semibold uppercase tracking-[0.16em]">Chart trigger</span>
+              <span className="font-semibold uppercase tracking-[0.16em]">Live chart</span>
               <span className="font-semibold">
                 {hasTrigger ? compactPrice(plan.trigger) : "Not qualified yet"}
               </span>
@@ -1586,6 +1586,32 @@ export default function TradingTab({
     lastForcedLiveRefreshAtRef.current = Date.now();
     await refresh(liveRefreshLocked ? undefined : { forceTradingRefresh: true });
   }, [liveRefreshLocked, refresh]);
+  useEffect(() => {
+    if (!selectedEntry || !selectedEntry.contextSummary.marketOpen || liveRefreshLocked) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.hidden || isRefreshing) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastForcedLiveRefreshAtRef.current < 75_000) {
+        return;
+      }
+
+      lastForcedLiveRefreshAtRef.current = now;
+      void refresh({ forceTradingRefresh: true });
+    }, 75_000);
+
+    return () => window.clearInterval(interval);
+  }, [
+    isRefreshing,
+    liveRefreshLocked,
+    refresh,
+    selectedEntry,
+  ]);
   useEffect(() => {
     if (!selectedEntry || !selectedSnapshotDiscipline.blocked || isRefreshing || liveRefreshLocked) {
       return;
