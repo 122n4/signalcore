@@ -75,6 +75,7 @@ function compactReport(report: MarketDataBackfillRunReport) {
     before: report.before.summary,
     after: report.after.summary,
     sync: report.sync.summary,
+    stagedSync: report.sync.stagedSummary,
     coverageFailures: report.coverageAudit.failures,
     outputs: report.outputs,
   };

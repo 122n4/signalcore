@@ -11,6 +11,7 @@ export * from "./baseline";
 export * from "./dataQuality";
 export * from "./datasetHealth";
 export * from "./marketDataBackfill";
+export * from "./marketDataHarvester";
 export * from "./runtimeHealth";
 export * from "./validationGates";
 export * from "./decisionEngine";

@@ -209,7 +209,7 @@ async function findFirstCsv(targetDir: string): Promise<string | null> {
   return null;
 }
 
-async function downloadBinanceMonthlyCsv(args: {
+export async function downloadBinanceMonthlyCsv(args: {
   symbol: string;
   part: TradingOfficialSyncMonth;
   targetPath: string;

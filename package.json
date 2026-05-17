@@ -40,6 +40,7 @@
     "research:opportunity-review": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchOpportunityReview.ts",
     "research:data-sync": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/syncHistoricalMarketData.ts",
     "research:data-audit": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runHistoricalCoverageAudit.ts",
+    "research:data-harvest": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataHarvester.ts",
     "research:data-backfill": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataBackfillWorker.ts",
     "research:data-backfill:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataBackfillWorker.ts --loop",
     "research:data-stage": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/prepareMarketDataStaging.ts",

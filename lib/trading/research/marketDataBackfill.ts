@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   buildBinanceMonthlyKlineZipUrl,
   buildMonthlyRange,
+  downloadBinanceMonthlyCsv,
   resolveTradingHistoricalInstrument,
   runTradingHistoricalCoverageAudit,
   summarizeSyncResult,
@@ -83,6 +84,18 @@ export type MarketDataBackfillPlan = {
   };
 };
 
+export type StagedMarketDataSyncStatus = "downloaded" | "existing" | "failed";
+
+export type StagedMarketDataSyncEntry = {
+  instrument: string;
+  status: StagedMarketDataSyncStatus;
+  targetPath: string;
+  remoteUrl: string | null;
+  checksumVerified: boolean | null;
+  periodLabel: string;
+  error: string | null;
+};
+
 export type MarketDataBackfillRunRequest = {
   instruments?: string[];
   from?: TradingOfficialSyncMonth;
@@ -118,6 +131,13 @@ export type MarketDataBackfillRunReport = {
     supportedInstruments: TradingOfficialSyncInstrument[];
     result: TradingOfficialSyncResult | null;
     summary: Awaited<ReturnType<typeof summarizeSyncResult>> | null;
+    stagedAttempted: boolean;
+    stagedResult: StagedMarketDataSyncEntry[];
+    stagedSummary: {
+      downloaded: number;
+      existing: number;
+      failed: number;
+    };
   };
   coverageAudit: {
     attempted: boolean;
@@ -275,6 +295,26 @@ function buildLocalCandidates(args: {
   };
 }
 
+function buildStagedCryptoCandidates(args: {
+  root: string;
+  symbol: string;
+  part: TradingOfficialSyncMonth;
+}): {
+  label: string;
+  targetPath: string;
+  candidates: string[];
+  remoteUrl: string;
+} {
+  const label = monthLabel(args.part);
+  const filename = `${args.symbol}-1m-${label}.csv`;
+  return {
+    label,
+    targetPath: path.join(args.root, filename),
+    candidates: [path.join(args.root, filename)],
+    remoteUrl: buildBinanceMonthlyKlineZipUrl(args.symbol, args.part),
+  };
+}
+
 function uniqueYearParts(from: TradingOfficialSyncMonth, to: TradingOfficialSyncMonth): TradingOfficialSyncMonth[] {
   const parts: TradingOfficialSyncMonth[] = [];
   for (let year = from.year; year <= to.year; year += 1) {
@@ -366,14 +406,53 @@ async function buildStagedEntries(args: {
   from: TradingOfficialSyncMonth;
   to: TradingOfficialSyncMonth;
   stagingDataDir: string;
+  stagingCatalogPath?: string;
 }): Promise<MarketDataBackfillPlanEntry[]> {
-  const catalog = await readJsonIfExists<StagingCatalog>("config/trading-research/market-staging-catalog.json");
+  const catalog = await readJsonIfExists<StagingCatalog>(
+    args.stagingCatalogPath ?? "config/trading-research/market-staging-catalog.json",
+  );
   const markets = catalog?.markets ?? [];
   const entries: MarketDataBackfillPlanEntry[] = [];
 
   for (const market of markets) {
     const root = path.join(args.stagingDataDir, ...market.target_path_segments);
     const periods: MarketDataBackfillPeriod[] = [];
+    const isBinanceCrypto =
+      market.expected_local_format === "crypto_binance_monthly_m1"
+      && market.source.provider.toLowerCase() === "binance";
+
+    if (isBinanceCrypto) {
+      for (const part of buildMonthlyRange(args.from, args.to)) {
+        const target = buildStagedCryptoCandidates({
+          root,
+          symbol: market.expected_symbol,
+          part,
+        });
+        const existingPath = await firstExistingPath(target.candidates);
+
+        periods.push({
+          label: target.label,
+          status: existingPath ? "existing" : "missing_downloadable",
+          targetPath: target.targetPath,
+          existingPath,
+          remoteUrl: target.remoteUrl,
+          note: existingPath
+            ? "Staged Binance file exists, but this market is not active in the lab yet."
+            : "Can be downloaded to staging from Binance public monthly kline archives; promotion stays blocked until full validation.",
+        });
+      }
+
+      entries.push({
+        instrument: market.instrument.toUpperCase(),
+        source: "staged_market",
+        group: market.group,
+        localFormat: market.expected_local_format,
+        dataSymbol: market.expected_symbol,
+        autoDownload: true,
+        periods,
+      });
+      continue;
+    }
 
     for (const part of uniqueYearParts(args.from, args.to)) {
       const targetPath = path.join(root, `DAT_ASCII_${market.expected_symbol}_M1_${part.year}.csv`);
@@ -437,6 +516,7 @@ export async function buildTradingMarketDataBackfillPlan(args: {
   from?: TradingOfficialSyncMonth;
   to?: TradingOfficialSyncMonth;
   includeStaged?: boolean;
+  stagingCatalogPath?: string;
 } = {}): Promise<MarketDataBackfillPlan> {
   const config = args.config ?? await loadResearchConfig();
   const from = args.from ?? defaultFromMonth(config);
@@ -462,6 +542,7 @@ export async function buildTradingMarketDataBackfillPlan(args: {
       from,
       to,
       stagingDataDir,
+      stagingCatalogPath: args.stagingCatalogPath,
     }));
   }
 
@@ -502,6 +583,87 @@ function collectSupportedSyncInstruments(entries: MarketDataBackfillPlanEntry[])
   );
 }
 
+function parseMonthLabel(label: string): TradingOfficialSyncMonth | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return { year, month };
+}
+
+async function syncStagedDownloadableEntries(args: {
+  entries: MarketDataBackfillPlanEntry[];
+  force?: boolean;
+}): Promise<StagedMarketDataSyncEntry[]> {
+  const result: StagedMarketDataSyncEntry[] = [];
+
+  for (const entry of args.entries) {
+    if (entry.source !== "staged_market" || !entry.autoDownload || !entry.dataSymbol) {
+      continue;
+    }
+
+    for (const period of entry.periods) {
+      const part = parseMonthLabel(period.label);
+      if (!part) {
+        continue;
+      }
+
+      if (!args.force && period.existingPath) {
+        result.push({
+          instrument: entry.instrument,
+          status: "existing",
+          targetPath: period.targetPath,
+          remoteUrl: period.remoteUrl,
+          checksumVerified: null,
+          periodLabel: period.label,
+          error: null,
+        });
+        continue;
+      }
+
+      try {
+        const download = await downloadBinanceMonthlyCsv({
+          symbol: entry.dataSymbol,
+          part,
+          targetPath: period.targetPath,
+        });
+        result.push({
+          instrument: entry.instrument,
+          status: "downloaded",
+          targetPath: period.targetPath,
+          remoteUrl: download.remoteUrl,
+          checksumVerified: download.checksumVerified,
+          periodLabel: period.label,
+          error: null,
+        });
+      } catch (error) {
+        result.push({
+          instrument: entry.instrument,
+          status: "failed",
+          targetPath: period.targetPath,
+          remoteUrl: period.remoteUrl,
+          checksumVerified: null,
+          periodLabel: period.label,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+function summarizeStagedSync(entries: StagedMarketDataSyncEntry[]): MarketDataBackfillRunReport["sync"]["stagedSummary"] {
+  return {
+    downloaded: entries.filter((entry) => entry.status === "downloaded").length,
+    existing: entries.filter((entry) => entry.status === "existing").length,
+    failed: entries.filter((entry) => entry.status === "failed").length,
+  };
+}
+
 async function writeBackfillMarkdown(report: MarketDataBackfillRunReport, targetPath: string): Promise<void> {
   const lines = [
     "# Trading Market Data Backfill",
@@ -515,6 +677,7 @@ async function writeBackfillMarkdown(report: MarketDataBackfillRunReport, target
     `- After: ${report.after.summary.existing}/${report.after.summary.periods} existing, ${report.after.summary.missingDownloadable} downloadable missing, ${report.after.summary.missingManual} manual missing`,
     `- Download attempted: ${report.sync.attempted ? "yes" : "no"}`,
     `- Downloaded: ${report.sync.summary?.downloaded ?? 0}`,
+    `- Staged downloads: ${report.sync.stagedSummary.downloaded} downloaded, ${report.sync.stagedSummary.failed} failed`,
     `- Coverage audit: ${report.coverageAudit.outputPath ?? "not run"}`,
     "",
     "## Remaining Gaps",
@@ -560,6 +723,7 @@ export async function runTradingMarketDataBackfill(
   const supportedInstruments = collectSupportedSyncInstruments(before.entries);
   let syncResult: TradingOfficialSyncResult | null = null;
   let syncSummary: Awaited<ReturnType<typeof summarizeSyncResult>> | null = null;
+  let stagedResult: StagedMarketDataSyncEntry[] = [];
 
   if (download && supportedInstruments.length > 0) {
     syncResult = await syncOfficialHistoricalArchives({
@@ -569,6 +733,13 @@ export async function runTradingMarketDataBackfill(
       force: request.force,
     });
     syncSummary = await summarizeSyncResult(syncResult);
+  }
+
+  if (download) {
+    stagedResult = await syncStagedDownloadableEntries({
+      entries: before.entries,
+      force: request.force,
+    });
   }
 
   const after = await buildTradingMarketDataBackfillPlan({
@@ -635,6 +806,9 @@ export async function runTradingMarketDataBackfill(
       supportedInstruments,
       result: syncResult,
       summary: syncSummary,
+      stagedAttempted: download,
+      stagedResult,
+      stagedSummary: summarizeStagedSync(stagedResult),
     },
     coverageAudit: {
       attempted: runAudit,
