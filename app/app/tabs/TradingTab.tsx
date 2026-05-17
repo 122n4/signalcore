@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { normalizeMode } from "@/lib/signalcore/modes";
 
 import PremiumAsyncStateCard, {
@@ -21,14 +21,9 @@ import {
   TRADING_LIVE_SNAPSHOT_MAX_AGE_MS,
   type TradingLiveSnapshotAssessment,
 } from "@/lib/trading/liveSnapshotDiscipline";
-import {
-  isTradingInstrumentFollowed,
-  readFollowedTradingInstruments,
-  subscribeFollowedTradingInstruments,
-  toggleFollowedTradingInstrument,
-} from "@/lib/trading/followedInstruments";
 import { deriveTradingNotificationEvents, deriveTradingNotificationPreview } from "@/lib/trading/notifications";
 import type { TradingNotificationEvent } from "@/lib/trading/notifications";
+import { useFollowedTradingInstruments } from "@/lib/trading/useFollowedTradingInstruments";
 import {
   resolveTradingActionGuidance,
   type TradingWatchlistEntry,
@@ -714,7 +709,7 @@ function TradingDecisionCockpit({
   isFollowed: boolean;
   onRefresh: () => Promise<void> | void;
   onSelectInstrument: (instrument: string) => void;
-  onToggleFollow: (instrument: string) => void;
+  onToggleFollow: (entry: TradingWatchlistEntry) => void;
 }) {
   const [queueExpanded, setQueueExpanded] = useState(false);
   const plan = resolveBrokerPlan(entry, snapshotBlocked);
@@ -878,7 +873,7 @@ function TradingDecisionCockpit({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => onToggleFollow(entry.instrument)}
+                    onClick={() => onToggleFollow(entry)}
                     className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
                       isFollowed
                         ? "border-emerald-300/45 bg-emerald-400/16 text-emerald-50"
@@ -936,7 +931,7 @@ function TradingDecisionCockpit({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => onToggleFollow(entry.instrument)}
+                    onClick={() => onToggleFollow(entry)}
                     className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                       isFollowed
                         ? "border-emerald-300/45 bg-emerald-400/16 text-emerald-50"
@@ -1165,11 +1160,8 @@ export default function TradingTab({
     [tradingSupport],
   );
   const [preferredInstrument, setPreferredInstrument] = useState<string | null>(null);
-  const followedInstruments = useSyncExternalStore(
-    subscribeFollowedTradingInstruments,
-    readFollowedTradingInstruments,
-    () => [],
-  );
+  const { toggle: toggleFollowedInstrument, isFollowed: isFollowedInstrument } =
+    useFollowedTradingInstruments();
   const [activeSection, setActiveSection] = useState<TradingWorkspaceSection>("live-decision");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const lastForcedLiveRefreshAtRef = useRef(0);
@@ -1240,11 +1232,26 @@ export default function TradingTab({
     [notificationEvents, notificationPreview, selectedInstrument],
   );
   const selectedIsFollowed = selectedEntry
-    ? isTradingInstrumentFollowed(selectedEntry.instrument, followedInstruments)
+    ? isFollowedInstrument(selectedEntry.instrument)
     : false;
-  const handleToggleFollow = useCallback((instrument: string) => {
-    toggleFollowedTradingInstrument(instrument);
-  }, []);
+  const handleToggleFollow = useCallback(
+    (entry: TradingWatchlistEntry) => {
+      void toggleFollowedInstrument(entry.instrument, {
+        currentState: entry.currentState,
+        executionStatus: entry.executionStatus,
+        direction: entry.liveDecision.direction ?? null,
+        triggerLevel: entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null,
+        invalidationLevel:
+          entry.liveDecision.invalidationLevel ??
+          entry.workspace.execution.invalidation.invalidationLevel ??
+          null,
+        targetZone: entry.liveDecision.targetZone ?? entry.workspace.execution.tradePath.targetZone ?? null,
+        riskPct: entry.liveDecision.riskPct ?? entry.workspace.execution.riskFraming.riskPct ?? null,
+        headline: entry.currentHeadline,
+      });
+    },
+    [toggleFollowedInstrument],
+  );
   const selectedSnapshotDiscipline = useMemo(
     () =>
       assessTradingLiveSnapshot({

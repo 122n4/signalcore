@@ -1,13 +1,8 @@
 "use client";
 
-import React, { useSyncExternalStore } from "react";
-import {
-  isTradingInstrumentFollowed,
-  readFollowedTradingInstruments,
-  subscribeFollowedTradingInstruments,
-  toggleFollowedTradingInstrument,
-} from "@/lib/trading/followedInstruments";
+import React from "react";
 import { resolveTradingAlertGuidance, type TradingWatchlistEntry } from "@/lib/trading/state";
+import { useFollowedTradingInstruments } from "@/lib/trading/useFollowedTradingInstruments";
 
 import PremiumAsyncStateCard, {
   buildSnapshotFootnote,
@@ -133,11 +128,11 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
     lastUpdatedAt,
     snapshotDiscipline,
   } = useTradingWorkspace("trading");
-  const followedInstruments = useSyncExternalStore(
-    subscribeFollowedTradingInstruments,
-    readFollowedTradingInstruments,
-    () => [],
-  );
+  const {
+    instruments: followedInstruments,
+    close: closeFollowedInstrument,
+    isFollowed: isFollowedInstrument,
+  } = useFollowedTradingInstruments();
   const snapshotFootnote = React.useMemo(() => {
     const baseFootnote = buildSnapshotFootnote({
       isRefreshing,
@@ -220,9 +215,9 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
   const followedEntries = React.useMemo(
     () =>
       entries.filter((entry) =>
-        isTradingInstrumentFollowed(entry.instrument, followedInstruments),
+        isFollowedInstrument(entry.instrument),
       ),
-    [entries, followedInstruments],
+    [entries, followedInstruments, isFollowedInstrument],
   );
 
   if (status === "idle" || status === "loading") {
@@ -308,10 +303,17 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => toggleFollowedTradingInstrument(entry.instrument)}
+                  onClick={() =>
+                    void closeFollowedInstrument(
+                      entry.instrument,
+                      entry.liveDecision.nextDisciplineStep ||
+                        entry.liveDecision.reasons[0] ||
+                        "Removed from follow list",
+                    )
+                  }
                   className="mt-4 inline-flex items-center justify-center rounded-xl border border-slate-700 bg-[#101b30] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-400/35"
                 >
-                  Remove from follow list
+                  Close / remove from follow list
                 </button>
               </article>
             ))
