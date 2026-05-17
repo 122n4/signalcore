@@ -173,6 +173,12 @@ export default async function OpsPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <a
+              href="/ops/lab"
+              className="rounded-full border border-emerald-200/30 bg-emerald-300/10 px-4 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-300/15"
+            >
+              Research Lab
+            </a>
+            <a
               href="/ops/marketing"
               className="rounded-full border border-cyan-200/30 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15"
             >
