@@ -41,6 +41,7 @@
     "research:data-sync": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/syncHistoricalMarketData.ts",
     "research:data-audit": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runHistoricalCoverageAudit.ts",
     "research:engine-elevation": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runCurrentEngineElevationStudy.ts",
+    "research:expansion-markets": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchExpansionMarketStudy.ts",
     "research:data-harvest": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataHarvester.ts",
     "research:data-backfill": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataBackfillWorker.ts",
     "research:data-backfill:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataBackfillWorker.ts --loop",

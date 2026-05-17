@@ -185,6 +185,51 @@ export const TRADING_BACKTEST_BASE_INSTRUMENTS: TradingHistoricalInstrumentConfi
   },
 ];
 
+export const TRADING_BACKTEST_RESEARCH_EXPANSION_INSTRUMENTS: TradingHistoricalInstrumentConfig[] = [
+  {
+    instrument: "SOLUSD",
+    dataSymbols: [{ symbol: "SOL/USD", relation: "direct" }],
+    localDataset: {
+      format: "crypto_binance_monthly_m1",
+      symbol: "SOLUSDT",
+      relation: "direct",
+      label: "SOLUSDT staging archive",
+      pathSegments: ["crypto", "solusd"],
+    },
+    marketType: "crypto",
+    sessionProfile: "crypto",
+    source: "twelvedata",
+  },
+  {
+    instrument: "BNBUSD",
+    dataSymbols: [{ symbol: "BNB/USD", relation: "direct" }],
+    localDataset: {
+      format: "crypto_binance_monthly_m1",
+      symbol: "BNBUSDT",
+      relation: "direct",
+      label: "BNBUSDT staging archive",
+      pathSegments: ["crypto", "bnbusd"],
+    },
+    marketType: "crypto",
+    sessionProfile: "crypto",
+    source: "twelvedata",
+  },
+  {
+    instrument: "XRPUSD",
+    dataSymbols: [{ symbol: "XRP/USD", relation: "direct" }],
+    localDataset: {
+      format: "crypto_binance_monthly_m1",
+      symbol: "XRPUSDT",
+      relation: "direct",
+      label: "XRPUSDT staging archive",
+      pathSegments: ["crypto", "xrpusd"],
+    },
+    marketType: "crypto",
+    sessionProfile: "crypto",
+    source: "twelvedata",
+  },
+];
+
 export const TRADING_BACKTEST_DEFAULT_TIMEFRAMES: TradingTimeframe[] = [
   "4h",
   "1h",
@@ -196,7 +241,10 @@ export function resolveTradingHistoricalInstrument(
   instrument: string,
 ): TradingHistoricalInstrumentConfig {
   const normalized = instrument.trim().toUpperCase();
-  const config = TRADING_BACKTEST_BASE_INSTRUMENTS.find(
+  const config = [
+    ...TRADING_BACKTEST_BASE_INSTRUMENTS,
+    ...TRADING_BACKTEST_RESEARCH_EXPANSION_INSTRUMENTS,
+  ].find(
     (candidate) => candidate.instrument === normalized,
   );
 
