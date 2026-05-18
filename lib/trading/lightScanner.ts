@@ -1243,6 +1243,7 @@ export async function buildTradingLightScannerInputs(args: {
   forceProviderRefresh?: boolean;
   includeInactiveMarkets?: boolean;
   allowLiveFetch?: boolean;
+  liveFetchInstruments?: string[] | null;
   storedInputs?: ComposeTradingLiveDecisionInput[] | null;
 }): Promise<ComposeTradingLiveDecisionInput[]> {
   const coverageMap = await readTradingProductCoverageMap();
@@ -1287,27 +1288,39 @@ export async function buildTradingLightScannerInputs(args: {
   });
 
   const liveFetchAllowed = args.allowLiveFetch !== false;
+  const explicitLiveFetchInstrumentSet =
+    args.liveFetchInstruments && args.liveFetchInstruments.length > 0
+      ? new Set(args.liveFetchInstruments.map((instrument) => instrument.trim().toUpperCase()))
+      : null;
   const openMarketFetchTargets = new Set(
     liveFetchAllowed
-      ? instrumentStates
-          .filter((entry) => entry.session.marketOpen)
-          .sort((left, right) => {
-            const leftMissingFresh = left.storedPayload ? 0 : 1;
-            const rightMissingFresh = right.storedPayload ? 0 : 1;
-            if (leftMissingFresh !== rightMissingFresh) {
-              return rightMissingFresh - leftMissingFresh;
-            }
+      ? explicitLiveFetchInstrumentSet
+        ? instrumentStates
+            .filter(
+              (entry) =>
+                entry.session.marketOpen &&
+                explicitLiveFetchInstrumentSet.has(entry.instrument.instrument.trim().toUpperCase()),
+            )
+            .map((entry) => entry.instrument.instrument)
+        : instrumentStates
+            .filter((entry) => entry.session.marketOpen)
+            .sort((left, right) => {
+              const leftMissingFresh = left.storedPayload ? 0 : 1;
+              const rightMissingFresh = right.storedPayload ? 0 : 1;
+              if (leftMissingFresh !== rightMissingFresh) {
+                return rightMissingFresh - leftMissingFresh;
+              }
 
-            const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
-            const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
-            if (leftAgeMs !== rightAgeMs) {
-              return rightAgeMs - leftAgeMs;
-            }
+              const leftAgeMs = left.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+              const rightAgeMs = right.storedFreshness?.ageMs ?? Number.POSITIVE_INFINITY;
+              if (leftAgeMs !== rightAgeMs) {
+                return rightAgeMs - leftAgeMs;
+              }
 
-            return left.index - right.index;
-          })
-          .slice(0, openMarketLiveFetchLimit)
-          .map((entry) => entry.instrument.instrument)
+              return left.index - right.index;
+            })
+            .slice(0, openMarketLiveFetchLimit)
+            .map((entry) => entry.instrument.instrument)
       : [],
   );
 

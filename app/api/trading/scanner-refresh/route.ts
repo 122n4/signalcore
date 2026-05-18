@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { isEngineLoopAuthorized } from "@/lib/engine/loopAuth";
-import { buildTradingLightScannerInputs } from "@/lib/trading/lightScanner";
 import {
-  readFreshTradingScannerSnapshots,
+  TRADING_LIGHT_SCANNER_INSTRUMENTS,
+  buildTradingLightScannerInputs,
+} from "@/lib/trading/lightScanner";
+import {
+  readLatestTradingScannerSnapshots,
   writeTradingScannerSnapshots,
 } from "@/lib/trading/scannerSnapshotStore";
 
@@ -12,6 +15,120 @@ export const dynamic = "force-dynamic";
 
 function isAuthorized(req: Request) {
   return isEngineLoopAuthorized({ headers: req.headers, env: process.env });
+}
+
+const PRIORITY_REFRESH_ORDER = [
+  "BTCUSD",
+  "ETHUSD",
+  "XAUUSD",
+  "EURUSD",
+  "NAS100",
+  "US500",
+  "GBPUSD",
+  "USDJPY",
+  "AUDUSD",
+  "USDCAD",
+  "EURJPY",
+  "GBPJPY",
+  "USDCHF",
+  "EURGBP",
+  "AUDJPY",
+  "NZDUSD",
+  "NZDJPY",
+  "EURCHF",
+  "XAGUSD",
+];
+
+function positiveIntegerFromSearch(
+  url: URL,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const value = Number(url.searchParams.get(key));
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function positiveIntegerFromEnv(key: string, fallback: number, min: number, max: number) {
+  const value = Number(process.env[key]);
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function orderedScannerInstruments() {
+  const configured = new Set(
+    TRADING_LIGHT_SCANNER_INSTRUMENTS.map((config) => config.instrument.trim().toUpperCase()),
+  );
+  const priority = PRIORITY_REFRESH_ORDER.filter((instrument) => configured.has(instrument));
+  const remaining = TRADING_LIGHT_SCANNER_INSTRUMENTS.map((config) =>
+    config.instrument.trim().toUpperCase(),
+  ).filter((instrument) => !priority.includes(instrument));
+
+  return [...priority, ...remaining];
+}
+
+function resolveRefreshBatch(args: {
+  asOf: string;
+  url: URL;
+  storedInputs: Awaited<ReturnType<typeof readLatestTradingScannerSnapshots>>["inputs"];
+}) {
+  const ordered = orderedScannerInstruments();
+  const manualInstruments = String(args.url.searchParams.get("instruments") || "")
+    .split(",")
+    .map((instrument) => instrument.trim().toUpperCase())
+    .filter((instrument) => ordered.includes(instrument));
+
+  if (manualInstruments.length > 0) {
+    return {
+      mode: "manual",
+      batchSize: manualInstruments.length,
+      batchIndex: 0,
+      batchCount: 1,
+      refreshEveryMinutes: null,
+      instruments: Array.from(new Set(manualInstruments)),
+    };
+  }
+
+  const batchSize = positiveIntegerFromSearch(
+    args.url,
+    "batchSize",
+    positiveIntegerFromEnv("TRADING_SCANNER_REFRESH_BATCH_SIZE", 5, 1, ordered.length),
+    1,
+    ordered.length,
+  );
+  const refreshEveryMinutes = positiveIntegerFromSearch(
+    args.url,
+    "batchMinutes",
+    positiveIntegerFromEnv("TRADING_SCANNER_REFRESH_BATCH_MINUTES", 2, 1, 15),
+    1,
+    15,
+  );
+  const batchCount = Math.max(1, Math.ceil(ordered.length / batchSize));
+  const asOfMs = Date.parse(args.asOf);
+  const bucket = Number.isFinite(asOfMs)
+    ? Math.floor(asOfMs / (refreshEveryMinutes * 60_000))
+    : Math.floor(Date.now() / (refreshEveryMinutes * 60_000));
+  const batchIndex = ((bucket % batchCount) + batchCount) % batchCount;
+  const start = batchIndex * batchSize;
+  const scheduled = ordered.slice(start, start + batchSize);
+  const storedInstrumentSet = new Set(
+    args.storedInputs.map((input) => input.snapshot.instrument.trim().toUpperCase()),
+  );
+  const missingPriority = ordered
+    .filter((instrument) => !storedInstrumentSet.has(instrument))
+    .filter((instrument) => !scheduled.includes(instrument))
+    .slice(0, Math.max(0, batchSize - scheduled.length));
+
+  return {
+    mode: "rotating",
+    batchSize,
+    batchIndex,
+    batchCount,
+    refreshEveryMinutes,
+    instruments: Array.from(new Set([...scheduled, ...missingPriority])),
+  };
 }
 
 function summarizeInputs(
@@ -70,14 +187,21 @@ async function handleRefresh(req: Request) {
   }
 
   const asOf = new Date().toISOString();
+  const url = new URL(req.url);
 
   try {
-    const storedScannerSnapshots = await readFreshTradingScannerSnapshots({ asOf });
+    const storedScannerSnapshots = await readLatestTradingScannerSnapshots({ asOf });
+    const refreshBatch = resolveRefreshBatch({
+      asOf,
+      url,
+      storedInputs: storedScannerSnapshots.inputs,
+    });
     const inputs = await buildTradingLightScannerInputs({
       asOf,
       forceRefresh: true,
       forceProviderRefresh: true,
       includeInactiveMarkets: true,
+      liveFetchInstruments: refreshBatch.instruments,
       storedInputs: storedScannerSnapshots.inputs,
     });
     const persist = await writeTradingScannerSnapshots({
@@ -128,6 +252,7 @@ async function handleRefresh(req: Request) {
         persistedCount: persist.count,
         skippedStaleOpenCount: persist.skippedStaleOpenCount,
         persistError: persist.error,
+        refreshBatch,
         alert: scannerAlert,
         summary,
       },

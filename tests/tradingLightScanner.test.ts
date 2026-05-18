@@ -193,6 +193,26 @@ describe("trading light scanner", () => {
     expect(inputs.filter((input) => input.scannerSnapshot?.source === "empty").length).toBeGreaterThan(0);
   });
 
+  it("supports explicit rotating live-fetch batches while keeping the full radar visible", async () => {
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      forceProviderRefresh: true,
+      includeInactiveMarkets: true,
+      liveFetchInstruments: ["BTCUSD", "ETHUSD", "EURUSD"],
+    });
+
+    const providerInputs = inputs.filter((input) => input.scannerSnapshot?.source === "provider");
+
+    expect(inputs).toHaveLength(19);
+    expect(getCandlesMock).toHaveBeenCalledTimes(3);
+    expect(providerInputs.map((input) => input.snapshot.instrument).sort()).toEqual([
+      "BTCUSD",
+      "ETHUSD",
+      "EURUSD",
+    ]);
+  });
+
   it("can build scanner inputs without touching live providers", async () => {
     const inputs = await buildTradingLightScannerInputs({
       asOf: "2026-03-10T14:00:00.000Z",
