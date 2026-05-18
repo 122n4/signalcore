@@ -535,6 +535,39 @@ function formatConfidence(value: number | null | undefined) {
   return `${Math.round(normalized)}%`;
 }
 
+function formatDistancePct(from: number | null | undefined, to: number | null | undefined) {
+  if (!isFiniteNumber(from) || !isFiniteNumber(to) || from === 0) return "-";
+  return `${Math.abs(((to - from) / from) * 100).toFixed(2)}%`;
+}
+
+function getLatestChartPrice(entry: TradingWatchlistEntry) {
+  const candles = entry.chart?.candles ?? [];
+  const latest = candles.at(-1);
+  return isFiniteNumber(latest?.close) ? latest.close : null;
+}
+
+function parseTargetPrices(value: string | null | undefined) {
+  if (!value) return [];
+  return Array.from(value.matchAll(/-?\d+(?:\.\d+)?/g))
+    .map((match) => Number(match[0]))
+    .filter((price) => Number.isFinite(price));
+}
+
+function resolveDirectionalTarget(
+  plan: ReturnType<typeof resolveBrokerPlan>,
+  direction: string | null | undefined,
+) {
+  if (!isFiniteNumber(plan.trigger)) return null;
+  const targets = parseTargetPrices(plan.target);
+  if (!targets.length) return null;
+
+  if (direction === "short") {
+    return targets.filter((target) => target < plan.trigger!).sort((left, right) => right - left)[0] ?? targets[0];
+  }
+
+  return targets.filter((target) => target > plan.trigger!).sort((left, right) => left - right)[0] ?? targets[0];
+}
+
 function toneForRiskReward(value: number | null | undefined): TradeThesisItem["tone"] {
   if (!isFiniteNumber(value)) return "neutral";
   if (value >= 2) return "good";
@@ -653,7 +686,7 @@ function buildProfessionalValidation(args: {
   return [
     {
       label: "Bias being used",
-      value: `${formatReadableLabel(decision.bias.direction)} · ${formatScore(decision.bias.score)}`,
+      value: `${formatReadableLabel(decision.bias.direction)} - ${formatScore(decision.bias.score)}`,
       detail: `Structure ${formatReadableLabel(market.structure.direction)} / ${formatReadableLabel(
         market.structure.state,
       )}. Momentum ${formatReadableLabel(market.momentum.direction)} / ${formatReadableLabel(
@@ -663,7 +696,7 @@ function buildProfessionalValidation(args: {
     },
     {
       label: "Regime risk",
-      value: `${formatReadableLabel(market.regime.state)} · ${formatReadableLabel(market.volatility.state)}`,
+      value: `${formatReadableLabel(market.regime.state)} - ${formatReadableLabel(market.volatility.state)}`,
       detail: `Liquidity ${formatReadableLabel(market.liquidity.state)} (${formatScore(
         market.liquidity.score,
       )}). Session ${entry.contextSummary.sessionLabel}.`,
@@ -671,7 +704,7 @@ function buildProfessionalValidation(args: {
     },
     {
       label: "Risk model",
-      value: `${formatRisk(riskPct)} · ${formatReadableLabel(riskMode)}`,
+      value: `${formatRisk(riskPct)} - ${formatReadableLabel(riskMode)}`,
       detail: `RR estimate ${isFiniteNumber(rr) ? rr.toFixed(2) : "-"}. Invalidation ${formatReadableLabel(
         execution.invalidation.invalidationType,
       )} at ${compactPrice(plan.invalidation)}, confidence ${formatConfidence(execution.invalidation.confidence)}.`,
@@ -679,7 +712,7 @@ function buildProfessionalValidation(args: {
     },
     {
       label: "Execution quality",
-      value: `Clarity ${formatReadableLabel(decision.clarity.level)} · Grade ${setup.quality.grade}`,
+      value: `Clarity ${formatReadableLabel(decision.clarity.level)} - Grade ${setup.quality.grade}`,
       detail: `Alignment ${formatScore(decision.clarity.alignment)}, conflict ${formatScore(
         decision.clarity.conflictScore,
       )}, maturity ${formatReadableLabel(setup.maturity.state)} (${formatScore(setup.maturity.score)}).`,
@@ -687,7 +720,7 @@ function buildProfessionalValidation(args: {
     },
     {
       label: "Data / timeframe",
-      value: `${timeframe ?? "Live"} · ${entry.contextSummary.coverageLabel}`,
+      value: `${timeframe ?? "Live"} - ${entry.contextSummary.coverageLabel}`,
       detail:
         snapshotFootnote ??
         `Snapshot ${market.snapshotAt}. Timeframes available: ${market.timeframes.join(", ") || "-"}.`,
@@ -766,6 +799,164 @@ function ProfessionalValidationPanel({ items }: { items: ProfessionalValidationI
             <div className="mt-2 text-xs leading-5 text-slate-300">{item.detail}</div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ExpertTraderZone({
+  entry,
+  plan,
+  snapshotDiscipline,
+  noTradeReasons,
+}: {
+  entry: TradingWatchlistEntry;
+  plan: ReturnType<typeof resolveBrokerPlan>;
+  snapshotDiscipline: TradingLiveSnapshotAssessment;
+  noTradeReasons: string[];
+}) {
+  const market = entry.workspace.market;
+  const decision = entry.workspace.decisionCore;
+  const setup = entry.workspace.setupCore;
+  const execution = entry.workspace.execution;
+  const latestPrice = getLatestChartPrice(entry);
+  const direction = entry.liveDecision.direction ?? setup.setup.direction ?? market.structure.direction;
+  const targetPrice = resolveDirectionalTarget(plan, direction);
+  const riskDistance =
+    isFiniteNumber(plan.trigger) && isFiniteNumber(plan.invalidation)
+      ? Math.abs(plan.trigger - plan.invalidation)
+      : null;
+  const rewardDistance =
+    isFiniteNumber(plan.trigger) && isFiniteNumber(targetPrice)
+      ? Math.abs(targetPrice - plan.trigger)
+      : null;
+  const levelRr =
+    isFiniteNumber(riskDistance) && riskDistance > 0 && isFiniteNumber(rewardDistance)
+      ? rewardDistance / riskDistance
+      : null;
+  const rr = execution.tradePath.riskRewardEstimate ?? levelRr;
+  const latestFeed = entry.liveDecision.feed.slice(-3).reverse();
+  const blockers = noTradeReasons.length
+    ? noTradeReasons.slice(0, 3)
+    : entry.liveDecision.reasons.slice(0, 3);
+
+  return (
+    <div className="mt-4 rounded-[26px] border border-violet-300/18 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.16),transparent_34%),linear-gradient(135deg,rgba(12,18,33,0.96),rgba(5,10,19,0.98))] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-100/70">
+            Expert trader zone
+          </div>
+          <div className="mt-1 text-sm text-slate-300">
+            A faster audit view for experienced traders: multi-timeframe availability, risk map, setup evidence, and decision trail.
+          </div>
+        </div>
+        <span className="rounded-full border border-violet-300/28 bg-violet-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-50">
+          Advanced read
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="rounded-[22px] border border-slate-800 bg-[#07101c]/78 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Multi-timeframe and bias stack
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <BrokerMetric
+              label="Chart timeframe"
+              value={`${entry.chart?.timeframe ?? "No chart"} / available ${market.timeframes.join(", ") || "-"}`}
+              tone={entry.chart?.timeframe ? "good" : "warn"}
+            />
+            <BrokerMetric
+              label="Bias"
+              value={`${formatReadableLabel(decision.bias.direction)} (${formatScore(decision.bias.score)})`}
+              tone={decision.bias.direction === "mixed" ? "warn" : "good"}
+            />
+            <BrokerMetric
+              label="Structure"
+              value={`${formatReadableLabel(market.structure.state)} / ${formatReadableLabel(market.structure.direction)}`}
+            />
+            <BrokerMetric
+              label="Momentum"
+              value={`${formatReadableLabel(market.momentum.state)} / ${formatReadableLabel(market.momentum.direction)}`}
+            />
+          </div>
+          <div className="mt-3 rounded-2xl border border-slate-800 bg-[#101b30] p-3 text-xs leading-5 text-slate-300">
+            Current reading is built from the available timeframe set. If a higher timeframe is not present, Syntrake shows that instead of pretending a full MTF stack exists.
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-slate-800 bg-[#07101c]/78 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Entry risk map
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <BrokerMetric label="Latest price" value={compactPrice(latestPrice)} />
+            <BrokerMetric
+              label="To trigger"
+              value={formatDistancePct(latestPrice, plan.trigger)}
+              tone={isFiniteNumber(plan.trigger) ? "good" : "warn"}
+            />
+            <BrokerMetric
+              label="Stop distance"
+              value={isFiniteNumber(riskDistance) ? compactPrice(riskDistance) : "-"}
+              tone={isFiniteNumber(riskDistance) ? "warn" : "default"}
+            />
+            <BrokerMetric
+              label="RR estimate"
+              value={isFiniteNumber(rr) ? rr.toFixed(2) : "-"}
+              tone={toneForRiskReward(rr) === "good" ? "good" : toneForRiskReward(rr) === "warn" ? "warn" : "default"}
+            />
+          </div>
+          <div className="mt-3 rounded-2xl border border-slate-800 bg-[#101b30] p-3 text-xs leading-5 text-slate-300">
+            Trigger {compactPrice(plan.trigger)}, invalidation {compactPrice(plan.invalidation)}, target {formatTargetLabel(plan.target)}. Risk per trade {formatRisk(plan.risk)}.
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 xl:grid-cols-3">
+        <div className="rounded-[22px] border border-slate-800 bg-[#07101c]/78 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Setup evidence
+          </div>
+          <div className="mt-2 text-sm font-semibold text-white">
+            {formatReadableLabel(setup.setup.type)} - grade {setup.quality.grade}
+          </div>
+          <div className="mt-2 text-xs leading-5 text-slate-300">
+            Quality {formatScore(setup.quality.score)}, maturity {formatReadableLabel(setup.maturity.state)} ({formatScore(setup.maturity.score)}), window {formatReadableLabel(setup.opportunityWindow.state)} ({formatScore(setup.opportunityWindow.score)}).
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-slate-800 bg-[#07101c]/78 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Risk blockers
+          </div>
+          <div className="mt-2 space-y-2">
+            {(blockers.length ? blockers : ["No explicit blocker attached to this snapshot."]).map((item) => (
+              <div key={item} className="rounded-xl border border-slate-800 bg-[#101b30] px-3 py-2 text-xs leading-5 text-slate-300">
+                {item}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[22px] border border-slate-800 bg-[#07101c]/78 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Decision trail
+          </div>
+          <div className="mt-2 space-y-2">
+            {(latestFeed.length ? latestFeed : [{ id: "empty", headline: entry.currentHeadline, timestamp: market.snapshotAt }]).map((event) => (
+              <div key={event.id} className="rounded-xl border border-slate-800 bg-[#101b30] px-3 py-2">
+                <div className="text-xs font-semibold text-white">{event.headline}</div>
+                <div className="mt-1 text-[11px] text-slate-500">{event.timestamp}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-2xl border border-slate-800 bg-[#07101c]/80 p-3 text-xs leading-5 text-slate-400">
+        Data guard: snapshot age {formatSnapshotAgeLabel(snapshotDiscipline.ageMs)}, max allowed {formatSnapshotAgeLabel(TRADING_LIVE_SNAPSHOT_MAX_AGE_MS)}. If data is stale, Syntrake can still explain the idea but should block broker action.
       </div>
     </div>
   );
@@ -1151,6 +1342,12 @@ function TradingDecisionCockpit({
 
         <TradeThesisPanel items={tradeThesisItems} />
         <ProfessionalValidationPanel items={professionalValidationItems} />
+        <ExpertTraderZone
+          entry={entry}
+          plan={plan}
+          snapshotDiscipline={snapshotDiscipline}
+          noTradeReasons={noTradeReasons}
+        />
 
         <div className="mt-5 grid gap-3 lg:grid-cols-3">
           <ReasonCard
