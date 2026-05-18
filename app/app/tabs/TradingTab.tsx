@@ -508,6 +508,8 @@ type TradeThesisItem = {
   tone: "good" | "warn" | "bad" | "neutral";
 };
 
+type ProfessionalValidationItem = TradeThesisItem;
+
 function formatListLabel(values: Array<string | null | undefined>, fallback = "-") {
   const labels = values
     .map((value) => formatReadableLabel(value))
@@ -520,6 +522,23 @@ function toneForScore(score: number | null | undefined): TradeThesisItem["tone"]
   if (!isFiniteNumber(score)) return "neutral";
   if (score >= 70) return "good";
   if (score >= 55) return "warn";
+  return "bad";
+}
+
+function formatScore(value: number | null | undefined) {
+  return isFiniteNumber(value) ? `${Math.round(value)}/100` : "-";
+}
+
+function formatConfidence(value: number | null | undefined) {
+  if (!isFiniteNumber(value)) return "-";
+  const normalized = value <= 1 ? value * 100 : value;
+  return `${Math.round(normalized)}%`;
+}
+
+function toneForRiskReward(value: number | null | undefined): TradeThesisItem["tone"] {
+  if (!isFiniteNumber(value)) return "neutral";
+  if (value >= 2) return "good";
+  if (value >= 1.25) return "warn";
   return "bad";
 }
 
@@ -597,6 +616,92 @@ function buildTradeThesis(args: {
   ];
 }
 
+function buildProfessionalValidation(args: {
+  entry: TradingWatchlistEntry;
+  plan: ReturnType<typeof resolveBrokerPlan>;
+  noTradeReasons: string[];
+  snapshotBlocked: boolean;
+  snapshotFootnote: string | null;
+}): ProfessionalValidationItem[] {
+  const { entry, plan, noTradeReasons, snapshotBlocked, snapshotFootnote } = args;
+  const market = entry.workspace.market;
+  const decision = entry.workspace.decisionCore;
+  const setup = entry.workspace.setupCore;
+  const execution = entry.workspace.execution;
+  const timeframe = entry.chart?.timeframe ?? market.timeframes[0] ?? null;
+  const rr = execution.tradePath.riskRewardEstimate ?? null;
+  const riskMode = execution.riskFraming.riskMode;
+  const riskPct = plan.risk ?? execution.riskFraming.riskPct ?? null;
+  const blockedReason =
+    noTradeReasons[0] ??
+    execution.executionStatus.nextDisciplineStep ??
+    entry.liveDecision.nextDisciplineStep ??
+    "No hard blocker is attached, but the checklist still has final authority.";
+  const regimeIsRisky =
+    market.regime.state === "noisy" ||
+    market.regime.state === "low_participation" ||
+    market.volatility.state === "spike" ||
+    market.liquidity.state === "thin_liquidity" ||
+    market.liquidity.state === "poor_participation";
+  const clarityTone =
+    decision.clarity.level === "high"
+      ? "good"
+      : decision.clarity.level === "medium"
+        ? "warn"
+        : "bad";
+
+  return [
+    {
+      label: "Bias being used",
+      value: `${formatReadableLabel(decision.bias.direction)} · ${formatScore(decision.bias.score)}`,
+      detail: `Structure ${formatReadableLabel(market.structure.direction)} / ${formatReadableLabel(
+        market.structure.state,
+      )}. Momentum ${formatReadableLabel(market.momentum.direction)} / ${formatReadableLabel(
+        market.momentum.state,
+      )}. Confidence ${formatConfidence(decision.bias.confidence)}.`,
+      tone: decision.bias.direction === "mixed" ? "warn" : toneForScore(decision.bias.score),
+    },
+    {
+      label: "Regime risk",
+      value: `${formatReadableLabel(market.regime.state)} · ${formatReadableLabel(market.volatility.state)}`,
+      detail: `Liquidity ${formatReadableLabel(market.liquidity.state)} (${formatScore(
+        market.liquidity.score,
+      )}). Session ${entry.contextSummary.sessionLabel}.`,
+      tone: regimeIsRisky ? "warn" : toneForScore(market.regime.score),
+    },
+    {
+      label: "Risk model",
+      value: `${formatRisk(riskPct)} · ${formatReadableLabel(riskMode)}`,
+      detail: `RR estimate ${isFiniteNumber(rr) ? rr.toFixed(2) : "-"}. Invalidation ${formatReadableLabel(
+        execution.invalidation.invalidationType,
+      )} at ${compactPrice(plan.invalidation)}, confidence ${formatConfidence(execution.invalidation.confidence)}.`,
+      tone: isFiniteNumber(riskPct) && isFiniteNumber(plan.invalidation) ? toneForRiskReward(rr) : "bad",
+    },
+    {
+      label: "Execution quality",
+      value: `Clarity ${formatReadableLabel(decision.clarity.level)} · Grade ${setup.quality.grade}`,
+      detail: `Alignment ${formatScore(decision.clarity.alignment)}, conflict ${formatScore(
+        decision.clarity.conflictScore,
+      )}, maturity ${formatReadableLabel(setup.maturity.state)} (${formatScore(setup.maturity.score)}).`,
+      tone: clarityTone,
+    },
+    {
+      label: "Data / timeframe",
+      value: `${timeframe ?? "Live"} · ${entry.contextSummary.coverageLabel}`,
+      detail:
+        snapshotFootnote ??
+        `Snapshot ${market.snapshotAt}. Timeframes available: ${market.timeframes.join(", ") || "-"}.`,
+      tone: snapshotBlocked ? "bad" : entry.contextSummary.coverageStatus === "coverage_backed" ? "good" : "warn",
+    },
+    {
+      label: "Main danger",
+      value: plan.action.intent === "execute_now" ? "Defined, not ignored" : "Blocks active",
+      detail: blockedReason,
+      tone: plan.action.intent === "stand_aside" ? "bad" : noTradeReasons.length ? "warn" : "neutral",
+    },
+  ];
+}
+
 function thesisToneClasses(tone: TradeThesisItem["tone"]) {
   if (tone === "good") return "border-emerald-400/18 bg-emerald-400/8";
   if (tone === "warn") return "border-amber-400/18 bg-amber-400/8";
@@ -621,6 +726,37 @@ function TradeThesisPanel({ items }: { items: TradeThesisItem[] }) {
         </span>
       </div>
       <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.label} className={`rounded-2xl border p-3 ${thesisToneClasses(item.tone)}`}>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              {item.label}
+            </div>
+            <div className="mt-1 break-words text-sm font-semibold text-white">{item.value}</div>
+            <div className="mt-2 text-xs leading-5 text-slate-300">{item.detail}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProfessionalValidationPanel({ items }: { items: ProfessionalValidationItem[] }) {
+  return (
+    <div className="mt-4 rounded-[24px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(34,211,238,0.1),rgba(8,18,32,0.94))] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-100/70">
+            Professional validation
+          </div>
+          <div className="mt-1 text-sm text-slate-300">
+            The trader audit layer: bias, regime, risk model, execution quality, data source, and main danger.
+          </div>
+        </div>
+        <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-50">
+          No hidden black box
+        </span>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => (
           <div key={item.label} className={`rounded-2xl border p-3 ${thesisToneClasses(item.tone)}`}>
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -943,6 +1079,13 @@ function TradingDecisionCockpit({
     whyNow,
     whyNotNow,
   });
+  const professionalValidationItems = buildProfessionalValidation({
+    entry,
+    plan,
+    noTradeReasons,
+    snapshotBlocked,
+    snapshotFootnote,
+  });
   return (
     <section>
       <div className={`rounded-[28px] border p-4 shadow-[0_22px_70px_rgba(0,0,0,0.28)] md:p-5 ${tone.shell}`}>
@@ -1007,6 +1150,7 @@ function TradingDecisionCockpit({
         </div>
 
         <TradeThesisPanel items={tradeThesisItems} />
+        <ProfessionalValidationPanel items={professionalValidationItems} />
 
         <div className="mt-5 grid gap-3 lg:grid-cols-3">
           <ReasonCard
