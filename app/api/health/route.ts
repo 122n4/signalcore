@@ -85,7 +85,7 @@ function buildTradingScannerAlert(
 export async function GET(req: Request) {
   const startedAt = Date.now();
   const url = new URL(req.url);
-  const liveFetch = url.searchParams.get("live") !== "0";
+  const liveFetch = url.searchParams.get("live") === "1";
   const asOf = new Date().toISOString();
   const [supabase, tradingScannerDiagnostics] = await Promise.all([
     checkSupabase(),

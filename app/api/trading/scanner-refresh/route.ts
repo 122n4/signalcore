@@ -94,7 +94,7 @@ function resolveRefreshBatch(args: {
   const batchSize = positiveIntegerFromSearch(
     args.url,
     "batchSize",
-    positiveIntegerFromEnv("TRADING_SCANNER_REFRESH_BATCH_SIZE", 5, 1, ordered.length),
+    positiveIntegerFromEnv("TRADING_SCANNER_REFRESH_BATCH_SIZE", 1, 1, ordered.length),
     1,
     ordered.length,
   );
@@ -199,7 +199,7 @@ async function handleRefresh(req: Request) {
     const inputs = await buildTradingLightScannerInputs({
       asOf,
       forceRefresh: true,
-      forceProviderRefresh: true,
+      forceProviderRefresh: url.searchParams.get("force") === "1",
       includeInactiveMarkets: true,
       liveFetchInstruments: refreshBatch.instruments,
       storedInputs: storedScannerSnapshots.inputs,
