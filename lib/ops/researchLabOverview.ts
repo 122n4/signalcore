@@ -6,6 +6,7 @@ import { loadResearchConfig } from "@/lib/trading/research/config";
 import { readJsonIfExists } from "@/lib/trading/research/fs";
 import { readResearchQueue } from "@/lib/trading/research/queue";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
+import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
 import type {
   ResearchBaselineManifest,
   ResearchConfig,
@@ -92,6 +93,8 @@ export type ResearchLabOverview = {
   }>;
   storage: {
     localArtifactBacked: boolean;
+    remoteBacked: boolean;
+    remoteSchemaReady: boolean;
     note: string;
   };
 };
@@ -230,12 +233,157 @@ function summarizeQueue(queue: ResearchQueue): ResearchLabOverview["queue"] {
   };
 }
 
+function operatorActions(): ResearchLabOverview["operatorActions"] {
+  return [
+    {
+      label: "Start supervisor",
+      command: "npm run research:supervisor:start",
+      note: "Starts the local Windows supervisor that actually runs the lab.",
+    },
+    {
+      label: "Recover active run",
+      command: "npm run research:recover",
+      note: "Use when the lab reports a stale lock, hung stage, or incomplete artifact contract.",
+    },
+    {
+      label: "Backfill market data",
+      command: "npm run research:data-backfill",
+      note: "Downloads supported missing historical files before new candidates are trusted.",
+    },
+    {
+      label: "Runtime health",
+      command: "npm run research:lab-health",
+      note: "Prints the same core health object used by this page.",
+    },
+    {
+      label: "Sync lab to Supabase",
+      command: "npm run research:sync",
+      note: "Pushes local/VPS research state to Supabase so /ops/lab can run without local artifacts.",
+    },
+  ];
+}
+
+function queueFromRemote(value: any): ResearchLabOverview["queue"] {
+  const counts = emptyTaskCounts();
+  for (const [status, count] of Object.entries((value?.counts ?? {}) as Record<string, unknown>)) {
+    if (status in counts) counts[status as ResearchTaskStatus] = Number(count) || 0;
+  }
+  return {
+    activeRunId: typeof value?.activeRunId === "string" ? value.activeRunId : null,
+    idleReason: typeof value?.idleReason === "string" ? value.idleReason : null,
+    counts,
+    recentTasks: Array.isArray(value?.recentTasks)
+      ? value.recentTasks.slice(0, 14).map((task: any) => ({
+          id: String(task.id ?? "unknown"),
+          type: String(task.type ?? "unknown"),
+          status: TASK_STATUSES.includes(task.status) ? task.status : "failed",
+          priority: Number(task.priority ?? 0),
+          decision: typeof task.decision === "string" ? task.decision : null,
+          campaignId: typeof task.planner_source?.campaign_id === "string" ? task.planner_source.campaign_id : null,
+          campaignObjective:
+            typeof task.planner_source?.campaign_objective === "string" ? task.planner_source.campaign_objective : null,
+          error: typeof task.error === "string" ? task.error : null,
+          createdAt: typeof task.created_at === "string" ? task.created_at : new Date(0).toISOString(),
+          finishedAt: typeof task.finished_at === "string" ? task.finished_at : null,
+        }))
+      : [],
+  };
+}
+
+function decisionFromRemote(row: any): ResearchLabDecisionEntry {
+  const payload = row?.payload ?? {};
+  return {
+    timestamp: typeof row?.timestamp === "string" ? row.timestamp : null,
+    runId: typeof row?.run_id === "string" ? row.run_id : null,
+    taskId: typeof row?.task_id === "string" ? row.task_id : null,
+    decision: String(row?.decision ?? "unknown"),
+    reason: typeof row?.reason === "string" ? row.reason : null,
+    campaignId: typeof payload?.planner_campaign_id === "string" ? payload.planner_campaign_id : null,
+    campaignObjective:
+      typeof payload?.planner_campaign_objective === "string" ? payload.planner_campaign_objective : null,
+    rankingScore: Number.isFinite(Number(payload?.ranking_score)) ? Number(payload.ranking_score) : null,
+    rankingBand: typeof payload?.ranking_band === "string" ? payload.ranking_band : null,
+    aggregateSummary: metricSummary(row?.aggregate_summary),
+    crisisSummary: metricSummary(row?.crisis_summary),
+    walkforwardSummary: metricSummary(row?.walkforward_summary),
+    failureSummary:
+      typeof payload?.failure_forensics?.summary === "string"
+        ? payload.failure_forensics.summary
+        : typeof row?.error === "string"
+          ? row.error
+          : null,
+  };
+}
+
+function runFromRemote(row: any): ResearchLabRunEntry {
+  return {
+    runId: String(row?.run_id ?? "unknown"),
+    taskId: typeof row?.task_id === "string" ? row.task_id : null,
+    status: row?.status ?? "missing",
+    stage: typeof row?.stage === "string" ? row.stage : null,
+    startedAt: typeof row?.started_at === "string" ? row.started_at : null,
+    updatedAt: typeof row?.updated_at === "string" ? row.updated_at : null,
+    failedStage: row?.payload?.status?.failed_stage ?? null,
+    error: typeof row?.error === "string" ? row.error : null,
+  };
+}
+
 export async function buildResearchLabOverview(args: {
   config?: ResearchConfig;
   now?: Date;
 } = {}): Promise<ResearchLabOverview> {
   const config = args.config ?? await loadResearchConfig();
   const generatedAt = (args.now ?? new Date()).toISOString();
+  const remote = await readResearchLabRemoteSnapshot({ runLimit: 40, decisionLimit: 120 });
+  const remotePayload = remote.state?.payload ?? null;
+  if (remote.schemaReady && remote.state && remotePayload?.runtime) {
+    const remoteDecisions = remote.decisions.map(decisionFromRemote);
+    const decisionCounts = remoteDecisions.reduce<Record<string, number>>((acc, entry) => {
+      acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return {
+      generatedAt: remote.state.generated_at ?? generatedAt,
+      config: {
+        queueId: config.queueId,
+        baselineId: config.liveBaselineSource.baselineId,
+        datasetProfile: config.liveBaselineSource.datasetProfile,
+        validationProfile: config.liveBaselineSource.validationProfile,
+        instruments: config.study.instruments,
+        timeframes: config.study.timeframes,
+        paths: {
+          queuePath: config.paths.queuePath,
+          runsDir: config.paths.runsDir,
+          decisionsPath: config.paths.decisionsPath,
+        },
+      },
+      runtime: remotePayload.runtime,
+      baseline: remotePayload.baseline ?? null,
+      queue: queueFromRemote(remotePayload.queueOverview),
+      decisions: {
+        counts: decisionCounts,
+        recent: remoteDecisions.slice(0, 18),
+        promotedOrCandidate: remoteDecisions
+          .filter((entry) => entry.decision === "promote" || entry.decision === "candidate")
+          .slice(0, 10),
+        rejectedOrFailed: remoteDecisions
+          .filter((entry) => entry.decision === "reject" || entry.decision === "failed")
+          .slice(0, 14),
+      },
+      runs: {
+        recent: remote.runs.map(runFromRemote),
+      },
+      operatorActions: operatorActions(),
+      storage: {
+        localArtifactBacked: false,
+        remoteBacked: true,
+        remoteSchemaReady: true,
+        note: "This view is reading Research Lab state from Supabase, synced by the external worker/VPS.",
+      },
+    };
+  }
+
   const baselinePath = path.join(
     config.paths.baselinesDir,
     config.liveBaselineSource.baselineId,
@@ -286,33 +434,16 @@ export async function buildResearchLabOverview(args: {
     runs: {
       recent: recentRuns,
     },
-    operatorActions: [
-      {
-        label: "Start supervisor",
-        command: "npm run research:supervisor:start",
-        note: "Starts the local Windows supervisor that actually runs the lab.",
-      },
-      {
-        label: "Recover active run",
-        command: "npm run research:recover",
-        note: "Use when the lab reports a stale lock, hung stage, or incomplete artifact contract.",
-      },
-      {
-        label: "Backfill market data",
-        command: "npm run research:data-backfill",
-        note: "Downloads supported missing historical files before new candidates are trusted.",
-      },
-      {
-        label: "Runtime health",
-        command: "npm run research:lab-health",
-        note: "Prints the same core health object used by this page.",
-      },
-    ],
+    operatorActions: operatorActions(),
     storage: {
       localArtifactBacked: Boolean(baseline || decisions.length > 0 || recentRuns.length > 0),
-      note: baseline || decisions.length > 0 || recentRuns.length > 0
-        ? "This view is reading local research artifacts from the current workspace."
-        : "No local lab artifacts are available in this runtime. Sync lab state to Supabase to make this page complete in production.",
+      remoteBacked: false,
+      remoteSchemaReady: remote.schemaReady,
+      note: remote.error
+        ? `Supabase lab state unavailable (${remote.error}). Falling back to local artifacts.`
+        : baseline || decisions.length > 0 || recentRuns.length > 0
+          ? "This view is reading local research artifacts from the current workspace."
+          : "No local lab artifacts are available in this runtime. Sync lab state to Supabase to make this page complete in production.",
     },
   };
 }

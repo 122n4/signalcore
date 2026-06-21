@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 
+import LabControlPanel from "./LabControlPanel";
 import { buildResearchLabOverview } from "@/lib/ops/researchLabOverview";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
 import type { ResearchMetricSummary } from "@/lib/trading/research/types";
@@ -125,12 +126,19 @@ export default async function ResearchLabPage() {
           </div>
         </header>
 
-        {!lab.storage.localArtifactBacked ? (
+        {lab.storage.remoteBacked ? (
+          <div className="mt-6 rounded-[28px] border border-emerald-300/30 bg-emerald-400/10 p-5 text-emerald-50">
+            <p className="font-black">Remote Research Lab sync active</p>
+            <p className="mt-2 text-sm text-emerald-100/80">{lab.storage.note}</p>
+          </div>
+        ) : !lab.storage.localArtifactBacked ? (
           <div className="mt-6 rounded-[28px] border border-amber-300/30 bg-amber-400/10 p-5 text-amber-50">
             <p className="font-black">Lab artifacts not synced to this runtime</p>
             <p className="mt-2 text-sm text-amber-100/80">{lab.storage.note}</p>
           </div>
         ) : null}
+
+        <LabControlPanel />
 
         <div className="mt-7 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <Card eyebrow="Baseline" title="Current live baseline">

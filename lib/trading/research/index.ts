@@ -32,3 +32,4 @@ export * from "./report";
 export * from "./runner";
 export * from "./loop";
 export * from "./supervisor";
+export * from "./supabaseSync";

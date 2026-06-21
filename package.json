@@ -36,6 +36,8 @@
     "research:board": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchPromotionBoard.ts",
     "research:packages": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchPromotionPackages.ts",
     "research:lab-health": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchRuntimeHealth.ts",
+    "research:sync": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/syncResearchLabToSupabase.ts",
+    "research:sync:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/syncResearchLabToSupabase.ts --loop",
     "research:data-health": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchDatasetHealthReport.ts",
     "research:opportunity-review": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchOpportunityReview.ts",
     "research:max-daemon": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchMaxDaemon.ts --loop",

@@ -10,6 +10,7 @@ import { recoverResearchRunner } from "./recovery";
 import { buildResearchWindowReport, writeResearchWindowReport } from "./report";
 import { buildResearchRuntimeHealth } from "./runtimeHealth";
 import { processResearchQueue } from "./runner";
+import { researchSupabaseSyncEnabled, syncResearchLabToSupabase } from "./supabaseSync";
 import type {
   ResearchConfig,
   ResearchLock,
@@ -40,6 +41,7 @@ export async function monitorResearchWorkerCycle(args: {
   onUnhealthyLock: () => Promise<void>;
   readRunStageHealth?: () => Promise<"ok" | "long_running" | "timed_out" | "unknown">;
   onStageTimeout?: () => Promise<void>;
+  onPoll?: () => Promise<void>;
   pollIntervalMs: number;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<ResearchSupervisorCycleOutcome> {
@@ -55,6 +57,10 @@ export async function monitorResearchWorkerCycle(args: {
     if (settled) {
       break;
     }
+
+    await args.onPoll?.().catch(() => {
+      // Poll hooks are observability-only; never stop research because remote sync is unavailable.
+    });
 
     const lock = await args.readLock();
     if (!lock) {
@@ -77,6 +83,11 @@ export async function monitorResearchWorkerCycle(args: {
   }
 
   return exitPromise;
+}
+
+async function syncSupervisorState(config: ResearchConfig) {
+  if (!researchSupabaseSyncEnabled()) return;
+  await syncResearchLabToSupabase({ config });
 }
 
 function hasActiveResearchWork(queue: Awaited<ReturnType<typeof readResearchQueue>>): boolean {
@@ -196,6 +207,7 @@ async function spawnResearchWorkerCycle(config: ResearchConfig): Promise<Researc
         }),
       readLock: async () => readResearchLock(config),
       classifyLockHealth: (lock) => classifyResearchLockHealth(config, lock),
+      onPoll: async () => syncSupervisorState(config),
       readRunStageHealth: async () =>
         (await buildResearchRuntimeHealth({ config })).activeRun.stageHealth,
       onUnhealthyLock: async () => {
@@ -274,6 +286,9 @@ export async function runResearchSupervisor(
     }
 
     const config = await loadConfigFn();
+    await syncSupervisorState(config).catch(() => {
+      // Remote lab visibility must not block local research progress.
+    });
     const currentLock = await readLockFn(config);
     if (currentLock) {
       const recoveryResult = await recoverFn(config);
@@ -300,6 +315,9 @@ export async function runResearchSupervisor(
     lastIdleReason = queue.idle_reason;
     const windowReport = await buildResearchWindowReport(config);
     await writeResearchWindowReport(config, windowReport);
+    await syncSupervisorState(config).catch(() => {
+      // Best-effort remote sync after every worker cycle.
+    });
 
     const lockAfterCycle = await readLockFn(config);
     if (lockAfterCycle && (await fileExists(config.paths.lockPath))) {
