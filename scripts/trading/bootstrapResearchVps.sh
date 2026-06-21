@@ -49,7 +49,25 @@ npm ci
 mkdir -p artifacts/trading-research/runtime data config
 
 if [[ ! -f ".env.research" ]]; then
-  cp .env.research.example .env.research
+  if [[ -f ".env.research.example" ]]; then
+    cp .env.research.example .env.research
+  else
+    cat > .env.research <<'ENV'
+NODE_ENV=production
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+RESEARCH_SUPABASE_SYNC=1
+RESEARCH_SUPABASE_SYNC_INTERVAL_SECONDS=60
+TWELVEDATA_API_KEY=
+TWELVEDATA_API_KEYS=
+FINNHUB_API_KEY=
+FMP_API_KEY=
+ALPHA_VANTAGE_API_KEY=
+RESEARCH_MAX_CYCLES=
+TRADING_DATA_BACKFILL_INTERVAL_MINUTES=360
+TRADING_DATA_BACKFILL_MAX_CYCLES=0
+ENV
+  fi
   cat <<'MSG'
 
 ==> Created .env.research
