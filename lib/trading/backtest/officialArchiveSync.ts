@@ -174,6 +174,16 @@ async function runCommand(filePath: string, args: string[]): Promise<void> {
 }
 
 async function extractZip(zipPath: string, targetDir: string): Promise<void> {
+  if (process.platform !== "win32") {
+    try {
+      await runCommand("unzip", ["-o", zipPath, "-d", targetDir]);
+      return;
+    } catch {
+      await runCommand("tar", ["-xf", zipPath, "-C", targetDir]);
+      return;
+    }
+  }
+
   try {
     await runCommand("tar", ["-xf", zipPath, "-C", targetDir]);
     return;
