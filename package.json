@@ -52,6 +52,8 @@
     "research:data-harvest": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataHarvester.ts",
     "research:data-backfill": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataBackfillWorker.ts",
     "research:data-backfill:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runMarketDataBackfillWorker.ts --loop",
+    "research:data-hunter": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchDataHunter.ts",
+    "research:data-hunter:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchDataHunter.ts --loop",
     "research:data-stage": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/prepareMarketDataStaging.ts",
     "trading:scanner:fallback-catalog": "node scripts/trading/generateTradingScannerFallbackCatalog.mjs"
   },

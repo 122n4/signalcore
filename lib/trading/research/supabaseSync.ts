@@ -224,6 +224,7 @@ export async function buildResearchSupabasePayload(args: {
   return {
     generatedAt,
     runtime,
+    dataHunter: runtime.dataHunter,
     queue,
     queueOverview: summarizeQueue(queue),
     baseline,
@@ -245,6 +246,7 @@ export async function buildResearchSupabasePayload(args: {
       payload: {
         generatedAt,
         runtime,
+        dataHunter: runtime.dataHunter,
         queueOverview: summarizeQueue(queue),
         baseline,
       },

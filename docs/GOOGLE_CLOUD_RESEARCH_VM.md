@@ -84,7 +84,7 @@ cd ~/syntrake-research
 set -a
 . ./.env.research
 set +a
-pm2 restart all
+pm2 startOrReload ecosystem.research.config.cjs --update-env
 pm2 save
 ```
 
@@ -93,6 +93,7 @@ pm2 save
 ```bash
 pm2 status
 npm run research:lab-health
+npm run research:data-hunter
 npm run research:sync
 ```
 
@@ -103,6 +104,14 @@ https://syntrake.com/ops/lab
 ```
 
 The page should show remote/Supabase-backed lab status instead of relying on local files.
+
+Expected PM2 processes:
+- `syntrake-research-supervisor`
+- `syntrake-research-sync`
+- `syntrake-research-data-backfill`
+- `syntrake-research-data-hunter`
+
+The Data Hunter keeps auditing coverage and downloading supported official gaps. It does not invent candles; manual or unsupported gaps remain visible in `/ops/lab` until a trusted source is added.
 
 ## Important Current Limitation
 

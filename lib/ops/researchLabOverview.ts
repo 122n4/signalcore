@@ -238,7 +238,7 @@ function operatorActions(): ResearchLabOverview["operatorActions"] {
     {
       label: "Start supervisor",
       command: "npm run research:supervisor:start",
-      note: "Starts the local Windows supervisor that actually runs the lab.",
+      note: "Starts the supervisor process that actually runs the lab.",
     },
     {
       label: "Recover active run",
@@ -249,6 +249,11 @@ function operatorActions(): ResearchLabOverview["operatorActions"] {
       label: "Backfill market data",
       command: "npm run research:data-backfill",
       note: "Downloads supported missing historical files before new candidates are trusted.",
+    },
+    {
+      label: "Data hunter",
+      command: "npm run research:data-hunter",
+      note: "Audits coverage, downloads supported gaps, and writes the missing-data wishlist.",
     },
     {
       label: "Runtime health",

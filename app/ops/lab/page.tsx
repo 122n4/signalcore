@@ -63,6 +63,53 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function DataCoveragePanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
+  const backfill = lab.runtime.backfill;
+  const hunter = lab.runtime.dataHunter;
+  const coverageTone =
+    hunter.status === "error"
+      ? tone("error")
+      : (backfill.missingDownloadable ?? 0) > 0
+        ? tone("warn")
+        : tone("ok");
+
+  return (
+    <section className={`mt-7 rounded-[30px] border p-6 shadow-2xl shadow-black/20 ${coverageTone}`}>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] opacity-70">Data coverage</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Autonomous material pipeline</h2>
+          <p className="mt-3 max-w-3xl text-sm opacity-85">
+            The lab can keep running while the Data Hunter audits candles, downloads supported official gaps, and lists
+            anything that still needs a new source. It does not invent candles or scrape random websites.
+          </p>
+        </div>
+        <div className="rounded-full border border-white/20 bg-black/20 px-4 py-2 text-sm font-black uppercase tracking-[0.18em]">
+          {hunter.status ?? "not run yet"}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Existing files" value={backfill.existing ?? "n/a"} />
+        <Metric label="Auto gaps" value={backfill.missingDownloadable ?? "n/a"} />
+        <Metric label="Manual gaps" value={backfill.missingManual ?? "n/a"} />
+        <Metric label="Unsupported" value={backfill.unsupported ?? "n/a"} />
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-2xl border border-white/15 bg-black/20 p-4 text-sm">
+          <p className="font-bold text-white">Next action</p>
+          <p className="mt-2 opacity-85">{hunter.nextAction ?? "Run npm run research:data-hunter on the VPS."}</p>
+        </div>
+        <div className="rounded-2xl border border-white/15 bg-black/20 p-4 text-sm">
+          <p className="font-bold text-white">Last hunter cycle</p>
+          <p className="mt-2 opacity-85">{time(hunter.generatedAt)}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SummaryMetrics({ summary }: { summary: ResearchMetricSummary | null }) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -139,6 +186,8 @@ export default async function ResearchLabPage() {
         ) : null}
 
         <LabControlPanel />
+
+        <DataCoveragePanel lab={lab} />
 
         <div className="mt-7 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <Card eyebrow="Baseline" title="Current live baseline">

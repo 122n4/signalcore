@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { buildResearchRunArtifactPaths } from "./artifactContract";
 import { loadResearchConfig } from "./config";
+import { readResearchDataHunterReport, type ResearchDataHunterStatus } from "./dataHunter";
 import { readJsonIfExists } from "./fs";
 import { classifyResearchLockHealth, readResearchLock } from "./lock";
 import { readResearchQueue } from "./queue";
@@ -48,6 +49,16 @@ export type ResearchRuntimeHealth = {
     existing: number | null;
     missingDownloadable: number | null;
     missingManual: number | null;
+    unsupported: number | null;
+    reportPath: string;
+  };
+  dataHunter: {
+    generatedAt: string | null;
+    status: ResearchDataHunterStatus | null;
+    missingDownloadable: number | null;
+    missingManual: number | null;
+    unsupported: number | null;
+    nextAction: string | null;
     reportPath: string;
   };
   alerts: Array<{
@@ -190,6 +201,7 @@ async function readBackfillSummary(config: ResearchConfig): Promise<ResearchRunt
         existing?: number;
         missingDownloadable?: number;
         missingManual?: number;
+        unsupported?: number;
       };
     };
   }>(reportPath);
@@ -199,6 +211,22 @@ async function readBackfillSummary(config: ResearchConfig): Promise<ResearchRunt
     existing: report?.after?.summary?.existing ?? null,
     missingDownloadable: report?.after?.summary?.missingDownloadable ?? null,
     missingManual: report?.after?.summary?.missingManual ?? null,
+    unsupported: report?.after?.summary?.unsupported ?? null,
+    reportPath,
+  };
+}
+
+async function readDataHunterSummary(config: ResearchConfig): Promise<ResearchRuntimeHealth["dataHunter"]> {
+  const reportPath = path.join(config.paths.reportsDir, "datasets", "research-data-hunter-latest.json");
+  const report = await readResearchDataHunterReport(config);
+
+  return {
+    generatedAt: report?.generatedAt ?? null,
+    status: report?.status ?? null,
+    missingDownloadable: report?.coverage.missingDownloadable ?? null,
+    missingManual: report?.coverage.missingManual ?? null,
+    unsupported: report?.coverage.unsupported ?? null,
+    nextAction: report?.nextAction ?? null,
     reportPath,
   };
 }
@@ -207,6 +235,7 @@ function buildAlerts(args: {
   lock: ResearchRuntimeHealth["lock"];
   activeRun: ResearchRuntimeHealth["activeRun"];
   backfill: ResearchRuntimeHealth["backfill"];
+  dataHunter: ResearchRuntimeHealth["dataHunter"];
 }): ResearchRuntimeHealth["alerts"] {
   const alerts: ResearchRuntimeHealth["alerts"] = [];
 
@@ -246,6 +275,14 @@ function buildAlerts(args: {
     });
   }
 
+  if (args.dataHunter.status === "error") {
+    alerts.push({
+      id: "research-data-hunter-error",
+      severity: "warn",
+      message: "Research data hunter failed; check PM2 logs before trusting new data coverage.",
+    });
+  }
+
   return alerts;
 }
 
@@ -261,18 +298,20 @@ export async function buildResearchRuntimeHealth(args: {
   ]);
   const queueSummary = summarizeQueue(queue);
   const lockSummary = summarizeLock(config, lock, now);
-  const [activeRun, backfill] = await Promise.all([
+  const [activeRun, backfill, dataHunter] = await Promise.all([
     readActiveRunStatus({
       config,
       activeRunId: queue.active_run_id,
       now,
     }),
     readBackfillSummary(config),
+    readDataHunterSummary(config),
   ]);
   const alerts = buildAlerts({
     lock: lockSummary,
     activeRun,
     backfill,
+    dataHunter,
   });
   const severity = alerts.some((alert) => alert.severity === "error")
     ? "error"
@@ -288,6 +327,7 @@ export async function buildResearchRuntimeHealth(args: {
     lock: lockSummary,
     activeRun,
     backfill,
+    dataHunter,
     alerts,
   };
 }

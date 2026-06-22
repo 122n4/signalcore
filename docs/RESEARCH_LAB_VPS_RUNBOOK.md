@@ -14,7 +14,8 @@ Frontend:
 Worker/VPS:
 - Runs `npm run research:supervisor`.
 - Runs `npm run research:sync:loop`.
-- Optionally runs `npm run research:data-backfill:loop`.
+- Runs `npm run research:data-backfill:loop`.
+- Runs `npm run research:data-hunter:loop`.
 - Writes artifacts to disk.
 - Syncs health, runs, decisions, and metrics to Supabase.
 
@@ -65,12 +66,20 @@ ALPHA_VANTAGE_API_KEY=...
 
 Never expose `SUPABASE_SERVICE_ROLE_KEY` to the frontend.
 
+Optional tuning:
+
+```bash
+TRADING_DATA_BACKFILL_INTERVAL_MINUTES=360
+TRADING_DATA_HUNTER_INTERVAL_MINUTES=180
+```
+
 ## Local Audit Commands
 
 ```bash
 npm run research:supervisor:start
 npm run research:recover
 npm run research:data-backfill
+npm run research:data-hunter
 npm run research:lab-health
 npm run research:sync
 ```
@@ -79,6 +88,7 @@ Meaning:
 - `research:supervisor:start`: starts the local Windows supervisor.
 - `research:recover`: recovers stale/hung lock and marks/requeues failed runs.
 - `research:data-backfill`: fills supported missing historical market data.
+- `research:data-hunter`: audits coverage, downloads supported gaps, and writes the missing-data wishlist.
 - `research:lab-health`: prints runtime/lock/stage health.
 - `research:sync`: pushes current lab state to Supabase.
 
@@ -103,7 +113,7 @@ set +a
 Start:
 
 ```bash
-pm2 start ecosystem.research.config.cjs
+pm2 startOrReload ecosystem.research.config.cjs --update-env
 pm2 save
 pm2 startup
 ```
@@ -114,8 +124,9 @@ Useful commands:
 pm2 status
 pm2 logs syntrake-research-supervisor
 pm2 logs syntrake-research-sync
+pm2 logs syntrake-research-data-hunter
 pm2 restart syntrake-research-supervisor
-pm2 restart all
+pm2 startOrReload ecosystem.research.config.cjs --update-env
 ```
 
 Logs:
@@ -125,6 +136,8 @@ artifacts/trading-research/runtime/pm2-supervisor.out.log
 artifacts/trading-research/runtime/pm2-supervisor.err.log
 artifacts/trading-research/runtime/pm2-sync.out.log
 artifacts/trading-research/runtime/pm2-sync.err.log
+artifacts/trading-research/runtime/pm2-data-hunter.out.log
+artifacts/trading-research/runtime/pm2-data-hunter.err.log
 ```
 
 ## Docker Deployment
@@ -161,6 +174,7 @@ CLI:
 
 ```bash
 npm run research:lab-health
+npm run research:data-hunter
 npm run research:sync
 ```
 
@@ -239,6 +253,11 @@ If runs stay in one stage too long:
 - `research:supervisor` should detect stage timeout.
 - Check `artifacts/trading-research/runtime/research-supervisor.stderr.log`.
 - Confirm market data files exist and backfill is not blocked by provider limits.
+
+If data coverage still reports manual/unsupported gaps:
+- This is expected for markets/periods that do not have an approved automatic source yet.
+- The Data Hunter keeps the lab running on supported data and writes the missing-data wishlist to `artifacts/trading-research/reports/datasets/research-data-hunter-latest.md`.
+- Add a new official/provider source or a vetted manual dataset before trusting those missing buckets.
 
 If Supabase sync fails but research continues:
 - This is intentional. Research progress must not stop because remote visibility is temporarily unavailable.

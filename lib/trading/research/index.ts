@@ -12,6 +12,7 @@ export * from "./dataQuality";
 export * from "./datasetHealth";
 export * from "./marketDataBackfill";
 export * from "./marketDataHarvester";
+export * from "./dataHunter";
 export * from "./expansionMarketStudy";
 export * from "./runtimeHealth";
 export * from "./validationGates";
