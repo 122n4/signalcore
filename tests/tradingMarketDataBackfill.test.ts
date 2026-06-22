@@ -113,4 +113,50 @@ describe("trading market data backfill", () => {
     expect(entry?.periods[0]?.status).toBe("missing_downloadable");
     expect(entry?.periods[0]?.remoteUrl).toContain("data.binance.vision");
   });
+
+  it("skips staged Binance months before the configured first available month", async () => {
+    const stagingDataDir = await createTempDir();
+    const catalogDir = await createTempDir();
+    process.env.TRADING_BACKTEST_STAGING_DATA_DIR = stagingDataDir;
+
+    const stagingCatalogPath = path.join(catalogDir, "staging-catalog.json");
+    await writeJsonAtomic(stagingCatalogPath, {
+      version: 1,
+      markets: [{
+        instrument: "SOLUSD",
+        group: "crypto",
+        status: "staged_only",
+        priority: 90,
+        rationale: "New crypto staging candidate.",
+        expected_local_format: "crypto_binance_monthly_m1",
+        expected_symbol: "SOLUSDT",
+        first_available_month: "2020-08",
+        target_path_segments: ["crypto", "solusd"],
+        source: {
+          provider: "Binance",
+          kind: "official_public_archive",
+          listing_url: "https://data.binance.vision/?prefix=data/spot/monthly/klines/SOLUSDT/1m/",
+          reference_url: "https://data.binance.vision/",
+        },
+      }],
+    });
+
+    const plan = await buildTradingMarketDataBackfillPlan({
+      instruments: [],
+      from: { year: 2020, month: 7 },
+      to: { year: 2020, month: 8 },
+      includeStaged: true,
+      stagingCatalogPath,
+    });
+
+    const entry = plan.entries.find((item) => item.instrument === "SOLUSD");
+
+    expect(entry?.periods.map((period) => period.status)).toEqual([
+      "unsupported",
+      "missing_downloadable",
+    ]);
+    expect(plan.summary.unsupported).toBe(1);
+    expect(plan.summary.missingDownloadable).toBe(1);
+    expect(entry?.periods[0]?.remoteUrl).toBeNull();
+  });
 });

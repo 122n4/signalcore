@@ -91,6 +91,7 @@
       "rationale": "Liquid crypto candidate that may increase frequency after staging validation.",
       "expected_local_format": "crypto_binance_monthly_m1",
       "expected_symbol": "SOLUSDT",
+      "first_available_month": "2020-08",
       "target_path_segments": [
         "crypto",
         "solusd"

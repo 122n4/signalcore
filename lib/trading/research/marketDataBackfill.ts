@@ -30,6 +30,7 @@ type StagingCatalog = {
     rationale: string;
     expected_local_format: string;
     expected_symbol: string;
+    first_available_month?: string;
     target_path_segments: string[];
     source: {
       provider: string;
@@ -165,6 +166,30 @@ function resolveReportsDir(customDir?: string | null): string {
 
 function monthLabel(value: TradingOfficialSyncMonth): string {
   return `${value.year}-${String(value.month).padStart(2, "0")}`;
+}
+
+function parseMonthLabel(label: string): TradingOfficialSyncMonth | null {
+  const match = /^(\d{4})-(\d{2})$/.exec(label);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return { year, month };
+}
+
+function compareMonth(left: TradingOfficialSyncMonth, right: TradingOfficialSyncMonth): number {
+  return (left.year - right.year) || (left.month - right.month);
+}
+
+function isBeforeFirstAvailableMonth(
+  part: TradingOfficialSyncMonth,
+  firstAvailableMonth?: string,
+): boolean {
+  if (!firstAvailableMonth) return false;
+  const first = parseMonthLabel(firstAvailableMonth);
+  return first ? compareMonth(part, first) < 0 : false;
 }
 
 function defaultPreviousCompleteMonth(): TradingOfficialSyncMonth {
@@ -429,16 +454,23 @@ async function buildStagedEntries(args: {
           part,
         });
         const existingPath = await firstExistingPath(target.candidates);
+        const isPreListing = isBeforeFirstAvailableMonth(part, market.first_available_month);
 
         periods.push({
           label: target.label,
-          status: existingPath ? "existing" : "missing_downloadable",
+          status: existingPath
+            ? "existing"
+            : isPreListing
+              ? "unsupported"
+              : "missing_downloadable",
           targetPath: target.targetPath,
           existingPath,
-          remoteUrl: target.remoteUrl,
+          remoteUrl: isPreListing ? null : target.remoteUrl,
           note: existingPath
             ? "Staged Binance file exists, but this market is not active in the lab yet."
-            : "Can be downloaded to staging from Binance public monthly kline archives; promotion stays blocked until full validation.",
+            : isPreListing
+              ? `Skipped because ${market.expected_symbol} appears unavailable before ${market.first_available_month} in Binance public monthly archives.`
+              : "Can be downloaded to staging from Binance public monthly kline archives; promotion stays blocked until full validation.",
         });
       }
 
@@ -581,17 +613,6 @@ function collectSupportedSyncInstruments(entries: MarketDataBackfillPlanEntry[])
         .filter(isOfficialSyncInstrument),
     ),
   );
-}
-
-function parseMonthLabel(label: string): TradingOfficialSyncMonth | null {
-  const match = /^(\d{4})-(\d{2})$/.exec(label);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return null;
-  }
-  return { year, month };
 }
 
 async function syncStagedDownloadableEntries(args: {
