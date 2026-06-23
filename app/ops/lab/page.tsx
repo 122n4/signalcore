@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import LabControlPanel from "./LabControlPanel";
 import { buildResearchLabOverview } from "@/lib/ops/researchLabOverview";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
+import { readPaperHistoryPayload } from "@/lib/trading/bot/paperRunner";
 import type { ResearchMetricSummary } from "@/lib/trading/research/types";
 
 export const metadata: Metadata = {
@@ -110,6 +111,53 @@ function DataCoveragePanel({ lab }: { lab: Awaited<ReturnType<typeof buildResear
   );
 }
 
+function PaperTradingPanel({ paper }: { paper: Awaited<ReturnType<typeof readPaperHistoryPayload>> }) {
+  const summary = paper.summary;
+  const observability = paper.observability;
+  const source = observability.schemaReady ? "paper_trades" : "legacy journal fallback";
+
+  return (
+    <section className="mt-7 rounded-[30px] border border-emerald-300/20 bg-emerald-400/10 p-6 text-emerald-50 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-100/70">Paper trading</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Canonical source of truth</h2>
+          <p className="mt-3 max-w-3xl text-sm text-emerald-50/80">
+            OPS and /app/bot now read the same canonical paper lifecycle. Metrics are derived from persisted outcomes,
+            not separate runtime counters.
+          </p>
+        </div>
+        <div className="rounded-full border border-white/20 bg-black/20 px-4 py-2 text-sm font-black uppercase tracking-[0.18em]">
+          {source}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Saved cycles" value={paper.history.length} />
+        <Metric label="Closed" value={summary.closed} />
+        <Metric label="Wins / losses" value={`${summary.wins} / ${summary.losses}`} />
+        <Metric label="Open" value={summary.open} />
+        <Metric label="Retryable" value={summary.retryable ?? 0} />
+        <Metric label="Rejected" value={summary.rejected} />
+        <Metric label="Unavailable" value={summary.unavailable} />
+        <Metric label="WR" value={summary.winRate == null ? "n/a" : `${summary.winRate}%`} />
+        <Metric label="PF" value={paper.research.overall.profitFactor ?? "n/a"} />
+        <Metric label="Net R" value={`${summary.netR}R`} />
+        <Metric label="Unsettled" value={observability.unsettledCycleCount} />
+        <Metric label="Retry queue" value={observability.retryableSettlementCount ?? 0} />
+        <Metric label="Last settlement" value={time(observability.lastSettlementAt)} />
+        <Metric label="Reconciliation" value={observability.reconciliationStatus} />
+      </div>
+
+      {observability.error ? (
+        <p className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+          {observability.error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function SummaryMetrics({ summary }: { summary: ResearchMetricSummary | null }) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
@@ -138,6 +186,7 @@ export default async function ResearchLabPage() {
   }
 
   const lab = await buildResearchLabOverview();
+  const paper = await readPaperHistoryPayload(userId, { days: 183, maxSettlements: 4 });
   const totalDecisions = Object.values(lab.decisions.counts).reduce((sum, count) => sum + count, 0);
 
   return (
@@ -188,6 +237,8 @@ export default async function ResearchLabPage() {
         <LabControlPanel />
 
         <DataCoveragePanel lab={lab} />
+
+        <PaperTradingPanel paper={paper} />
 
         <div className="mt-7 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <Card eyebrow="Baseline" title="Current live baseline">
