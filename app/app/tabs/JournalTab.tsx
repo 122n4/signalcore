@@ -44,11 +44,82 @@ function lifecycleLabel(position: FollowedTradingPosition) {
   return "Watching";
 }
 
+type DisciplineMetrics = {
+  summary: {
+    entryCount: number;
+    alignedCount: number;
+    violationCount: number;
+    alignedPct: number;
+    violationPct: number;
+    alignedPnlR: number;
+    violationPnlR: number;
+    closedWithResultCount: number;
+  };
+  latestViolation: {
+    instrument: string;
+    createdAt: string | null;
+    violationReason: string | null;
+    clarity: number | null;
+    recommendation: string | null;
+    traderAction: string | null;
+  } | null;
+};
+
+function formatR(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}R`;
+}
+
+function DisciplineMetricCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "good" | "bad";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "border-emerald-400/24 bg-emerald-400/10 text-emerald-50"
+      : tone === "bad"
+        ? "border-rose-400/24 bg-rose-400/10 text-rose-50"
+        : "border-slate-800 bg-[#07101c] text-white";
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClass}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <div className="mt-2 text-xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
 export default function JournalTab() {
   const { status, error, refresh, feed, entries } = useTradingWorkspace("trading");
   const { positions } = useFollowedTradingInstruments();
   const [query, setQuery] = React.useState("");
   const [instrument, setInstrument] = React.useState("all");
+  const [discipline, setDiscipline] = React.useState<DisciplineMetrics | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    void fetch("/api/trading/discipline?mode=trading&days=30", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active || payload?.ok !== true) return;
+        setDiscipline({
+          summary: payload.summary,
+          latestViolation: payload.latestViolation,
+        });
+      })
+      .catch(() => {
+        if (active) setDiscipline(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const instruments = React.useMemo(() => {
     return Array.from(new Set(entries.map((entry) => entry.instrument))).sort();
@@ -118,6 +189,91 @@ export default function JournalTab() {
             <Pill>Filtered: {filteredFeed.length}</Pill>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-[22px] border border-slate-800/80 bg-[linear-gradient(135deg,rgba(244,63,94,0.13),rgba(13,23,41,0.94)_52%,rgba(16,185,129,0.08))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-100/75">
+              Discipline cost
+            </div>
+            <div className="mt-2 text-2xl font-semibold text-white">
+              Plan alignment, not just trade storage
+            </div>
+            <div className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+              Syntrake separates trades taken with the plan from trades taken against the recommendation,
+              so the user can see the real cost of impatience and forced entries.
+            </div>
+          </div>
+          <Pill>Last 30 days</Pill>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <DisciplineMetricCard
+            label="Trades aligned with plan"
+            value={`${discipline?.summary.alignedPct ?? 0}%`}
+            tone="good"
+          />
+          <DisciplineMetricCard
+            label="Trades against plan"
+            value={`${discipline?.summary.violationPct ?? 0}%`}
+            tone={(discipline?.summary.violationCount ?? 0) > 0 ? "bad" : "neutral"}
+          />
+          <DisciplineMetricCard
+            label="PnL aligned trades"
+            value={
+              discipline?.summary.closedWithResultCount
+                ? formatR(discipline.summary.alignedPnlR)
+                : "No closed R yet"
+            }
+            tone="good"
+          />
+          <DisciplineMetricCard
+            label="PnL non-aligned trades"
+            value={
+              discipline?.summary.closedWithResultCount
+                ? formatR(discipline.summary.violationPnlR)
+                : "No closed R yet"
+            }
+            tone={(discipline?.summary.violationPnlR ?? 0) < 0 ? "bad" : "neutral"}
+          />
+        </div>
+
+        {discipline?.latestViolation ? (
+          <div className="mt-5 rounded-3xl border border-rose-400/24 bg-rose-500/10 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-rose-100">Plan Violation</div>
+                <div className="mt-1 text-lg font-semibold text-white">
+                  {discipline.latestViolation.violationReason || "Trade taken outside the plan"}
+                </div>
+              </div>
+              <span className="rounded-full border border-rose-300/30 bg-rose-400/12 px-3 py-1 text-xs font-semibold text-rose-50">
+                {discipline.latestViolation.instrument}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <DisciplineMetricCard
+                label="Clarity"
+                value={
+                  typeof discipline.latestViolation.clarity === "number"
+                    ? `${discipline.latestViolation.clarity}/100`
+                    : "-"
+                }
+                tone="bad"
+              />
+              <DisciplineMetricCard
+                label="Syntrake recommendation"
+                value={discipline.latestViolation.recommendation || "WAIT"}
+              />
+              <DisciplineMetricCard
+                label="Trader action"
+                value={discipline.latestViolation.traderAction || "ENTER TRADE"}
+                tone="bad"
+              />
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-[22px] border border-cyan-300/16 bg-[linear-gradient(135deg,rgba(34,211,238,0.1),rgba(13,23,41,0.94)_58%,rgba(16,185,129,0.07))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">

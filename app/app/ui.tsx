@@ -1015,6 +1015,29 @@ export default function AppUI() {
             onChange={handleModeChange}
           />
 
+          {workspaceMode === "trading" ? (
+            <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-300/[0.08] p-4 text-cyan-50 shadow-[0_18px_50px_rgba(8,145,178,0.08)]">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100/70">
+                    Private automation
+                  </p>
+                  <h2 className="mt-1 text-lg font-black text-white">Bot automatico + paper history</h2>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-cyan-50/75">
+                    Testa o bot em paper, guarda ate 6 meses de historico e so prepara live quando estiver armado e ligado a broker.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/app/bot")}
+                  className="rounded-2xl bg-cyan-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:brightness-110"
+                >
+                  Open bot cockpit
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {!settingsLoading && !loadingAccess && !modeLoading ? (
             <FirstValueRail
               lang={lang}

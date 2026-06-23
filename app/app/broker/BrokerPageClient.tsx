@@ -16,6 +16,7 @@ import {
 
 type BrokerId =
   | "interactive_brokers"
+  | "alpaca"
   | "degiro"
   | "etoro"
   | "manual_api";
@@ -73,6 +74,7 @@ type BrokerApiStatus = {
 
 const BROKERS: Array<{ id: BrokerId; label: string; markets: string }> = [
   { id: "interactive_brokers", label: "Interactive Brokers", markets: "Stocks, ETFs, options" },
+  { id: "alpaca", label: "Alpaca", markets: "Stocks, ETFs, crypto" },
   { id: "degiro", label: "DEGIRO", markets: "Stocks, ETFs" },
   { id: "etoro", label: "eToro", markets: "Stocks, ETFs" },
   { id: "manual_api", label: "Manual API / CSV", markets: "Any investing broker with exports" },
@@ -101,6 +103,20 @@ const BROKER_CAPABILITIES: Record<BrokerId, BrokerCapability> = {
       "Select API or OAuth in Syntrake Broker setup.",
       "Paste connection reference and connect broker.",
       "Run Sync now and verify positions before daily execution.",
+    ],
+  },
+  alpaca: {
+    id: "alpaca",
+    automation: "auto_supported",
+    signalcoreMode: "API/OAuth/CSV",
+    source: "https://app.alpaca.markets/",
+    verifiedAt: "2026-06-20",
+    note: "Alpaca supports API trading and paper trading. Syntrake bot can use Alpaca paper through server env credentials.",
+    setup: [
+      "Open Alpaca and create/login to your paper trading account.",
+      "Create paper API keys in Alpaca and store them as server env vars.",
+      "Set SYNTRAKE_BOT_PAPER_BROKER=alpaca so Syntrake paper orders use Alpaca paper.",
+      "Keep live trading disabled until paper history is clean and the live adapter is reviewed.",
     ],
   },
   degiro: {
@@ -179,6 +195,7 @@ function normalizeBrokerId(v: unknown): BrokerId {
   const x = String(v || "").toLowerCase().trim();
   if (
     x === "interactive_brokers" ||
+    x === "alpaca" ||
     x === "degiro" ||
     x === "etoro" ||
     x === "manual_api"

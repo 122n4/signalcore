@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getRequestUserId } from "@/lib/auth/requestUser";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
+import { readPaperHistoryPayload } from "@/lib/trading/bot/paperRunner";
 import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
 
 export const runtime = "nodejs";
@@ -22,6 +23,10 @@ export async function GET(req: Request) {
   const payload = state?.payload ?? {};
   const runtimeHealth = payload.runtime ?? null;
   const status = String(state?.status ?? "unknown");
+  const paperTrading = await readPaperHistoryPayload(userId, { days: 183, maxSettlements: 4 }).catch((error: any) => ({
+    ok: false,
+    error: error?.message || "paper_trading_health_failed",
+  }));
 
   return NextResponse.json(
     {
@@ -40,6 +45,7 @@ export async function GET(req: Request) {
       lockStatus: state?.lock_health ?? runtimeHealth?.lock?.health ?? "unknown",
       activeRunId: state?.active_run_id ?? runtimeHealth?.queue?.activeRunId ?? null,
       stage: state?.stage ?? runtimeHealth?.activeRun?.stage ?? null,
+      paperTrading,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

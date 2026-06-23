@@ -201,6 +201,39 @@ function resolveBrokerPlan(entry: TradingWatchlistEntry, snapshotBlocked: boolea
   };
 }
 
+function resolveTradingPlanRecommendation(plan: ReturnType<typeof resolveBrokerPlan>) {
+  if (plan.action.intent === "execute_now" && plan.canExecute) return "ENTER";
+  if (plan.action.intent === "prepare_now" || plan.action.intent === "monitor_now") return "MONITOR";
+  return "WAIT";
+}
+
+function buildFollowContext(entry: TradingWatchlistEntry, snapshotBlocked = false) {
+  const plan = resolveBrokerPlan(entry, snapshotBlocked);
+  const triggerLevel = entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null;
+  const direction = entry.liveDecision.direction ?? null;
+
+  return {
+    currentState: entry.currentState,
+    executionStatus: entry.executionStatus,
+    direction,
+    triggerLevel,
+    invalidationLevel:
+      entry.liveDecision.invalidationLevel ??
+      entry.workspace.execution.invalidation.invalidationLevel ??
+      null,
+    targetZone: entry.liveDecision.targetZone ?? entry.workspace.execution.tradePath.targetZone ?? null,
+    riskPct: entry.liveDecision.riskPct ?? entry.workspace.execution.riskFraming.riskPct ?? null,
+    headline: entry.currentHeadline,
+    planState: plan.state,
+    planIntent: plan.action.intent,
+    recommendation: resolveTradingPlanRecommendation(plan),
+    traderAction:
+      String(direction || "").toLowerCase() === "short" ? "ENTER SHORT" : "ENTER LONG",
+    clarityScore: Math.round(entry.workspace.setupCore.quality.score),
+    hasValidTrigger: plan.canExecute && hasBrokerTrigger(entry),
+  };
+}
+
 function ReasonCard({
   label,
   value,
@@ -1245,6 +1278,11 @@ function TradingDecisionCockpit({
       : isFollowed
         ? "Syntrake is watching this market until you confirm entry, close it, or remove it from the follow loop."
         : "Start follow if you want this market to become part of the tracked trade lifecycle.";
+  const confirmEntryWouldViolate =
+    isFollowed &&
+    lifecycleStatus !== "active" &&
+    lifecycleStatus !== "entry_confirmed" &&
+    resolveTradingPlanRecommendation(plan) !== "ENTER";
   const checklist = buildBrokerReadyChecklist({
     entry,
     plan,
@@ -1499,6 +1537,13 @@ function TradingDecisionCockpit({
                 </span>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
+                {confirmEntryWouldViolate ? (
+                  <div className="w-full rounded-2xl border border-rose-400/24 bg-rose-500/10 p-3 text-xs leading-5 text-rose-50">
+                    Confirming entry now will be logged as a Plan Violation:
+                    Syntrake recommendation is {resolveTradingPlanRecommendation(plan)}, while
+                    trader action would be {String(entry.liveDecision.direction || "").toLowerCase() === "short" ? "ENTER SHORT" : "ENTER LONG"}.
+                  </div>
+                ) : null}
                 {!isFollowed ? (
                   <button
                     type="button"
@@ -1973,19 +2018,11 @@ export default function TradingTab({
   const handleToggleFollow = useCallback(
     (entry: TradingWatchlistEntry) => {
       const wasFollowed = isFollowedInstrument(entry.instrument);
-      void toggleFollowedInstrument(entry.instrument, {
-        currentState: entry.currentState,
-        executionStatus: entry.executionStatus,
-        direction: entry.liveDecision.direction ?? null,
-        triggerLevel: entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null,
-        invalidationLevel:
-          entry.liveDecision.invalidationLevel ??
-          entry.workspace.execution.invalidation.invalidationLevel ??
-          null,
-        targetZone: entry.liveDecision.targetZone ?? entry.workspace.execution.tradePath.targetZone ?? null,
-        riskPct: entry.liveDecision.riskPct ?? entry.workspace.execution.riskFraming.riskPct ?? null,
-        headline: entry.currentHeadline,
-      });
+      const snapshotBlocked = assessTradingLiveSnapshot({
+        snapshotAt: entry.chart?.snapshotAt ?? null,
+        marketOpen: entry.contextSummary.marketOpen,
+      }).blocked;
+      void toggleFollowedInstrument(entry.instrument, buildFollowContext(entry, snapshotBlocked));
       if (
         !wasFollowed &&
         canUseBrowserNotifications() &&
@@ -2013,19 +2050,14 @@ export default function TradingTab({
   }, []);
   const handleConfirmEntry = useCallback(
     (entry: TradingWatchlistEntry) => {
+      const snapshotBlocked = assessTradingLiveSnapshot({
+        snapshotAt: entry.chart?.snapshotAt ?? null,
+        marketOpen: entry.contextSummary.marketOpen,
+      }).blocked;
+      const context = buildFollowContext(entry, snapshotBlocked);
       void confirmFollowedEntry(entry.instrument, {
-        currentState: entry.currentState,
-        executionStatus: entry.executionStatus,
-        direction: entry.liveDecision.direction ?? null,
-        triggerLevel: entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null,
-        invalidationLevel:
-          entry.liveDecision.invalidationLevel ??
-          entry.workspace.execution.invalidation.invalidationLevel ??
-          null,
-        targetZone: entry.liveDecision.targetZone ?? entry.workspace.execution.tradePath.targetZone ?? null,
-        riskPct: entry.liveDecision.riskPct ?? entry.workspace.execution.riskFraming.riskPct ?? null,
-        headline: entry.currentHeadline,
-        entryPrice: entry.liveDecision.triggerLevel ?? entry.workspace.execution.entryZone.triggerLevel ?? null,
+        ...context,
+        entryPrice: context.triggerLevel,
       });
     },
     [confirmFollowedEntry],

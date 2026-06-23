@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isEngineLoopAuthorized } from "@/lib/engine/loopAuth";
+import { getOwnerUserIds } from "@/lib/signalcore/owner";
 import {
   TRADING_LIGHT_SCANNER_INSTRUMENTS,
   buildTradingLightScannerInputs,
@@ -9,6 +10,7 @@ import {
   readLatestTradingScannerSnapshots,
   writeTradingScannerSnapshots,
 } from "@/lib/trading/scannerSnapshotStore";
+import { runPaperBotCycleForUser } from "@/lib/trading/bot/paperRunner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -181,6 +183,54 @@ function summarizeInputs(
   };
 }
 
+function shouldRunPaperBot(url: URL) {
+  if (url.searchParams.get("paperBot") === "1") return true;
+  return String(process.env.TRADING_SCANNER_REFRESH_RUN_PAPER_BOT || "").trim() === "1";
+}
+
+function paperBotMaxTradesPerDay() {
+  return positiveIntegerFromEnv("SYNTRAKE_BOT_PAPER_MAX_TRADES_PER_DAY", 3, 1, 10);
+}
+
+async function maybeRunPaperBot(url: URL) {
+  if (!shouldRunPaperBot(url)) {
+    return {
+      enabled: false,
+      results: [],
+    };
+  }
+
+  const owners = getOwnerUserIds().slice(0, 3);
+  const results = [];
+  for (const userId of owners) {
+    try {
+      results.push({
+        userId,
+        ...(await runPaperBotCycleForUser({
+          userId,
+          source: "daemon",
+          maxTradesPerDay: paperBotMaxTradesPerDay(),
+          historyMaxSettlements: 0,
+        })),
+      });
+    } catch (error: any) {
+      results.push({
+        userId,
+        ok: false,
+        status: "error",
+        error: error?.message || "paper_bot_daemon_failed",
+      });
+    }
+  }
+
+  return {
+    enabled: true,
+    maxTradesPerDay: paperBotMaxTradesPerDay(),
+    ownersChecked: owners.length,
+    results,
+  };
+}
+
 async function handleRefresh(req: Request) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
@@ -209,6 +259,7 @@ async function handleRefresh(req: Request) {
       generatedAt: asOf,
     });
     const summary = summarizeInputs(inputs);
+    const paperBot = await maybeRunPaperBot(url);
     const scannerHealthy = summary.marketOpenCount === 0 || summary.staleOpenMarketCount === 0;
     const storageHealthy = persist.schemaReady || persist.persisted;
     const refreshCompleted = storageHealthy;
@@ -253,6 +304,7 @@ async function handleRefresh(req: Request) {
         skippedStaleOpenCount: persist.skippedStaleOpenCount,
         persistError: persist.error,
         refreshBatch,
+        paperBot,
         alert: scannerAlert,
         summary,
       },

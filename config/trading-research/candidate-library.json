@@ -33,13 +33,13 @@
               "neutral",
               "unfavorable"
             ]
-            },
-            "candidate_mutation": {
-              "kind": "risk_multiplier",
-              "value": 0.72
-            }
           },
-          {
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.72
+          }
+        },
+        {
           "id": "ethusd_breakout_weekend_drift_env_guard_risk_072",
           "enabled": true,
           "type": "risk_shaping",
@@ -2925,9 +2925,15 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["EURUSD"],
-            "sessions": ["london_session"],
-            "setup_types": ["breakout_continuation"]
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "london_session"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -2942,10 +2948,20 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["USDJPY"],
-            "sessions": ["london_session"],
-            "setup_types": ["breakout_continuation"],
-            "quality_grades": ["B", "C", "D"]
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "london_session"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "quality_grades": [
+              "B",
+              "C",
+              "D"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -2960,10 +2976,18 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["GBPUSD"],
-            "sessions": ["asia_flow"],
-            "setup_types": ["breakout_continuation"],
-            "clarity_levels": ["medium"]
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "asia_flow"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "clarity_levels": [
+              "medium"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -2978,10 +3002,20 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["XAUUSD"],
-            "sessions": ["late_us"],
-            "setup_types": ["breakout_continuation"],
-            "quality_grades": ["B", "C", "D"]
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "quality_grades": [
+              "B",
+              "C",
+              "D"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -2996,10 +3030,20 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["US500"],
-            "sessions": ["pre_market"],
-            "setup_types": ["breakout_continuation"],
-            "quality_grades": ["B", "C", "D"]
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "quality_grades": [
+              "B",
+              "C",
+              "D"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -3014,10 +3058,18 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["BTCUSD"],
-            "sessions": ["weekend_drift"],
-            "setup_types": ["breakout_continuation"],
-            "clarity_levels": ["medium"]
+            "instruments": [
+              "BTCUSD"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "clarity_levels": [
+              "medium"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -3040,11 +3092,32 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["GBPUSD", "XAUUSD", "NAS100", "US500", "BTCUSD", "ETHUSD"],
-            "sessions": ["weekend_drift", "ny_open", "london_session", "london_ny_overlap"],
-            "setup_types": ["breakout_continuation"],
-            "quality_grades": ["B", "C", "D"],
-            "environment_states": ["neutral", "unfavorable"]
+            "instruments": [
+              "GBPUSD",
+              "XAUUSD",
+              "NAS100",
+              "US500",
+              "BTCUSD",
+              "ETHUSD"
+            ],
+            "sessions": [
+              "weekend_drift",
+              "ny_open",
+              "london_session",
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "quality_grades": [
+              "B",
+              "C",
+              "D"
+            ],
+            "environment_states": [
+              "neutral",
+              "unfavorable"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -3059,11 +3132,30 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["GBPUSD", "XAUUSD", "NAS100", "US500", "BTCUSD", "ETHUSD"],
-            "sessions": ["weekend_drift", "ny_open", "london_session", "london_ny_overlap"],
-            "setup_types": ["breakout_continuation"],
-            "clarity_levels": ["medium"],
-            "environment_states": ["neutral", "unfavorable"]
+            "instruments": [
+              "GBPUSD",
+              "XAUUSD",
+              "NAS100",
+              "US500",
+              "BTCUSD",
+              "ETHUSD"
+            ],
+            "sessions": [
+              "weekend_drift",
+              "ny_open",
+              "london_session",
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "clarity_levels": [
+              "medium"
+            ],
+            "environment_states": [
+              "neutral",
+              "unfavorable"
+            ]
           },
           "candidate_mutation": {
             "kind": "risk_multiplier",
@@ -3078,10 +3170,21 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["BTCUSD", "ETHUSD"],
-            "sessions": ["weekend_drift"],
-            "setup_types": ["breakout_continuation"],
-            "quality_grades": ["B", "C", "D"]
+            "instruments": [
+              "BTCUSD",
+              "ETHUSD"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "quality_grades": [
+              "B",
+              "C",
+              "D"
+            ]
           },
           "candidate_mutation": {
             "kind": "blocked_context"
@@ -3095,11 +3198,27 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["NAS100", "US500"],
-            "sessions": ["ny_open", "london_session", "london_ny_overlap"],
-            "setup_types": ["breakout_continuation"],
-            "quality_grades": ["B", "C", "D"],
-            "environment_states": ["neutral", "unfavorable"]
+            "instruments": [
+              "NAS100",
+              "US500"
+            ],
+            "sessions": [
+              "ny_open",
+              "london_session",
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "quality_grades": [
+              "B",
+              "C",
+              "D"
+            ],
+            "environment_states": [
+              "neutral",
+              "unfavorable"
+            ]
           },
           "candidate_mutation": {
             "kind": "blocked_context"
@@ -3121,11 +3240,28 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["NAS100", "US500", "XAUUSD", "BTCUSD", "ETHUSD"],
-            "sessions": ["ny_open", "london_ny_overlap", "late_us", "weekend_drift"],
-            "setup_types": ["breakout_continuation"],
-            "risk_modes": ["aggressive"],
-            "environment_states": ["favorable"]
+            "instruments": [
+              "NAS100",
+              "US500",
+              "XAUUSD",
+              "BTCUSD",
+              "ETHUSD"
+            ],
+            "sessions": [
+              "ny_open",
+              "london_ny_overlap",
+              "late_us",
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "risk_modes": [
+              "aggressive"
+            ],
+            "environment_states": [
+              "favorable"
+            ]
           },
           "candidate_mutation": {
             "kind": "aggressive_risk_cap",
@@ -3140,12 +3276,26 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["NAS100", "US500"],
-            "sessions": ["ny_open", "london_ny_overlap"],
-            "setup_types": ["breakout_continuation"],
-            "risk_modes": ["aggressive"],
-            "quality_grades": ["A"],
-            "clarity_levels": ["high"]
+            "instruments": [
+              "NAS100",
+              "US500"
+            ],
+            "sessions": [
+              "ny_open",
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "risk_modes": [
+              "aggressive"
+            ],
+            "quality_grades": [
+              "A"
+            ],
+            "clarity_levels": [
+              "high"
+            ]
           },
           "candidate_mutation": {
             "kind": "aggressive_risk_cap",
@@ -3160,12 +3310,25 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["BTCUSD", "ETHUSD"],
-            "sessions": ["weekend_drift"],
-            "setup_types": ["breakout_continuation"],
-            "risk_modes": ["aggressive"],
-            "quality_grades": ["A"],
-            "clarity_levels": ["high"]
+            "instruments": [
+              "BTCUSD",
+              "ETHUSD"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "risk_modes": [
+              "aggressive"
+            ],
+            "quality_grades": [
+              "A"
+            ],
+            "clarity_levels": [
+              "high"
+            ]
           },
           "candidate_mutation": {
             "kind": "aggressive_risk_cap",
@@ -3180,12 +3343,24 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["XAUUSD"],
-            "sessions": ["late_us"],
-            "setup_types": ["breakout_continuation"],
-            "risk_modes": ["aggressive"],
-            "quality_grades": ["A"],
-            "clarity_levels": ["high"]
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "risk_modes": [
+              "aggressive"
+            ],
+            "quality_grades": [
+              "A"
+            ],
+            "clarity_levels": [
+              "high"
+            ]
           },
           "candidate_mutation": {
             "kind": "aggressive_risk_cap",
@@ -3200,12 +3375,27 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["EURUSD", "GBPUSD", "USDJPY"],
-            "sessions": ["london_session", "london_open"],
-            "setup_types": ["breakout_continuation"],
-            "risk_modes": ["aggressive"],
-            "quality_grades": ["A"],
-            "clarity_levels": ["high"]
+            "instruments": [
+              "EURUSD",
+              "GBPUSD",
+              "USDJPY"
+            ],
+            "sessions": [
+              "london_session",
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "risk_modes": [
+              "aggressive"
+            ],
+            "quality_grades": [
+              "A"
+            ],
+            "clarity_levels": [
+              "high"
+            ]
           },
           "candidate_mutation": {
             "kind": "aggressive_risk_cap",
@@ -3220,14 +3410,1143 @@
           "dataset_profile": "core_20y",
           "validation_profile": "default_live_safe",
           "candidate_scope": {
-            "instruments": ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "NAS100", "US500", "BTCUSD", "ETHUSD"],
-            "setup_types": ["breakout_continuation"],
-            "risk_modes": ["aggressive"],
-            "quality_grades": ["A"],
-            "clarity_levels": ["high"]
+            "instruments": [
+              "EURUSD",
+              "GBPUSD",
+              "USDJPY",
+              "XAUUSD",
+              "NAS100",
+              "US500",
+              "BTCUSD",
+              "ETHUSD"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ],
+            "risk_modes": [
+              "aggressive"
+            ],
+            "quality_grades": [
+              "A"
+            ],
+            "clarity_levels": [
+              "high"
+            ]
           },
           "candidate_mutation": {
             "kind": "aggressive_risk_cap",
+            "value": 0.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "perpetual_risk_multiplier_grid",
+      "enabled": true,
+      "priority": 58,
+      "campaign_id": "improve_crisis",
+      "templates": [
+        {
+          "id": "eurusd_pre_market_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_london_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_london_ny_overlap_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_ny_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "ny_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_midday_lull_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "midday_lull"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_late_us_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_asia_flow_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "asia_flow"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "eurusd_weekend_drift_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "EURUSD"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_pre_market_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_london_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_london_session_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "london_session"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_london_ny_overlap_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_ny_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "ny_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_midday_lull_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "midday_lull"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_late_us_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "gbpusd_weekend_drift_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "GBPUSD"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_pre_market_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_london_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_london_ny_overlap_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_ny_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "ny_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_midday_lull_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "midday_lull"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_late_us_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "usdjpy_weekend_drift_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "USDJPY"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_pre_market_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_london_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_london_session_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "london_session"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_london_ny_overlap_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_ny_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "ny_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_midday_lull_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "midday_lull"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_asia_flow_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "asia_flow"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "xauusd_weekend_drift_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "XAUUSD"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_pre_market_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_london_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_london_session_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "london_session"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_london_ny_overlap_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "london_ny_overlap"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_ny_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "ny_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_midday_lull_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "midday_lull"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_late_us_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_asia_flow_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "asia_flow"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "nas100_weekend_drift_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "NAS100"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_london_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "london_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_london_session_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "london_session"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_ny_open_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "ny_open"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_midday_lull_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "midday_lull"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_late_us_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "late_us"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_asia_flow_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "asia_flow"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "us500_weekend_drift_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "US500"
+            ],
+            "sessions": [
+              "weekend_drift"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
+            "value": 0.5
+          }
+        },
+        {
+          "id": "btcusd_pre_market_risk_50",
+          "enabled": true,
+          "type": "risk_shaping",
+          "priority": 90,
+          "dataset_profile": "core_20y",
+          "validation_profile": "default_live_safe",
+          "candidate_scope": {
+            "instruments": [
+              "BTCUSD"
+            ],
+            "sessions": [
+              "pre_market"
+            ],
+            "setup_types": [
+              "breakout_continuation"
+            ]
+          },
+          "candidate_mutation": {
+            "kind": "risk_multiplier",
             "value": 0.5
           }
         }

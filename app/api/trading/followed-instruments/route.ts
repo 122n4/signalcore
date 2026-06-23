@@ -26,6 +26,104 @@ function finiteNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function resolveTraderAction(context: Record<string, unknown>) {
+  const direction = cleanText(context.direction, 16).toUpperCase();
+  if (direction.includes("SHORT") || direction.includes("SELL")) return "ENTER SHORT";
+  if (direction.includes("LONG") || direction.includes("BUY")) return "ENTER LONG";
+  return "ENTER TRADE";
+}
+
+function resolvePlanRecommendation(context: Record<string, unknown>) {
+  const explicit = cleanText(context.recommendation, 40).toUpperCase();
+  if (explicit) return explicit;
+
+  const state = cleanText(context.currentState, 40).toUpperCase();
+  const executionStatus = cleanText(context.executionStatus, 40).toLowerCase();
+  if ((state === "TRADE_VALID" || state === "TRADE_ACTIVE") && executionStatus === "allowed") {
+    return "ENTER";
+  }
+  if (state === "SETUP_FORMING") return "MONITOR";
+  return "WAIT";
+}
+
+function resolvePlanDiscipline(args: {
+  action: string;
+  instrument: string;
+  context: Record<string, unknown>;
+  resultR?: number | null;
+  inherited?: Record<string, unknown>;
+}) {
+  const inherited = asObject(args.inherited);
+  const inheritedDiscipline = asObject(inherited.planDiscipline);
+  const state = cleanText(args.context.currentState ?? inherited.currentState, 40).toUpperCase();
+  const executionStatus = cleanText(
+    args.context.executionStatus ?? inherited.executionStatus,
+    40,
+  ).toLowerCase();
+  const planState = cleanText(args.context.planState ?? inherited.planState, 40).toUpperCase();
+  const planIntent = cleanText(args.context.planIntent ?? inherited.planIntent, 40).toLowerCase();
+  const clarity =
+    finiteNumber(args.context.clarityScore ?? inherited.clarityScore) ??
+    finiteNumber(inheritedDiscipline.clarity) ??
+    null;
+  const recommendation =
+    cleanText(args.context.recommendation ?? inherited.recommendation, 40).toUpperCase() ||
+    cleanText(inheritedDiscipline.recommendation, 40).toUpperCase() ||
+    resolvePlanRecommendation({
+      ...inherited,
+      ...args.context,
+      currentState: state,
+      executionStatus,
+    });
+  const traderAction =
+    cleanText(args.context.traderAction ?? inherited.traderAction, 40).toUpperCase() ||
+    cleanText(inheritedDiscipline.traderAction, 40).toUpperCase() ||
+    resolveTraderAction({ ...inherited, ...args.context });
+  const hasValidTrigger =
+    Boolean(args.context.hasValidTrigger ?? inherited.hasValidTrigger) ||
+    finiteNumber(args.context.triggerLevel ?? inherited.triggerLevel) != null;
+  const allowedPlan =
+    (state === "TRADE_VALID" || state === "TRADE_ACTIVE") &&
+    executionStatus === "allowed" &&
+    (planState === "READY" || planIntent === "execute_now") &&
+    hasValidTrigger;
+  const aligned =
+    args.action === "confirm_entry"
+      ? allowedPlan && recommendation === "ENTER"
+      : inheritedDiscipline.aligned === true;
+  const violationReason =
+    aligned
+      ? null
+      : !hasValidTrigger
+        ? "Trade taken without valid trigger"
+        : recommendation !== "ENTER"
+          ? `Syntrake recommendation was ${recommendation}`
+          : executionStatus !== "allowed"
+            ? "Execution gate was not allowed"
+            : "Trade taken outside a READY plan";
+
+  return {
+    status: aligned ? "aligned" : "violation",
+    aligned,
+    violationReason,
+    clarity,
+    recommendation,
+    traderAction,
+    currentState: state || null,
+    executionStatus: executionStatus || null,
+    planState: planState || null,
+    planIntent: planIntent || null,
+    hasValidTrigger,
+    resultR: args.resultR ?? finiteNumber(inheritedDiscipline.resultR),
+  };
+}
+
 function normalizeContext(value: any) {
   const context = value && typeof value === "object" ? value : {};
 
@@ -88,15 +186,25 @@ async function writeFollowJournal(args: {
   action: string;
   instrument: string;
   context: Record<string, unknown>;
+  planDiscipline?: Record<string, unknown> | null;
+  resultR?: number | null;
 }) {
   await args.sb.from("journal_entries").insert({
     user_id: args.userId,
     mode: args.mode,
-    type: "trading_follow",
-    title: `Trading follow ${args.action}: ${args.instrument}`,
+    type:
+      args.action === "entry_confirmed" && args.planDiscipline?.status === "violation"
+        ? "trading_plan_violation"
+        : "trading_follow",
+    title:
+      args.action === "entry_confirmed" && args.planDiscipline?.status === "violation"
+        ? `Plan Violation: ${args.instrument}`
+        : `Trading follow ${args.action}: ${args.instrument}`,
     details: {
       action: args.action,
       instrument: args.instrument,
+      resultR: args.resultR ?? null,
+      planDiscipline: args.planDiscipline ?? null,
       ...args.context,
     },
     created_at: new Date().toISOString(),
@@ -194,6 +302,23 @@ export async function POST(req: Request) {
       await writeFollowJournal({ sb, userId, mode, action: "started", instrument, context });
     } else if (action === "confirm_entry") {
       const context = normalizeContext(body?.context);
+      const { data: existing, error: existingError } = await sb
+        .from("trading_followed_positions")
+        .select("entry_snapshot")
+        .eq("user_id", userId)
+        .eq("mode", mode)
+        .eq("instrument", instrument)
+        .eq("status", "open")
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message || "followed_position_read_failed");
+
+      const rawContext = asObject(body?.context);
+      const planDiscipline = resolvePlanDiscipline({
+        action: "confirm_entry",
+        instrument,
+        context: rawContext,
+        inherited: asObject(existing?.entry_snapshot),
+      });
       const { error } = await sb
         .from("trading_followed_positions")
         .update({
@@ -201,6 +326,11 @@ export async function POST(req: Request) {
           entry_confirmed_at: new Date().toISOString(),
           entry_price: finiteNumber(body?.entryPrice ?? body?.context?.entryPrice),
           ...context,
+          entry_snapshot: {
+            ...asObject(existing?.entry_snapshot),
+            ...rawContext,
+            planDiscipline,
+          },
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", userId)
@@ -215,9 +345,30 @@ export async function POST(req: Request) {
         action: "entry_confirmed",
         instrument,
         context,
+        planDiscipline,
       });
     } else if (action === "unfollow" || action === "close") {
       const status = action === "close" ? "closed" : "removed";
+      const { data: existing, error: existingError } = await sb
+        .from("trading_followed_positions")
+        .select("entry_snapshot")
+        .eq("user_id", userId)
+        .eq("mode", mode)
+        .eq("instrument", instrument)
+        .eq("status", "open")
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message || "followed_position_read_failed");
+      const resultR = finiteNumber(body?.resultR);
+      const planDiscipline =
+        action === "close"
+          ? resolvePlanDiscipline({
+              action: "close",
+              instrument,
+              context: {},
+              inherited: asObject(existing?.entry_snapshot),
+              resultR,
+            })
+          : null;
       const { error } = await sb
         .from("trading_followed_positions")
         .update({
@@ -225,7 +376,7 @@ export async function POST(req: Request) {
           lifecycle_status: action === "close" ? "closed" : "removed",
           closed_at: new Date().toISOString(),
           exit_price: finiteNumber(body?.exitPrice),
-          result_r: finiteNumber(body?.resultR),
+          result_r: resultR,
           close_reason: cleanText(body?.reason, 240) || null,
           updated_at: new Date().toISOString(),
           last_headline: cleanText(body?.reason, 240) || null,
@@ -242,6 +393,8 @@ export async function POST(req: Request) {
         action: status,
         instrument,
         context: { reason: cleanText(body?.reason, 240) || null },
+        planDiscipline,
+        resultR,
       });
     } else {
       return NextResponse.json({ ok: false, error: "unsupported_action" }, { status: 400 });

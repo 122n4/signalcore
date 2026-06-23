@@ -25,6 +25,12 @@ export type FollowedTradingInstrumentContext = {
   targetZone?: string | null;
   riskPct?: number | null;
   headline?: string | null;
+  planState?: string | null;
+  planIntent?: string | null;
+  recommendation?: string | null;
+  traderAction?: string | null;
+  clarityScore?: number | null;
+  hasValidTrigger?: boolean | null;
 };
 
 export type FollowedTradingLifecycleStatus =

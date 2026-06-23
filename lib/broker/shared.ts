@@ -2,6 +2,7 @@ import { normalizeMode, type AutopilotMode } from "@/lib/signalcore/modes";
 
 export type BrokerProvider =
   | "interactive_brokers"
+  | "alpaca"
   | "degiro"
   | "xtb"
   | "etoro"
@@ -61,6 +62,7 @@ export type BrokerConnection = {
 
 const BROKER_SET: Set<BrokerProvider> = new Set<BrokerProvider>([
   "interactive_brokers",
+  "alpaca",
   "degiro",
   "xtb",
   "etoro",
@@ -72,6 +74,7 @@ const BROKER_SET: Set<BrokerProvider> = new Set<BrokerProvider>([
 
 const BROKER_LABELS: Record<BrokerProvider, string> = {
   interactive_brokers: "Interactive Brokers",
+  alpaca: "Alpaca",
   degiro: "DEGIRO",
   xtb: "XTB",
   etoro: "eToro",
@@ -160,6 +163,7 @@ export function normalizeBrokerProvider(v: unknown): BrokerProvider {
   const x = String(v || "").trim().toLowerCase();
   if (BROKER_SET.has(x as BrokerProvider)) return x as BrokerProvider;
   if (x === "ib" || x === "ibkr") return "interactive_brokers";
+  if (x === "alpaca_markets" || x === "alpaca-markets") return "alpaca";
   if (x === "e_toro" || x === "e-toro") return "etoro";
   if (x === "manual" || x === "api") return "manual_api";
   return "interactive_brokers";
