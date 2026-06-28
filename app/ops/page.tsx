@@ -3,12 +3,10 @@ import { auth } from "@clerk/nextjs/server";
 
 import { buildPremiumAuditReport } from "@/lib/billing/premiumAuditService";
 import { getMarketProviderStatuses, summarizeMarketProviderStatuses } from "@/lib/market/providerStatus";
+import { loadTradingScannerOperationalDiagnostics } from "@/lib/ops/tradingScannerStatus";
 import { buildProductReadinessReport } from "@/lib/ops/productReadiness";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
-import {
-  inspectTradingLightScanner,
-  summarizeTradingLightScannerDiagnostics,
-} from "@/lib/trading/lightScanner";
+import { summarizeTradingLightScannerDiagnostics } from "@/lib/trading/lightScanner";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 
 export const metadata: Metadata = {
@@ -85,24 +83,7 @@ function maskStripeId(value: string | null | undefined) {
 }
 
 async function inspectTradingScannerForOps(asOf: string) {
-  const diagnostics = await inspectTradingLightScanner({
-    asOf,
-    liveFetch: true,
-    openMarketsOnlyLiveFetch: true,
-  });
-  const summary = summarizeTradingLightScannerDiagnostics(diagnostics);
-  const needsHardRefresh =
-    summary.openMarketCount > 0 &&
-    summary.freshOpenMarketCount === 0;
-
-  if (!needsHardRefresh) return diagnostics;
-
-  return inspectTradingLightScanner({
-    asOf,
-    liveFetch: true,
-    forceProviderRefresh: true,
-    openMarketsOnlyLiveFetch: true,
-  }).catch(() => diagnostics);
+  return loadTradingScannerOperationalDiagnostics({ asOf, liveFetch: false });
 }
 
 export default async function OpsPage() {
@@ -122,8 +103,6 @@ export default async function OpsPage() {
   }
 
   const asOf = new Date().toISOString();
-  const marketProviders = getMarketProviderStatuses();
-  const providerSummary = summarizeMarketProviderStatuses(marketProviders);
   const [research, billing, scanner] = await Promise.all([
     settle(buildResearchRuntimeHealth()),
     settle(buildPremiumAuditReport({ limit: 1000 })),
@@ -137,6 +116,8 @@ export default async function OpsPage() {
   const scannerDiagnostics = scanner.ok ? scanner.value : null;
   const scannerError = settledError(scanner);
   const scannerSummary = scannerDiagnostics ? summarizeTradingLightScannerDiagnostics(scannerDiagnostics) : null;
+  const marketProviders = getMarketProviderStatuses();
+  const providerSummary = summarizeMarketProviderStatuses(marketProviders);
   const readiness = buildProductReadinessReport({
     billing: billingValue,
     billingError,
@@ -234,6 +215,21 @@ export default async function OpsPage() {
                     <span>{provider.configured ? "ready" : "missing key"}</span>
                   </div>
                   <p className="mt-1 text-xs opacity-80">{provider.detail}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.16em] opacity-75">
+                    <span>{provider.calls ?? 0} calls</span>
+                    <span>{provider.successRate == null ? "n/a" : `${provider.successRate}%`} success</span>
+                    <span>{provider.errors ?? 0} errors</span>
+                  </div>
+                  {provider.cooldownUntil ? (
+                    <p className="mt-2 rounded-xl border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">
+                      Cooldown until {new Date(provider.cooldownUntil).toLocaleTimeString()}.
+                    </p>
+                  ) : null}
+                  {provider.lastSuccessAt ? (
+                    <p className="mt-1 text-[11px] opacity-60">
+                      Last successful candle/quote: {new Date(provider.lastSuccessAt).toLocaleString()}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>

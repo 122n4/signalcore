@@ -1,3 +1,4 @@
+import { getMarketClientTelemetrySummary } from "@/lib/market/marketClient";
 import { getTwelveDataKeyPoolStatus } from "@/lib/market/providers/twelvedataKeyPool";
 
 export type MarketProviderStatus = {
@@ -8,6 +9,13 @@ export type MarketProviderStatus = {
   role: "primary" | "fallback" | "last_resort";
   markets: string[];
   detail: string;
+  calls?: number;
+  errors?: number;
+  successRate?: number | null;
+  lastSuccessAt?: string | null;
+  cooldownUntil?: string | null;
+  cooldownReason?: string | null;
+  errorBreakdown?: Record<string, number>;
 };
 
 function hasEnv(...names: string[]) {
@@ -16,8 +24,9 @@ function hasEnv(...names: string[]) {
 
 export function getMarketProviderStatuses(): MarketProviderStatus[] {
   const twelveData = getTwelveDataKeyPoolStatus();
+  const telemetry = getMarketClientTelemetrySummary();
 
-  return [
+  const statuses: Array<Omit<MarketProviderStatus, "calls" | "errors" | "successRate" | "lastSuccessAt" | "cooldownUntil" | "cooldownReason" | "errorBreakdown">> = [
     {
       provider: "coinbase",
       label: "Coinbase",
@@ -82,6 +91,25 @@ export function getMarketProviderStatuses(): MarketProviderStatus[] {
       detail: "Last-resort free-key provider for slow fallback coverage.",
     },
   ];
+
+  return statuses.map((status) => {
+    const providerTelemetry = telemetry.providers[status.provider];
+    const telemetryDetail = providerTelemetry.calls > 0
+      ? ` Recent: ${providerTelemetry.calls} calls, ${providerTelemetry.successRate ?? 0}% success, ${providerTelemetry.failures} errors.`
+      : " Recent: no calls observed in this runtime window.";
+
+    return {
+      ...status,
+      calls: providerTelemetry.calls,
+      errors: providerTelemetry.failures,
+      successRate: providerTelemetry.successRate,
+      lastSuccessAt: providerTelemetry.lastSuccessAt,
+      cooldownUntil: providerTelemetry.cooldownUntil,
+      cooldownReason: providerTelemetry.cooldownReason,
+      errorBreakdown: providerTelemetry.errorBreakdown as Record<string, number>,
+      detail: `${status.detail}${telemetryDetail}`,
+    };
+  });
 }
 
 export function summarizeMarketProviderStatuses(statuses = getMarketProviderStatuses()) {

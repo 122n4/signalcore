@@ -67,7 +67,12 @@ vi.mock("@/lib/market/providers/twelvedata", () => ({
   tdQuoteNormalized: tdQuoteMock,
 }));
 
-import { getCandles, getQuote, resetMarketClientProviderCooldownsForTests } from "@/lib/market/marketClient";
+import {
+  getCandles,
+  getMarketClientTelemetrySummary,
+  getQuote,
+  resetMarketClientProviderCooldownsForTests,
+} from "@/lib/market/marketClient";
 import { resetTwelveDataKeyPoolForTests } from "@/lib/market/providers/twelvedataKeyPool";
 
 describe("market client provider routing", () => {
@@ -136,28 +141,27 @@ describe("market client provider routing", () => {
     expect(candles).toHaveLength(1);
   });
 
-  it("falls back to FMP when Twelve Data is limited for forex candles", async () => {
+  it("falls back to Finnhub when Twelve Data is limited for forex candles", async () => {
     tdCandlesMock.mockRejectedValue(new Error("You have run out of API credits for the current minute."));
-    fmpCandlesMock.mockResolvedValue([
+    finnhubCandlesMock.mockResolvedValue([
       { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
     ]);
 
     const candles = await getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto");
 
     expect(tdCandlesMock).toHaveBeenCalled();
-    expect(fmpCandlesMock).toHaveBeenCalledWith(
+    expect(finnhubCandlesMock).toHaveBeenCalledWith(
       "EUR/USD",
       { interval: "5min", points: 2 },
       undefined,
       undefined,
     );
-    expect(finnhubCandlesMock).not.toHaveBeenCalled();
+    expect(fmpCandlesMock).not.toHaveBeenCalled();
     expect(candles).toHaveLength(1);
   });
 
-  it("falls back to Alpha Vantage when paid-key forex providers fail", async () => {
+  it("falls back to Alpha Vantage when Twelve Data and Finnhub fail for forex", async () => {
     tdCandlesMock.mockRejectedValue(new Error("rate_limited"));
-    fmpCandlesMock.mockRejectedValue(new Error("fmp_unavailable"));
     finnhubCandlesMock.mockRejectedValue(new Error("finnhub_unavailable"));
     alphaVantageCandlesMock.mockResolvedValue([
       { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
@@ -246,7 +250,6 @@ describe("market client provider routing", () => {
   });
 
   it("skips a provider briefly after rate-limit failures", async () => {
-    delete process.env.FMP_API_KEY;
     delete process.env.ALPHAVANTAGE_API_KEY;
     tdCandlesMock.mockRejectedValue(
       new Error("You have run out of API credits for the current minute."),
@@ -260,6 +263,36 @@ describe("market client provider routing", () => {
 
     expect(tdCandlesMock).toHaveBeenCalledTimes(1);
     expect(finnhubCandlesMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("deduplicates concurrent candle requests for the same symbol and timeframe", async () => {
+    tdCandlesMock.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve([
+        { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
+      ]), 10)),
+    );
+
+    const [first, second] = await Promise.all([
+      getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto", { purpose: "paper" }),
+      getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto", { purpose: "scanner" }),
+    ]);
+
+    expect(tdCandlesMock).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+  });
+
+  it("records provider telemetry with error classification", async () => {
+    tdCandlesMock.mockRejectedValue(new Error("TwelveData time_series failed (429)"));
+    finnhubCandlesMock.mockResolvedValue([
+      { t: 1, o: 1, h: 2, l: 0.5, c: 1.5 },
+    ]);
+
+    await getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto", { purpose: "paper" });
+
+    const telemetry = getMarketClientTelemetrySummary();
+    expect(telemetry.providers.twelvedata.failures).toBe(1);
+    expect(telemetry.providers.twelvedata.errorBreakdown.rate_limit).toBe(1);
+    expect(telemetry.providers.finnhub.successes).toBe(1);
   });
 
   it("returns last known good candles when every provider later fails", async () => {

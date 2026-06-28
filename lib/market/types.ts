@@ -45,8 +45,20 @@ export type MarketError = {
   message: string;
 };
 
+export type MarketDataPurpose =
+  | "scanner"
+  | "paper"
+  | "research"
+  | "dashboard"
+  | "ops"
+  | "system";
+
 export type MarketFetchOptions = {
   persistentCacheTtlSec?: number;
   memoryCacheTtlMs?: number;
   extendedHours?: boolean;
+  purpose?: MarketDataPurpose;
+  cycleId?: string;
+  requestId?: string;
+  bypassInFlightDedupe?: boolean;
 };

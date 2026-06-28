@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  inspectTradingLightScanner,
-  summarizeTradingLightScannerDiagnostics,
-} from "@/lib/trading/lightScanner";
 import { getTwelveDataApiKeys } from "@/lib/market/providers/twelvedataKeyPool";
+import { loadTradingScannerOperationalDiagnostics } from "@/lib/ops/tradingScannerStatus";
+import { summarizeTradingLightScannerDiagnostics } from "@/lib/trading/lightScanner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,25 +19,7 @@ async function checkSupabase() {
 }
 
 async function inspectTradingScannerForHealth(args: { asOf: string; liveFetch: boolean }) {
-  const firstPass = await inspectTradingLightScanner({
-    asOf: args.asOf,
-    liveFetch: args.liveFetch,
-    openMarketsOnlyLiveFetch: true,
-  }).catch(() => []);
-  const firstSummary = summarizeTradingLightScannerDiagnostics(firstPass);
-  const needsHardRefresh =
-    args.liveFetch &&
-    firstSummary.openMarketCount > 0 &&
-    firstSummary.freshOpenMarketCount === 0;
-
-  if (!needsHardRefresh) return firstPass;
-
-  return inspectTradingLightScanner({
-    asOf: args.asOf,
-    liveFetch: true,
-    forceProviderRefresh: true,
-    openMarketsOnlyLiveFetch: true,
-  }).catch(() => firstPass);
+  return loadTradingScannerOperationalDiagnostics(args);
 }
 
 function buildTradingScannerAlert(

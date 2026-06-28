@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { isEngineLoopAuthorized } from "@/lib/engine/loopAuth";
-import { getOwnerUserIds } from "@/lib/signalcore/owner";
+import { createTradingMarketDataSnapshot } from "@/lib/trading/data";
+import { readSession } from "@/lib/trading/market";
 import {
+  TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS,
   TRADING_LIGHT_SCANNER_INSTRUMENTS,
   buildTradingLightScannerInputs,
 } from "@/lib/trading/lightScanner";
@@ -10,7 +12,6 @@ import {
   readLatestTradingScannerSnapshots,
   writeTradingScannerSnapshots,
 } from "@/lib/trading/scannerSnapshotStore";
-import { runPaperBotCycleForUser } from "@/lib/trading/bot/paperRunner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,55 @@ function orderedScannerInstruments() {
   return [...priority, ...remaining];
 }
 
+function normalizeInstrument(input: unknown) {
+  return String(input ?? "")
+    .trim()
+    .toUpperCase();
+}
+
+function isFreshStoredScannerInput(input: any, asOf: string) {
+  if (input?.scannerSnapshot?.actionableFreshness !== true) {
+    return false;
+  }
+
+  const asOfMs = Date.parse(asOf);
+  const snapshotAtMs = Date.parse(String(input?.snapshot?.snapshotAt ?? ""));
+
+  if (!Number.isFinite(asOfMs) || !Number.isFinite(snapshotAtMs)) {
+    return false;
+  }
+
+  return Math.max(0, asOfMs - snapshotAtMs) <= TRADING_LIGHT_SCANNER_ACTIONABLE_MAX_AGE_MS;
+}
+
+function resolveOpenStalePriorityInstruments(args: {
+  asOf: string;
+  storedInputs: Awaited<ReturnType<typeof readLatestTradingScannerSnapshots>>["inputs"];
+}) {
+  const storedByInstrument = new Map(
+    args.storedInputs.map((input) => [normalizeInstrument(input?.snapshot?.instrument), input]),
+  );
+
+  return TRADING_LIGHT_SCANNER_INSTRUMENTS.filter((config) => {
+    const session = readSession(
+      createTradingMarketDataSnapshot({
+        instrument: config.instrument,
+        marketType: config.marketType,
+        sessionProfile: config.sessionProfile,
+        snapshotAt: args.asOf,
+        timeframes: {},
+      }),
+    );
+
+    if (!session.marketOpen) {
+      return false;
+    }
+
+    const storedInput = storedByInstrument.get(config.instrument);
+    return !isFreshStoredScannerInput(storedInput, args.asOf);
+  }).map((config) => config.instrument);
+}
+
 function resolveRefreshBatch(args: {
   asOf: string;
   url: URL;
@@ -118,9 +168,13 @@ function resolveRefreshBatch(args: {
   const storedInstrumentSet = new Set(
     args.storedInputs.map((input) => input.snapshot.instrument.trim().toUpperCase()),
   );
+  const staleOpenPriority = resolveOpenStalePriorityInstruments(args).filter(
+    (instrument) => !scheduled.includes(instrument),
+  );
   const missingPriority = ordered
     .filter((instrument) => !storedInstrumentSet.has(instrument))
     .filter((instrument) => !scheduled.includes(instrument))
+    .filter((instrument) => !staleOpenPriority.includes(instrument))
     .slice(0, Math.max(0, batchSize - scheduled.length));
 
   return {
@@ -129,7 +183,8 @@ function resolveRefreshBatch(args: {
     batchIndex,
     batchCount,
     refreshEveryMinutes,
-    instruments: Array.from(new Set([...scheduled, ...missingPriority])),
+    staleOpenPriority,
+    instruments: Array.from(new Set([...scheduled, ...staleOpenPriority, ...missingPriority])),
   };
 }
 
@@ -183,51 +238,11 @@ function summarizeInputs(
   };
 }
 
-function shouldRunPaperBot(url: URL) {
-  if (url.searchParams.get("paperBot") === "1") return true;
-  return String(process.env.TRADING_SCANNER_REFRESH_RUN_PAPER_BOT || "").trim() === "1";
-}
-
-function paperBotMaxTradesPerDay() {
-  return positiveIntegerFromEnv("SYNTRAKE_BOT_PAPER_MAX_TRADES_PER_DAY", 3, 1, 10);
-}
-
-async function maybeRunPaperBot(url: URL) {
-  if (!shouldRunPaperBot(url)) {
-    return {
-      enabled: false,
-      results: [],
-    };
-  }
-
-  const owners = getOwnerUserIds().slice(0, 3);
-  const results = [];
-  for (const userId of owners) {
-    try {
-      results.push({
-        userId,
-        ...(await runPaperBotCycleForUser({
-          userId,
-          source: "daemon",
-          maxTradesPerDay: paperBotMaxTradesPerDay(),
-          historyMaxSettlements: 0,
-        })),
-      });
-    } catch (error: any) {
-      results.push({
-        userId,
-        ok: false,
-        status: "error",
-        error: error?.message || "paper_bot_daemon_failed",
-      });
-    }
-  }
-
+async function maybeRunPaperBot() {
   return {
-    enabled: true,
-    maxTradesPerDay: paperBotMaxTradesPerDay(),
-    ownersChecked: owners.length,
-    results,
+    enabled: false,
+    reason: "scanner_refresh_is_snapshot_only",
+    results: [],
   };
 }
 
@@ -259,7 +274,7 @@ async function handleRefresh(req: Request) {
       generatedAt: asOf,
     });
     const summary = summarizeInputs(inputs);
-    const paperBot = await maybeRunPaperBot(url);
+    const paperBot = await maybeRunPaperBot();
     const scannerHealthy = summary.marketOpenCount === 0 || summary.staleOpenMarketCount === 0;
     const storageHealthy = persist.schemaReady || persist.persisted;
     const refreshCompleted = storageHealthy;

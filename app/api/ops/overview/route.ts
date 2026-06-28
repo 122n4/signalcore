@@ -1,19 +1,22 @@
-import { NextResponse } from "next/server";
 import { getRequestUserId } from "@/lib/auth/requestUser";
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
 import { buildPremiumAuditReport } from "@/lib/billing/premiumAuditService";
 import { getMarketProviderStatuses } from "@/lib/market/providerStatus";
+import {
+  buildApiRequestContext,
+  jsonWithRequestContext,
+  logApiEvent,
+  toErrorMessage,
+} from "@/lib/ops/apiObservability";
+import { loadTradingScannerOperationalDiagnostics } from "@/lib/ops/tradingScannerStatus";
 import { buildProductReadinessReport } from "@/lib/ops/productReadiness";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
 import { computeOwnerLoopKpis } from "@/lib/signalcore/ownerLoopKpis";
 import { buildOwnerOpsOverview } from "@/lib/signalcore/ownerObservability";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
-import {
-  inspectTradingLightScanner,
-  summarizeTradingLightScannerDiagnostics,
-} from "@/lib/trading/lightScanner";
+import { summarizeTradingLightScannerDiagnostics } from "@/lib/trading/lightScanner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,34 +28,18 @@ function clampInt(v: unknown, min: number, max: number, fallback: number) {
 }
 
 async function inspectTradingScannerForOps(asOf: string) {
-  const firstPass = await inspectTradingLightScanner({
-    asOf,
-    liveFetch: true,
-    openMarketsOnlyLiveFetch: true,
-  });
-  const firstSummary = summarizeTradingLightScannerDiagnostics(firstPass);
-  const needsHardRefresh =
-    firstSummary.openMarketCount > 0 &&
-    firstSummary.freshOpenMarketCount === 0;
-
-  if (!needsHardRefresh) return firstPass;
-
-  return inspectTradingLightScanner({
-    asOf,
-    liveFetch: true,
-    forceProviderRefresh: true,
-    openMarketsOnlyLiveFetch: true,
-  }).catch(() => firstPass);
+  return loadTradingScannerOperationalDiagnostics({ asOf, liveFetch: false });
 }
 
 export async function GET(req: Request) {
+  const context = buildApiRequestContext(req);
   try {
     const userId = await getRequestUserId(req);
     if (!userId) {
-      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+      return jsonWithRequestContext(context, { ok: false, error: "unauthorized" }, { status: 401 });
     }
     if (!isOwnerUserId(userId) && !isLocalQaUserId(userId)) {
-      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+      return jsonWithRequestContext(context, { ok: false, error: "forbidden" }, { status: 403 });
     }
 
     const url = new URL(req.url);
@@ -61,7 +48,6 @@ export async function GET(req: Request) {
     const asOf = new Date().toISOString();
     const sb = getSupabaseAdmin();
 
-    const marketProviders = getMarketProviderStatuses();
     const [conversionQuery, engineQuery, snapshotQuery, scannerDiagnostics, researchLab, billingAudit] =
       await Promise.all([
         sb
@@ -98,16 +84,17 @@ export async function GET(req: Request) {
       ]);
 
     if (conversionQuery.error) {
-      return NextResponse.json({ ok: false, error: conversionQuery.error.message }, { status: 500 });
+      return jsonWithRequestContext(context, { ok: false, error: conversionQuery.error.message }, { status: 500 });
     }
     if (engineQuery.error) {
-      return NextResponse.json({ ok: false, error: engineQuery.error.message }, { status: 500 });
+      return jsonWithRequestContext(context, { ok: false, error: engineQuery.error.message }, { status: 500 });
     }
     if (snapshotQuery.error) {
-      return NextResponse.json({ ok: false, error: snapshotQuery.error.message }, { status: 500 });
+      return jsonWithRequestContext(context, { ok: false, error: snapshotQuery.error.message }, { status: 500 });
     }
 
     const scannerSummary = summarizeTradingLightScannerDiagnostics(scannerDiagnostics);
+    const marketProviders = getMarketProviderStatuses();
     const researchForReadiness = "queue" in researchLab ? researchLab : null;
     const billingForReadiness = "summary" in billingAudit ? billingAudit : null;
     const readiness = buildProductReadinessReport({
@@ -137,7 +124,8 @@ export async function GET(req: Request) {
       providerErrorCounts: scannerSummary.providerErrorCounts,
     });
 
-    return NextResponse.json(
+    return jsonWithRequestContext(
+      context,
       {
         ok: true,
         days,
@@ -148,17 +136,21 @@ export async function GET(req: Request) {
         readiness,
         overview,
       },
-      {
-        status: 200,
-        headers: { "Cache-Control": "no-store" },
-      },
+      { status: 200 },
     );
-  } catch (e: any) {
-    return NextResponse.json(
+  } catch (error) {
+    logApiEvent({
+      scope: "ops.overview",
+      level: "error",
+      context,
+      details: { error: toErrorMessage(error, "ops_overview_failed") },
+    });
+    return jsonWithRequestContext(
+      context,
       {
         ok: false,
         error: "ops_overview_failed",
-        message: e?.message || "Unknown",
+        message: toErrorMessage(error, "Unknown"),
       },
       { status: 500 },
     );
