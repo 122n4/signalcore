@@ -1,5 +1,9 @@
 import { appendJsonLine } from "./fs";
-import { buildResearchRunArtifactPaths, verifyResearchRunArtifacts } from "./artifactContract";
+import {
+  buildResearchRunArtifactPaths,
+  verifyResearchRunArtifacts,
+  writeResearchFailureArtifacts,
+} from "./artifactContract";
 import { classifyResearchFailure } from "./forensics";
 import { classifyResearchLockHealth, readResearchLock, releaseResearchLock } from "./lock";
 import {
@@ -9,7 +13,12 @@ import {
   updateResearchTaskStatus,
   writeResearchQueue,
 } from "./queue";
-import type { ResearchConfig, ResearchDecisionLedgerEntry, ResearchRunDecision } from "./types";
+import type {
+  ResearchConfig,
+  ResearchDecisionLedgerEntry,
+  ResearchRunDecision,
+  ResearchRunStatus,
+} from "./types";
 import { readJsonIfExists } from "./fs";
 import { buildResearchRuntimeHealth } from "./runtimeHealth";
 
@@ -41,10 +50,16 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   const task = queue.tasks.find((entry) => entry.id === lock.task_id) ?? null;
   const runPaths = buildResearchRunArtifactPaths(config.paths.runsDir, lock.run_id);
   const decision = await readJsonIfExists<ResearchRunDecision>(runPaths.decisionPath);
+  const status = await readJsonIfExists<ResearchRunStatus>(runPaths.statusPath);
   const artifactsValid = await verifyResearchRunArtifacts(runPaths);
   const now = new Date().toISOString();
 
-  if (decision && artifactsValid) {
+  if (
+    decision &&
+    artifactsValid &&
+    !decision.operational_failure &&
+    status?.status !== "failed"
+  ) {
     const awaitingDecisionQueue = updateResearchTaskStatus(
       queue,
       lock.task_id,
@@ -90,6 +105,42 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   const recoveryError = stageTimedOut
     ? `${recoveryReason} Artifact contract was incomplete.`
     : "Recovered stale or hung lock without complete artifact contract.";
+  const failedStatus: ResearchRunStatus = {
+    run_id: lock.run_id,
+    task_id: lock.task_id,
+    status: "failed",
+    stage: "failed",
+    started_at: status?.started_at ?? lock.started_at,
+    updated_at: now,
+    stage_started_at: status?.stage_started_at ?? status?.started_at ?? lock.started_at,
+    stage_elapsed_ms: status?.stage_elapsed_ms,
+    stage_warn_ms: status?.stage_warn_ms ?? null,
+    stage_hard_timeout_ms: status?.stage_hard_timeout_ms ?? null,
+    progress_note: status?.progress_note ?? null,
+    completed_stages: status?.completed_stages ?? [],
+    failed_stage: runtimeHealth.activeRun.stage ?? lock.stage,
+    error: recoveryError,
+  };
+  await writeResearchFailureArtifacts({
+    paths: runPaths,
+    manifest: task
+      ? {
+          version: 1,
+          run_id: lock.run_id,
+          task_id: lock.task_id,
+          task_type: task.type,
+          baseline_id: task.baseline_id,
+          run_fingerprint: lock.run_fingerprint,
+          started_at: status?.started_at ?? lock.started_at,
+          dataset_profile: task.dataset_profile,
+          validation_profile: task.validation_profile,
+        }
+      : null,
+    input: task ?? undefined,
+    status: failedStatus,
+    error: recoveryError,
+    failureForensics,
+  });
   const canRetry =
     task !== null &&
     task.retryable &&

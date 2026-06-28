@@ -42,29 +42,34 @@ export async function readJsonIfExists<T>(targetPath: string): Promise<T | null>
 }
 
 export async function writeJsonAtomic(targetPath: string, value: unknown): Promise<void> {
-  await ensureDirectory(path.dirname(targetPath));
-  const tempPath = `${targetPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await replaceFileWithRetry(tempPath, targetPath);
-}
-
-async function replaceFileWithRetry(tempPath: string, targetPath: string): Promise<void> {
   const maxAttempts = 6;
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await ensureDirectory(path.dirname(targetPath));
+    const tempPath = `${targetPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+
     try {
+      await writeFile(tempPath, serialized, "utf8");
       await rename(tempPath, targetPath);
       return;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       const isLastAttempt = attempt === maxAttempts - 1;
-      const retryable = code === "EPERM" || code === "EACCES";
+      const retryable =
+        code === "EPERM" ||
+        code === "EACCES" ||
+        code === "ENOENT";
+
+      await removeFileIfExists(tempPath);
 
       if (!retryable || isLastAttempt) {
         throw error;
       }
 
-      await removeFileIfExists(targetPath);
+      if (code !== "ENOENT") {
+        await removeFileIfExists(targetPath);
+      }
       await delay(25 * (attempt + 1));
     }
   }

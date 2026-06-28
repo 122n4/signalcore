@@ -31,3 +31,26 @@ export function isLocalQaAuthBypassRequest(req: RequestLike | null | undefined) 
     return false;
   }
 }
+
+export function isLocalQaBypassServerAccess(args: {
+  host?: string | null;
+  headerAuth?: string | null;
+  cookieAuth?: string | null;
+  qa?: string | null;
+  qaAuth?: string | null;
+}) {
+  if (!isLocalQaAuthEnabled()) return false;
+
+  const host = String(args.host || "").toLowerCase();
+  const isLocalHost =
+    host.includes("localhost") ||
+    host.includes("127.0.0.1") ||
+    host.includes("[::1]") ||
+    host.startsWith("::1");
+
+  if (args.headerAuth === "1") return true;
+  if (args.cookieAuth === "1") return true;
+  if (args.qa === "assisted" || args.qaAuth === "1") return true;
+
+  return isLocalHost;
+}

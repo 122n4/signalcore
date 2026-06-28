@@ -4,6 +4,8 @@ import { writeFile } from "node:fs/promises";
 import type { TradingHistoricalCoverageAuditReport } from "@/lib/trading/backtest";
 
 import { ensureDirectory, readJsonIfExists, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import { buildResearchReportProvenance } from "./provenance";
+import { resolveResearchReportSchemaVersion } from "./schema";
 import type {
   ResearchConfig,
   ResearchDatasetHealthInstrumentEntry,
@@ -186,6 +188,8 @@ export async function buildResearchDatasetHealthReport(
     .sort(sortInstrumentEntries);
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("datasetHealth"),
+    provenance: await buildResearchReportProvenance({ config }),
     report_id: `dataset-health-${new Date().toISOString()}`,
     generated_at: new Date().toISOString(),
     coverage_audit_path: coverageAuditPath ?? null,
@@ -218,6 +222,8 @@ export async function writeResearchDatasetHealthReport(args: {
   const markdown = [
     `# Research Dataset Health`,
     ``,
+    `- Schema version: ${args.report.schema_version}`,
+    `- Dataset refs: ${args.report.provenance.dataset_refs.length}`,
     `- Generated at: ${args.report.generated_at}`,
     `- Audit loaded: ${args.report.summary.audit_loaded ? "yes" : "no"}`,
     `- Audit generated at: ${args.report.summary.audit_generated_at ?? "n/a"}`,

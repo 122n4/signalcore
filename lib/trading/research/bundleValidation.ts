@@ -20,6 +20,9 @@ import { decideResearchRun } from "./decisionEngine";
 import { ensureDirectory, readJsonFile, stableStringify, writeJsonAtomic } from "./fs";
 import { runResearchMonteCarloFromSlices } from "./monteCarlo";
 import { evaluateResearchPortfolioStress } from "./portfolioStress";
+import { buildResearchReportProvenance } from "./provenance";
+import { resolveResearchReportSchemaVersion } from "./schema";
+import { buildResearchStatisticalValidation } from "./statisticalValidation";
 import { evaluateResearchValidationGates } from "./validationGates";
 import type {
   ResearchBundleCandidate,
@@ -130,6 +133,18 @@ function toWalkForwardSummary(report: TradingWalkForwardStudyReport): ResearchMe
     expectancy: report.aggregate.expectancy,
     profitFactor: report.aggregate.profitFactor,
     maxDrawdown: report.aggregate.maxDrawdown,
+  };
+}
+
+function mergeCostStressBacktest(
+  baseBacktest: TradingBacktestConfig,
+  roundTripCostR: number,
+): TradingBacktestConfig {
+  return {
+    ...baseBacktest,
+    costModel: {
+      roundTripCostR,
+    },
   };
 }
 
@@ -553,6 +568,7 @@ export async function validateResearchPromotionBundle(args: {
   config: ResearchConfig;
   candidate: ResearchBundleCandidate;
   deps?: ResearchBundleValidationDeps;
+  trialCount: number;
 }): Promise<ResearchBundleValidationResult> {
   const baseline = await ensureResearchBaselineSnapshot(args.config);
   const runComparative = args.deps?.runComparative ?? runTradingHistoricalComparativeSweep;
@@ -670,6 +686,7 @@ export async function validateResearchPromotionBundle(args: {
       affectedInstruments,
     },
     robustness,
+    statistical_validation: null,
     gates: evaluateResearchValidationGates({
       aggregateBaseline,
       aggregateCurrent,
@@ -764,6 +781,85 @@ export async function validateResearchPromotionBundle(args: {
     };
   }
 
+  if (args.config.study.robustness?.costStress?.enabled && comparison.gates.allHardGatesPass) {
+    robustness.costStress = {
+      baseline: walkForwardBaseline,
+      current: await runWalkForwardSummary({
+        config: args.config,
+        instruments: affectedInstruments,
+        backtest: mergeCostStressBacktest(
+          backtest,
+          args.config.study.robustness.costStress.roundTripCostR,
+        ),
+        from: args.config.study.walkForward.from,
+        to: args.config.study.walkForward.to,
+        windowing: args.config.study.walkForward.windowing,
+        runWalkForward,
+      }),
+    };
+
+    comparison = {
+      ...comparison,
+      robustness,
+      gates: evaluateResearchValidationGates({
+        aggregateBaseline,
+        aggregateCurrent,
+        crisisBaseline,
+        crisisCurrent: crisisCurrentSummary,
+        walkForwardBaseline,
+        walkForwardCurrent,
+        holdoutBaseline: robustness.holdout?.baseline,
+        holdoutCurrent: robustness.holdout?.current,
+        finalHoldoutBaseline: robustness.finalHoldout?.baseline,
+        finalHoldoutCurrent: robustness.finalHoldout?.current,
+        perturbationBaseline: robustness.perturbation?.baseline,
+        perturbationCurrent: robustness.perturbation?.current,
+        monteCarloBaseline: robustness.monteCarlo?.baseline,
+        monteCarloCurrent: robustness.monteCarlo?.current,
+        costStressBaseline: robustness.costStress?.baseline,
+        costStressCurrent: robustness.costStress?.current,
+        thresholds,
+      }),
+    };
+  }
+
+  const statisticalValidation = buildResearchStatisticalValidation({
+    baselineTrades: baselineAffectedSlice.trades,
+    currentTrades: currentAffectedSlice.trades,
+    aggregateCurrent,
+    walkForwardCurrent,
+    robustness,
+    independentTrialCount: args.trialCount,
+    bootstrapIterations: Math.max(128, args.config.study.robustness?.monteCarlo?.iterations ?? 128),
+    seed: args.config.study.robustness?.monteCarlo?.seed ?? 1337,
+  });
+
+  comparison = {
+    ...comparison,
+    robustness,
+    statistical_validation: statisticalValidation,
+    gates: evaluateResearchValidationGates({
+      aggregateBaseline,
+      aggregateCurrent,
+      crisisBaseline,
+      crisisCurrent: crisisCurrentSummary,
+      walkForwardBaseline,
+      walkForwardCurrent,
+      holdoutBaseline: robustness.holdout?.baseline,
+      holdoutCurrent: robustness.holdout?.current,
+      finalHoldoutBaseline: robustness.finalHoldout?.baseline,
+      finalHoldoutCurrent: robustness.finalHoldout?.current,
+      perturbationBaseline: robustness.perturbation?.baseline,
+      perturbationCurrent: robustness.perturbation?.current,
+      monteCarloBaseline: robustness.monteCarlo?.baseline,
+      monteCarloCurrent: robustness.monteCarlo?.current,
+      costStressBaseline: robustness.costStress?.baseline,
+      costStressCurrent: robustness.costStress?.current,
+      statisticalValidation,
+      thresholds,
+    }),
+  };
+
   const decision = decideResearchRun({
     runId: `bundle-${(args.deps?.now ?? (() => new Date()))().toISOString()}`,
     taskId: args.candidate.id,
@@ -776,6 +872,11 @@ export async function validateResearchPromotionBundle(args: {
       finalHoldoutExpectancy: comparison.robustness?.finalHoldout?.current.expectancy ?? null,
       perturbationExpectancy: comparison.robustness?.perturbation?.current.expectancy ?? null,
       monteCarloExpectancy: comparison.robustness?.monteCarlo?.current.expectancy ?? null,
+      costStressExpectancy: comparison.robustness?.costStress?.current.expectancy ?? null,
+      deflatedSharpeRatio: comparison.statistical_validation?.deflated_sharpe_ratio ?? null,
+      estimatedPbo: comparison.statistical_validation?.pbo.value ?? null,
+      whiteRealityCheckPValue:
+        comparison.statistical_validation?.white_reality_check.adjusted_p_value ?? null,
     },
     comparison,
   });
@@ -821,11 +922,14 @@ export async function buildResearchBundleValidationReport(args: {
         config: args.config,
         candidate,
         deps: args.deps,
+        trialCount: candidates.length,
       }),
     );
   }
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("bundleValidation"),
+    provenance: await buildResearchReportProvenance({ config: args.config }),
     report_id: `bundle-validation-${(args.deps?.now ?? (() => new Date()))().toISOString()}`,
     generated_at: (args.deps?.now ?? (() => new Date()))().toISOString(),
     baseline_id: queue.live_baseline_id,
@@ -852,6 +956,7 @@ export async function buildResearchBundleValidationReport(args: {
           primary_campaign_objective: result.primary_campaign_objective,
           campaign_mode: result.campaign_mode,
           portfolio_stress_passed: result.portfolio_stress?.passes ?? null,
+          statistical_validation_passed: result.comparison.gates.statisticalValidationPass ?? null,
         })),
       campaign_performance: buildBundleCampaignPerformance(results),
   };
@@ -879,6 +984,8 @@ export async function writeResearchBundleValidationReport(args: {
   const markdown = [
     `# Research Bundle Validation`,
     ``,
+    `- Schema version: ${args.report.schema_version}`,
+    `- Dataset refs: ${args.report.provenance.dataset_refs.length}`,
     `- Generated: ${args.report.generated_at}`,
     `- Baseline: ${args.report.baseline_id ?? "n/a"}`,
     `- Candidates: ${args.report.candidate_count}`,
@@ -897,7 +1004,8 @@ export async function writeResearchBundleValidationReport(args: {
           (entry) =>
             `- ${entry.bundle_id}: ${entry.decision} (${entry.score ?? "n/a"} / ${entry.band ?? "n/a"})` +
             `${entry.primary_campaign_id ? ` [${entry.primary_campaign_id}/${entry.primary_campaign_objective ?? "n/a"}]` : ""}` +
-            ` [portfolio_stress=${entry.portfolio_stress_passed ?? "n/a"}]`,
+            ` [portfolio_stress=${entry.portfolio_stress_passed ?? "n/a"}]` +
+            ` [statistical_validation=${entry.statistical_validation_passed ?? "n/a"}]`,
         )
       : ["- none"]),
     ``,
@@ -906,7 +1014,10 @@ export async function writeResearchBundleValidationReport(args: {
       ? args.report.results.map(
           (entry) =>
             `- ${entry.bundle_id}: ${entry.decision.decision} (${entry.decision.reason})` +
-            `${entry.portfolio_stress ? ` [portfolio_stress=${entry.portfolio_stress.passes}]` : ""}`,
+            `${entry.portfolio_stress ? ` [portfolio_stress=${entry.portfolio_stress.passes}]` : ""}` +
+            `${entry.comparison.statistical_validation
+              ? ` [dsr=${entry.comparison.statistical_validation.deflated_sharpe_ratio ?? "n/a"} pbo=${entry.comparison.statistical_validation.pbo.value ?? "n/a"} wrc=${entry.comparison.statistical_validation.white_reality_check.adjusted_p_value ?? "n/a"}]`
+              : ""}`,
         )
       : ["- none"]),
   ].join("\n");

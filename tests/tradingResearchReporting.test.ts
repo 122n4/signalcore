@@ -40,6 +40,9 @@ describe("trading research reporting", () => {
     const report = await buildDailyResearchReport(config, new Date("2026-03-19T12:00:00.000Z"));
     const outputs = await writeDailyResearchReport(config, report);
 
+    expect(report.schema_version).toBe("research.daily-report.v1");
+    expect(report.provenance.live_baseline_id).toBe(config.liveBaselineSource.baselineId);
+    expect(report.provenance.dataset_refs.length).toBeGreaterThan(0);
     expect(report.promoted).toHaveLength(1);
     expect(report.top_promotions).toHaveLength(1);
     expect(report.fuel_status.active_campaign_count).toBeGreaterThan(0);
@@ -86,6 +89,8 @@ describe("trading research reporting", () => {
     });
     const outputs = await writeResearchCycleReport(config, report);
 
+    expect(report.schema_version).toBe("research.cycle-report.v1");
+    expect(report.provenance.live_baseline_id).toBe(config.liveBaselineSource.baselineId);
     expect(report.runs).toHaveLength(1);
     expect(report.runs[0]?.ranking_score).toBe(41.5);
     expect(report.runs[0]?.planner_campaign_id).toBe("increase_expectancy");
@@ -142,6 +147,8 @@ describe("trading research reporting", () => {
     });
     const outputs = await writeResearchWindowReport(config, report);
 
+    expect(report.schema_version).toBe("research.window-report.v1");
+    expect(report.provenance.dataset_refs.some((entry) => entry.dataset_id === "coverage_audit_local_only")).toBe(true);
     expect(report.interval_hours).toBe(8);
     expect(report.runs_started).toBe(1);
     expect(report.promoted).toHaveLength(1);

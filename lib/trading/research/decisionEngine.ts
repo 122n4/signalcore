@@ -24,6 +24,9 @@ function buildFailedGateReasons(gates: ResearchGateEvaluation): string[] {
   add(gates.perturbationBreakEvenOrBetter === false, "perturbation is not break-even");
   add(gates.monteCarloBreakEvenOrBetter === false, "monte carlo is not break-even");
   add(gates.costStressBreakEvenOrBetter === false, "cost stress is not break-even");
+  add(gates.deflatedSharpeRatioPass === false, "deflated sharpe ratio is below the institutional floor");
+  add(gates.pboPass === false, "estimated probability of backtest overfitting is too high");
+  add(gates.whiteRealityCheckPass === false, "white reality check does not clear the evidence threshold");
 
   return Array.from(new Set(reasons)).slice(0, 6);
 }

@@ -93,4 +93,38 @@ describe("trading research validation gates", () => {
     expect(result.costStressBreakEvenOrBetter).toBe(false);
     expect(result.allHardGatesPass).toBe(false);
   });
+
+  it("treats institutional statistical validation as an additional hard gate when configured", () => {
+    const result = evaluateResearchValidationGates({
+      aggregateBaseline: createMetricSummary(),
+      aggregateCurrent: createMetricSummary({ expectancy: 0.26, profitFactor: 1.72, maxDrawdown: 3.9 }),
+      crisisBaseline: createMetricSummary({ expectancy: -0.05, profitFactor: 0.98, maxDrawdown: 5 }),
+      crisisCurrent: createMetricSummary({ expectancy: -0.01, profitFactor: 1.04, maxDrawdown: 4.7 }),
+      walkForwardBaseline: createMetricSummary({ expectancy: 0.05, profitFactor: 1.01, maxDrawdown: 2.4 }),
+      walkForwardCurrent: createMetricSummary({ expectancy: 0.08, profitFactor: 1.06, maxDrawdown: 2.2 }),
+      statisticalValidation: {
+        deflated_sharpe_ratio: 0.04,
+        pbo: { value: 0.61 },
+        white_reality_check: { adjusted_p_value: 0.19 },
+      },
+      thresholds: {
+        epsilon: 0.0001,
+        aggregateExpectancyMinDelta: 0.005,
+        aggregateProfitFactorMinDelta: 0.01,
+        crisisExpectancyMinDelta: 0.005,
+        crisisProfitFactorMinDelta: 0.01,
+        maxDrawdownMinImprovement: 0.1,
+        requireWalkForwardBreakEven: true,
+        minDeflatedSharpeRatio: 0.1,
+        maxPbo: 0.45,
+        maxWhiteRealityCheckPValue: 0.1,
+      },
+    });
+
+    expect(result.deflatedSharpeRatioPass).toBe(false);
+    expect(result.pboPass).toBe(false);
+    expect(result.whiteRealityCheckPass).toBe(false);
+    expect(result.statisticalValidationPass).toBe(false);
+    expect(result.allHardGatesPass).toBe(false);
+  });
 });

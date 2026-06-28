@@ -398,10 +398,12 @@ describe("trading research bundle validation", () => {
             aggregate: request.backtest
               ? createMetricSummary({ expectancy: 0.12, profitFactor: 1.18, maxDrawdown: 2.1 })
               : createMetricSummary({ expectancy: 0.06, profitFactor: 1.03, maxDrawdown: 2.4 }),
-          }) as any,
+        }) as any,
       },
     });
 
+    expect(report.schema_version).toBe("research.bundle-validation-report.v1");
+    expect(report.provenance.live_baseline_id).toBe(config.liveBaselineSource.baselineId);
     expect(report.candidate_count).toBe(1);
     expect(report.candidates[0]?.primary_campaign_id).toBe("increase_expectancy");
     expect(report.results[0]?.decision.ranking?.score).toBeGreaterThan(0);

@@ -1,9 +1,13 @@
-import { NextResponse } from "next/server";
-
 import { getRequestUserId } from "@/lib/auth/requestUser";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
+import {
+  buildApiRequestContext,
+  jsonWithRequestContext,
+  logApiEvent,
+  toErrorMessage,
+} from "@/lib/ops/apiObservability";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
-import { readPaperHistoryPayload } from "@/lib/trading/bot/paperRunner";
+import { readPaperHistoryPayloadSafe } from "@/lib/trading/bot/paperRunner";
 import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
 
 export const runtime = "nodejs";
@@ -14,25 +18,26 @@ function isLabOperator(userId: string) {
 }
 
 export async function GET(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  if (!isLabOperator(userId)) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  const context = buildApiRequestContext(req);
+  try {
+    const userId = await getRequestUserId(req);
+    if (!userId) {
+      return jsonWithRequestContext(context, { ok: false, error: "unauthorized" }, { status: 401 });
+    }
+    if (!isLabOperator(userId)) {
+      return jsonWithRequestContext(context, { ok: false, error: "forbidden" }, { status: 403 });
+    }
 
-  const remote = await readResearchLabRemoteSnapshot({ runLimit: 1, decisionLimit: 1 });
-  const state = remote.state;
-  const payload = state?.payload ?? {};
-  const runtimeHealth = payload.runtime ?? null;
-  const status = String(state?.status ?? "unknown");
-  const paperTrading = await readPaperHistoryPayload(userId, { days: 183, maxSettlements: 4 }).catch((error: any) => ({
-    ok: false,
-    error: error?.message || "paper_trading_health_failed",
-  }));
+    const remote = await readResearchLabRemoteSnapshot({ runLimit: 1, decisionLimit: 1 });
+    const state = remote.state;
+    const payload = state?.payload ?? {};
+    const runtimeHealth = payload.runtime ?? null;
+    const status = String(state?.status ?? "unknown");
+    const paperTrading = await readPaperHistoryPayloadSafe(userId, { days: 183, maxSettlements: 4 });
 
-  return NextResponse.json(
-    {
+    return jsonWithRequestContext(context, {
       ok: remote.schemaReady && Boolean(state) && !remote.error,
       schemaReady: remote.schemaReady,
-      generatedAt: new Date().toISOString(),
       source: state ? "supabase" : "none",
       status,
       running: status === "running",
@@ -46,7 +51,22 @@ export async function GET(req: Request) {
       activeRunId: state?.active_run_id ?? runtimeHealth?.queue?.activeRunId ?? null,
       stage: state?.stage ?? runtimeHealth?.activeRun?.stage ?? null,
       paperTrading,
-    },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+    });
+  } catch (error) {
+    logApiEvent({
+      scope: "ops.lab.health",
+      level: "error",
+      context,
+      details: { error: toErrorMessage(error, "lab_health_failed") },
+    });
+    return jsonWithRequestContext(
+      context,
+      {
+        ok: false,
+        error: "lab_health_failed",
+        message: toErrorMessage(error, "lab_health_failed"),
+      },
+      { status: 500 },
+    );
+  }
 }

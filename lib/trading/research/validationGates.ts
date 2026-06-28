@@ -31,6 +31,11 @@ export function evaluateResearchValidationGates(args: {
   monteCarloCurrent?: ResearchMetricSummary | null;
   costStressBaseline?: ResearchMetricSummary | null;
   costStressCurrent?: ResearchMetricSummary | null;
+  statisticalValidation?: {
+    deflated_sharpe_ratio: number | null;
+    pbo: { value: number | null };
+    white_reality_check: { adjusted_p_value: number | null };
+  } | null;
   thresholds: ResearchValidationThresholds;
 }): ResearchGateEvaluation {
   const epsilon = args.thresholds.epsilon;
@@ -219,6 +224,24 @@ export function evaluateResearchValidationGates(args: {
       ? args.costStressCurrent.expectancy >= 0 &&
         (args.costStressCurrent.profitFactor ?? 0) >= 1
       : undefined;
+  const deflatedSharpeRatioPass =
+    args.statisticalValidation?.deflated_sharpe_ratio == null
+      ? undefined
+      : args.statisticalValidation.deflated_sharpe_ratio >=
+        (args.thresholds.minDeflatedSharpeRatio ?? 0.1);
+  const pboPass =
+    args.statisticalValidation?.pbo.value == null
+      ? undefined
+      : args.statisticalValidation.pbo.value <= (args.thresholds.maxPbo ?? 0.45);
+  const whiteRealityCheckPass =
+    args.statisticalValidation?.white_reality_check.adjusted_p_value == null
+      ? undefined
+      : args.statisticalValidation.white_reality_check.adjusted_p_value <=
+        (args.thresholds.maxWhiteRealityCheckPValue ?? 0.1);
+  const statisticalValidationPass =
+    (deflatedSharpeRatioPass ?? true) &&
+    (pboPass ?? true) &&
+    (whiteRealityCheckPass ?? true);
 
   const aggregateImproved =
     args.aggregateCurrent.expectancy > args.aggregateBaseline.expectancy + epsilon ||
@@ -296,7 +319,8 @@ export function evaluateResearchValidationGates(args: {
     (costStressExpectancyStable ?? true) &&
     (costStressProfitFactorStable ?? true) &&
     (costStressDrawdownStable ?? true) &&
-    (!args.thresholds.requireCostStressBreakEven || costStressBreakEvenOrBetter !== false);
+    (!args.thresholds.requireCostStressBreakEven || costStressBreakEvenOrBetter !== false) &&
+    statisticalValidationPass;
 
   return {
     aggregateExpectancyStable,
@@ -331,6 +355,10 @@ export function evaluateResearchValidationGates(args: {
     costStressProfitFactorStable,
     costStressDrawdownStable,
     costStressBreakEvenOrBetter,
+    deflatedSharpeRatioPass,
+    pboPass,
+    whiteRealityCheckPass,
+    statisticalValidationPass,
     aggregateImproved,
     crisisImproved,
     walkForwardImproved,

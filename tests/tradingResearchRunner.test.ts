@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { processResearchQueue, readJsonFile, readResearchQueue, writeJsonAtomic } from "@/lib/trading/research";
 import {
+  buildMetricSummary,
   buildResearchContextScenarioFromTask,
   buildResearchRiskScenarioFromTask,
 } from "@/lib/trading/research/runner";
@@ -38,6 +39,26 @@ const stubOpportunityRefresh = async () => ({
 });
 
 describe("trading research runner", () => {
+  it("coerces null or partial metric summaries without crashing", () => {
+    expect(buildMetricSummary(undefined)).toEqual({
+      totalTrades: 0,
+      winRate: 0,
+      averageRiskReward: null,
+      expectancy: 0,
+      profitFactor: null,
+      maxDrawdown: 0,
+    });
+
+    expect(buildMetricSummary({ totalTrades: 12, expectancy: 0.14 })).toEqual({
+      totalTrades: 12,
+      winRate: 0,
+      averageRiskReward: null,
+      expectancy: 0.14,
+      profitFactor: null,
+      maxDrawdown: 0,
+    });
+  });
+
   it("expands research task scopes across every targeted instrument", () => {
     const riskScenario = buildResearchRiskScenarioFromTask({
       task: createResearchTask({
@@ -183,6 +204,90 @@ describe("trading research runner", () => {
       result.reportOutputs!.daily.jsonPath,
     );
     expect(Array.isArray(dailyReport.promoted)).toBe(true);
+  }, 15000);
+
+  it("blocks invalid tasks before execution when no effective instrument can be resolved", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    config.study.instruments = [];
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([
+        createResearchTask({
+          id: "task-invalid-scope",
+          candidate_scope: {
+            instruments: [],
+            sessions: ["london_ny_overlap"],
+            setup_types: ["breakout_continuation"],
+          },
+        }),
+      ]),
+    );
+
+    await processResearchQueue(config, {
+      executors: {
+        risk_shaping: async () => {
+          throw new Error("should not execute");
+        },
+      },
+      postCycleOpportunityRefresh: stubOpportunityRefresh,
+    });
+
+    const queue = await readResearchQueue(config);
+    expect(queue.tasks[0].status).toBe("blocked");
+    expect(queue.tasks[0].error).toContain("must target at least one instrument");
+  });
+
+  it("writes a complete failure artifact contract when execution crashes", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([createResearchTask({ id: "task-failure-artifacts" })]),
+    );
+
+    await processResearchQueue(config, {
+      executors: {
+        risk_shaping: async ({ reportProgress }) => {
+          await reportProgress?.({
+            stage: "robustness",
+            progress_note: "About to fail inside robustness stage.",
+            completed_stages: ["aggregate", "crisis", "walkforward"],
+          });
+          throw new Error("Synthetic robustness timeout failure.");
+        },
+      },
+      postCycleOpportunityRefresh: stubOpportunityRefresh,
+    });
+
+    const queue = await readResearchQueue(config);
+    const runId = queue.tasks[0].last_run_id as string;
+    const runDir = path.join(config.paths.runsDir, runId);
+    const decision = await readJsonFile<{ decision: string; operational_failure?: boolean }>(
+      path.join(runDir, "decision.json"),
+    );
+    const status = await readJsonFile<{ status: string; failed_stage: string | null }>(
+      path.join(runDir, "status.json"),
+    );
+    const checksums = await readJsonFile<Record<string, string>>(path.join(runDir, "checksums.json"));
+
+    expect(queue.tasks[0].status).toBe("failed");
+    expect(decision.decision).toBe("reject");
+    expect(decision.operational_failure).toBe(true);
+    expect(status.status).toBe("failed");
+    expect(status.failed_stage).toBe("robustness");
+    expect(Object.keys(checksums)).toEqual(
+      expect.arrayContaining([
+        "manifest.json",
+        "input.json",
+        "status.json",
+        "aggregate-report.json",
+        "crisis-report.json",
+        "walkforward-report.json",
+        "comparison.json",
+        "decision.json",
+      ]),
+    );
   }, 15000);
 
   it("reuses an existing fingerprinted run instead of executing the same candidate twice", async () => {

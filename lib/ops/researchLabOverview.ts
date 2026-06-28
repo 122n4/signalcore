@@ -3,8 +3,15 @@ import path from "node:path";
 
 import { buildResearchRunArtifactPaths } from "@/lib/trading/research/artifactContract";
 import { loadResearchConfig } from "@/lib/trading/research/config";
+import {
+  buildResearchDataAcquisitionPlan,
+  buildResearchDatasetRequirementsReport,
+  type ResearchDataAcquisitionPlan,
+  type ResearchDatasetRequirementsReport,
+} from "@/lib/trading/research/datasetRequirements";
 import { readJsonIfExists } from "@/lib/trading/research/fs";
 import { readResearchQueue } from "@/lib/trading/research/queue";
+import { buildResearchLatestReportsOverview, type ResearchLatestReportsOverview } from "@/lib/trading/research/reportsOverview";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
 import type {
@@ -86,6 +93,9 @@ export type ResearchLabOverview = {
   runs: {
     recent: ResearchLabRunEntry[];
   };
+  reports: ResearchLatestReportsOverview;
+  datasetRequirements: ResearchDatasetRequirementsReport;
+  dataAcquisitionPlan: ResearchDataAcquisitionPlan;
   operatorActions: Array<{
     label: string;
     command: string;
@@ -339,6 +349,10 @@ export async function buildResearchLabOverview(args: {
 } = {}): Promise<ResearchLabOverview> {
   const config = args.config ?? await loadResearchConfig();
   const generatedAt = (args.now ?? new Date()).toISOString();
+  const [datasetRequirements, dataAcquisitionPlan] = await Promise.all([
+    buildResearchDatasetRequirementsReport(config),
+    buildResearchDataAcquisitionPlan(config),
+  ]);
   const remote = await readResearchLabRemoteSnapshot({ runLimit: 40, decisionLimit: 120 });
   const remotePayload = remote.state?.payload ?? null;
   if (remote.schemaReady && remote.state && remotePayload?.runtime) {
@@ -379,6 +393,16 @@ export async function buildResearchLabOverview(args: {
       runs: {
         recent: remote.runs.map(runFromRemote),
       },
+      reports: remotePayload.reportsOverview ?? {
+        bundleValidation: null,
+        promotionBoard: null,
+        promotionPackages: null,
+        opportunityReview: null,
+        datasetHealth: null,
+        registry: null,
+      },
+      datasetRequirements: remotePayload.datasetRequirements ?? datasetRequirements,
+      dataAcquisitionPlan: remotePayload.dataAcquisitionPlan ?? dataAcquisitionPlan,
       operatorActions: operatorActions(),
       storage: {
         localArtifactBacked: false,
@@ -394,12 +418,13 @@ export async function buildResearchLabOverview(args: {
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, decisions, recentRuns] = await Promise.all([
+  const [runtime, queue, baseline, decisions, recentRuns, reports] = await Promise.all([
     buildResearchRuntimeHealth({ config, now: args.now }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
     readDecisionEntries(config.paths.decisionsPath),
     readRecentRuns(config),
+    buildResearchLatestReportsOverview(config),
   ]);
   const decisionCounts = decisions.reduce<Record<string, number>>((acc, entry) => {
     acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
@@ -439,6 +464,9 @@ export async function buildResearchLabOverview(args: {
     runs: {
       recent: recentRuns,
     },
+    reports,
+    datasetRequirements,
+    dataAcquisitionPlan,
     operatorActions: operatorActions(),
     storage: {
       localArtifactBacked: Boolean(baseline || decisions.length > 0 || recentRuns.length > 0),

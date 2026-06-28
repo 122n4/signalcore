@@ -2,7 +2,11 @@ import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
 import { fileExists, ensureDirectory, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import { buildResearchReportProvenance } from "./provenance";
 import { readResearchQueue } from "./queue";
+import { readLatestResearchRegistryReport } from "./registry";
+import { resolveResearchReportSchemaVersion } from "./schema";
+import { readLatestResearchBundleValidationReport } from "./bundleValidation";
 import type {
   ResearchConfig,
   ResearchDecisionLedgerEntry,
@@ -12,6 +16,8 @@ import type {
   ResearchPromotionPackageReview,
   ResearchPromotionPackageReport,
   ResearchPromotionPackageRunArtifact,
+  ResearchRegistryArtifactEntry,
+  ResearchRegistryReport,
 } from "./types";
 
 async function readDecisionLedgerEntries(
@@ -73,9 +79,18 @@ function buildPackageReview(entry: ResearchPromotionBoardEntry): ResearchPromoti
   if (entry.source === "bundle" && entry.portfolio_stress_passed !== true) {
     blockers.push("Bundle does not have a passing portfolio stress confirmation.");
   }
+  if (entry.source === "bundle" && entry.statistical_validation_passed === false) {
+    blockers.push("Bundle does not have a passing statistical validation confirmation.");
+  }
+  if (entry.source === "bundle" && entry.statistical_validation_passed == null) {
+    cautions.push("Bundle does not yet carry an explicit statistical validation summary.");
+  }
 
   if (entry.source === "task" && entry.board_status === "review_ready") {
     cautions.push("Task-level promote is not yet bundle-confirmed.");
+  }
+  if (entry.source === "task" && entry.statistical_validation_passed == null) {
+    cautions.push("Task-level promote has not yet been upgraded into a bundle-level statistical review.");
   }
   if (entry.campaign_metadata_source !== "recorded" && entry.campaign_metadata_source !== "missing") {
     cautions.push(`Campaign metadata was backfilled from ${entry.campaign_metadata_source}.`);
@@ -122,8 +137,22 @@ async function buildRunArtifacts(args: {
   entry: ResearchPromotionBoardEntry;
   latestLedgerByTaskId: Map<string, ResearchDecisionLedgerEntry>;
   queueTaskRunIds: Map<string, string | null>;
+  registryReport: ResearchRegistryReport | null;
 }): Promise<ResearchPromotionPackageRunArtifact[]> {
   const artifacts: ResearchPromotionPackageRunArtifact[] = [];
+
+  function resolveRegistryArtifact(
+    runId: string,
+    artifactType: ResearchRegistryArtifactEntry["artifact_type"],
+  ) {
+    return (
+      args.registryReport?.artifacts.find(
+        (artifact) =>
+          artifact.run_id === runId &&
+          artifact.artifact_type === artifactType,
+      ) ?? null
+    );
+  }
 
   for (const [index, taskId] of args.entry.task_ids.entries()) {
     const runId =
@@ -140,6 +169,9 @@ async function buildRunArtifacts(args: {
     const manifestPath = path.join(runDir, "manifest.json");
     const comparisonPath = path.join(runDir, "comparison.json");
     const decisionPath = path.join(runDir, "decision.json");
+    const manifestArtifact = resolveRegistryArtifact(runId, "manifest");
+    const comparisonArtifact = resolveRegistryArtifact(runId, "comparison");
+    const decisionArtifact = resolveRegistryArtifact(runId, "decision");
 
     artifacts.push({
       task_id: taskId,
@@ -147,6 +179,12 @@ async function buildRunArtifacts(args: {
       manifest_path: (await fileExists(manifestPath)) ? manifestPath : null,
       comparison_path: (await fileExists(comparisonPath)) ? comparisonPath : null,
       decision_path: (await fileExists(decisionPath)) ? decisionPath : null,
+      manifest_artifact_id: manifestArtifact?.artifact_id ?? null,
+      manifest_artifact_version: manifestArtifact?.artifact_version ?? null,
+      comparison_artifact_id: comparisonArtifact?.artifact_id ?? null,
+      comparison_artifact_version: comparisonArtifact?.artifact_version ?? null,
+      decision_artifact_id: decisionArtifact?.artifact_id ?? null,
+      decision_artifact_version: decisionArtifact?.artifact_version ?? null,
     });
   }
 
@@ -195,6 +233,18 @@ export async function buildResearchPromotionPackageReport(args: {
     "bundles",
     "bundle-validation-latest.md",
   );
+  const registryLatestJsonPath = path.join(
+    args.config.paths.reportsDir,
+    "registry",
+    "registry-latest.json",
+  );
+  const [registryReport, bundleLatestReport] = await Promise.all([
+    readLatestResearchRegistryReport(args.config),
+    readLatestResearchBundleValidationReport({
+      config: args.config,
+      baselineId: args.boardReport.live_baseline_id,
+    }),
+  ]);
 
   const packages = await Promise.all(
     args.boardReport.entries
@@ -206,6 +256,7 @@ export async function buildResearchPromotionPackageReport(args: {
           entry,
           latestLedgerByTaskId,
           queueTaskRunIds,
+          registryReport,
         });
 
         return {
@@ -231,15 +282,21 @@ export async function buildResearchPromotionPackageReport(args: {
           portfolio_stress_passed: entry.portfolio_stress_passed ?? null,
           portfolio_stress_overlap_ratio: entry.portfolio_stress_overlap_ratio ?? null,
           portfolio_stress_max_concurrent: entry.portfolio_stress_max_concurrent ?? null,
+          statistical_validation_passed: entry.statistical_validation_passed ?? null,
+          deflated_sharpe_ratio: entry.deflated_sharpe_ratio ?? null,
+          pbo_estimate: entry.pbo_estimate ?? null,
+          white_reality_check_p_value: entry.white_reality_check_p_value ?? null,
           aggregate_summary: entry.aggregate_summary,
           crisis_summary: entry.crisis_summary,
           walkforward_summary: entry.walkforward_summary,
           review,
           artifacts: {
+            board_report_id: args.boardReport.report_id,
             board_json_path: (await fileExists(boardLatestJsonPath)) ? boardLatestJsonPath : null,
             board_markdown_path: (await fileExists(boardLatestMarkdownPath))
               ? boardLatestMarkdownPath
               : null,
+            bundle_report_id: entry.source === "bundle" ? bundleLatestReport?.report_id ?? null : null,
             bundle_json_path:
               entry.source === "bundle" && (await fileExists(bundleLatestJsonPath))
                 ? bundleLatestJsonPath
@@ -248,6 +305,8 @@ export async function buildResearchPromotionPackageReport(args: {
               entry.source === "bundle" && (await fileExists(bundleLatestMarkdownPath))
                 ? bundleLatestMarkdownPath
                 : null,
+            registry_report_id: registryReport?.report_id ?? null,
+            registry_json_path: (await fileExists(registryLatestJsonPath)) ? registryLatestJsonPath : null,
             run_artifacts: runArtifacts,
           },
         } satisfies ResearchPromotionPackage;
@@ -257,6 +316,15 @@ export async function buildResearchPromotionPackageReport(args: {
   const sortedPackages = packages.sort(sortPackages);
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("promotionPackages"),
+    provenance: await buildResearchReportProvenance({
+      config: args.config,
+      upstreamReportIds: [
+        args.boardReport.report_id,
+        bundleLatestReport?.report_id ?? "",
+        registryReport?.report_id ?? "",
+      ],
+    }),
     report_id: `promotion-packages-${args.boardReport.generated_at}`,
     generated_at: args.boardReport.generated_at,
     live_baseline_id: args.boardReport.live_baseline_id,
@@ -300,6 +368,10 @@ function renderPackageMarkdown(pkg: ResearchPromotionPackage): string {
     `- Portfolio stress passed: ${pkg.portfolio_stress_passed ?? "n/a"}`,
     `- Portfolio overlap ratio: ${pkg.portfolio_stress_overlap_ratio ?? "n/a"}`,
     `- Portfolio max concurrent: ${pkg.portfolio_stress_max_concurrent ?? "n/a"}`,
+    `- Statistical validation passed: ${pkg.statistical_validation_passed ?? "n/a"}`,
+    `- Deflated Sharpe Ratio: ${pkg.deflated_sharpe_ratio ?? "n/a"}`,
+    `- Estimated PBO: ${pkg.pbo_estimate ?? "n/a"}`,
+    `- White Reality Check p-value: ${pkg.white_reality_check_p_value ?? "n/a"}`,
     ``,
     `## Blockers`,
     ...(pkg.review.blockers.length > 0 ? pkg.review.blockers.map((item) => `- ${item}`) : ["- none"]),
@@ -313,14 +385,18 @@ function renderPackageMarkdown(pkg: ResearchPromotionPackage): string {
     `## Artifacts`,
     `- Board JSON: ${pkg.artifacts.board_json_path ?? "n/a"}`,
     `- Board Markdown: ${pkg.artifacts.board_markdown_path ?? "n/a"}`,
+    `- Registry JSON: ${pkg.artifacts.registry_json_path ?? "n/a"}`,
     `- Bundle JSON: ${pkg.artifacts.bundle_json_path ?? "n/a"}`,
     `- Bundle Markdown: ${pkg.artifacts.bundle_markdown_path ?? "n/a"}`,
     ...(pkg.artifacts.run_artifacts.length > 0
       ? pkg.artifacts.run_artifacts.flatMap((artifact) => [
           `- Run ${artifact.run_id} / ${artifact.task_id}`,
           `- Manifest: ${artifact.manifest_path ?? "n/a"}`,
+          `- Manifest artifact: ${artifact.manifest_artifact_id ?? "n/a"}`,
           `- Comparison: ${artifact.comparison_path ?? "n/a"}`,
+          `- Comparison artifact: ${artifact.comparison_artifact_id ?? "n/a"}`,
           `- Decision: ${artifact.decision_path ?? "n/a"}`,
+          `- Decision artifact: ${artifact.decision_artifact_id ?? "n/a"}`,
         ])
       : ["- Run artifacts: none"]),
   ];
@@ -361,6 +437,8 @@ export async function writeResearchPromotionPackageReport(args: {
   const markdown = [
     `# Research Promotion Packages`,
     ``,
+    `- Schema version: ${args.report.schema_version}`,
+    `- Upstream reports: ${args.report.provenance.upstream_report_ids.length}`,
     `- Generated at: ${args.report.generated_at}`,
     `- Live baseline: ${args.report.live_baseline_id ?? "n/a"}`,
     `- Package count: ${args.report.summary.package_count}`,

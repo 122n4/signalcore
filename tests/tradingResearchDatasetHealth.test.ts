@@ -57,6 +57,8 @@ describe("trading research dataset health", () => {
     const outputs = await writeResearchDatasetHealthReport({ config, report });
     const latest = await readJsonFile<typeof report>(outputs.latestJsonPath);
 
+    expect(report.schema_version).toBe("research.dataset-health-report.v1");
+    expect(report.provenance.dataset_refs.some((entry) => entry.dataset_id === "coverage_audit_local_only")).toBe(true);
     expect(report.summary.audit_loaded).toBe(true);
     expect(report.summary.eligible_instrument_count).toBe(1);
     expect(report.summary.degraded_instrument_count).toBe(1);

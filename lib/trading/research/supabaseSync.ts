@@ -7,6 +7,11 @@ import { buildResearchRunArtifactPaths } from "./artifactContract";
 import { loadResearchConfig } from "./config";
 import { readJsonIfExists } from "./fs";
 import { readResearchQueue } from "./queue";
+import {
+  buildResearchDataAcquisitionPlan,
+  buildResearchDatasetRequirementsReport,
+} from "./datasetRequirements";
+import { buildResearchLatestReportsOverview } from "./reportsOverview";
 import { buildResearchRuntimeHealth } from "./runtimeHealth";
 import type {
   ResearchBaselineManifest,
@@ -204,12 +209,15 @@ export async function buildResearchSupabasePayload(args: {
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, runs, decisions] = await Promise.all([
+  const [runtime, queue, baseline, runs, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan] = await Promise.all([
     buildResearchRuntimeHealth({ config }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
     readRecentRunRows(config, args.runLimit ?? 80),
     readDecisionEntries(config.paths.decisionsPath, args.decisionLimit ?? 300),
+    buildResearchLatestReportsOverview(config),
+    buildResearchDatasetRequirementsReport(config),
+    buildResearchDataAcquisitionPlan(config),
   ]);
   const lastSuccessfulRunAt =
     runs.find((run) => run.status === "completed")?.updated_at ??
@@ -249,6 +257,9 @@ export async function buildResearchSupabasePayload(args: {
         dataHunter: runtime.dataHunter,
         queueOverview: summarizeQueue(queue),
         baseline,
+        reportsOverview,
+        datasetRequirements,
+        dataAcquisitionPlan,
       },
     },
     decisionRows: decisions.map(decisionRow),

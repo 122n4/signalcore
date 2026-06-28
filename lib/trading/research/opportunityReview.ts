@@ -9,10 +9,12 @@ import {
 import { loadResearchConfig } from "./config";
 import { decideResearchRun } from "./decisionEngine";
 import { ensureDirectory, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import { buildResearchReportProvenance } from "./provenance";
 import { buildResearchPromotionBoard } from "./promotionBoard";
 import { buildResearchPromotionPackageReport } from "./promotionPackages";
 import { readResearchQueue } from "./queue";
 import { buildDefaultResearchExecutorMap } from "./runner";
+import { resolveResearchReportSchemaVersion } from "./schema";
 import type {
   ResearchConfig,
   ResearchOpportunityReviewBundle,
@@ -210,6 +212,7 @@ export async function buildResearchOpportunityReviewReport(
     ? await (deps.validateBundle ?? validateResearchPromotionBundle)({
         config: buildScopedConfig(config, bundleCandidate.affected_instruments),
         candidate: bundleCandidate,
+        trialCount: bundleCandidates.length,
       })
     : null;
   const bundle = buildBundleReview({
@@ -221,11 +224,21 @@ export async function buildResearchOpportunityReviewReport(
   const sortedItems = items.sort(sortItems);
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("opportunityReview"),
+    provenance: await buildResearchReportProvenance({
+      config,
+      upstreamReportIds: [
+        boardReport.report_id,
+        packageReport.report_id,
+        packageReport.packages[0]?.artifacts.registry_report_id ?? "",
+      ],
+    }),
     report_id: `opportunity-review-${now().toISOString()}`,
     generated_at: now().toISOString(),
     live_baseline_id: boardReport.live_baseline_id,
     source_board_report_id: boardReport.report_id,
     source_package_report_id: packageReport.report_id,
+    source_registry_report_id: packageReport.packages[0]?.artifacts.registry_report_id ?? null,
     summary: {
       reviewed_item_count: sortedItems.length,
       isolated_promote_count: sortedItems.filter((item) => item.isolated_decision === "promote").length,
@@ -243,10 +256,13 @@ function renderOpportunityReviewMarkdown(report: ResearchOpportunityReviewReport
   const lines = [
     "# Research Opportunity Review",
     "",
+    `- Schema version: ${report.schema_version}`,
+    `- Upstream reports: ${report.provenance.upstream_report_ids.length}`,
     `- Generated at: ${report.generated_at}`,
     `- Live baseline: ${report.live_baseline_id ?? "n/a"}`,
     `- Board source: ${report.source_board_report_id}`,
     `- Package source: ${report.source_package_report_id}`,
+    `- Registry source: ${report.source_registry_report_id ?? "n/a"}`,
     `- Reviewed items: ${report.summary.reviewed_item_count}`,
     `- Isolated promotes: ${report.summary.isolated_promote_count}`,
     `- Isolated candidates: ${report.summary.isolated_candidate_count}`,

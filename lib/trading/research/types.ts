@@ -29,6 +29,7 @@ export type ResearchDecision = "reject" | "candidate" | "promote";
 export type ResearchFailureCategory =
   | "validation_gate"
   | "artifact_contract"
+  | "runtime_timeout"
   | "runtime_fs"
   | "runtime_lock"
   | "runtime_os"
@@ -232,6 +233,9 @@ export type ResearchValidationThresholds = {
   requireMonteCarloBreakEven?: boolean;
   requireFinalHoldoutBreakEven?: boolean;
   requireCostStressBreakEven?: boolean;
+  minDeflatedSharpeRatio?: number;
+  maxPbo?: number;
+  maxWhiteRealityCheckPValue?: number;
 };
 
 export type ResearchValidationProfile = {
@@ -272,6 +276,10 @@ export type ResearchGateEvaluation = {
   costStressProfitFactorStable?: boolean;
   costStressDrawdownStable?: boolean;
   costStressBreakEvenOrBetter?: boolean;
+  deflatedSharpeRatioPass?: boolean;
+  pboPass?: boolean;
+  whiteRealityCheckPass?: boolean;
+  statisticalValidationPass?: boolean;
   aggregateImproved: boolean;
   crisisImproved: boolean;
   walkForwardImproved: boolean;
@@ -280,6 +288,31 @@ export type ResearchGateEvaluation = {
   drawdownPromotionThresholdMet?: boolean;
   promotionThresholdMet: boolean;
   allHardGatesPass: boolean;
+};
+
+export type ResearchStatisticalValidation = {
+  sample_size: number;
+  independent_trial_count: number;
+  trade_level_sharpe_ratio: number | null;
+  deflated_sharpe_ratio: number | null;
+  pbo: {
+    value: number | null;
+    risk_band: "low" | "moderate" | "high" | "insufficient_data";
+  };
+  white_reality_check: {
+    p_value: number | null;
+    adjusted_p_value: number | null;
+    bootstrap_iterations: number;
+  };
+  diagnostics: {
+    out_of_sample_checks: Array<{
+      label: string;
+      expectancy: number | null;
+      profit_factor: number | null;
+      passed_break_even: boolean | null;
+    }>;
+    notes: string[];
+  };
 };
 
 export type ResearchMonteCarloDiagnostics = {
@@ -326,6 +359,7 @@ export type ResearchRunComparison = {
     affectedInstruments: string[];
   };
   robustness?: ResearchSupplementalValidation | null;
+  statistical_validation?: ResearchStatisticalValidation | null;
   gates: ResearchGateEvaluation;
 };
 
@@ -338,6 +372,8 @@ export type ResearchRunDecision = {
   promoted_metrics: Record<string, number | null>;
   ranking?: ResearchPromotionRanking | null;
   failure_forensics?: ResearchFailureForensics | null;
+  operational_failure?: boolean;
+  failed_stage?: ResearchRunStatus["failed_stage"];
 };
 
 export type ResearchTaskExecutionArtifacts = {
@@ -514,6 +550,8 @@ export type ResearchDecisionLedgerEntry = {
 };
 
 export type ResearchDailyReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   live_baseline_id: string | null;
@@ -552,6 +590,8 @@ export type ResearchDailyReport = {
 };
 
 export type ResearchWindowReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   interval_hours: number;
@@ -614,6 +654,8 @@ export type ResearchCycleReportEntry = {
 };
 
 export type ResearchCycleReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   cycle_id: string;
   generated_at: string;
   started_at: string;
@@ -696,6 +738,8 @@ export type ResearchPortfolioStressResult = {
 };
 
 export type ResearchBundleValidationReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   baseline_id: string | null;
@@ -720,6 +764,7 @@ export type ResearchBundleValidationReport = {
     primary_campaign_objective: ResearchCampaignObjective | null;
     campaign_mode: "single" | "mixed" | "unknown";
     portfolio_stress_passed: boolean | null;
+    statistical_validation_passed: boolean | null;
   }>;
   campaign_performance: ResearchCampaignPerformanceEntry[];
 };
@@ -752,6 +797,10 @@ export type ResearchPromotionBoardEntry = {
   portfolio_stress_passed?: boolean | null;
   portfolio_stress_overlap_ratio?: number | null;
   portfolio_stress_max_concurrent?: number | null;
+  statistical_validation_passed?: boolean | null;
+  deflated_sharpe_ratio?: number | null;
+  pbo_estimate?: number | null;
+  white_reality_check_p_value?: number | null;
   aggregate_summary: ResearchMetricSummary | null;
   crisis_summary: ResearchMetricSummary | null;
   walkforward_summary: ResearchMetricSummary | null;
@@ -759,6 +808,8 @@ export type ResearchPromotionBoardEntry = {
 };
 
 export type ResearchPromotionBoardReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   live_baseline_id: string | null;
@@ -781,7 +832,8 @@ export type ResearchPromotionBoardReport = {
     score: number | null;
     band: ResearchRankingBand | null;
     board_status: ResearchPromotionBoardStatus;
-      portfolio_stress_passed: boolean | null;
+    portfolio_stress_passed: boolean | null;
+    statistical_validation_passed: boolean | null;
   }>;
 };
 
@@ -791,13 +843,23 @@ export type ResearchPromotionPackageRunArtifact = {
   manifest_path: string | null;
   comparison_path: string | null;
   decision_path: string | null;
+  manifest_artifact_id: string | null;
+  manifest_artifact_version: string | null;
+  comparison_artifact_id: string | null;
+  comparison_artifact_version: string | null;
+  decision_artifact_id: string | null;
+  decision_artifact_version: string | null;
 };
 
 export type ResearchPromotionPackageArtifactLinks = {
+  board_report_id: string;
   board_json_path: string | null;
   board_markdown_path: string | null;
+  bundle_report_id: string | null;
   bundle_json_path: string | null;
   bundle_markdown_path: string | null;
+  registry_report_id: string | null;
+  registry_json_path: string | null;
   run_artifacts: ResearchPromotionPackageRunArtifact[];
 };
 
@@ -831,6 +893,10 @@ export type ResearchPromotionPackage = {
   portfolio_stress_passed: boolean | null;
   portfolio_stress_overlap_ratio: number | null;
   portfolio_stress_max_concurrent: number | null;
+  statistical_validation_passed: boolean | null;
+  deflated_sharpe_ratio: number | null;
+  pbo_estimate: number | null;
+  white_reality_check_p_value: number | null;
   aggregate_summary: ResearchMetricSummary | null;
   crisis_summary: ResearchMetricSummary | null;
   walkforward_summary: ResearchMetricSummary | null;
@@ -839,6 +905,8 @@ export type ResearchPromotionPackage = {
 };
 
 export type ResearchPromotionPackageReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   live_baseline_id: string | null;
@@ -890,11 +958,14 @@ export type ResearchOpportunityReviewBundle =
     };
 
 export type ResearchOpportunityReviewReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   live_baseline_id: string | null;
   source_board_report_id: string;
   source_package_report_id: string;
+  source_registry_report_id: string | null;
   summary: {
     reviewed_item_count: number;
     isolated_promote_count: number;
@@ -940,6 +1011,8 @@ export type ResearchDatasetHealthSummary = {
 };
 
 export type ResearchDatasetHealthReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
   report_id: string;
   generated_at: string;
   coverage_audit_path: string | null;
@@ -950,6 +1023,118 @@ export type ResearchDatasetHealthReport = {
 export type ResearchReportFileOutput = {
   jsonPath: string;
   markdownPath: string;
+};
+
+export type ResearchRegistryDatasetStatus =
+  | "ready"
+  | "degraded"
+  | "missing";
+
+export type ResearchDatasetReference = {
+  dataset_id: string;
+  dataset_version: string;
+  status: ResearchRegistryDatasetStatus;
+  generated_at: string | null;
+  source_path: string | null;
+};
+
+export type ResearchReportProvenance = {
+  owner: "research_lab";
+  config_path: string;
+  live_baseline_id: string | null;
+  dataset_manifest_hash: string | null;
+  engine_manifest_hash: string | null;
+  dataset_refs: ResearchDatasetReference[];
+  upstream_report_ids: string[];
+};
+
+export type ResearchRegistryDatasetEntry = {
+  dataset_id: string;
+  dataset_version: string;
+  kind: "coverage_audit" | "active_research_universe" | "market_data_backfill" | "market_data_harvest";
+  owner: "research_lab";
+  status: ResearchRegistryDatasetStatus;
+  source_path: string | null;
+  generated_at: string | null;
+  data_plane: {
+    tier: "bronze" | "silver" | "gold";
+    storage: {
+      kind: "local_file" | "report_artifact" | "derived_manifest" | "catalog";
+      primary_root: string | null;
+      secondary_root: string | null;
+      format: string | null;
+    };
+    coverage: {
+      scoped_items: number | null;
+      ready_items: number | null;
+      gap_items: number | null;
+      coverage_ratio: number | null;
+      gap_detected: boolean;
+    };
+    provider_quality: {
+      providers: string[];
+      quality_gates: string[];
+      source_mode: "local_only" | "mixed" | "provider_catalog" | "derived";
+    };
+    integrity: {
+      source_checksum: string | null;
+      verification_status: "verified" | "pending" | "failed" | "not_applicable";
+      verified_items: number;
+      pending_items: number;
+      failed_items: number;
+    };
+  };
+  lineage: {
+    config_paths: string[];
+    artifact_paths: string[];
+  };
+  payload: Record<string, unknown>;
+};
+
+export type ResearchRegistryArtifactEntry = {
+  artifact_id: string;
+  artifact_version: string | null;
+  run_id: string;
+  task_id: string | null;
+  artifact_type:
+    | "manifest"
+    | "input"
+    | "status"
+    | "aggregate_report"
+    | "crisis_report"
+    | "walkforward_report"
+    | "comparison"
+    | "decision"
+    | "checksums";
+  path: string;
+  generated_at: string | null;
+  owner: "research_lab";
+  lineage: {
+    dataset_ids: string[];
+    depends_on_artifact_ids: string[];
+  };
+};
+
+export type ResearchRegistryReport = {
+  schema_version: string;
+  provenance: ResearchReportProvenance;
+  report_id: string;
+  generated_at: string;
+  summary: {
+    dataset_count: number;
+    ready_dataset_count: number;
+    degraded_dataset_count: number;
+    missing_dataset_count: number;
+    bronze_dataset_count: number;
+    silver_dataset_count: number;
+    gold_dataset_count: number;
+    gap_dataset_count: number;
+    verified_dataset_count: number;
+    artifact_count: number;
+    run_count: number;
+  };
+  datasets: ResearchRegistryDatasetEntry[];
+  artifacts: ResearchRegistryArtifactEntry[];
 };
 
 export type ResearchBundleRefreshOutput =
@@ -965,6 +1150,7 @@ export type ResearchPostCycleOpportunityOutputs = {
   board: ResearchReportFileOutput;
   datasetHealth: ResearchReportFileOutput;
   packages: ResearchReportFileOutput;
+  registry?: ResearchReportFileOutput;
 };
 
 export type ResearchProcessReportOutputs = {
@@ -974,6 +1160,7 @@ export type ResearchProcessReportOutputs = {
   board: ResearchReportFileOutput;
   datasetHealth: ResearchReportFileOutput;
   packages: ResearchReportFileOutput;
+  registry?: ResearchReportFileOutput;
 };
 
 export type ResearchCandidateTemplate = {

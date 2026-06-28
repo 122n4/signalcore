@@ -87,6 +87,16 @@ function createBoardAndPackageReports(args: {
   }));
 
   const boardReport: ResearchPromotionBoardReport = {
+    schema_version: "research.promotion-board-report.v1",
+    provenance: {
+      owner: "research_lab",
+      config_path: "config/trading-research/research-config.json",
+      live_baseline_id: args.baselineId,
+      dataset_manifest_hash: "dataset-manifest-hash",
+      engine_manifest_hash: "engine-manifest-hash",
+      dataset_refs: [],
+      upstream_report_ids: [],
+    },
     report_id: "board-1",
     generated_at: "2026-03-21T00:00:00.000Z",
     live_baseline_id: args.baselineId,
@@ -110,10 +120,21 @@ function createBoardAndPackageReports(args: {
       band: entry.band,
       board_status: entry.board_status,
       portfolio_stress_passed: null,
+      statistical_validation_passed: null,
     })),
   };
 
   const packageReport: ResearchPromotionPackageReport = {
+    schema_version: "research.promotion-packages-report.v1",
+    provenance: {
+      owner: "research_lab",
+      config_path: "config/trading-research/research-config.json",
+      live_baseline_id: args.baselineId,
+      dataset_manifest_hash: "dataset-manifest-hash",
+      engine_manifest_hash: "engine-manifest-hash",
+      dataset_refs: [],
+      upstream_report_ids: ["board-1"],
+    },
     report_id: "packages-1",
     generated_at: "2026-03-21T00:00:00.000Z",
     live_baseline_id: args.baselineId,
@@ -147,6 +168,10 @@ function createBoardAndPackageReports(args: {
       portfolio_stress_passed: null,
       portfolio_stress_overlap_ratio: null,
       portfolio_stress_max_concurrent: null,
+      statistical_validation_passed: null,
+      deflated_sharpe_ratio: null,
+      pbo_estimate: null,
+      white_reality_check_p_value: null,
       aggregate_summary: entry.aggregate_summary,
       crisis_summary: entry.crisis_summary,
       walkforward_summary: entry.walkforward_summary,
@@ -157,10 +182,14 @@ function createBoardAndPackageReports(args: {
         checklist: [],
       },
       artifacts: {
+        board_report_id: "board-1",
         board_json_path: null,
         board_markdown_path: null,
+        bundle_report_id: null,
         bundle_json_path: null,
         bundle_markdown_path: null,
+        registry_report_id: "registry-1",
+        registry_json_path: null,
         run_artifacts: [],
       },
     })),
@@ -216,6 +245,9 @@ describe("trading research opportunity review", () => {
       now: () => new Date("2026-03-21T00:00:00.000Z"),
     });
 
+    expect(report.schema_version).toBe("research.opportunity-review-report.v1");
+    expect(report.provenance.upstream_report_ids).toEqual(["board-1", "packages-1", "registry-1"]);
+    expect(report.source_registry_report_id).toBe("registry-1");
     expect(report.summary.reviewed_item_count).toBe(1);
     expect(report.summary.isolated_promote_count).toBe(1);
     expect(report.bundle.status).toBe("insufficient_candidates");
@@ -339,6 +371,9 @@ describe("trading research opportunity review", () => {
       now: () => new Date("2026-03-21T00:00:00.000Z"),
     });
 
+    expect(report.schema_version).toBe("research.opportunity-review-report.v1");
+    expect(report.provenance.upstream_report_ids).toEqual(["board-1", "packages-1", "registry-1"]);
+    expect(report.source_registry_report_id).toBe("registry-1");
     expect(report.summary.reviewed_item_count).toBe(2);
     expect(report.bundle.status).toBe("validated");
     expect(report.bundle.decision?.decision).toBe("candidate");

@@ -15,8 +15,10 @@ import {
   stableStringify,
   writeJsonAtomic,
 } from "./fs";
+import { buildResearchReportProvenance } from "./provenance";
 import { readResearchQueue } from "./queue";
 import { rankResearchOpportunityFromSummaries } from "./ranking";
+import { resolveResearchReportSchemaVersion } from "./schema";
 import type {
   ResearchCampaignDefinition,
   ResearchCampaignMetadataSource,
@@ -569,6 +571,11 @@ function buildBundleEntries(args: {
       portfolio_stress_passed: result.portfolio_stress?.passes ?? null,
       portfolio_stress_overlap_ratio: result.portfolio_stress?.current.overlap_ratio ?? null,
       portfolio_stress_max_concurrent: result.portfolio_stress?.current.max_concurrent_trades ?? null,
+      statistical_validation_passed: result.comparison.gates.statisticalValidationPass ?? null,
+      deflated_sharpe_ratio: result.comparison.statistical_validation?.deflated_sharpe_ratio ?? null,
+      pbo_estimate: result.comparison.statistical_validation?.pbo.value ?? null,
+      white_reality_check_p_value:
+        result.comparison.statistical_validation?.white_reality_check.adjusted_p_value ?? null,
       aggregate_summary: result.comparison.aggregate.current,
       crisis_summary: result.comparison.crisis.current,
       walkforward_summary: result.comparison.walkForward.current,
@@ -748,6 +755,11 @@ export async function buildResearchPromotionBoard(
   });
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("promotionBoard"),
+    provenance: await buildResearchReportProvenance({
+      config,
+      upstreamReportIds: bundleReports.map((report) => report.report_id),
+    }),
     report_id: `promotion-board-${now}`,
     generated_at: now,
     live_baseline_id: queue.live_baseline_id,
@@ -774,6 +786,7 @@ export async function buildResearchPromotionBoard(
         band: entry.band,
         board_status: entry.board_status,
         portfolio_stress_passed: entry.portfolio_stress_passed ?? null,
+        statistical_validation_passed: entry.statistical_validation_passed ?? null,
       })),
   };
 }
@@ -802,6 +815,8 @@ export async function writeResearchPromotionBoard(args: {
   const markdown = [
     `# Research Promotion Board`,
     ``,
+    `- Schema version: ${args.report.schema_version}`,
+    `- Upstream reports: ${args.report.provenance.upstream_report_ids.length}`,
     `- Generated at: ${args.report.generated_at}`,
     `- Live baseline: ${args.report.live_baseline_id ?? "n/a"}`,
     `- Task promotes: ${args.report.summary.task_promotes}`,
@@ -826,7 +841,8 @@ export async function writeResearchPromotionBoard(args: {
           (entry) =>
             `- ${entry.entry_id}: ${entry.board_status} (${entry.score ?? "n/a"} / ${entry.band ?? "n/a"})` +
             `${entry.primary_campaign_id ? ` [${entry.primary_campaign_id}/${entry.primary_campaign_objective ?? "n/a"}]` : ""}` +
-            ` [portfolio_stress=${entry.portfolio_stress_passed ?? "n/a"}]`,
+            ` [portfolio_stress=${entry.portfolio_stress_passed ?? "n/a"}]` +
+            ` [statistical_validation=${entry.statistical_validation_passed ?? "n/a"}]`,
         )
       : ["- none"]),
     ``,
@@ -840,6 +856,7 @@ export async function writeResearchPromotionBoard(args: {
             ` [campaign_source=${entry.campaign_metadata_source}]` +
             ` [ranking_source=${entry.ranking_metadata_source}]` +
             `${entry.portfolio_stress_passed !== undefined ? ` [portfolio_stress=${entry.portfolio_stress_passed ?? "n/a"}]` : ""}` +
+            `${entry.statistical_validation_passed !== undefined ? ` [statistical_validation=${entry.statistical_validation_passed ?? "n/a"}]` : ""}` +
             ` (${entry.summary})`,
         )
       : ["- none"]),

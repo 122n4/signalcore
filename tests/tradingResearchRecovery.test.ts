@@ -4,6 +4,8 @@ import {
   buildResearchRunArtifactPaths,
   recoverResearchRunner,
   readResearchQueue,
+  readJsonFile,
+  verifyResearchRunArtifacts,
   writeJsonAtomic,
 } from "@/lib/trading/research";
 
@@ -118,6 +120,14 @@ describe("trading research recovery", () => {
     expect(queue.tasks[0].error).toContain("Recovered stale or hung lock");
     expect(queue.tasks[0].last_run_id).toBe("run-retry-001");
     expect(queue.tasks[0].run_fingerprint).toBe("fp-retry");
+
+    const paths = buildResearchRunArtifactPaths(config.paths.runsDir, "run-retry-001");
+    expect(await verifyResearchRunArtifacts(paths)).toBe(true);
+    const decision = await readJsonFile<{ decision: string; operational_failure?: boolean }>(
+      paths.decisionPath,
+    );
+    expect(decision.decision).toBe("reject");
+    expect(decision.operational_failure).toBe(true);
   });
 
   it("requeues a stage-timeout run even when the lock heartbeat is healthy", async () => {

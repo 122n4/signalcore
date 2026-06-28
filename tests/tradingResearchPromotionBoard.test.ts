@@ -288,6 +288,8 @@ describe("trading research promotion board", () => {
 
     const report = await buildResearchPromotionBoard(config);
 
+    expect(report.schema_version).toBe("research.promotion-board-report.v1");
+    expect(report.provenance.upstream_report_ids).toContain("bundle-validation-1");
     expect(report.summary.task_promotes).toBe(2);
     expect(report.summary.task_candidates).toBe(1);
     expect(report.summary.bundle_promotes).toBe(1);

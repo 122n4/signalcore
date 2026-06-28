@@ -6,6 +6,7 @@ import { isResearchCandidateScopeCoverageEligible, readResearchCoverageEligibili
 import { computeResearchTaskFingerprint, readFingerprintIndexEntry } from "./idempotency";
 import { appendResearchTask, readResearchQueue, setResearchQueueIdleReason, writeResearchQueue } from "./queue";
 import { readJsonIfExists, sanitizeFileSegment, stableStringify, writeJsonAtomic } from "./fs";
+import { hasEffectiveResearchInstruments } from "./taskScope";
 import type {
   ResearchCampaignDefinition,
   ResearchCandidateFamily,
@@ -563,9 +564,19 @@ function createTaskFromTemplate(args: {
   campaign: ResearchCampaignDefinition;
   family: ResearchCandidateFamily;
   template: ResearchCandidateTemplate;
+  fallbackInstruments: string[];
   runFingerprint: string;
   now: Date;
-}): ResearchTask {
+}): ResearchTask | null {
+  if (
+    !hasEffectiveResearchInstruments({
+      scope: args.template.candidate_scope,
+      fallbackInstruments: args.fallbackInstruments,
+    })
+  ) {
+    return null;
+  }
+
   const createdAt = args.now.toISOString();
   return {
     id: createTaskId(args.template.id, createdAt),
@@ -1434,27 +1445,39 @@ export async function autoEnqueueNextResearchTask(args: {
     return { action: "idle", reason: "all_candidates_deduped_for_current_baseline" };
   }
 
-  const selected = analysis.selectableTemplates.sort((left, right) =>
-    sortIndexedTemplates(left, right, analysis.memory),
-  )[0];
-  const enqueuedTask = createTaskFromTemplate({
-    baselineId: analysis.baselineId,
-    campaign: selected.campaign,
-    family: selected.family,
-    template: selected.template,
-    runFingerprint: selected.runFingerprint,
-    now: now(),
-  });
+  const selected = analysis.selectableTemplates
+    .sort((left, right) => sortIndexedTemplates(left, right, analysis.memory))
+    .map((candidate) => ({
+      candidate,
+      task: createTaskFromTemplate({
+        baselineId: analysis.baselineId,
+        campaign: candidate.campaign,
+        family: candidate.family,
+        template: candidate.template,
+        fallbackInstruments: args.config.study.instruments,
+        runFingerprint: candidate.runFingerprint,
+        now: now(),
+      }),
+    }))
+    .find((entry) => entry.task !== null);
+
+  if (!selected || !selected.task) {
+    await writeResearchQueue(
+      args.config,
+      setResearchQueueIdleReason(queue, "no_compatible_candidates_for_current_baseline"),
+    );
+    return { action: "idle", reason: "no_compatible_candidates_for_current_baseline" };
+  }
 
   await writeResearchQueue(
     args.config,
-    appendResearchTask(setResearchQueueIdleReason(queue, null), enqueuedTask),
+    appendResearchTask(setResearchQueueIdleReason(queue, null), selected.task),
   );
 
   return {
     action: "enqueued",
-    taskId: enqueuedTask.id,
-    runFingerprint: selected.runFingerprint,
+    taskId: selected.task.id,
+    runFingerprint: selected.candidate.runFingerprint,
   };
 }
 

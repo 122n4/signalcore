@@ -7,7 +7,13 @@ import {
   type TradingSecondLayerRiskStudyScenario,
 } from "@/lib/trading/backtest";
 
-import { buildResearchRunArtifactPaths, initializeResearchRunArtifacts, writeResearchDecisionArtifact, writeResearchRunChecksums } from "./artifactContract";
+import {
+  buildResearchRunArtifactPaths,
+  initializeResearchRunArtifacts,
+  writeResearchDecisionArtifact,
+  writeResearchFailureArtifacts,
+  writeResearchRunChecksums,
+} from "./artifactContract";
 import { ensureResearchBaselineSnapshot } from "./baseline";
 import { loadResearchConfig } from "./config";
 import { decideResearchRun } from "./decisionEngine";
@@ -39,6 +45,8 @@ import {
   writeResearchWindowReport,
 } from "./report";
 import { refreshResearchBundleValidationReportIfNeeded } from "./bundleValidation";
+import { buildResearchRegistryReport, writeResearchRegistryReport } from "./registry";
+import { resolveEffectiveResearchInstruments } from "./taskScope";
 import { evaluateResearchValidationGates } from "./validationGates";
 import type {
   ResearchConfig,
@@ -58,39 +66,27 @@ import type {
   ResearchTaskRunnerDependencies,
 } from "./types";
 
-function buildMetricSummary(input: ResearchMetricSummary): ResearchMetricSummary {
+export function buildMetricSummary(
+  input: Partial<ResearchMetricSummary> | ResearchMetricSummary | null | undefined,
+): ResearchMetricSummary {
   return {
-    totalTrades: input.totalTrades,
-    winRate: input.winRate,
-    averageRiskReward: input.averageRiskReward,
-    expectancy: input.expectancy,
-    profitFactor: input.profitFactor,
-    maxDrawdown: input.maxDrawdown,
+    totalTrades: Number.isFinite(Number(input?.totalTrades)) ? Number(input?.totalTrades) : 0,
+    winRate: Number.isFinite(Number(input?.winRate)) ? Number(input?.winRate) : 0,
+    averageRiskReward:
+      input?.averageRiskReward === null
+        ? null
+        : Number.isFinite(Number(input?.averageRiskReward))
+          ? Number(input?.averageRiskReward)
+          : null,
+    expectancy: Number.isFinite(Number(input?.expectancy)) ? Number(input?.expectancy) : 0,
+    profitFactor:
+      input?.profitFactor === null
+        ? null
+        : Number.isFinite(Number(input?.profitFactor))
+          ? Number(input?.profitFactor)
+          : null,
+    maxDrawdown: Number.isFinite(Number(input?.maxDrawdown)) ? Number(input?.maxDrawdown) : 0,
   };
-}
-
-function resolveScenarioInstruments(args: {
-  task: ResearchTask;
-  fallbackInstruments: string[];
-}): string[] {
-  const scopedInstruments = args.task.candidate_scope.instruments?.length
-    ? args.task.candidate_scope.instruments
-    : args.fallbackInstruments;
-  const instruments = Array.from(
-    new Set(
-      scopedInstruments
-        .map((instrument) => instrument.trim().toUpperCase())
-        .filter((instrument) => instrument.length > 0),
-    ),
-  );
-
-  if (instruments.length === 0) {
-    throw new Error(
-      `Research task "${args.task.id}" must target at least one instrument or provide study instruments.`,
-    );
-  }
-
-  return instruments;
 }
 
 export function buildResearchRiskScenarioFromTask(args: {
@@ -103,7 +99,15 @@ export function buildResearchRiskScenarioFromTask(args: {
     throw new Error(`Unsupported risk_shaping mutation '${mutation.kind}'.`);
   }
 
-  const instruments = resolveScenarioInstruments(args);
+  const instruments = resolveEffectiveResearchInstruments({
+    scope: args.task.candidate_scope,
+    fallbackInstruments: args.fallbackInstruments,
+  });
+  if (instruments.length === 0) {
+    throw new Error(
+      `Research task "${args.task.id}" must target at least one instrument or provide study instruments.`,
+    );
+  }
 
   return {
     id: task.id,
@@ -133,7 +137,15 @@ export function buildResearchContextScenarioFromTask(args: {
     throw new Error(`Unsupported context_filter mutation '${task.candidate_mutation.kind}'.`);
   }
 
-  const instruments = resolveScenarioInstruments(args);
+  const instruments = resolveEffectiveResearchInstruments({
+    scope: args.task.candidate_scope,
+    fallbackInstruments: args.fallbackInstruments,
+  });
+  if (instruments.length === 0) {
+    throw new Error(
+      `Research task "${args.task.id}" must target at least one instrument or provide study instruments.`,
+    );
+  }
 
   return {
     id: task.id,
@@ -644,6 +656,11 @@ async function refreshResearchOpportunities(
     config,
     report: datasetHealthReport,
   });
+  const registryReport = await buildResearchRegistryReport(config);
+  const registryOutputs = await writeResearchRegistryReport({
+    config,
+    report: registryReport,
+  });
 
   return {
     bundle: bundleRefresh.report
@@ -664,6 +681,10 @@ async function refreshResearchOpportunities(
     datasetHealth: {
       jsonPath: datasetHealthOutputs.latestJsonPath,
       markdownPath: datasetHealthOutputs.latestMarkdownPath,
+    },
+    registry: {
+      jsonPath: registryOutputs.latestJsonPath,
+      markdownPath: registryOutputs.latestMarkdownPath,
     },
   };
 }
@@ -747,6 +768,26 @@ async function runSingleResearchTask(
       decision: null,
       decisionReason: `Unsupported research task type '${task.type}'.`,
       error: `Unsupported research task type '${task.type}'.`,
+    });
+    await writeResearchQueue(config, blocked);
+    return;
+  }
+
+  if (
+    resolveEffectiveResearchInstruments({
+      scope: task.candidate_scope,
+      fallbackInstruments: config.study.instruments,
+    }).length === 0
+  ) {
+    const queue = await readResearchQueue(config);
+    const blocked = finalizeResearchTask(queue, task.id, {
+      status: "blocked",
+      finishedAt: now().toISOString(),
+      runId: null,
+      runFingerprint: null,
+      decision: null,
+      decisionReason: `Research task "${task.id}" does not resolve to any effective instrument.`,
+      error: `Research task "${task.id}" must target at least one instrument or provide study instruments.`,
     });
     await writeResearchQueue(config, blocked);
     return;
@@ -958,7 +999,14 @@ async function runSingleResearchTask(
       failed_stage: activeStage,
       error: message,
     } satisfies ResearchRunStatus;
-    await writeJsonAtomic(runPaths.statusPath, activeStatus);
+    await writeResearchFailureArtifacts({
+      paths: runPaths,
+      manifest,
+      input: task,
+      status: activeStatus,
+      error: message,
+      failureForensics,
+    });
     const failedQueue = finalizeResearchTask(
       setResearchQueueActiveRun(await readResearchQueue(config), null),
       task.id,
@@ -1107,6 +1155,7 @@ export async function processResearchQueue(
       board: opportunityOutputs.board,
       packages: opportunityOutputs.packages,
       datasetHealth: opportunityOutputs.datasetHealth,
+      registry: opportunityOutputs.registry,
     },
   };
 }

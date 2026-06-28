@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildResearchPromotionBoard,
   buildResearchPromotionPackageReport,
+  buildResearchRegistryReport,
   writeJsonAtomic,
   writeResearchPromotionBoard,
   writeResearchPromotionPackageReport,
+  writeResearchRegistryReport,
 } from "@/lib/trading/research";
 
 import {
@@ -295,6 +297,8 @@ describe("trading research promotion packages", () => {
 
     await writeRunArtifacts(config.paths.runsDir, "run-promote-a");
     await writeRunArtifacts(config.paths.runsDir, "run-promote-b");
+    const registryReport = await buildResearchRegistryReport(config);
+    await writeResearchRegistryReport({ config, report: registryReport });
 
     const boardReport = await buildResearchPromotionBoard(config);
     await writeResearchPromotionBoard({ config, report: boardReport });
@@ -304,6 +308,8 @@ describe("trading research promotion packages", () => {
       boardReport,
     });
 
+    expect(packageReport.schema_version).toBe("research.promotion-packages-report.v1");
+    expect(packageReport.provenance.upstream_report_ids).toContain(boardReport.report_id);
     expect(packageReport.summary.package_count).toBe(3);
     expect(packageReport.summary.ready_for_live_review_count).toBe(3);
     expect(packageReport.summary.bundle_confirmed_count).toBe(1);
@@ -312,8 +318,10 @@ describe("trading research promotion packages", () => {
     expect(bundlePackage?.review.ready_for_live_review).toBe(true);
     expect(bundlePackage?.portfolio_stress_passed).toBe(true);
     expect(bundlePackage?.artifacts.bundle_json_path).toContain("bundle-validation-latest.json");
+    expect(bundlePackage?.artifacts.registry_report_id).toBe(registryReport.report_id);
     expect(bundlePackage?.artifacts.run_artifacts).toHaveLength(2);
     expect(bundlePackage?.artifacts.run_artifacts[0]?.decision_path).toContain("decision.json");
+    expect(bundlePackage?.artifacts.run_artifacts[0]?.comparison_artifact_id).toContain("comparison");
     expect(bundlePackage?.campaign_metadata_source).toBe("recorded");
     expect(bundlePackage?.ranking_metadata_source).toBe("recorded");
 
@@ -419,6 +427,8 @@ describe("trading research promotion packages", () => {
     });
     const legacyPackage = packageReport.packages[0];
 
+    expect(packageReport.schema_version).toBe("research.promotion-packages-report.v1");
+    expect(packageReport.provenance.upstream_report_ids).toContain(boardReport.report_id);
     expect(legacyPackage?.review.ready_for_live_review).toBe(true);
     expect(legacyPackage?.review.blockers).toEqual([]);
     expect(legacyPackage?.review.cautions).toEqual(

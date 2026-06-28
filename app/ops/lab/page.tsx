@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
+import { cookies, headers } from "next/headers";
 
 import LabControlPanel from "./LabControlPanel";
+import { LOCAL_QA_USER_ID, isLocalQaBypassServerAccess } from "@/lib/auth/localQaAuth";
 import { buildResearchLabOverview } from "@/lib/ops/researchLabOverview";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
-import { readPaperHistoryPayload } from "@/lib/trading/bot/paperRunner";
+import { readPaperHistoryPayloadSafe } from "@/lib/trading/bot/paperRunner";
 import type { ResearchMetricSummary } from "@/lib/trading/research/types";
 
 export const metadata: Metadata = {
@@ -111,7 +113,140 @@ function DataCoveragePanel({ lab }: { lab: Awaited<ReturnType<typeof buildResear
   );
 }
 
-function PaperTradingPanel({ paper }: { paper: Awaited<ReturnType<typeof readPaperHistoryPayload>> }) {
+function DatasetRequirementsPanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
+  const requirements = lab.datasetRequirements;
+  const officialGaps = requirements.summary.officialGapCount;
+  const pendingRows = requirements.rows.filter((row) =>
+    row.status === "downloadable" || row.status === "missing_manual" || row.status === "unsupported",
+  );
+
+  return (
+    <section className="mt-7 rounded-[30px] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200/60">Dataset requirements</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Official gap ledger</h2>
+          <p className="mt-3 max-w-4xl text-sm text-slate-300">
+            This section reads the canonical Research Lab coverage artifacts and approved source catalogs. It does not
+            invent a second truth layer in the UI.
+          </p>
+        </div>
+        <div className="rounded-full border border-white/15 bg-slate-950/45 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-slate-100">
+          Audit {time(requirements.lastAuditAt)}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Official gaps" value={officialGaps} />
+        <Metric label="Unsupported" value={requirements.summary.unsupportedCount} />
+        <Metric label="Staged only" value={requirements.summary.stagedOnlyCount} />
+        <Metric label="Blocks core research" value={requirements.summary.blockingCount} />
+      </div>
+
+      {officialGaps === 0 ? (
+        <div className="mt-4 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+          <p className="font-black text-white">0 gaps oficiais</p>
+          <p className="mt-2">
+            The supported universe is fully covered in the canonical reports. Only {requirements.summary.unsupportedCount} unsupported
+            periods remain outside the approved automatic scope.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
+        <table className="min-w-full text-left text-sm text-slate-200">
+          <thead className="bg-white/5 text-xs uppercase tracking-[0.18em] text-slate-400">
+            <tr>
+              <th className="px-4 py-3">Instrument</th>
+              <th className="px-4 py-3">Period</th>
+              <th className="px-4 py-3">TF</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Priority</th>
+              <th className="px-4 py-3">Block core</th>
+              <th className="px-4 py-3">Source</th>
+              <th className="px-4 py-3">Expected path</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(pendingRows.length > 0 ? pendingRows : requirements.rows.filter((row) => row.status === "staged_only").slice(0, 12)).map((row) => (
+              <tr key={`${row.instrument}-${row.periodLabel}-${row.status}`} className="border-t border-white/5 align-top">
+                <td className="px-4 py-3 font-bold text-white">{row.instrument}</td>
+                <td className="px-4 py-3">{row.periodLabel}</td>
+                <td className="px-4 py-3">{row.timeframe}</td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${tone(row.status)}`}>
+                    {row.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{row.priority}</td>
+                <td className="px-4 py-3">{row.blocksCoreResearch ? "yes" : "no"}</td>
+                <td className="px-4 py-3 text-slate-300">{row.recommendedSource}</td>
+                <td className="px-4 py-3 text-xs text-slate-400">{row.expectedPath}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function DataAcquisitionAgentPanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
+  const plan = lab.dataAcquisitionPlan;
+
+  return (
+    <section className="mt-7 rounded-[30px] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200/60">Data acquisition agent</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Safe-mode operational plan</h2>
+          <p className="mt-3 max-w-4xl text-sm text-slate-300">
+            This is an audited plan over the existing VPS pipeline. It reuses Data Hunter, backfill, dataset health and
+            sync artifacts instead of creating a parallel downloader.
+          </p>
+        </div>
+        <div className={`rounded-full border px-4 py-2 text-sm font-black uppercase tracking-[0.18em] ${tone(plan.status)}`}>
+          {plan.status}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Official gaps" value={plan.summary.officialGapCount} />
+        <Metric label="Downloadable" value={plan.summary.downloadableCount} />
+        <Metric label="Manual" value={plan.summary.manualCount} />
+        <Metric label="Unsupported" value={plan.summary.unsupportedCount} />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+          <p className="font-black text-white">Safety gates already in place</p>
+          <div className="mt-3 space-y-3">
+            {plan.safeguards.map((guard) => (
+              <div key={guard.id} className={`rounded-2xl border p-3 text-sm ${tone(guard.status)}`}>
+                <p className="font-black">{guard.label}</p>
+                <p className="mt-1 opacity-85">{guard.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+          <p className="font-black text-white">Canonical operator sequence</p>
+          <div className="mt-3 space-y-3">
+            {plan.steps.map((step) => (
+              <div key={step.id} className="rounded-2xl border border-white/10 bg-black/25 p-3 text-sm">
+                <p className="font-black text-white">{step.label}</p>
+                <code className="mt-2 block rounded-xl bg-black/35 px-3 py-2 text-xs text-cyan-100">{step.command}</code>
+                <p className="mt-2 text-slate-400">{step.purpose}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PaperTradingPanel({ paper }: { paper: Awaited<ReturnType<typeof readPaperHistoryPayloadSafe>> }) {
   const summary = paper.summary;
   const observability = paper.observability;
   const source = observability.schemaReady ? "paper_trades" : "legacy journal fallback";
@@ -171,9 +306,30 @@ function SummaryMetrics({ summary }: { summary: ResearchMetricSummary | null }) 
   );
 }
 
-export default async function ResearchLabPage() {
-  const { userId } = await auth();
-  if (!userId || !isOwnerUserId(userId)) {
+export default async function ResearchLabPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [{ userId }, headerStore, cookieStore, resolvedSearchParams] = await Promise.all([
+    auth(),
+    headers(),
+    cookies(),
+    searchParams ?? Promise.resolve({}),
+  ]);
+  const pageSearchParams = resolvedSearchParams as Record<string, string | string[] | undefined>;
+  const pageUserId =
+    userId ||
+    (isLocalQaBypassServerAccess({
+      host: headerStore.get("host"),
+      headerAuth: headerStore.get("x-syntrake-qa-auth"),
+      cookieAuth: cookieStore.get("syntrake_qa_auth")?.value ?? null,
+      qa: typeof pageSearchParams.qa === "string" ? pageSearchParams.qa : null,
+      qaAuth: typeof pageSearchParams.__qa_auth === "string" ? pageSearchParams.__qa_auth : null,
+    })
+      ? LOCAL_QA_USER_ID
+      : null);
+  if (!pageUserId || (!isOwnerUserId(pageUserId) && pageUserId !== LOCAL_QA_USER_ID)) {
     return (
       <main className="min-h-screen bg-[#07111f] px-6 py-16 text-white">
         <div className="mx-auto max-w-2xl rounded-[28px] border border-white/10 bg-white/[0.04] p-8">
@@ -186,7 +342,7 @@ export default async function ResearchLabPage() {
   }
 
   const lab = await buildResearchLabOverview();
-  const paper = await readPaperHistoryPayload(userId, { days: 183, maxSettlements: 4 });
+  const paper = await readPaperHistoryPayloadSafe(pageUserId, { days: 183, maxSettlements: 4 });
   const totalDecisions = Object.values(lab.decisions.counts).reduce((sum, count) => sum + count, 0);
 
   return (
@@ -237,6 +393,10 @@ export default async function ResearchLabPage() {
         <LabControlPanel />
 
         <DataCoveragePanel lab={lab} />
+
+        <DatasetRequirementsPanel lab={lab} />
+
+        <DataAcquisitionAgentPanel lab={lab} />
 
         <PaperTradingPanel paper={paper} />
 

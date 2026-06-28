@@ -25,6 +25,8 @@ export type PaperTradeObservability = {
 type CanonicalPaperTradeDbRow = {
   id: string;
   user_id: string;
+  mode?: string | null;
+  source?: string | null;
   source_journal_entry_id: string | null;
   instrument: string;
   side: string | null;
@@ -42,7 +44,7 @@ type CanonicalPaperTradeDbRow = {
   settled_at: string | null;
   last_settlement_at: string | null;
   settlement_error: string | null;
-  raw_details: any;
+  raw_details?: any;
   created_at: string | null;
 };
 
@@ -53,10 +55,6 @@ function asObject(value: unknown): Record<string, any> {
 function finite(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function normalizeStatus(value: unknown): PaperTradeOutcomeStatus {
-  return normalizePaperOutcomeStatus(value);
 }
 
 function canonicalStatusFromDetails(details: Record<string, any>): PaperTradeOutcomeStatus {
@@ -82,17 +80,44 @@ function outcomeFromCanonical(row: CanonicalPaperTradeDbRow): PaperTradeOutcome 
 
 function rowToHistory(row: CanonicalPaperTradeDbRow): PaperTradeHistoryRow {
   const details = asObject(row.raw_details);
+  const synthesizedDetails = {
+    ...details,
+    source: row.source ?? details.source ?? "paper_bot",
+    broker: row.broker ?? details.broker ?? null,
+    planned: {
+      action:
+        details.planned?.action ??
+        (row.execution_status === "rejected" ? "ready" : row.status === "unavailable" ? "blocked" : "ready"),
+      reasons: Array.isArray(details.planned?.reasons) ? details.planned.reasons : [],
+    },
+    execution: {
+      ...asObject(details.execution),
+      status: row.execution_status ?? details.execution?.status ?? "unknown",
+      message:
+        details.execution?.message ??
+        (row.execution_status === "paper_queued"
+          ? "Paper bracket order accepted. No real broker order was sent."
+          : row.execution_status === "rejected"
+            ? row.settlement_error || "Paper broker rejected the order intent."
+            : null),
+    },
+    intent: {
+      instrument: row.instrument || details.intent?.instrument || null,
+      side: row.side ?? details.intent?.side ?? null,
+      estimatedEntry: finite(row.entry_price ?? details.intent?.estimatedEntry),
+      stopLoss: finite(row.stop_price ?? details.intent?.stopLoss),
+      takeProfit: finite(row.target_price ?? details.intent?.takeProfit),
+      riskPct: finite(row.risk_pct ?? details.intent?.riskPct),
+      riskAmount: finite(row.risk_amount ?? details.intent?.riskAmount),
+    },
+  };
+
   return {
     id: row.id,
     title: row.instrument ? `Paper bot ${row.instrument}${row.side ? ` ${row.side.toUpperCase()}` : ""}` : "Paper bot cycle",
     created_at: row.created_at || row.opened_at,
     details: {
-      ...details,
-      broker: row.broker ?? details.broker,
-      execution: {
-        ...asObject(details.execution),
-        status: row.execution_status ?? details.execution?.status,
-      },
+      ...synthesizedDetails,
       paperOutcome: outcomeFromCanonical(row),
       canonicalPaperTradeId: row.id,
       sourceJournalEntryId: row.source_journal_entry_id,
@@ -198,11 +223,13 @@ export async function readCanonicalPaperRows(userId: string, days = 183) {
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
     .from("paper_trades")
-    .select("*")
+    .select(
+      "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,created_at",
+    )
     .eq("user_id", userId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(500);
+    .limit(100);
 
   if (error) {
     if (missingTable(error)) return { schemaReady: false, rows: [] as PaperTradeHistoryRow[], error: error.message || "paper_trades_missing" };
@@ -267,12 +294,16 @@ export async function settleCanonicalPaperRows(args: {
 
     const sourceJournalEntryId = String(details.sourceJournalEntryId || "");
     if (sourceJournalEntryId) {
-      await sb
+      const { error: journalError } = await sb
         .from("journal_entries")
         .update({ details: nextDetails })
         .eq("id", sourceJournalEntryId)
         .eq("user_id", args.userId)
         .eq("type", "trading_bot_paper_cycle");
+
+      if (journalError) {
+        failures += 1;
+      }
     }
 
     output.push({ ...row, details: nextDetails });

@@ -115,17 +115,26 @@ async function readLegacyPaperRows(userId: string, days = 183) {
     .eq("type", "trading_bot_paper_cycle")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(500);
+    .limit(100);
   if (error) throw new Error(error.message || "paper_history_read_failed");
   return (data || []) as PaperTradeHistoryRow[];
 }
 
+function paperHistoryErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  return String(error || "paper_history_failed");
+}
+
 export async function readPaperRows(userId: string, days = 183) {
+  const canonical = await readCanonicalPaperRows(userId, days);
+  if (canonical.schemaReady && canonical.rows.length > 0) return canonical.rows;
+
   const legacyRows = await readLegacyPaperRows(userId, days);
   const reconciliation = await reconcileCanonicalPaperTrades({ userId, legacyRows });
   if (!reconciliation.schemaReady) return legacyRows;
-  const canonical = await readCanonicalPaperRows(userId, days);
-  return canonical.schemaReady ? canonical.rows : legacyRows;
+
+  const refreshedCanonical = await readCanonicalPaperRows(userId, days);
+  return refreshedCanonical.schemaReady ? refreshedCanonical.rows : legacyRows;
 }
 
 export async function readSettledPaperRows(userId: string, days = 183, maxSettlements = 8) {
@@ -156,6 +165,27 @@ async function readCanonicalPaperHistory(
 ): Promise<{ rows: PaperTradeHistoryRow[]; observability: PaperTradeObservability }> {
   const days = args.days ?? 183;
   const maxSettlements = args.maxSettlements ?? 8;
+  const canonical = await readCanonicalPaperRows(userId, days);
+
+  if (canonical.schemaReady && canonical.rows.length > 0) {
+    const settlement = await settleCanonicalPaperRows({
+      userId,
+      rows: canonical.rows,
+      maxSettlements,
+    });
+
+    return {
+      rows: settlement.rows,
+      observability: buildPaperObservability({
+        schemaReady: true,
+        reconciledHistoricalCycles: 0,
+        repairedThisRun: settlement.repaired,
+        rows: settlement.rows,
+        error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
+      }),
+    };
+  }
+
   const legacyRows = await readLegacyPaperRows(userId, days);
   const reconciliation = await reconcileCanonicalPaperTrades({ userId, legacyRows });
 
@@ -173,8 +203,8 @@ async function readCanonicalPaperHistory(
     };
   }
 
-  const canonical = await readCanonicalPaperRows(userId, days);
-  if (!canonical.schemaReady) {
+  const refreshedCanonical = await readCanonicalPaperRows(userId, days);
+  if (!refreshedCanonical.schemaReady) {
     return {
       rows: legacyRows,
       observability: buildPaperObservability({
@@ -182,14 +212,14 @@ async function readCanonicalPaperHistory(
         reconciledHistoricalCycles: reconciliation.reconciled,
         repairedThisRun: 0,
         rows: legacyRows,
-        error: canonical.error,
+        error: refreshedCanonical.error,
       }),
     };
   }
 
   const settlement = await settleCanonicalPaperRows({
     userId,
-    rows: canonical.rows,
+    rows: refreshedCanonical.rows,
     maxSettlements,
   });
 
@@ -241,6 +271,54 @@ export async function readPaperHistoryPayload(userId: string, args: { days?: num
   };
 }
 
+export async function readPaperHistoryPayloadSafe(
+  userId: string,
+  args: { days?: number; maxSettlements?: number } = {},
+) {
+  try {
+    return await readPaperHistoryPayload(userId, args);
+  } catch (error) {
+    const errorMessage = paperHistoryErrorMessage(error);
+
+    try {
+      const canonical = await readCanonicalPaperRows(userId, args.days ?? 183);
+      if (canonical.schemaReady) {
+        return {
+          windowDays: args.days ?? 183,
+          count: canonical.rows.length,
+          summary: summarizePaperPerformance(canonical.rows),
+          research: buildPaperResearchReport(canonical.rows),
+          observability: buildPaperObservability({
+            schemaReady: true,
+            reconciledHistoricalCycles: 0,
+            repairedThisRun: 0,
+            rows: canonical.rows,
+            error: errorMessage,
+          }),
+          history: canonical.rows.map(normalizePaperHistory),
+        };
+      }
+    } catch {
+      // Fall through to the empty-safe payload below.
+    }
+
+    return {
+      windowDays: args.days ?? 183,
+      count: 0,
+      summary: summarizePaperPerformance([]),
+      research: buildPaperResearchReport([]),
+      observability: buildPaperObservability({
+        schemaReady: false,
+        reconciledHistoricalCycles: 0,
+        repairedThisRun: 0,
+        rows: [],
+        error: errorMessage,
+      }),
+      history: [] as ReturnType<typeof normalizePaperHistory>[],
+    };
+  }
+}
+
 export async function runPaperBotCycleForUser(args: {
   userId: string;
   source: "manual" | "daemon";
@@ -252,7 +330,7 @@ export async function runPaperBotCycleForUser(args: {
   const maxTradesPerDay = Math.max(1, Math.min(10, Math.round(args.maxTradesPerDay ?? 3)));
   const historyMaxSettlements = Math.max(
     0,
-    Math.min(10, Math.round(args.historyMaxSettlements ?? (args.source === "manual" ? 10 : 0))),
+    Math.min(10, Math.round(args.historyMaxSettlements ?? (args.source === "manual" ? 4 : 0))),
   );
   const recentRows = await readPaperRows(args.userId, 183);
 

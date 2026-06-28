@@ -4,7 +4,9 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { buildResearchDatasetHealthSummary } from "./datasetHealth";
 import { buildResearchPlannerFuelStatus } from "./planner";
+import { buildResearchReportProvenance } from "./provenance";
 import { readResearchQueue } from "./queue";
+import { resolveResearchReportSchemaVersion } from "./schema";
 import type {
   ResearchConfig,
   ResearchCycleReport,
@@ -203,6 +205,8 @@ export async function buildDailyResearchReport(
   const latestCandidate = candidates[candidates.length - 1] ?? null;
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("daily"),
+    provenance: await buildResearchReportProvenance({ config }),
     report_id: `report-${dateStamp}`,
     generated_at: date.toISOString(),
     live_baseline_id: queue.live_baseline_id,
@@ -268,6 +272,8 @@ export async function buildResearchWindowReport(
   const latestCandidate = candidates[candidates.length - 1] ?? null;
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("window"),
+    provenance: await buildResearchReportProvenance({ config }),
     report_id: `report-window-${sanitizeFileSegment(startedAt.toISOString())}`,
     generated_at: finishedAt.toISOString(),
     interval_hours: Math.round((intervalMs / (60 * 60 * 1000)) * 100) / 100,
@@ -325,6 +331,8 @@ export async function buildResearchCycleReport(
   const finishedAt = args.finishedAt ?? new Date();
 
   return {
+    schema_version: resolveResearchReportSchemaVersion("cycle"),
+    provenance: await buildResearchReportProvenance({ config }),
     cycle_id: `cycle-${sanitizeFileSegment(args.startedAt.toISOString())}`,
     generated_at: finishedAt.toISOString(),
     started_at: args.startedAt.toISOString(),
@@ -372,6 +380,8 @@ export async function writeDailyResearchReport(
   const markdown = [
     `# Research Report ${dateStamp}`,
     ``,
+    `- Schema version: ${report.schema_version}`,
+    `- Dataset refs: ${report.provenance.dataset_refs.length}`,
     `- Runs started: ${report.runs_started}`,
     `- Runs completed: ${report.runs_completed}`,
     `- Runs failed: ${report.runs_failed}`,
@@ -429,6 +439,8 @@ export async function writeResearchCycleReport(
   const markdown = [
     `# Research Cycle ${report.cycle_id}`,
     ``,
+    `- Schema version: ${report.schema_version}`,
+    `- Dataset refs: ${report.provenance.dataset_refs.length}`,
     `- Started: ${report.started_at}`,
     `- Finished: ${report.finished_at}`,
     `- Live baseline: ${report.live_baseline_id ?? "n/a"}`,
@@ -500,6 +512,8 @@ export async function writeResearchWindowReport(
   const markdown = [
     `# Research Window ${report.interval_hours}h`,
     ``,
+    `- Schema version: ${report.schema_version}`,
+    `- Dataset refs: ${report.provenance.dataset_refs.length}`,
     `- Window start: ${report.window_started_at}`,
     `- Window end: ${report.window_finished_at}`,
     `- Runs started: ${report.runs_started}`,

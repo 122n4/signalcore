@@ -8,6 +8,18 @@ export function classifyResearchFailure(args: {
   const error = args.error ?? "";
   const combined = `${reason}\n${error}`.toLowerCase();
 
+  if (
+    combined.includes("stage-timeout") ||
+    combined.includes("stage timeout") ||
+    combined.includes("timed out")
+  ) {
+    return {
+      category: "runtime_timeout",
+      confidence: "high",
+      summary: "Research run exceeded a stage timeout before finalization completed.",
+    };
+  }
+
   if (combined.includes("artifact contract")) {
     return {
       category: "artifact_contract",
