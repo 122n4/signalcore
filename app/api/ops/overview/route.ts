@@ -11,11 +11,11 @@ import {
   toErrorMessage,
 } from "@/lib/ops/apiObservability";
 import { loadTradingScannerOperationalDiagnostics } from "@/lib/ops/tradingScannerStatus";
+import { buildResearchLabOverview } from "@/lib/ops/researchLabOverview";
 import { buildProductReadinessReport } from "@/lib/ops/productReadiness";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
 import { computeOwnerLoopKpis } from "@/lib/signalcore/ownerLoopKpis";
 import { buildOwnerOpsOverview } from "@/lib/signalcore/ownerObservability";
-import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 import { summarizeTradingLightScannerDiagnostics } from "@/lib/trading/lightScanner";
 
 export const runtime = "nodejs";
@@ -71,9 +71,8 @@ export async function GET(req: Request) {
           .order("created_at", { ascending: false })
           .limit(20000),
         inspectTradingScannerForOps(asOf),
-        buildResearchRuntimeHealth().catch((error) => ({
+        buildResearchLabOverview().catch((error) => ({
           ok: false,
-          severity: "warn" as const,
           generatedAt: new Date().toISOString(),
           error: error instanceof Error ? error.message : String(error),
         })),
@@ -95,7 +94,7 @@ export async function GET(req: Request) {
 
     const scannerSummary = summarizeTradingLightScannerDiagnostics(scannerDiagnostics);
     const marketProviders = getMarketProviderStatuses();
-    const researchForReadiness = "queue" in researchLab ? researchLab : null;
+    const researchForReadiness = "runtime" in researchLab ? researchLab.runtime : null;
     const billingForReadiness = "summary" in billingAudit ? billingAudit : null;
     const readiness = buildProductReadinessReport({
       billing: billingForReadiness,

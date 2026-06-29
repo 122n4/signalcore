@@ -134,4 +134,51 @@ describe("research lab overview", () => {
     expect(overview.dataAcquisitionPlan.summary.manualCount).toBe(1);
     expect(overview.storage.localArtifactBacked).toBe(true);
   });
+
+  it("canonicalizes stale run status when queue and decisions already finalized the run", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const runId = "run-stale-status";
+    const runDir = path.join(config.paths.runsDir, runId);
+
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([
+        createResearchTask({
+          id: "task-finished",
+          status: "completed",
+          last_run_id: runId,
+          finished_at: "2026-05-17T12:10:00.000Z",
+          decision: "reject",
+        }),
+      ]),
+    );
+    await writeJsonAtomic(path.join(runDir, "status.json"), {
+      run_id: runId,
+      task_id: "task-finished",
+      status: "running",
+      stage: "walkforward",
+      started_at: "2026-05-17T12:00:00.000Z",
+      updated_at: "2026-05-17T12:05:00.000Z",
+      completed_stages: ["aggregate", "crisis"],
+      failed_stage: null,
+      error: null,
+    });
+    await appendJsonLine(config.paths.decisionsPath, {
+      timestamp: "2026-05-17T12:10:00.000Z",
+      run_id: runId,
+      task_id: "task-finished",
+      decision: "reject",
+      reason: "Scientific gates rejected the candidate.",
+    });
+
+    const overview = await buildResearchLabOverview({
+      config,
+      now: new Date("2026-05-17T13:00:00.000Z"),
+    });
+
+    expect(overview.runs.recent[0]?.runId).toBe(runId);
+    expect(overview.runs.recent[0]?.status).toBe("completed");
+    expect(overview.runs.recent[0]?.stage).toBe("completed");
+  });
 });

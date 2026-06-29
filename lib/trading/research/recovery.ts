@@ -1,4 +1,4 @@
-import { appendJsonLine } from "./fs";
+import { appendJsonLine, writeJsonAtomic } from "./fs";
 import {
   buildResearchRunArtifactPaths,
   verifyResearchRunArtifacts,
@@ -76,6 +76,16 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
     });
 
     await writeResearchQueue(config, completedQueue);
+    if (status) {
+      await writeJsonAtomic(runPaths.statusPath, {
+        ...status,
+        status: "completed",
+        stage: "completed",
+        updated_at: now,
+        failed_stage: null,
+        error: null,
+      });
+    }
     await appendJsonLine(config.paths.decisionsPath, {
       event_id: `evt-recovery-${lock.run_id}`,
       timestamp: now,

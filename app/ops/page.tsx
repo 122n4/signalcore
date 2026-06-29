@@ -3,11 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 
 import { buildPremiumAuditReport } from "@/lib/billing/premiumAuditService";
 import { getMarketProviderStatuses, summarizeMarketProviderStatuses } from "@/lib/market/providerStatus";
+import { buildResearchLabOverview } from "@/lib/ops/researchLabOverview";
 import { loadTradingScannerOperationalDiagnostics } from "@/lib/ops/tradingScannerStatus";
 import { buildProductReadinessReport } from "@/lib/ops/productReadiness";
 import { isOwnerUserId } from "@/lib/signalcore/owner";
 import { summarizeTradingLightScannerDiagnostics } from "@/lib/trading/lightScanner";
-import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 
 export const metadata: Metadata = {
   title: "Ops | Syntrake",
@@ -104,12 +104,13 @@ export default async function OpsPage() {
 
   const asOf = new Date().toISOString();
   const [research, billing, scanner] = await Promise.all([
-    settle(buildResearchRuntimeHealth()),
+    settle(buildResearchLabOverview()),
     settle(buildPremiumAuditReport({ limit: 1000 })),
     settle(inspectTradingScannerForOps(asOf)),
   ]);
 
-  const researchValue = research.ok ? research.value : null;
+  const researchLab = research.ok ? research.value : null;
+  const researchValue = researchLab?.runtime ?? null;
   const researchError = settledError(research);
   const billingValue = billing.ok ? billing.value : null;
   const billingError = settledError(billing);

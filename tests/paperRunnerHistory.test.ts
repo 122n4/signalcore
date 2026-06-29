@@ -36,12 +36,25 @@ import {
   readPaperRows,
 } from "@/lib/trading/bot/paperRunner";
 
+function createJournalQueryResult(rows: any[]) {
+  const chain: any = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    limit: vi.fn(async () => ({ data: rows, error: null })),
+  };
+  return {
+    from: vi.fn(() => chain),
+  };
+}
+
 describe("paper runner history reads", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("prefers canonical paper rows before touching the legacy journal", async () => {
+  it("keeps canonical rows primary while reconciling the legacy journal into the same source of truth", async () => {
     const canonicalRows = [
       {
         id: "paper-1",
@@ -68,21 +81,31 @@ describe("paper runner history reads", () => {
         },
       },
     ];
+    const legacyRows = [{ id: "journal-1", title: "Paper cycle 1", created_at: "2026-06-27T00:00:00.000Z", details: {} }];
 
-    mocks.readCanonicalPaperRows.mockResolvedValue({
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRows,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRows,
+        error: null,
+      });
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
       schemaReady: true,
-      rows: canonicalRows,
       error: null,
+      reconciled: 1,
     });
-    mocks.getSupabaseAdmin.mockImplementation(() => {
-      throw new Error("legacy journal should not be read");
-    });
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult(legacyRows));
 
     const result = await readPaperRows("owner_1", 183);
 
     expect(result).toEqual(canonicalRows);
-    expect(mocks.reconcileCanonicalPaperTrades).not.toHaveBeenCalled();
-    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled();
+    expect(mocks.reconcileCanonicalPaperTrades).toHaveBeenCalledTimes(1);
+    expect(mocks.getSupabaseAdmin).toHaveBeenCalledTimes(1);
   });
 
   it("returns a safe empty payload instead of throwing when history reads fail", async () => {
@@ -97,7 +120,7 @@ describe("paper runner history reads", () => {
     expect(result.observability.error).toContain("statement timeout");
   });
 
-  it("keeps canonical rows visible even if legacy reconciliation would have timed out before", async () => {
+  it("keeps canonical rows visible even if reconciliation cannot improve them further", async () => {
     const canonicalRows = [
       {
         id: "paper-27",
@@ -126,10 +149,22 @@ describe("paper runner history reads", () => {
         },
       },
     ];
+    const legacyRows = [{ id: "journal-27", title: "Paper cycle 27", created_at: "2026-06-27T00:00:00.000Z", details: {} }];
 
-    mocks.readCanonicalPaperRows.mockResolvedValue({
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRows,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRows,
+        error: null,
+      });
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
       schemaReady: true,
-      rows: canonicalRows,
+      reconciled: 1,
       error: null,
     });
     mocks.settleCanonicalPaperRows.mockResolvedValue({
@@ -137,15 +172,57 @@ describe("paper runner history reads", () => {
       repaired: 0,
       failures: 0,
     });
-    mocks.getSupabaseAdmin.mockImplementation(() => {
-      throw new Error("legacy journal should not be read");
-    });
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult(legacyRows));
 
     const result = await readPaperHistoryPayloadSafe("owner_1", { days: 183, maxSettlements: 4 });
 
     expect(result.count).toBe(1);
     expect(result.history[0]?.instrument).toBe("ETHUSD");
     expect(result.observability.schemaReady).toBe(true);
-    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled();
+    expect(mocks.reconcileCanonicalPaperTrades).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes canonical paper history after reconciling a missing legacy cycle", async () => {
+    const canonicalRowsBefore = [
+      {
+        id: "paper-1",
+        title: "Paper cycle 1",
+        created_at: "2026-06-27T00:00:00.000Z",
+        details: { planned: { action: "ready" }, execution: { status: "paper_queued" }, intent: { instrument: "BTCUSD", side: "buy" }, paperOutcome: { status: "open", checkedAt: "2026-06-27T00:05:00.000Z" } },
+      },
+    ];
+    const canonicalRowsAfter = [
+      ...canonicalRowsBefore,
+      {
+        id: "paper-2",
+        title: "Paper cycle 2",
+        created_at: "2026-06-28T00:00:00.000Z",
+        details: { planned: { action: "ready" }, execution: { status: "paper_queued" }, intent: { instrument: "ETHUSD", side: "sell" }, paperOutcome: { status: "open", checkedAt: "2026-06-28T00:05:00.000Z" } },
+      },
+    ];
+    const legacyRows = [{ id: "journal-2", title: "Paper cycle 2", created_at: "2026-06-28T00:00:00.000Z", details: {} }];
+
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRowsBefore,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRowsAfter,
+        error: null,
+      });
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
+      schemaReady: true,
+      reconciled: 1,
+      error: null,
+    });
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult(legacyRows));
+
+    const result = await readPaperRows("owner_1", 183);
+
+    expect(result).toHaveLength(2);
+    expect(result[1]?.id).toBe("paper-2");
   });
 });

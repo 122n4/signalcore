@@ -109,7 +109,7 @@ describe("trading research ranking and forensics", () => {
       classifyResearchFailure({
         reason: "Recovered stage-timeout run in 'robustness' after 18735152ms. Artifact contract was incomplete.",
       }).category,
-    ).toBe("runtime_timeout");
+    ).toBe("artifact_contract");
     expect(
       classifyResearchFailure({
         reason: "EPERM: operation not permitted, rename research-lock.json.tmp -> research-lock.json",

@@ -11,6 +11,7 @@ import {
 } from "@/lib/trading/research/datasetRequirements";
 import { readJsonIfExists } from "@/lib/trading/research/fs";
 import { readResearchQueue } from "@/lib/trading/research/queue";
+import { canonicalizeResearchRunSnapshot } from "@/lib/trading/research/runCanonicalization";
 import { buildResearchLatestReportsOverview, type ResearchLatestReportsOverview } from "@/lib/trading/research/reportsOverview";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
@@ -183,7 +184,12 @@ async function readDecisionEntries(decisionsPath: string): Promise<ResearchLabDe
   }
 }
 
-async function readRecentRuns(config: ResearchConfig, limit = 16): Promise<ResearchLabRunEntry[]> {
+async function readRecentRuns(
+  config: ResearchConfig,
+  queue: ResearchQueue,
+  decisions: ResearchLabDecisionEntry[],
+  limit = 16,
+): Promise<ResearchLabRunEntry[]> {
   let runDirs: string[] = [];
   try {
     runDirs = (await readdir(config.paths.runsDir, { withFileTypes: true }))
@@ -197,15 +203,42 @@ async function readRecentRuns(config: ResearchConfig, limit = 16): Promise<Resea
     runDirs.slice(-200).map(async (runId) => {
       const paths = buildResearchRunArtifactPaths(config.paths.runsDir, runId);
       const status = await readJsonIfExists<ResearchRunStatus>(paths.statusPath);
+      const canonical = canonicalizeResearchRunSnapshot(
+        {
+          runId,
+          taskId: status?.task_id ?? null,
+          status: status?.status ?? "missing",
+          stage: status?.stage ?? null,
+          startedAt: status?.started_at ?? null,
+          updatedAt: status?.updated_at ?? null,
+          failedStage: status?.failed_stage ?? null,
+          error: status?.error ?? null,
+        },
+        {
+          queue,
+          decisions: decisions.map((entry) => ({
+            event_id: `overview-${entry.runId ?? "unknown"}-${entry.timestamp ?? "unknown"}`,
+            timestamp: entry.timestamp ?? new Date(0).toISOString(),
+            run_id: entry.runId ?? "",
+            task_id: entry.taskId ?? "",
+            baseline_id: "",
+            run_fingerprint: "",
+            decision: entry.decision === "failed" ? "failed" : "reject",
+            reason: entry.reason ?? "",
+            error: entry.failureSummary ?? null,
+          })),
+        },
+      );
+
       return {
         runId,
-        taskId: status?.task_id ?? null,
-        status: status?.status ?? "missing",
-        stage: status?.stage ?? null,
-        startedAt: status?.started_at ?? null,
-        updatedAt: status?.updated_at ?? null,
-        failedStage: status?.failed_stage ?? null,
-        error: status?.error ?? null,
+        taskId: canonical.taskId,
+        status: canonical.status,
+        stage: canonical.stage,
+        startedAt: canonical.startedAt,
+        updatedAt: canonical.updatedAt,
+        failedStage: canonical.failedStage,
+        error: canonical.error,
       } satisfies ResearchLabRunEntry;
     }),
   );
@@ -418,14 +451,14 @@ export async function buildResearchLabOverview(args: {
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, decisions, recentRuns, reports] = await Promise.all([
+  const [runtime, queue, baseline, decisions, reports] = await Promise.all([
     buildResearchRuntimeHealth({ config, now: args.now }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
     readDecisionEntries(config.paths.decisionsPath),
-    readRecentRuns(config),
     buildResearchLatestReportsOverview(config),
   ]);
+  const recentRuns = await readRecentRuns(config, queue, decisions);
   const decisionCounts = decisions.reduce<Record<string, number>>((acc, entry) => {
     acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
     return acc;

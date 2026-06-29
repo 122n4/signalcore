@@ -335,7 +335,7 @@ export function buildPaperObservability(args: {
     schemaReady: args.schemaReady,
     reconciledHistoricalCycles: args.reconciledHistoricalCycles,
     repairedThisRun: args.repairedThisRun,
-    unresolvedCycles: summary.open + summary.retryable + summary.unavailable,
+    unresolvedCycles: summary.open + summary.retryable,
     unsettledCycleCount: summary.open + summary.retryable,
     retryableSettlementCount: summary.retryable,
     settlementFailures,
@@ -344,7 +344,7 @@ export function buildPaperObservability(args: {
       ? "needs_migration"
       : args.error
         ? "failed"
-        : summary.open + summary.retryable + summary.unavailable > 0
+        : summary.open + summary.retryable > 0
           ? "partial"
           : "ok",
     error: args.error ?? null,

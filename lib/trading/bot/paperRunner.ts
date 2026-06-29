@@ -120,6 +120,12 @@ async function readLegacyPaperRows(userId: string, days = 183) {
   return (data || []) as PaperTradeHistoryRow[];
 }
 
+async function reconcileLegacyPaperWindow(userId: string, days = 183) {
+  const legacyRows = await readLegacyPaperRows(userId, days);
+  const reconciliation = await reconcileCanonicalPaperTrades({ userId, legacyRows });
+  return { legacyRows, reconciliation };
+}
+
 function paperHistoryErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   return String(error || "paper_history_failed");
@@ -127,10 +133,15 @@ function paperHistoryErrorMessage(error: unknown) {
 
 export async function readPaperRows(userId: string, days = 183) {
   const canonical = await readCanonicalPaperRows(userId, days);
-  if (canonical.schemaReady && canonical.rows.length > 0) return canonical.rows;
+  if (canonical.schemaReady) {
+    const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
+    if (!reconciliation.schemaReady) return canonical.rows.length > 0 ? canonical.rows : legacyRows;
 
-  const legacyRows = await readLegacyPaperRows(userId, days);
-  const reconciliation = await reconcileCanonicalPaperTrades({ userId, legacyRows });
+    const refreshedCanonical = await readCanonicalPaperRows(userId, days);
+    return refreshedCanonical.schemaReady ? refreshedCanonical.rows : legacyRows;
+  }
+
+  const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
   if (!reconciliation.schemaReady) return legacyRows;
 
   const refreshedCanonical = await readCanonicalPaperRows(userId, days);
@@ -167,10 +178,31 @@ async function readCanonicalPaperHistory(
   const maxSettlements = args.maxSettlements ?? 8;
   const canonical = await readCanonicalPaperRows(userId, days);
 
-  if (canonical.schemaReady && canonical.rows.length > 0) {
+  if (canonical.schemaReady) {
+    const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
+    if (!reconciliation.schemaReady) {
+      const settlement = await settleCanonicalPaperRows({
+        userId,
+        rows: canonical.rows,
+        maxSettlements,
+      });
+
+      return {
+        rows: settlement.rows,
+        observability: buildPaperObservability({
+          schemaReady: true,
+          reconciledHistoricalCycles: 0,
+          repairedThisRun: settlement.repaired,
+          rows: settlement.rows,
+          error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
+        }),
+      };
+    }
+
+    const refreshedCanonical = await readCanonicalPaperRows(userId, days);
     const settlement = await settleCanonicalPaperRows({
       userId,
-      rows: canonical.rows,
+      rows: refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows,
       maxSettlements,
     });
 
@@ -178,7 +210,7 @@ async function readCanonicalPaperHistory(
       rows: settlement.rows,
       observability: buildPaperObservability({
         schemaReady: true,
-        reconciledHistoricalCycles: 0,
+        reconciledHistoricalCycles: reconciliation.reconciled,
         repairedThisRun: settlement.repaired,
         rows: settlement.rows,
         error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
@@ -186,8 +218,7 @@ async function readCanonicalPaperHistory(
     };
   }
 
-  const legacyRows = await readLegacyPaperRows(userId, days);
-  const reconciliation = await reconcileCanonicalPaperTrades({ userId, legacyRows });
+  const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
 
   if (!reconciliation.schemaReady) {
     const fallbackRows = await readLegacySettledPaperRows(userId, days, maxSettlements);

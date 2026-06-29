@@ -302,7 +302,7 @@ export async function settlePaperTradeRows(args: {
 export function summarizePaperPerformance(rows: PaperTradeHistoryRow[]): PaperTradePerformanceSummary {
   let wins = 0;
   let losses = 0;
-  let ambiguous = 0;
+  const ambiguous = 0;
   let open = 0;
   let retryable = 0;
   let unavailable = 0;

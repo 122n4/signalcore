@@ -17,6 +17,7 @@ export * from "./provenance";
 export * from "./reportsOverview";
 export * from "./registry";
 export * from "./statisticalValidation";
+export * from "./runCanonicalization";
 export * from "./marketDataBackfill";
 export * from "./marketDataHarvester";
 export * from "./dataHunter";

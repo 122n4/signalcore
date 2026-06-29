@@ -5,8 +5,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 import { buildResearchRunArtifactPaths } from "./artifactContract";
 import { loadResearchConfig } from "./config";
-import { readJsonIfExists } from "./fs";
+import { readJsonIfExists, writeJsonAtomic } from "./fs";
 import { readResearchQueue } from "./queue";
+import { canonicalizeResearchRunSnapshot } from "./runCanonicalization";
 import {
   buildResearchDataAcquisitionPlan,
   buildResearchDatasetRequirementsReport,
@@ -94,7 +95,12 @@ async function readDecisionEntries(decisionsPath: string, limit: number) {
   }
 }
 
-async function readRecentRunRows(config: ResearchConfig, limit: number) {
+async function readRecentRunRows(
+  config: ResearchConfig,
+  queue: Awaited<ReturnType<typeof readResearchQueue>>,
+  decisions: ResearchDecisionLedgerEntry[],
+  limit: number,
+) {
   let runDirs: string[] = [];
   try {
     runDirs = (await readdir(config.paths.runsDir, { withFileTypes: true }))
@@ -114,14 +120,48 @@ async function readRecentRunRows(config: ResearchConfig, limit: number) {
       const aggregate = metric(comparison?.aggregate?.current);
       const crisis = metric(comparison?.crisis?.current);
       const walkForward = metric(comparison?.walkForward?.current);
+      const canonical = canonicalizeResearchRunSnapshot(
+        {
+          runId,
+          taskId: status?.task_id ?? null,
+          status: status?.status ?? "missing",
+          stage: status?.stage ?? null,
+          startedAt: status?.started_at ?? null,
+          updatedAt: status?.updated_at ?? status?.started_at ?? null,
+          failedStage: status?.failed_stage ?? null,
+          error: status?.error ?? null,
+        },
+        { queue, decisions },
+      );
+
+      if (
+        status &&
+        (status.status !== canonical.status ||
+          status.stage !== canonical.stage ||
+          status.updated_at !== canonical.updatedAt ||
+          status.failed_stage !== canonical.failedStage ||
+          status.error !== canonical.error)
+      ) {
+        await writeJsonAtomic(paths.statusPath, {
+          ...status,
+          status: canonical.status === "missing" ? "failed" : canonical.status,
+          stage:
+            canonical.stage ??
+            (canonical.status === "completed" ? "completed" : canonical.status === "failed" ? "failed" : status.stage),
+          updated_at: canonical.updatedAt ?? status.updated_at,
+          failed_stage: canonical.failedStage ?? (canonical.status === "failed" ? status.failed_stage ?? status.stage : null),
+          error: canonical.error ?? (canonical.status === "completed" ? null : status.error),
+        });
+      }
+
       return {
         run_id: runId,
-        task_id: status?.task_id ?? null,
-        status: status?.status ?? "missing",
-        stage: status?.stage ?? null,
-        started_at: isoOrNull(status?.started_at),
-        updated_at: isoOrNull(status?.updated_at ?? status?.started_at),
-        completed_at: status?.status === "completed" ? isoOrNull(status.updated_at) : null,
+        task_id: canonical.taskId,
+        status: canonical.status,
+        stage: canonical.stage ?? null,
+        started_at: isoOrNull(canonical.startedAt),
+        updated_at: isoOrNull(canonical.updatedAt ?? canonical.startedAt),
+        completed_at: canonical.status === "completed" ? isoOrNull(canonical.updatedAt ?? canonical.startedAt) : null,
         profit_factor: aggregate?.profitFactor ?? null,
         win_rate: aggregate?.winRate ?? null,
         expectancy: aggregate?.expectancy ?? null,
@@ -129,9 +169,22 @@ async function readRecentRunRows(config: ResearchConfig, limit: number) {
         aggregate_summary: aggregate,
         crisis_summary: crisis,
         walkforward_summary: walkForward,
-        error: status?.error ?? null,
+        error: canonical.error,
         payload: {
-          status,
+          status: status
+            ? {
+                ...status,
+                status: canonical.status === "missing" ? "failed" : canonical.status,
+                stage:
+                  canonical.stage ??
+                  (canonical.status === "completed" ? "completed" : canonical.status === "failed" ? "failed" : status.stage),
+                updated_at: canonical.updatedAt ?? status.updated_at,
+                failed_stage:
+                  canonical.failedStage ??
+                  (canonical.status === "failed" ? status.failed_stage ?? status.stage : null),
+                error: canonical.error ?? (canonical.status === "completed" ? null : status.error),
+              }
+            : null,
           comparison,
           paths: {
             statusPath: paths.statusPath,
@@ -209,16 +262,16 @@ export async function buildResearchSupabasePayload(args: {
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, runs, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan] = await Promise.all([
+  const [runtime, queue, baseline, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan] = await Promise.all([
     buildResearchRuntimeHealth({ config }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
-    readRecentRunRows(config, args.runLimit ?? 80),
     readDecisionEntries(config.paths.decisionsPath, args.decisionLimit ?? 300),
     buildResearchLatestReportsOverview(config),
     buildResearchDatasetRequirementsReport(config),
     buildResearchDataAcquisitionPlan(config),
   ]);
+  const runs = await readRecentRunRows(config, queue, decisions, args.runLimit ?? 80);
   const lastSuccessfulRunAt =
     runs.find((run) => run.status === "completed")?.updated_at ??
     decisions.find((entry) => entry.decision === "promote" || entry.decision === "candidate" || entry.decision === "reject")?.timestamp ??

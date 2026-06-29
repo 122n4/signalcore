@@ -9,14 +9,17 @@ export function classifyResearchFailure(args: {
   const combined = `${reason}\n${error}`.toLowerCase();
 
   if (
-    combined.includes("stage-timeout") ||
-    combined.includes("stage timeout") ||
-    combined.includes("timed out")
+    combined.includes("artifact contract") &&
+    (combined.includes("stage-timeout") ||
+      combined.includes("stage timeout") ||
+      combined.includes("timed out") ||
+      combined.includes("recovery") ||
+      combined.includes("finalization"))
   ) {
     return {
-      category: "runtime_timeout",
+      category: "artifact_contract",
       confidence: "high",
-      summary: "Research run exceeded a stage timeout before finalization completed.",
+      summary: "Recovery/finalization could not complete because the artifact contract remained incomplete.",
     };
   }
 
@@ -25,6 +28,18 @@ export function classifyResearchFailure(args: {
       category: "artifact_contract",
       confidence: "high",
       summary: "Artifact contract incomplete or invalid during recovery/finalization.",
+    };
+  }
+
+  if (
+    combined.includes("stage-timeout") ||
+    combined.includes("stage timeout") ||
+    combined.includes("timed out")
+  ) {
+    return {
+      category: "runtime_timeout",
+      confidence: "high",
+      summary: "Research run exceeded a stage timeout before finalization completed.",
     };
   }
 
