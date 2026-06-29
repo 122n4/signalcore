@@ -390,8 +390,10 @@ export async function runPaperBotCycleForUser(args: {
       ok: false,
       status: "blocked",
       generatedAt,
-      message: "Paper cycle blocked by bot policy.",
-      result: { planned, execution: null },
+      message: snapshotPlan.researchApproval?.approved === false
+        ? snapshotPlan.researchApproval.reason
+        : "Paper cycle blocked by bot policy.",
+      result: { planned, execution: null, researchApproval: snapshotPlan.researchApproval },
       ...(await readPaperHistoryPayload(args.userId, { maxSettlements: historyMaxSettlements })),
     };
   }
@@ -449,6 +451,7 @@ export async function runPaperBotCycleForUser(args: {
       equity: snapshotPlan.account.equity,
       currency: snapshotPlan.account.currency,
     },
+    researchApproval: snapshotPlan.researchApproval,
     planned: result.planned,
     intent: result.planned.intent,
     execution: result.execution,

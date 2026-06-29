@@ -42,6 +42,7 @@ export async function GET(req: Request) {
           candidate: null,
           plan: null,
           account: null,
+          researchApproval: null,
         },
         { headers: { "Cache-Control": "no-store" } },
       );
@@ -76,6 +77,7 @@ export async function GET(req: Request) {
           reason: decision.reason,
         },
         plan,
+        researchApproval: snapshotPlan.researchApproval,
         account: {
           equity: account.equity,
           currency: account.currency,
@@ -95,6 +97,7 @@ export async function GET(req: Request) {
         candidate: null,
         plan: null,
         account: null,
+        researchApproval: null,
         error: error?.message || "bot_plan_failed",
       },
       { status: 500, headers: { "Cache-Control": "no-store" } },

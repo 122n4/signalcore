@@ -70,6 +70,7 @@ export type TradingSecondLayerRiskStudyScenarioResult = {
   rules: TradingBacktestRiskRule[];
   aggregate: {
     current: TradingSecondLayerRiskStudyMetricSummary;
+    trades: TradingBacktestTrade[];
     delta: {
       totalTrades: number;
       winRate: number;
@@ -80,6 +81,7 @@ export type TradingSecondLayerRiskStudyScenarioResult = {
   };
   crisis: {
     current: TradingSecondLayerRiskStudyMetricSummary;
+    trades: TradingBacktestTrade[];
     delta: {
       totalTrades: number;
       winRate: number;
@@ -91,6 +93,7 @@ export type TradingSecondLayerRiskStudyScenarioResult = {
   };
   walkForward: {
     current: TradingSecondLayerRiskStudyMetricSummary;
+    trades: TradingBacktestTrade[];
     delta: {
       totalTrades: number;
       winRate: number;
@@ -119,8 +122,11 @@ export type TradingSecondLayerRiskStudyReport = {
   };
   baseline: {
     aggregate: TradingSecondLayerRiskStudyMetricSummary;
+    aggregateTrades: TradingBacktestTrade[];
     crisis: TradingSecondLayerRiskStudyMetricSummary;
+    crisisTrades: TradingBacktestTrade[];
     walkForwardByAffectedInstruments: Record<string, TradingSecondLayerRiskStudyMetricSummary>;
+    walkForwardTradesByAffectedInstruments: Record<string, TradingBacktestTrade[]>;
   };
   scenarios: TradingSecondLayerRiskStudyScenarioResult[];
   keepableScenarios: Array<{
@@ -326,8 +332,11 @@ export async function runTradingSecondLayerRiskStudy(
         ];
   const baselineAggregateSummary = computeSummaryFromComparativeCollection(baselineYearlyComparatives);
   const baselineCrisisSummary = computeSummaryFromComparativeCollection(baselineCrisisComparatives);
+  const baselineAggregateTrades = collectTradesFromComparativeCollection(baselineYearlyComparatives).trades;
+  const baselineCrisisTrades = collectTradesFromComparativeCollection(baselineCrisisComparatives).trades;
 
   const baselineWalkForwardCache = new Map<string, TradingSecondLayerRiskStudyMetricSummary>();
+  const baselineWalkForwardTradesCache = new Map<string, TradingBacktestTrade[]>();
   const scenarioResults: TradingSecondLayerRiskStudyScenarioResult[] = [];
   const walkForwardMode = request.walkForward?.mode ?? "actual";
 
@@ -403,34 +412,56 @@ export async function runTradingSecondLayerRiskStudy(
           windowing: request.walkForward?.windowing,
         });
         baselineWalkForwardSummary = toWalkForwardSummary(baselineWalkForward);
+        baselineWalkForwardTradesCache.set(walkForwardKey, baselineWalkForward.aggregateTrades);
       }
       baselineWalkForwardCache.set(walkForwardKey, baselineWalkForwardSummary);
+    } else if (!baselineWalkForwardTradesCache.has(walkForwardKey) && walkForwardMode === "comparative_proxy") {
+      baselineWalkForwardTradesCache.set(
+        walkForwardKey,
+        collectTradesFromComparativeCollection(
+          baselineYearlyComparatives,
+          new Set(affectedInstruments),
+        ).trades,
+      );
     }
 
     let walkForwardSummary: TradingSecondLayerRiskStudyMetricSummary;
+    let walkForwardTrades: TradingBacktestTrade[];
     if (walkForwardMode === "comparative_proxy") {
       walkForwardSummary = computeSummaryFromComparativeCollection([affectedYearly], new Set(affectedInstruments));
+      walkForwardTrades = collectTradesFromComparativeCollection(
+        [affectedYearly],
+        new Set(affectedInstruments),
+      ).trades;
     } else {
       await request.onProgress?.({
         stage: "walkforward",
         scenarioId: scenario.id,
         message: `Running candidate walk-forward validation for ${scenario.id}.`,
       });
-      walkForwardSummary = toWalkForwardSummary(
-        await runTradingWalkForwardStudy({
-          instruments: affectedInstruments,
-          from: request.walkForward?.from ?? request.yearlyPeriods[0]?.from ?? "2020-01-01T00:00:00.000Z",
-          to:
-            request.walkForward?.to ??
-            request.yearlyPeriods[request.yearlyPeriods.length - 1]?.to ??
-            "2025-12-31T23:59:59.000Z",
-          timeframes,
-          sourcePreference: request.sourcePreference,
-          backtest: scenarioBacktest,
-          windowing: request.walkForward?.windowing,
-        }),
-      );
+      const walkForwardReport = await runTradingWalkForwardStudy({
+        instruments: affectedInstruments,
+        from: request.walkForward?.from ?? request.yearlyPeriods[0]?.from ?? "2020-01-01T00:00:00.000Z",
+        to:
+          request.walkForward?.to ??
+          request.yearlyPeriods[request.yearlyPeriods.length - 1]?.to ??
+          "2025-12-31T23:59:59.000Z",
+        timeframes,
+        sourcePreference: request.sourcePreference,
+        backtest: scenarioBacktest,
+        windowing: request.walkForward?.windowing,
+      });
+      walkForwardSummary = toWalkForwardSummary(walkForwardReport);
+      walkForwardTrades = walkForwardReport.aggregateTrades;
     }
+    const aggregateTrades = collectTradesFromComparativeCollection([
+      ...baselineYearlyComparatives,
+      affectedYearly,
+    ]).trades;
+    const crisisTrades = collectTradesFromComparativeCollection([
+      ...baselineCrisisComparatives,
+      affectedCrisis,
+    ]).trades;
     const aggregateDelta = buildDelta(aggregateSummary, baselineAggregateSummary);
     const crisisDelta = buildDelta(crisisSummary, baselineCrisisSummary);
     const walkForwardDelta = buildDelta(walkForwardSummary, baselineWalkForwardSummary);
@@ -463,15 +494,18 @@ export async function runTradingSecondLayerRiskStudy(
       rules: scenario.rules,
       aggregate: {
         current: aggregateSummary,
+        trades: aggregateTrades,
         delta: aggregateDelta,
       },
       crisis: {
         current: crisisSummary,
+        trades: crisisTrades,
         delta: crisisDelta,
         breakEvenOrBetter: crisisBreakEvenOrBetter,
       },
       walkForward: {
         current: walkForwardSummary,
+        trades: walkForwardTrades,
         delta: walkForwardDelta,
         breakEvenOrBetter: walkForwardBreakEvenOrBetter,
       },
@@ -495,8 +529,11 @@ export async function runTradingSecondLayerRiskStudy(
     },
     baseline: {
       aggregate: baselineAggregateSummary,
+      aggregateTrades: baselineAggregateTrades,
       crisis: baselineCrisisSummary,
+      crisisTrades: baselineCrisisTrades,
       walkForwardByAffectedInstruments: Object.fromEntries(baselineWalkForwardCache.entries()),
+      walkForwardTradesByAffectedInstruments: Object.fromEntries(baselineWalkForwardTradesCache.entries()),
     },
     scenarios: scenarioResults,
     keepableScenarios: scenarioResults

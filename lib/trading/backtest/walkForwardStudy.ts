@@ -159,6 +159,7 @@ export type TradingWalkForwardStudyReport = {
     profitFactor: number | null;
     maxDrawdown: number;
   };
+  aggregateTrades: TradingBacktestTrade[];
 };
 
 export type TradingWalkForwardStudyDeps = {
@@ -335,5 +336,6 @@ export async function runTradingWalkForwardStudy(
       profitFactor: aggregateMetrics.profitFactor,
       maxDrawdown: aggregateMetrics.maxDrawdown,
     },
+    aggregateTrades,
   };
 }

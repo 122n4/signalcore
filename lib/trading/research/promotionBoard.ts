@@ -393,7 +393,7 @@ function resolveRankingMetadata(args: {
   };
 }
 
-function buildLatestTaskLedgerEntries(args: {
+function buildLatestTaskOutcomeLedgerEntries(args: {
   ledgerEntries: ResearchDecisionLedgerEntry[];
   liveBaselineId: string | null;
   queueTasksById: Map<string, ResearchTask>;
@@ -421,6 +421,39 @@ function buildLatestTaskLedgerEntries(args: {
   }
 
   return [...latestByOpportunity.values()];
+}
+
+function buildLatestTaskBoardLedgerEntries(args: {
+  ledgerEntries: ResearchDecisionLedgerEntry[];
+  liveBaselineId: string | null;
+  queueTasksById: Map<string, ResearchTask>;
+}): ResearchDecisionLedgerEntry[] {
+  if (!args.liveBaselineId) {
+    return [];
+  }
+
+  const latestPositiveByOpportunity = new Map<string, ResearchDecisionLedgerEntry>();
+
+  for (const entry of args.ledgerEntries) {
+    if (entry.baseline_id !== args.liveBaselineId) {
+      continue;
+    }
+    if (entry.decision !== "promote" && entry.decision !== "candidate") {
+      continue;
+    }
+
+    const task = args.queueTasksById.get(entry.task_id) ?? null;
+    const key = buildLedgerOpportunityKey({
+      entry,
+      task,
+    });
+    const previous = latestPositiveByOpportunity.get(key);
+    if (!previous || previous.timestamp.localeCompare(entry.timestamp) < 0) {
+      latestPositiveByOpportunity.set(key, entry);
+    }
+  }
+
+  return [...latestPositiveByOpportunity.values()];
 }
 
 function buildTaskEntries(args: {
@@ -586,7 +619,7 @@ function buildBundleEntries(args: {
 
 function buildCampaignPerformance(args: {
   entries: ResearchPromotionBoardEntry[];
-  latestTaskLedgerEntries: ResearchDecisionLedgerEntry[];
+  latestTaskOutcomeLedgerEntries: ResearchDecisionLedgerEntry[];
   queueTasksById: Map<string, ResearchTask>;
   candidateLookup: CandidateCampaignLookup;
   campaignMap: Map<string, ResearchCampaignDefinition>;
@@ -612,7 +645,7 @@ function buildCampaignPerformance(args: {
     return current;
   };
 
-  for (const ledgerEntry of args.latestTaskLedgerEntries) {
+  for (const ledgerEntry of args.latestTaskOutcomeLedgerEntries) {
     const task = args.queueTasksById.get(ledgerEntry.task_id) ?? null;
     const campaignMetadata = resolveCampaignMetadata({
       ledgerEntry,
@@ -629,13 +662,7 @@ function buildCampaignPerformance(args: {
       campaignMetadata.primaryCampaignObjective,
     );
 
-    if (ledgerEntry.decision === "promote") {
-      current.task_promotes += 1;
-      current.review_ready_count += 1;
-    } else if (ledgerEntry.decision === "candidate") {
-      current.task_candidates += 1;
-      current.watchlist_count += 1;
-    } else if (ledgerEntry.decision === "reject" || ledgerEntry.decision === "failed") {
+    if (ledgerEntry.decision === "reject" || ledgerEntry.decision === "failed") {
       current.task_rejects_or_failed += 1;
     }
 
@@ -664,7 +691,19 @@ function buildCampaignPerformance(args: {
     }
 
     const current = ensureEntry(entry.primary_campaign_id, entry.primary_campaign_objective);
-    if (entry.source === "bundle") {
+    if (entry.source === "task") {
+      if (entry.decision === "promote") {
+        current.task_promotes += 1;
+      } else if (entry.decision === "candidate") {
+        current.task_candidates += 1;
+      }
+
+      if (entry.board_status === "watchlist") {
+        current.watchlist_count += 1;
+      } else if (entry.board_status === "review_ready") {
+        current.review_ready_count += 1;
+      }
+    } else if (entry.source === "bundle") {
       if (entry.decision === "promote") {
         current.bundle_promotes += 1;
       } else if (entry.decision === "candidate") {
@@ -720,14 +759,19 @@ export async function buildResearchPromotionBoard(
     libraries: candidateLibraries,
     campaignMap,
   });
-  const latestTaskLedgerEntries = buildLatestTaskLedgerEntries({
+  const latestTaskOutcomeLedgerEntries = buildLatestTaskOutcomeLedgerEntries({
+    ledgerEntries,
+    liveBaselineId: queue.live_baseline_id,
+    queueTasksById,
+  });
+  const latestTaskBoardLedgerEntries = buildLatestTaskBoardLedgerEntries({
     ledgerEntries,
     liveBaselineId: queue.live_baseline_id,
     queueTasksById,
   });
 
   const taskEntries = buildTaskEntries({
-    latestTaskLedgerEntries,
+    latestTaskLedgerEntries: latestTaskBoardLedgerEntries,
     queueTasksById,
     candidateLookup,
     campaignMap,
@@ -748,7 +792,7 @@ export async function buildResearchPromotionBoard(
   const entries = [...taskEntries, ...bundleEntries].sort(sortBoardEntries);
   const campaignPerformance = buildCampaignPerformance({
     entries,
-    latestTaskLedgerEntries,
+    latestTaskOutcomeLedgerEntries,
     queueTasksById,
     candidateLookup,
     campaignMap,
