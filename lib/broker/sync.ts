@@ -2,7 +2,7 @@ import type { AutopilotMode } from "@/lib/signalcore/modes";
 import { normalizeMode } from "@/lib/signalcore/modes";
 import type { BrokerConnection, BrokerPosition, BrokerSnapshot } from "@/lib/broker/shared";
 import { normalizeSymbol } from "@/lib/broker/shared";
-import { getQuotes } from "@/lib/signalcore/marketData";
+import { getQuotes } from "@/lib/market/quotes";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { enforceModeAccess } from "@/lib/signalcore/access";
 
@@ -120,7 +120,7 @@ async function fillMissingPositionValues(args: {
   if (!needsPricing.length) return args.positions;
 
   const symbols = needsPricing.map((p) => p.symbol);
-  const quotes = await getQuotes({ symbols, mode: args.mode, ttlSec: 120 });
+  const quotes = await getQuotes({ symbols, ttlSec: 120 });
   if (!quotes || typeof quotes !== "object") return args.positions;
 
   return args.positions.map((p) => {

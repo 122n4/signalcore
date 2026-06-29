@@ -5,12 +5,35 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeMode, type AutopilotMode } from "@/lib/signalcore/modes";
 import { getStarterPack } from "@/lib/signalcore/starterPack";
 import { buildDynamicStarterPack } from "@/lib/signalcore/dynamicStarterPack";
-import { getQuotes } from "@/lib/signalcore/marketData";
+import { getQuotes } from "@/lib/market/quotes";
 import { normSymbol } from "@/lib/market/symbols";
 import { computePortfolioValuation } from "@/lib/signalcore/valuation";
 import { ACTIVE_PLAN_LOOKBACK_LIMIT, isPlanActiveRecord, pickActivePlan } from "@/lib/signalcore/planRepo";
-import { buildEngineContext } from "@/lib/engine/v4/context";
-import { computeDailyBundleV4 } from "@/lib/engine/v4";
+import {
+  buildCashDeploymentPolicy,
+  buildDailyBriefingFromDecisionGovernance,
+  buildEngineContext,
+  buildOpportunityQueue,
+  buildPreTradeSafetyCheck,
+  buildPriorityNotifications,
+  buildWeeklyPremiumReport,
+  computeAntiChurnState,
+  computeDailyBundle,
+  computeDecisionGovernance,
+  computeDecisionSourceTransparency,
+  computeGrowthReadiness,
+  computeKillSwitchState,
+  computeOperationalAction,
+  computePreExecutionSimulation,
+  computeRiskEnvelope,
+  computeWeeklyValueMetrics,
+  deriveRiskPolicy,
+  enforceActionGateWithPreTrade,
+  evaluateRiskPolicy,
+  isRiskEscalationAction,
+  type RiskPolicy,
+  type RiskPolicyEvaluation,
+} from "@/lib/engine";
 import { isEngineV4EnabledForMode } from "@/lib/engine/version";
 import { writeEngineEvent } from "@/lib/engine/events";
 import { buildDailyDecisionPayload } from "@/lib/decision/DailyDecisionService";
@@ -35,26 +58,6 @@ import {
 } from "@/lib/trading/scannerSnapshotStore";
 import type { ComposeTradingLiveDecisionInput } from "@/lib/trading/state";
 import { computeDecisionImpact } from "@/lib/signalcore/decisionImpact";
-import { deriveRiskPolicy, evaluateRiskPolicy, type RiskPolicy, type RiskPolicyEvaluation } from "@/lib/signalcore/riskPolicy";
-import { computeDecisionGovernance } from "@/lib/engine/decisionGovernance";
-import { buildDailyBriefingFromDecisionGovernance } from "@/lib/engine/dailyBriefing";
-import {
-  buildCashDeploymentPolicy,
-  computeOperationalAction,
-  buildOpportunityQueue,
-  buildPreTradeSafetyCheck,
-  buildPriorityNotifications,
-  buildWeeklyPremiumReport,
-  computePreExecutionSimulation,
-  computeAntiChurnState,
-  computeDecisionSourceTransparency,
-  computeGrowthReadiness,
-  computeKillSwitchState,
-  computeRiskEnvelope,
-  computeWeeklyValueMetrics,
-  enforceActionGateWithPreTrade,
-  isRiskEscalationAction,
-} from "@/lib/signalcore/dailyEnhancements";
 import {
   computeDiagnostics,
   buildCandidates,
@@ -138,7 +141,7 @@ function safeComputeDailyEngineV4(args: {
         topRiskLeakSeverity: leakSeverity,
       },
     });
-    return computeDailyBundleV4(ctx);
+    return computeDailyBundle(ctx);
   } catch (error) {
     console.error("[daily-bundle] engineV4 fallback -> v3", error);
     return undefined;
@@ -5250,7 +5253,7 @@ export async function GET(req: Request) {
 
   // --- pricing
   const portfolioSymbols = portfolioItems.map((x: any) => normSymbol(x?.symbol)).filter(Boolean);
-  const quotes = hasHoldings ? await getQuotes({ symbols: portfolioSymbols, mode, ttlSec: 60 }) : {};
+  const quotes = hasHoldings ? await getQuotes({ symbols: portfolioSymbols, ttlSec: 60 }) : {};
 
   // --- valuation (cash per-mode ainda não existe -> 0)
   const valuation = computePortfolioValuation({ cashEur: 0, items: portfolioItems, quotes });

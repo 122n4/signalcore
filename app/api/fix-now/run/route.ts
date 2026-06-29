@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { AutopilotMode } from "@/lib/signalcore/modes";
-import { getQuotes } from "@/lib/signalcore/marketData";
+import { getQuotes } from "@/lib/market/quotes";
 import { computePortfolioValuation } from "@/lib/signalcore/valuation";
 import { computeDiagnostics } from "@/lib/signalcore/engineV3";
 import { buildDynamicStarterPack } from "@/lib/signalcore/dynamicStarterPack";
@@ -135,7 +135,7 @@ async function inferLeak(args: { mode: AutopilotMode; hasPlan: boolean; items: I
   if (!items.length) return { key: "no_holdings" as const, diagnostics: null, missingSymbols: [] as string[] };
 
   const symbols = items.map((i) => i.symbol).filter(Boolean);
-  const quotes = await getQuotes({ symbols, mode, ttlSec: 60 });
+  const quotes = await getQuotes({ symbols, ttlSec: 60 });
   const valuation = computePortfolioValuation({
     cashEur: 0,
     items: items.map((x) => ({ symbol: x.symbol, qty: x.qty, valueEur: x.valueEur })),

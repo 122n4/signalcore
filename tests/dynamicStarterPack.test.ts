@@ -4,7 +4,7 @@ const { getQuotesMock } = vi.hoisted(() => ({
   getQuotesMock: vi.fn(),
 }));
 
-vi.mock("@/lib/signalcore/marketData", () => ({
+vi.mock("@/lib/market/quotes", () => ({
   getQuotes: getQuotesMock,
 }));
 

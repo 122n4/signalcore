@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getRequestUserId } from "@/lib/auth/requestUser";
-import { loadBrokerConnection } from "@/lib/broker/store";
-import { buildDisconnectedConnection, sanitizeConnectionForClient } from "@/lib/broker/shared";
+import {
+  buildDisconnectedConnection,
+  loadBrokerConnection,
+  sanitizeConnectionForClient,
+} from "@/lib/broker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

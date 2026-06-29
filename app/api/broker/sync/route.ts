@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { loadBrokerConnection, saveBrokerConnection } from "@/lib/broker/store";
 import {
   brokerLabel,
   hasConnectionEvidence,
   isConnectionMethodSupportedForBroker,
   isBrokerManualOnly,
+  loadBrokerConnection,
   normalizeBrokerConnection,
+  reconcileWithPortfolio,
+  resolveActiveModeForUser,
   sanitizeConnectionForClient,
-} from "@/lib/broker/shared";
-import { reconcileWithPortfolio, resolveActiveModeForUser, syncBrokerToPortfolio } from "@/lib/broker/sync";
+  saveBrokerConnection,
+  syncBrokerToPortfolio,
+} from "@/lib/broker";
 import { createExecutionId, writeEngineEvent } from "@/lib/engine/events";
 
 export const runtime = "nodejs";

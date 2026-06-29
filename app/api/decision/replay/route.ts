@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeMode } from "@/lib/signalcore/modes";
-import { buildEngineContext } from "@/lib/engine/v4/context";
-import { computeDailyBundleV4 } from "@/lib/engine/v4";
+import { buildEngineContext, computeDailyBundle } from "@/lib/engine";
 import {
   buildDecisionReplayDiff,
   buildReplayComputationSignature,
@@ -159,7 +158,7 @@ export async function POST(req: Request) {
   }
 
   const { ctx, mode, daily, derived, valuation, topLeak } = buildReplayV4ContextFromSnapshot({ userId, row: snapshotRow });
-  const replayV4 = computeDailyBundleV4(ctx);
+  const replayV4 = computeDailyBundle(ctx);
 
   const replayActionType = mapEngineV4KindToLoopType((replayV4 as any).decision.nextBestAction.kind);
   const storedNextBestAction = asObject((daily as any).nextBestAction);

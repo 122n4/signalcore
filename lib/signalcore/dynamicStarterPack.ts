@@ -1,5 +1,5 @@
 import type { AutopilotMode } from "@/lib/signalcore/modes";
-import { getQuotes } from "@/lib/signalcore/marketData";
+import { getQuotes } from "@/lib/market/quotes";
 import { isReferenceOnlyQuoteSource } from "@/lib/signalcore/quoteQuality";
 import { getStarterPack } from "@/lib/signalcore/starterPack";
 
@@ -152,7 +152,6 @@ export async function buildDynamicStarterPack(args: {
   try {
     quotes = await getQuotes({
       symbols: candidates.map((x) => x.symbol),
-      mode: args.mode,
       ttlSec: 120,
     });
   } catch {

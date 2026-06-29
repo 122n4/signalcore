@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { loadBrokerConnection, saveBrokerConnection } from "@/lib/broker/store";
 import {
   brokerLabel,
+  hasConnectionEvidence,
   isConnectionMethodSupportedForBroker,
   isBrokerManualOnly,
+  loadBrokerConnection,
   manualOnlyBrokerReason,
-  hasConnectionEvidence,
   normalizeBrokerConnection,
   normalizeBrokerProvider,
   normalizeConnectionMethod,
   sanitizeConnectionForClient,
-} from "@/lib/broker/shared";
+  saveBrokerConnection,
+} from "@/lib/broker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { loadBrokerConnection, saveBrokerConnection } from "@/lib/broker/store";
-import { hasConnectionEvidence, normalizeBrokerConnection, sanitizeConnectionForClient } from "@/lib/broker/shared";
-import { reconcileWithPortfolio, resolveActiveModeForUser, syncBrokerToPortfolio } from "@/lib/broker/sync";
+import {
+  hasConnectionEvidence,
+  loadBrokerConnection,
+  normalizeBrokerConnection,
+  reconcileWithPortfolio,
+  resolveActiveModeForUser,
+  sanitizeConnectionForClient,
+  saveBrokerConnection,
+  syncBrokerToPortfolio,
+} from "@/lib/broker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
