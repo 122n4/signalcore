@@ -32,6 +32,10 @@ const stubOpportunityRefresh = async () => ({
     jsonPath: "stub-packages.json",
     markdownPath: "stub-packages.md",
   },
+  review: {
+    jsonPath: "stub-review.json",
+    markdownPath: "stub-review.md",
+  },
   datasetHealth: {
     jsonPath: "stub-dataset-health.json",
     markdownPath: "stub-dataset-health.md",
@@ -198,6 +202,7 @@ describe("trading research runner", () => {
     expect(result.reportOutputs!.bundle?.jsonPath).toBe("stub-bundle.json");
     expect(result.reportOutputs!.board.jsonPath).toBe("stub-board.json");
     expect(result.reportOutputs!.packages.jsonPath).toBe("stub-packages.json");
+    expect(result.reportOutputs!.review?.jsonPath).toBe("stub-review.json");
     expect(result.reportOutputs!.datasetHealth.jsonPath).toBe("stub-dataset-health.json");
 
     const dailyReport = await readJsonFile<{ promoted: Array<unknown> }>(
@@ -594,6 +599,10 @@ describe("trading research runner", () => {
             jsonPath: `packages-${refreshCount}.json`,
             markdownPath: `packages-${refreshCount}.md`,
           },
+          review: {
+            jsonPath: `review-${refreshCount}.json`,
+            markdownPath: `review-${refreshCount}.md`,
+          },
           datasetHealth: {
             jsonPath: `dataset-${refreshCount}.json`,
             markdownPath: `dataset-${refreshCount}.md`,
@@ -605,6 +614,7 @@ describe("trading research runner", () => {
     expect(refreshCount).toBe(2);
     expect(result.reportOutputs?.board.jsonPath).toBe("board-2.json");
     expect(result.reportOutputs?.packages.jsonPath).toBe("packages-2.json");
+    expect(result.reportOutputs?.review?.jsonPath).toBe("review-2.json");
   });
 
   it("auto-enqueues one supported candidate from the library when the queue is empty", async () => {

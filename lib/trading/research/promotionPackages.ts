@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { fileExists, ensureDirectory, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import { fileExists, ensureDirectory, readJsonIfExists, sanitizeFileSegment, writeJsonAtomic } from "./fs";
 import { buildResearchReportProvenance } from "./provenance";
 import { readResearchQueue } from "./queue";
 import { readLatestResearchRegistryReport } from "./registry";
@@ -337,6 +337,17 @@ export async function buildResearchPromotionPackageReport(args: {
     },
     packages: sortedPackages,
   };
+}
+
+export async function readLatestResearchPromotionPackageReport(
+  config: ResearchConfig,
+): Promise<ResearchPromotionPackageReport | null> {
+  const latestJsonPath = path.join(
+    config.paths.reportsDir,
+    "packages",
+    "promotion-packages-latest.json",
+  );
+  return readJsonIfExists<ResearchPromotionPackageReport>(latestJsonPath);
 }
 
 function renderPackageMarkdown(pkg: ResearchPromotionPackage): string {

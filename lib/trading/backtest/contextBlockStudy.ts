@@ -64,6 +64,7 @@ export type TradingContextBlockStudyScenarioResult = {
   rules: TradingBacktestMarketSessionRule[];
   aggregate: {
     current: TradingContextBlockStudyMetricSummary;
+    trades: TradingBacktestTrade[];
     delta: {
       totalTrades: number;
       winRate: number;
@@ -74,6 +75,7 @@ export type TradingContextBlockStudyScenarioResult = {
   };
   crisis: {
     current: TradingContextBlockStudyMetricSummary;
+    trades: TradingBacktestTrade[];
     delta: {
       totalTrades: number;
       winRate: number;
@@ -85,6 +87,7 @@ export type TradingContextBlockStudyScenarioResult = {
   };
   walkForward: {
     current: TradingContextBlockStudyMetricSummary;
+    trades: TradingBacktestTrade[];
     delta: {
       totalTrades: number;
       winRate: number;
@@ -113,8 +116,11 @@ export type TradingContextBlockStudyReport = {
   };
   baseline: {
     aggregate: TradingContextBlockStudyMetricSummary;
+    aggregateTrades: TradingBacktestTrade[];
     crisis: TradingContextBlockStudyMetricSummary;
+    crisisTrades: TradingBacktestTrade[];
     walkForwardByAffectedInstruments: Record<string, TradingContextBlockStudyMetricSummary>;
+    walkForwardTradesByAffectedInstruments: Record<string, TradingBacktestTrade[]>;
   };
   scenarios: TradingContextBlockStudyScenarioResult[];
   keepableScenarios: Array<{
@@ -234,6 +240,28 @@ function buildMergedSummary(args: {
   scenarioAffected: TradingBacktestComparativeReport;
   affectedInstruments: Set<string>;
 }): TradingContextBlockStudyMetricSummary {
+  const merged = buildMergedTradeCollection(args);
+  const metrics = computeBacktestMetrics({
+    trades: merged.trades,
+    evaluatedBars: merged.evaluatedBars,
+    equityValues: buildEquityValues(merged.trades),
+  });
+
+  return {
+    totalTrades: merged.trades.length,
+    winRate: metrics.winRate,
+    averageRiskReward: metrics.averageRiskReward,
+    expectancy: metrics.expectancy,
+    profitFactor: metrics.profitFactor,
+    maxDrawdown: metrics.maxDrawdown,
+  };
+}
+
+function buildMergedTradeCollection(args: {
+  baselineFull: TradingBacktestComparativeReport;
+  scenarioAffected: TradingBacktestComparativeReport;
+  affectedInstruments: Set<string>;
+}): { trades: TradingBacktestTrade[]; evaluatedBars: number } {
   const baselineUnchanged = collectTradesFromComparative(
     args.baselineFull,
     new Set(
@@ -246,19 +274,9 @@ function buildMergedSummary(args: {
   const mergedTrades = [...baselineUnchanged.trades, ...scenarioChanged.trades].sort(
     (left, right) => left.closedAt.localeCompare(right.closedAt),
   );
-  const metrics = computeBacktestMetrics({
+  return {
     trades: mergedTrades,
     evaluatedBars: baselineUnchanged.evaluatedBars + scenarioChanged.evaluatedBars,
-    equityValues: buildEquityValues(mergedTrades),
-  });
-
-  return {
-    totalTrades: mergedTrades.length,
-    winRate: metrics.winRate,
-    averageRiskReward: metrics.averageRiskReward,
-    expectancy: metrics.expectancy,
-    profitFactor: metrics.profitFactor,
-    maxDrawdown: metrics.maxDrawdown,
   };
 }
 
@@ -334,10 +352,13 @@ export async function runTradingContextBlockStudy(
     baselineYearlyComparatives,
   );
   const baselineCrisisSummary = computeSummaryFromComparativeCollection(baselineCrisisComparatives);
+  const baselineAggregateTrades = collectTradesFromComparativeCollection(baselineYearlyComparatives).trades;
+  const baselineCrisisTrades = collectTradesFromComparativeCollection(baselineCrisisComparatives).trades;
 
   const baselineWalkForwardCache = new Map<string, TradingContextBlockStudyMetricSummary>(
     Object.entries(request.baseline?.walkForwardByAffectedInstruments ?? {}),
   );
+  const baselineWalkForwardTradesCache = new Map<string, TradingBacktestTrade[]>();
   const scenarioResults: TradingContextBlockStudyScenarioResult[] = [];
 
   for (const scenario of request.scenarios) {
@@ -395,6 +416,7 @@ export async function runTradingContextBlockStudy(
         windowing: request.walkForward?.windowing,
       });
       baselineWalkForwardCache.set(instrumentKey, toWalkForwardSummary(baselineWalkForward));
+      baselineWalkForwardTradesCache.set(instrumentKey, baselineWalkForward.aggregateTrades);
     }
 
     await request.onProgress?.({
@@ -417,12 +439,25 @@ export async function runTradingContextBlockStudy(
       scenarioAffected: affectedYearly,
       affectedInstruments: affectedInstrumentSet,
     });
+    const aggregateTrades = buildMergedTradeCollection({
+      baselineFull: baselineYearlyComparatives[baselineYearlyComparatives.length - 1],
+      scenarioAffected: affectedYearly,
+      affectedInstruments: affectedInstrumentSet,
+    }).trades;
     const crisisSummary = buildMergedSummary({
       baselineFull: baselineCrisisComparatives[baselineCrisisComparatives.length - 1],
       scenarioAffected: affectedCrisis,
       affectedInstruments: affectedInstrumentSet,
     });
+    const crisisTrades = buildMergedTradeCollection({
+      baselineFull: baselineCrisisComparatives[baselineCrisisComparatives.length - 1],
+      scenarioAffected: affectedCrisis,
+      affectedInstruments: affectedInstrumentSet,
+    }).trades;
     const baselineWalkForwardSummary = baselineWalkForwardCache.get(instrumentKey)!;
+    if (!baselineWalkForwardTradesCache.has(instrumentKey)) {
+      baselineWalkForwardTradesCache.set(instrumentKey, []);
+    }
     const walkForwardSummary = toWalkForwardSummary(scenarioWalkForward);
 
     const aggregateImproved =
@@ -445,15 +480,18 @@ export async function runTradingContextBlockStudy(
       rules: scenario.rules,
       aggregate: {
         current: aggregateSummary,
+        trades: aggregateTrades,
         delta: buildDelta(aggregateSummary, baselineAggregateSummary),
       },
       crisis: {
         current: crisisSummary,
+        trades: crisisTrades,
         delta: buildDelta(crisisSummary, baselineCrisisSummary),
         breakEvenOrBetter: crisisSummary.expectancy >= 0 && (crisisSummary.profitFactor ?? 0) >= 1,
       },
       walkForward: {
         current: walkForwardSummary,
+        trades: scenarioWalkForward.aggregateTrades,
         delta: buildDelta(walkForwardSummary, baselineWalkForwardSummary),
         breakEvenOrBetter:
           walkForwardSummary.expectancy >= 0 && (walkForwardSummary.profitFactor ?? 0) >= 1,
@@ -478,9 +516,14 @@ export async function runTradingContextBlockStudy(
     },
     baseline: {
       aggregate: baselineAggregateSummary,
+      aggregateTrades: baselineAggregateTrades,
       crisis: baselineCrisisSummary,
+      crisisTrades: baselineCrisisTrades,
       walkForwardByAffectedInstruments: Object.fromEntries(
         Array.from(baselineWalkForwardCache.entries()).map(([key, value]) => [key, value]),
+      ),
+      walkForwardTradesByAffectedInstruments: Object.fromEntries(
+        Array.from(baselineWalkForwardTradesCache.entries()).map(([key, value]) => [key, value]),
       ),
     },
     scenarios: scenarioResults,

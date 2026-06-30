@@ -36,6 +36,7 @@ export * from "./portfolioStress";
 export * from "./bundleValidation";
 export * from "./promotionBoard";
 export * from "./promotionPackages";
+export * from "./paperPromotion";
 export * from "./opportunityReview";
 export * from "./recovery";
 export * from "./report";

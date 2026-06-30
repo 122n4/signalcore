@@ -408,7 +408,7 @@ describe("trading research promotion board", () => {
     expect(report.campaign_performance[0]?.task_promotes).toBe(1);
   });
 
-  it("drops an older review-ready promote when a newer rerun of the same template is rejected", async () => {
+  it("keeps the latest positive board entry when a newer rerun of the same template is rejected", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);
 
@@ -492,11 +492,14 @@ describe("trading research promotion board", () => {
 
     const report = await buildResearchPromotionBoard(config);
 
-    expect(report.entries).toHaveLength(0);
-    expect(report.summary.task_promotes).toBe(0);
-    expect(report.summary.review_ready_count).toBe(0);
+    expect(report.entries).toHaveLength(1);
+    expect(report.entries[0]?.decision).toBe("promote");
+    expect(report.entries[0]?.board_status).toBe("review_ready");
+    expect(report.entries[0]?.task_ids).toEqual(["nas100-block-old"]);
+    expect(report.summary.task_promotes).toBe(1);
+    expect(report.summary.review_ready_count).toBe(1);
     expect(report.campaign_performance[0]?.campaign_id).toBe("reduce_drawdown");
-    expect(report.campaign_performance[0]?.task_promotes).toBe(0);
+    expect(report.campaign_performance[0]?.task_promotes).toBe(1);
     expect(report.campaign_performance[0]?.task_rejects_or_failed).toBe(1);
   });
 });

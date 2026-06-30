@@ -253,6 +253,74 @@ describe("trading research opportunity review", () => {
     expect(report.bundle.status).toBe("insufficient_candidates");
   });
 
+  it("prefers canonical run comparison artifacts before re-executing a ready package", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const task = createResearchTask({
+      id: "review-task-artifact",
+      status: "completed",
+      decision: "promote",
+      type: "context_filter",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        family_id: "family-artifact",
+        template_id: "template-artifact",
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        auto_enqueued: true,
+      },
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([task]));
+    const { boardReport, packageReport } = createBoardAndPackageReports({
+      taskIds: [task.id],
+      baselineId: "baseline-test-live",
+    });
+
+    const artifactDir = `${rootDir}/canonical-review-artifacts`;
+    const comparisonPath = `${artifactDir}/comparison.json`;
+    await writeJsonAtomic(comparisonPath, createComparison());
+
+    packageReport.packages[0].artifacts.run_artifacts = [
+      {
+        task_id: task.id,
+        run_id: "run-review-task-artifact",
+        manifest_path: null,
+        comparison_path: comparisonPath,
+        decision_path: null,
+        manifest_artifact_id: null,
+        manifest_artifact_version: null,
+        comparison_artifact_id: "comparison-artifact",
+        comparison_artifact_version: "v1",
+        decision_artifact_id: null,
+        decision_artifact_version: null,
+      },
+    ];
+
+    const report = await buildResearchOpportunityReviewReport(config, {
+      boardReport,
+      packageReport,
+      executors: {
+        context_filter: async () => {
+          throw new Error("executor should not run when canonical comparison exists");
+        },
+      },
+      now: () => new Date("2026-03-21T00:00:00.000Z"),
+    });
+
+    expect(report.summary.reviewed_item_count).toBe(1);
+    expect(report.items[0]?.task_id).toBe(task.id);
+    expect(report.items[0]?.isolated_decision).toBe("promote");
+    expect(report.bundle.status).toBe("insufficient_candidates");
+  });
+
   it("validates a compatible bundle when two ready opportunities are present", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);

@@ -8,7 +8,12 @@ import {
 } from "./bundleValidation";
 import { loadResearchConfig } from "./config";
 import { decideResearchRun } from "./decisionEngine";
-import { ensureDirectory, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import {
+  ensureDirectory,
+  readJsonIfExists,
+  sanitizeFileSegment,
+  writeJsonAtomic,
+} from "./fs";
 import { buildResearchReportProvenance } from "./provenance";
 import { buildResearchPromotionBoard } from "./promotionBoard";
 import { buildResearchPromotionPackageReport } from "./promotionPackages";
@@ -21,7 +26,9 @@ import type {
   ResearchOpportunityReviewItem,
   ResearchOpportunityReviewReport,
   ResearchPromotionBoardReport,
+  ResearchPromotionPackage,
   ResearchPromotionPackageReport,
+  ResearchRunComparison,
   ResearchTask,
   ResearchTaskExecutorMap,
 } from "./types";
@@ -123,6 +130,21 @@ function buildBundleReview(args: {
   };
 }
 
+async function loadCanonicalPackageComparison(
+  pkg: ResearchPromotionPackage,
+  taskId: string,
+): Promise<ResearchRunComparison | null> {
+  const runArtifact =
+    pkg.artifacts.run_artifacts.find((artifact) => artifact.task_id === taskId) ?? null;
+  const comparisonPath = runArtifact?.comparison_path ?? null;
+
+  if (!comparisonPath) {
+    return null;
+  }
+
+  return readJsonIfExists<ResearchRunComparison>(comparisonPath);
+}
+
 export async function buildResearchOpportunityReviewReport(
   config: ResearchConfig,
   deps: OpportunityReviewDeps = {},
@@ -157,27 +179,36 @@ export async function buildResearchOpportunityReviewReport(
     if (!task) {
       continue;
     }
-    const executor = executors[task.type];
-    if (!executor) {
-      continue;
-    }
     const scopedConfig = buildScopedConfig(
       config,
       task.candidate_scope.instruments ?? config.study.instruments,
     );
-    const scopedBaseline = await ensureResearchBaselineSnapshot(scopedConfig);
+    const comparison =
+      (await loadCanonicalPackageComparison(pkg, taskId)) ??
+      (await (async () => {
+        const executor = executors[task.type];
+        if (!executor) {
+          return null;
+        }
+        const scopedBaseline = await ensureResearchBaselineSnapshot(scopedConfig);
+        const execution = await executor({
+          config: scopedConfig,
+          task,
+          baseline: scopedBaseline,
+        });
+        return execution.comparison;
+      })());
 
-    const execution = await executor({
-      config: scopedConfig,
-      task,
-      baseline: scopedBaseline,
-    });
+    if (!comparison) {
+      continue;
+    }
+
     const isolatedDecision = decideResearchRun({
       runId: `review-${pkg.package_id}-${sanitizeFileSegment(now().toISOString())}`,
       taskId,
-      gates: execution.comparison.gates,
-      promotedMetrics: buildPromotedMetrics(execution.comparison),
-      comparison: execution.comparison,
+      gates: comparison.gates,
+      promotedMetrics: buildPromotedMetrics(comparison),
+      comparison,
     });
 
     items.push({
@@ -193,7 +224,7 @@ export async function buildResearchOpportunityReviewReport(
       isolated_reason: isolatedDecision.reason,
       isolated_score: isolatedDecision.ranking?.score ?? null,
       isolated_band: isolatedDecision.ranking?.band ?? null,
-      comparison: execution.comparison,
+      comparison,
       package_ready_for_live_review: pkg.review.ready_for_live_review,
     });
   }

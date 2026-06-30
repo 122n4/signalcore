@@ -13,6 +13,7 @@ import {
   buildResearchDatasetRequirementsReport,
 } from "./datasetRequirements";
 import { buildResearchLatestReportsOverview } from "./reportsOverview";
+import { buildResearchPaperPromotionSnapshot } from "./paperPromotion";
 import { buildResearchRuntimeHealth } from "./runtimeHealth";
 import type {
   ResearchBaselineManifest,
@@ -262,7 +263,7 @@ export async function buildResearchSupabasePayload(args: {
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan] = await Promise.all([
+  const [runtime, queue, baseline, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan, paperPromotion] = await Promise.all([
     buildResearchRuntimeHealth({ config }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
@@ -270,6 +271,7 @@ export async function buildResearchSupabasePayload(args: {
     buildResearchLatestReportsOverview(config),
     buildResearchDatasetRequirementsReport(config),
     buildResearchDataAcquisitionPlan(config),
+    buildResearchPaperPromotionSnapshot(config),
   ]);
   const runs = await readRecentRunRows(config, queue, decisions, args.runLimit ?? 80);
   const lastSuccessfulRunAt =
@@ -313,6 +315,7 @@ export async function buildResearchSupabasePayload(args: {
         reportsOverview,
         datasetRequirements,
         dataAcquisitionPlan,
+        paperPromotion,
       },
     },
     decisionRows: decisions.map(decisionRow),
