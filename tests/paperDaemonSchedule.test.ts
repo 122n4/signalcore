@@ -12,7 +12,7 @@ describe("paper daemon production schedule", () => {
       expect.arrayContaining([
         expect.objectContaining({
           path: "/api/trading/bot/paper-daemon",
-          schedule: "*/10 * * * *",
+          schedule: "0 7 * * *",
         }),
       ]),
     );
