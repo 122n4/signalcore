@@ -57,11 +57,12 @@ export function buildMonthlyRange(from: TradingOfficialSyncMonth, to: TradingOff
 }
 
 function resolveLocalHistoricalBaseDir(): string {
-  if (process.env.TRADING_BACKTEST_LOCAL_DATA_DIR?.trim()) {
-    return path.resolve(process.env.TRADING_BACKTEST_LOCAL_DATA_DIR);
+  const configuredDir = process.env.TRADING_BACKTEST_LOCAL_DATA_DIR?.trim();
+  if (configuredDir) {
+    return path.resolve(/* turbopackIgnore: true */ configuredDir);
   }
 
-  return path.resolve("Data/historical");
+  return path.join(/* turbopackIgnore: true */ process.cwd(), "Data", "historical");
 }
 
 function buildLocalCsvPath(instrument: TradingOfficialSyncInstrument, part: TradingOfficialSyncMonth): string {
@@ -71,7 +72,8 @@ function buildLocalCsvPath(instrument: TradingOfficialSyncInstrument, part: Trad
     throw new Error(`No local dataset configured for ${instrument}.`);
   }
 
-  const root = path.join(resolveLocalHistoricalBaseDir(), ...localDataset.pathSegments);
+  const baseDir = resolveLocalHistoricalBaseDir();
+  const root = path.join(/* turbopackIgnore: true */ baseDir, ...localDataset.pathSegments);
   if (localDataset.format === "crypto_binance_monthly_m1") {
     return path.join(root, `${localDataset.symbol}-1m-${createMonthLabel(part)}.csv`);
   }

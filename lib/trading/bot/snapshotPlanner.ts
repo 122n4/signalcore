@@ -1,4 +1,13 @@
 import { loadBrokerConnection } from "@/lib/broker/store";
+import {
+  evaluateResearchPaperPromotionApproval,
+  resolveResearchPaperPromotionApproval,
+} from "@/lib/trading/research/paperPromotion";
+import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
+import type {
+  ResearchPaperPromotionApproval,
+  ResearchPaperPromotionSnapshot,
+} from "@/lib/trading/research/types";
 import { readLatestTradingScannerSnapshots } from "@/lib/trading/scannerSnapshotStore";
 import type { ComposeTradingLiveDecisionInput } from "@/lib/trading/state";
 
@@ -25,6 +34,7 @@ export type BotSnapshotPlan = {
     consecutiveLosses: number;
   } | null;
   plan: ReturnType<typeof planAutonomousBotCycle> | null;
+  researchApproval: ResearchPaperPromotionApproval | null;
   readError: string | null;
 };
 
@@ -46,6 +56,20 @@ function parseTargetZone(value: string | null | undefined) {
   if (!valid.length) return null;
   if (valid.length === 1) return valid[0];
   return (valid[0] + valid[1]) / 2;
+}
+
+function buildResearchBlockedPlan(args: {
+  option: BotAutonomyOption;
+  instrument: string;
+  reason: string;
+}) {
+  return {
+    action: "blocked" as const,
+    mode: args.option === "real_money_when_armed" ? "live" as const : "paper" as const,
+    instrument: args.instrument,
+    reasons: [args.reason],
+    intent: null,
+  };
 }
 
 function candidateScore(input: ComposeTradingLiveDecisionInput) {
@@ -134,6 +158,7 @@ export async function buildBotSnapshotPlan(args: {
       decision: null,
       account: null,
       plan: null,
+      researchApproval: null,
       readError: stored.error ?? null,
     };
   }
@@ -144,7 +169,25 @@ export async function buildBotSnapshotPlan(args: {
       ? buildRealMoneyWhenArmedBotConfig({ ownerUserId: args.userId, operatorAcknowledgedAt: args.armedAt })
       : buildPaperOnlyBotConfig(args.userId);
   const decision = toBotDecision(candidate);
-  const plan = planAutonomousBotCycle({ config, account, decision });
+  let researchApproval = await resolveResearchPaperPromotionApproval({ candidate });
+  if (researchApproval.source === "missing") {
+    const remote = await readResearchLabRemoteSnapshot({ runLimit: 20, decisionLimit: 40 });
+    const remoteSnapshot = (remote.state?.payload?.paperPromotion ?? null) as ResearchPaperPromotionSnapshot | null;
+    if (remoteSnapshot) {
+      researchApproval = evaluateResearchPaperPromotionApproval({
+        candidate,
+        snapshot: remoteSnapshot,
+        source: "remote_state",
+      });
+    }
+  }
+  const plan = researchApproval.approved
+    ? planAutonomousBotCycle({ config, account, decision })
+    : buildResearchBlockedPlan({
+        option: args.option,
+        instrument: decision.instrument,
+        reason: researchApproval.reason,
+      });
 
   return {
     option: args.option,
@@ -154,6 +197,7 @@ export async function buildBotSnapshotPlan(args: {
     decision,
     account,
     plan,
+    researchApproval,
     readError: stored.error ?? null,
   };
 }

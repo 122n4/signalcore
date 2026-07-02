@@ -20,9 +20,6 @@ export function isEngineLoopAuthorized(args: {
   const env = args.env || {};
   const cronSecret = String(env.CRON_SECRET || env.ENGINE_LOOP_SECRET || "").trim();
   const token = readBearerToken(args.headers.get("authorization"));
-  const isVercelCron = Boolean(args.headers.get("x-vercel-cron"));
-
-  if (isVercelCron) return true;
 
   if (cronSecret) return token === cronSecret;
 
@@ -31,6 +28,5 @@ export function isEngineLoopAuthorized(args: {
     return false;
   }
 
-  if (isVercelCron) return true;
   return true;
 }

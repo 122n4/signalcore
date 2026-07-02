@@ -2,20 +2,24 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  resolveTradingHistoricalInstrument,
+  type TradingHistoricalLocalDatasetConfig,
+} from "@/lib/trading/backtest/datasets";
+import {
+  runTradingHistoricalCoverageAudit,
+  writeTradingHistoricalCoverageAuditReport,
+} from "@/lib/trading/backtest/coverageAudit";
+import type { TradingHistoricalPeriod } from "@/lib/trading/backtest/periods";
+import {
   buildBinanceMonthlyKlineZipUrl,
   buildMonthlyRange,
   downloadBinanceMonthlyCsv,
-  resolveTradingHistoricalInstrument,
-  runTradingHistoricalCoverageAudit,
   summarizeSyncResult,
   syncOfficialHistoricalArchives,
-  writeTradingHistoricalCoverageAuditReport,
-  type TradingHistoricalLocalDatasetConfig,
-  type TradingHistoricalPeriod,
   type TradingOfficialSyncInstrument,
   type TradingOfficialSyncMonth,
   type TradingOfficialSyncResult,
-} from "@/lib/trading/backtest";
+} from "@/lib/trading/backtest/officialArchiveSync";
 
 import { loadResearchConfig } from "./config";
 import { ensureDirectory, readJsonIfExists, writeJsonAtomic } from "./fs";
@@ -153,15 +157,36 @@ export type MarketDataBackfillRunReport = {
 };
 
 function resolveLocalHistoricalBaseDir(): string {
-  return path.resolve(process.env.TRADING_BACKTEST_LOCAL_DATA_DIR ?? "Data/historical");
+  const configuredDir = process.env.TRADING_BACKTEST_LOCAL_DATA_DIR?.trim();
+  if (configuredDir) {
+    return path.resolve(/* turbopackIgnore: true */ configuredDir);
+  }
+
+  return path.join(/* turbopackIgnore: true */ process.cwd(), "Data", "historical");
 }
 
 function resolveStagingBaseDir(): string {
-  return path.resolve(process.env.TRADING_BACKTEST_STAGING_DATA_DIR ?? "data/historical-staging");
+  const configuredDir = process.env.TRADING_BACKTEST_STAGING_DATA_DIR?.trim();
+  if (configuredDir) {
+    return path.resolve(/* turbopackIgnore: true */ configuredDir);
+  }
+
+  return path.join(/* turbopackIgnore: true */ process.cwd(), "data", "historical-staging");
 }
 
 function resolveReportsDir(customDir?: string | null): string {
-  return path.resolve(customDir ?? "artifacts/trading-research/reports/datasets");
+  const configuredDir = customDir?.trim();
+  if (configuredDir) {
+    return path.resolve(/* turbopackIgnore: true */ configuredDir);
+  }
+
+  return path.join(
+    /* turbopackIgnore: true */ process.cwd(),
+    "artifacts",
+    "trading-research",
+    "reports",
+    "datasets",
+  );
 }
 
 function monthLabel(value: TradingOfficialSyncMonth): string {

@@ -1,12 +1,20 @@
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 
 import { buildResearchRunArtifactPaths } from "./artifactContract";
 import { loadResearchConfig } from "./config";
 import { readResearchDataHunterReport, type ResearchDataHunterStatus } from "./dataHunter";
-import { readJsonIfExists } from "./fs";
-import { classifyResearchLockHealth, readResearchLock } from "./lock";
+import { readJsonIfExists, writeJsonAtomic } from "./fs";
+import { classifyResearchLockHealth, isResearchLockRunnerAlive, readResearchLock } from "./lock";
 import { readResearchQueue } from "./queue";
-import type { ResearchConfig, ResearchLock, ResearchQueue, ResearchRunStatus } from "./types";
+import { canonicalizeResearchRunSnapshot } from "./runCanonicalization";
+import type {
+  ResearchConfig,
+  ResearchDecisionLedgerEntry,
+  ResearchLock,
+  ResearchQueue,
+  ResearchRunStatus,
+} from "./types";
 
 export type ResearchRuntimeSeverity = "ok" | "warn" | "error";
 
@@ -102,9 +110,11 @@ function summarizeLock(config: ResearchConfig, lock: ResearchLock | null, now: D
   }
 
   const heartbeatMs = safeDateMs(lock.heartbeat_at);
+  const runnerAlive = isResearchLockRunnerAlive(lock);
+  const timeHealth = classifyResearchLockHealth(config, lock, now);
   return {
     present: true,
-    health: classifyResearchLockHealth(config, lock, now),
+    health: runnerAlive === false && timeHealth === "healthy" ? "stale" : timeHealth,
     heartbeatAt: lock.heartbeat_at,
     heartbeatAgeMs: heartbeatMs === null ? null : Math.max(0, nowMs(now) - heartbeatMs),
     stage: lock.stage,
@@ -120,8 +130,35 @@ function resolveStageHardTimeoutMs(config: ResearchConfig) {
   return config.timing.stageHardTimeoutMs ?? Math.max(config.timing.hungLockMs * 4, 60 * 60_000);
 }
 
+async function readDecisionEntries(
+  decisionsPath: string,
+  limit = 300,
+): Promise<ResearchDecisionLedgerEntry[]> {
+  try {
+    const text = await readFile(decisionsPath, "utf8");
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as ResearchDecisionLedgerEntry;
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry): entry is ResearchDecisionLedgerEntry => Boolean(entry))
+      .sort((left, right) => String(right.timestamp).localeCompare(String(left.timestamp)))
+      .slice(0, limit);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 async function readActiveRunStatus(args: {
   config: ResearchConfig;
+  queue: ResearchQueue;
   activeRunId: string | null;
   now: Date;
 }): Promise<ResearchRuntimeHealth["activeRun"]> {
@@ -146,14 +183,31 @@ async function readActiveRunStatus(args: {
 
   const paths = buildResearchRunArtifactPaths(args.config.paths.runsDir, args.activeRunId);
   const status = await readJsonIfExists<ResearchRunStatus>(paths.statusPath);
+  const decisions = await readDecisionEntries(args.config.paths.decisionsPath);
   if (!status) {
+    const canonicalMissing = canonicalizeResearchRunSnapshot(
+      {
+        runId: args.activeRunId,
+        taskId: null,
+        status: "missing",
+        stage: null,
+        startedAt: null,
+        updatedAt: null,
+        failedStage: null,
+        error: null,
+      },
+      {
+        queue: args.queue,
+        decisions,
+      },
+    );
     return {
       runId: args.activeRunId,
-      taskId: null,
-      status: "missing",
-      stage: null,
-      startedAt: null,
-      updatedAt: null,
+      taskId: canonicalMissing.taskId,
+      status: canonicalMissing.status,
+      stage: canonicalMissing.stage,
+      startedAt: canonicalMissing.startedAt,
+      updatedAt: canonicalMissing.updatedAt,
       stageStartedAt: null,
       stageElapsedMs: null,
       stageWarnMs,
@@ -163,7 +217,44 @@ async function readActiveRunStatus(args: {
     };
   }
 
-  const stageStartedAt = status.stage_started_at ?? status.started_at;
+  const canonical = canonicalizeResearchRunSnapshot(
+    {
+      runId: status.run_id,
+      taskId: status.task_id,
+      status: status.status,
+      stage: status.stage,
+      startedAt: status.started_at,
+      updatedAt: status.updated_at,
+      failedStage: status.failed_stage,
+      error: status.error,
+    },
+    {
+      queue: args.queue,
+      decisions,
+    },
+  );
+  if (
+    status.status !== canonical.status ||
+    status.stage !== canonical.stage ||
+    status.updated_at !== canonical.updatedAt ||
+    status.failed_stage !== canonical.failedStage ||
+    status.error !== canonical.error
+  ) {
+    await writeJsonAtomic(paths.statusPath, {
+      ...status,
+      status: canonical.status === "missing" ? "failed" : canonical.status,
+      stage:
+        canonical.stage ??
+        (canonical.status === "completed" ? "completed" : canonical.status === "failed" ? "failed" : status.stage),
+      updated_at: canonical.updatedAt ?? status.updated_at,
+      failed_stage:
+        canonical.failedStage ??
+        (canonical.status === "failed" ? status.failed_stage ?? status.stage : null),
+      error: canonical.error ?? (canonical.status === "completed" ? null : status.error),
+    });
+  }
+
+  const stageStartedAt = status.stage_started_at ?? canonical.startedAt ?? status.started_at;
   const stageStartedMs = safeDateMs(stageStartedAt);
   const stageElapsedMs =
     stageStartedMs === null ? null : Math.max(0, nowMs(args.now) - stageStartedMs);
@@ -178,11 +269,11 @@ async function readActiveRunStatus(args: {
 
   return {
     runId: status.run_id,
-    taskId: status.task_id,
-    status: status.status,
-    stage: status.stage,
-    startedAt: status.started_at,
-    updatedAt: status.updated_at,
+    taskId: canonical.taskId,
+    status: canonical.status,
+    stage: canonical.stage,
+    startedAt: canonical.startedAt ?? status.started_at,
+    updatedAt: canonical.updatedAt ?? status.updated_at,
     stageStartedAt,
     stageElapsedMs,
     stageWarnMs,
@@ -194,6 +285,18 @@ async function readActiveRunStatus(args: {
 
 async function readBackfillSummary(config: ResearchConfig): Promise<ResearchRuntimeHealth["backfill"]> {
   const reportPath = path.join(config.paths.reportsDir, "datasets", "market-data-backfill-latest.json");
+  const hunterReport = await readResearchDataHunterReport(config);
+  if (hunterReport) {
+    return {
+      generatedAt: hunterReport.backfill.generatedAt ?? hunterReport.generatedAt ?? null,
+      existing: hunterReport.coverage.existing ?? null,
+      missingDownloadable: hunterReport.coverage.missingDownloadable ?? null,
+      missingManual: hunterReport.coverage.missingManual ?? null,
+      unsupported: hunterReport.coverage.unsupported ?? null,
+      reportPath: hunterReport.outputs.backfillReportPath ?? hunterReport.backfill.outputs.jsonPath ?? reportPath,
+    };
+  }
+
   const report = await readJsonIfExists<{
     generatedAt?: string;
     after?: {
@@ -301,6 +404,7 @@ export async function buildResearchRuntimeHealth(args: {
   const [activeRun, backfill, dataHunter] = await Promise.all([
     readActiveRunStatus({
       config,
+      queue,
       activeRunId: queue.active_run_id,
       now,
     }),

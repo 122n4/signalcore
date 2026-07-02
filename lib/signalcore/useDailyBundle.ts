@@ -8,15 +8,23 @@ import type { DailyBundle } from "@/lib/signalcore/types";
 
 type Status = "idle" | "loading" | "ready" | "error";
 
-type DailyBundleResponse = Partial<DailyBundle> & {
+type DailyBundleResponse = Partial<Omit<DailyBundle, "ok">> & {
   ok?: boolean;
+  degraded?: boolean;
   mode?: AutopilotMode;
   error?: string;
   message?: string;
 };
 
+type ResolvedDailyBundle = Omit<DailyBundle, "ok"> & {
+  ok: boolean;
+  degraded?: boolean;
+  error?: string;
+  message?: string;
+};
+
 type DailyBundleCacheEntry = {
-  bundle: DailyBundle | null;
+  bundle: ResolvedDailyBundle | null;
   error: string | null;
   lastUpdatedAt: string | null;
   inFlight: Promise<void> | null;
@@ -24,7 +32,7 @@ type DailyBundleCacheEntry = {
 };
 
 type DailyBundleSnapshot = {
-  bundle: DailyBundle | null;
+  bundle: ResolvedDailyBundle | null;
   error: string | null;
   lastUpdatedAt: string | null;
   isRefreshing: boolean;
@@ -77,7 +85,7 @@ function readModeSnapshot(mode: AutopilotMode): DailyBundleSnapshot {
   };
 }
 
-function normalizeDailyBundle(mode: AutopilotMode, data: DailyBundleResponse): DailyBundle {
+function normalizeDailyBundle(mode: AutopilotMode, data: DailyBundleResponse): ResolvedDailyBundle {
   const normalizedAsOf =
     typeof data?.asOf === "string"
       ? data.asOf
@@ -86,8 +94,8 @@ function normalizeDailyBundle(mode: AutopilotMode, data: DailyBundleResponse): D
         : new Date().toISOString();
 
   return {
-    ...(data as DailyBundle),
-    ok: true,
+    ...(data as ResolvedDailyBundle),
+    ok: data?.ok !== false,
     mode: normalizeMode(data?.mode ?? mode),
     asOf: normalizedAsOf,
     plan: (data as any)?.plan ?? null,
@@ -95,6 +103,19 @@ function normalizeDailyBundle(mode: AutopilotMode, data: DailyBundleResponse): D
     daily: (data as any)?.daily ?? null,
     derived: (data as any)?.derived ?? null,
   };
+}
+
+export function isUsableDailyBundleResponse(data: DailyBundleResponse | null | undefined) {
+  if (!data || typeof data !== "object") return false;
+  if (data.ok !== false) return true;
+  if (data.degraded !== true) return false;
+
+  return Boolean(
+    (data as any).daily ||
+      (data as any).derived ||
+      (data as any).plan ||
+      (data as any).portfolio,
+  );
 }
 
 async function loadModeBundle(mode: AutopilotMode, options: DailyBundleRefreshOptions = {}) {
@@ -125,7 +146,7 @@ async function loadModeBundle(mode: AutopilotMode, options: DailyBundleRefreshOp
 
       if (
         Object.prototype.hasOwnProperty.call(data ?? {}, "ok") &&
-        (data as { ok?: boolean }).ok === false
+        !isUsableDailyBundleResponse(data)
       ) {
         throw new Error(data?.message ?? data?.error ?? "daily_bundle_failed");
       }

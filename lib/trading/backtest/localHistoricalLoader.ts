@@ -23,7 +23,12 @@ const TIMEFRAME_MS: Record<TradingTimeframe, number> = {
 };
 
 function resolveLocalHistoricalBaseDir(): string {
-  return path.resolve(process.env.TRADING_BACKTEST_LOCAL_DATA_DIR ?? "Data/historical");
+  const configuredDir = process.env.TRADING_BACKTEST_LOCAL_DATA_DIR?.trim();
+  if (configuredDir) {
+    return path.resolve(/* turbopackIgnore: true */ configuredDir);
+  }
+
+  return path.join(/* turbopackIgnore: true */ process.cwd(), "Data", "historical");
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -71,7 +76,8 @@ async function resolveLocalFiles(args: {
   from: string;
   to: string;
 }): Promise<string[]> {
-  const root = path.join(resolveLocalHistoricalBaseDir(), ...args.config.pathSegments);
+  const baseDir = resolveLocalHistoricalBaseDir();
+  const root = path.join(/* turbopackIgnore: true */ baseDir, ...args.config.pathSegments);
   const files: string[] = [];
 
   if (args.config.format === "forex_ascii_yearly_m1") {

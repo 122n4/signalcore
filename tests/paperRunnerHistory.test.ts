@@ -120,6 +120,28 @@ describe("paper runner history reads", () => {
     expect(result.observability.error).toContain("statement timeout");
   });
 
+  it("fails closed instead of serving legacy history when canonical paper storage is unavailable", async () => {
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({
+        schemaReady: false,
+        rows: [],
+        error: "paper_trades_missing",
+      })
+      .mockResolvedValueOnce({
+        schemaReady: false,
+        rows: [],
+        error: "paper_trades_missing",
+      });
+
+    const result = await readPaperHistoryPayloadSafe("owner_1", { days: 183, maxSettlements: 4 });
+
+    expect(result.count).toBe(0);
+    expect(result.history).toEqual([]);
+    expect(result.observability.schemaReady).toBe(false);
+    expect(result.observability.error).toContain("paper_trades_missing");
+    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled();
+  });
+
   it("keeps canonical rows visible even if reconciliation cannot improve them further", async () => {
     const canonicalRows = [
       {
@@ -180,6 +202,54 @@ describe("paper runner history reads", () => {
     expect(result.history[0]?.instrument).toBe("ETHUSD");
     expect(result.observability.schemaReady).toBe(true);
     expect(mocks.reconcileCanonicalPaperTrades).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps canonical rows primary when the legacy reconciliation path is unavailable", async () => {
+    const canonicalRows = [
+      {
+        id: "paper-31",
+        title: "Paper cycle 31",
+        created_at: "2026-06-29T00:00:00.000Z",
+        details: {
+          planned: { action: "ready" },
+          execution: { status: "paper_queued" },
+          intent: {
+            instrument: "BTCUSD",
+            side: "buy",
+            estimatedEntry: 101,
+            stopLoss: 96,
+            takeProfit: 111,
+          },
+          paperOutcome: {
+            status: "open",
+            checkedAt: "2026-06-29T00:05:00.000Z",
+            closedAt: null,
+            resultR: null,
+            exitPrice: null,
+            reason: "",
+          },
+        },
+      },
+    ];
+    const legacyRows = [{ id: "journal-31", title: "Paper cycle 31", created_at: "2026-06-29T00:00:00.000Z", details: {} }];
+
+    mocks.readCanonicalPaperRows.mockResolvedValueOnce({
+      schemaReady: true,
+      rows: canonicalRows,
+      error: null,
+    });
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
+      schemaReady: false,
+      reconciled: 0,
+      error: "paper_trades_missing",
+    });
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult(legacyRows));
+
+    const result = await readPaperRows("owner_1", 183);
+
+    expect(result).toEqual(canonicalRows);
+    expect(mocks.reconcileCanonicalPaperTrades).toHaveBeenCalledTimes(1);
+    expect(mocks.getSupabaseAdmin).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes canonical paper history after reconciling a missing legacy cycle", async () => {

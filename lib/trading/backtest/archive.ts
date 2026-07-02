@@ -15,7 +15,17 @@ export type TradingHistoricalDatasetCachePolicy =
   | "write_through";
 
 function resolveArchiveBaseDir(customDir?: string | null): string {
-  return path.resolve(customDir ?? "artifacts/trading-backtests/datasets");
+  const configuredDir = customDir?.trim();
+  if (configuredDir) {
+    return path.resolve(/* turbopackIgnore: true */ configuredDir);
+  }
+
+  return path.join(
+    /* turbopackIgnore: true */ process.cwd(),
+    "artifacts",
+    "trading-backtests",
+    "datasets",
+  );
 }
 
 function buildDatasetArchivePath(args: {
@@ -23,8 +33,10 @@ function buildDatasetArchivePath(args: {
   periodLabel: string;
   baseDir?: string | null;
 }): string {
+  const baseDir = resolveArchiveBaseDir(args.baseDir);
+
   return path.join(
-    resolveArchiveBaseDir(args.baseDir),
+    /* turbopackIgnore: true */ baseDir,
     args.instrument.toUpperCase(),
     `${args.periodLabel}.json`,
   );
@@ -78,9 +90,10 @@ export async function readTradingHistoricalDatasetArchive(args: {
   baseDir?: string | null;
 }): Promise<TradingHistoricalDataset | null> {
   const archivePath = buildDatasetArchivePath(args);
+  const resolvedArchivePath = /* turbopackIgnore: true */ archivePath;
 
   try {
-    const raw = await readFile(archivePath, "utf8");
+    const raw = await readFile(resolvedArchivePath, "utf8");
     const parsed = JSON.parse(raw) as TradingHistoricalDataset;
     const coverage = computeTradingHistoricalCoverage(parsed);
 

@@ -22,11 +22,19 @@ import {
   writeResearchCandidateLibrary,
 } from "./helpers/tradingResearchFixtures";
 
-async function writeRunArtifacts(rootRunsDir: string, runId: string) {
+async function writeRunArtifacts(
+  rootRunsDir: string,
+  runId: string,
+  comparisonOverrides: Record<string, unknown> | null = null,
+) {
   const runDir = path.join(rootRunsDir, runId);
   await mkdir(runDir, { recursive: true });
   await writeJsonAtomic(path.join(runDir, "manifest.json"), { run_id: runId });
-  await writeJsonAtomic(path.join(runDir, "comparison.json"), { run_id: runId, comparison: true });
+  await writeJsonAtomic(path.join(runDir, "comparison.json"), {
+    run_id: runId,
+    comparison: true,
+    ...(comparisonOverrides ?? {}),
+  });
   await writeJsonAtomic(path.join(runDir, "decision.json"), { run_id: runId, decision: "promote" });
 }
 
@@ -295,7 +303,30 @@ describe("trading research promotion packages", () => {
       "utf8",
     );
 
-    await writeRunArtifacts(config.paths.runsDir, "run-promote-a");
+    await writeRunArtifacts(config.paths.runsDir, "run-promote-a", {
+      gates: {
+        statisticalValidationPass: true,
+      },
+      statistical_validation: {
+        sample_size: 120,
+        independent_trial_count: 1,
+        trade_level_sharpe_ratio: 0.88,
+        deflated_sharpe_ratio: 0.64,
+        pbo: {
+          value: 0.11,
+          risk_band: "low",
+        },
+        white_reality_check: {
+          p_value: 0.09,
+          adjusted_p_value: 0.07,
+          bootstrap_iterations: 500,
+        },
+        diagnostics: {
+          out_of_sample_checks: [],
+          notes: [],
+        },
+      },
+    });
     await writeRunArtifacts(config.paths.runsDir, "run-promote-b");
     const registryReport = await buildResearchRegistryReport(config);
     await writeResearchRegistryReport({ config, report: registryReport });
@@ -325,6 +356,15 @@ describe("trading research promotion packages", () => {
     expect(bundlePackage?.campaign_metadata_source).toBe("recorded");
     expect(bundlePackage?.ranking_metadata_source).toBe("recorded");
 
+    const taskPackage = packageReport.packages.find((pkg) => pkg.package_id === "package-task-promote-a");
+    expect(taskPackage?.statistical_validation_passed).toBe(true);
+    expect(taskPackage?.deflated_sharpe_ratio).toBe(0.64);
+    expect(taskPackage?.pbo_estimate).toBe(0.11);
+    expect(taskPackage?.white_reality_check_p_value).toBe(0.07);
+    expect(taskPackage?.review.cautions).not.toContain(
+      "Task-level promote has not yet been upgraded into a bundle-level statistical review.",
+    );
+
     const outputs = await writeResearchPromotionPackageReport({
       config,
       report: packageReport,
@@ -332,6 +372,284 @@ describe("trading research promotion packages", () => {
 
     expect(outputs.latestJsonPath).toContain("promotion-packages-latest.json");
     expect(outputs.itemCount).toBe(3);
+  });
+
+  it("blocks overlapping task-level promotes from claiming ready-for-live-review at the same time", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+
+    const broadTask = createResearchTask({
+      id: "promote-broad",
+      type: "context_filter",
+      status: "completed",
+      decision: "promote",
+      decision_reason: "Broad NAS100 promote",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        family_id: "context-family",
+        template_id: "promote-broad-template",
+        auto_enqueued: true,
+      },
+      last_run_id: "run-promote-broad",
+    });
+    const filteredTask = createResearchTask({
+      id: "promote-filtered",
+      type: "context_filter",
+      status: "completed",
+      decision: "promote",
+      decision_reason: "Filtered NAS100 promote",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+        quality_grades: ["B", "C", "D"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        family_id: "context-family",
+        template_id: "promote-filtered-template",
+        auto_enqueued: true,
+      },
+      last_run_id: "run-promote-filtered",
+    });
+
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([broadTask, filteredTask]),
+    );
+
+    await mkdir(path.dirname(config.paths.decisionsPath), { recursive: true });
+    await writeFile(
+      config.paths.decisionsPath,
+      [
+        JSON.stringify({
+          event_id: "evt-broad",
+          timestamp: "2026-03-21T09:00:00.000Z",
+          run_id: "run-promote-broad",
+          task_id: "promote-broad",
+          baseline_id: "baseline-test-live",
+          run_fingerprint: "promote-broad-fingerprint",
+          decision: "promote",
+          reason: "Broad NAS100 promote",
+          planner_campaign_id: "reduce_drawdown",
+          planner_campaign_objective: "reduce_drawdown",
+          aggregate_summary: createMetricSummary({ expectancy: 0.24, profitFactor: 1.75 }),
+          crisis_summary: createMetricSummary({ expectancy: 0.01, profitFactor: 1.08, totalTrades: 18 }),
+          walkforward_summary: createMetricSummary({ expectancy: 0.13, profitFactor: 1.15, totalTrades: 12 }),
+          ranking_score: 71,
+          ranking_band: "strong",
+        }),
+        JSON.stringify({
+          event_id: "evt-filtered",
+          timestamp: "2026-03-21T10:00:00.000Z",
+          run_id: "run-promote-filtered",
+          task_id: "promote-filtered",
+          baseline_id: "baseline-test-live",
+          run_fingerprint: "promote-filtered-fingerprint",
+          decision: "promote",
+          reason: "Filtered NAS100 promote",
+          planner_campaign_id: "reduce_drawdown",
+          planner_campaign_objective: "reduce_drawdown",
+          aggregate_summary: createMetricSummary({ expectancy: 0.25, profitFactor: 1.78 }),
+          crisis_summary: createMetricSummary({ expectancy: 0.02, profitFactor: 1.1, totalTrades: 19 }),
+          walkforward_summary: createMetricSummary({ expectancy: 0.14, profitFactor: 1.18, totalTrades: 12 }),
+          ranking_score: 72,
+          ranking_band: "strong",
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await writeRunArtifacts(config.paths.runsDir, "run-promote-broad");
+    await writeRunArtifacts(config.paths.runsDir, "run-promote-filtered");
+
+    const boardReport = await buildResearchPromotionBoard(config);
+    const packageReport = await buildResearchPromotionPackageReport({
+      config,
+      boardReport,
+    });
+
+    expect(packageReport.summary.review_ready_count).toBe(2);
+    expect(packageReport.summary.ready_for_live_review_count).toBe(0);
+    expect(packageReport.summary.blocked_count).toBe(2);
+
+    const broadPackage = packageReport.packages.find((pkg) => pkg.package_id === "package-task-promote-broad");
+    const filteredPackage = packageReport.packages.find((pkg) => pkg.package_id === "package-task-promote-filtered");
+
+    expect(broadPackage?.review.ready_for_live_review).toBe(false);
+    expect(filteredPackage?.review.ready_for_live_review).toBe(false);
+    expect(broadPackage?.review.blockers).toContain(
+      "Overlapping ready-for-live-review scope with package 'package-task-promote-filtered'. Canonical Promote -> Paper handoff requires a unique scope.",
+    );
+    expect(filteredPackage?.review.blockers).toContain(
+      "Overlapping ready-for-live-review scope with package 'package-task-promote-broad'. Canonical Promote -> Paper handoff requires a unique scope.",
+    );
+  });
+
+  it("keeps the narrowest equivalent overlapping task scope as the canonical live-review package", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const sharedAggregate = createMetricSummary({
+      expectancy: 0.2207,
+      profitFactor: 1.7586,
+      maxDrawdown: 3.8896,
+      totalTrades: 238,
+      winRate: 44.958,
+      averageRiskReward: 2.255,
+    });
+    const sharedCrisis = createMetricSummary({
+      expectancy: -0.0342,
+      profitFactor: 1.1285,
+      maxDrawdown: 4.1077,
+      totalTrades: 88,
+      winRate: 35.2273,
+      averageRiskReward: 2.3909,
+    });
+    const sharedWalkforward = createMetricSummary({
+      expectancy: 0.1466,
+      profitFactor: 2.2136,
+      maxDrawdown: 0.2547,
+      totalTrades: 6,
+      winRate: 66.6667,
+      averageRiskReward: 2.4,
+    });
+
+    const broadTask = createResearchTask({
+      id: "promote-broad-equivalent",
+      type: "context_filter",
+      status: "completed",
+      decision: "promote",
+      decision_reason: "Broad NAS100 promote",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        family_id: "context-family",
+        template_id: "promote-broad-template",
+        auto_enqueued: true,
+      },
+      last_run_id: "run-promote-broad-equivalent",
+    });
+    const filteredTask = createResearchTask({
+      id: "promote-filtered-equivalent",
+      type: "context_filter",
+      status: "completed",
+      decision: "promote",
+      decision_reason: "Filtered NAS100 promote",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+        quality_grades: ["B", "C", "D"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        family_id: "context-family",
+        template_id: "promote-filtered-template",
+        auto_enqueued: true,
+      },
+      last_run_id: "run-promote-filtered-equivalent",
+    });
+
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([broadTask, filteredTask]),
+    );
+
+    await mkdir(path.dirname(config.paths.decisionsPath), { recursive: true });
+    await writeFile(
+      config.paths.decisionsPath,
+      [
+        JSON.stringify({
+          event_id: "evt-broad-equivalent",
+          timestamp: "2026-03-21T09:00:00.000Z",
+          run_id: "run-promote-broad-equivalent",
+          task_id: "promote-broad-equivalent",
+          baseline_id: "baseline-test-live",
+          run_fingerprint: "promote-broad-equivalent-fingerprint",
+          decision: "promote",
+          reason: "Broad NAS100 promote",
+          planner_campaign_id: "reduce_drawdown",
+          planner_campaign_objective: "reduce_drawdown",
+          aggregate_summary: sharedAggregate,
+          crisis_summary: sharedCrisis,
+          walkforward_summary: sharedWalkforward,
+          ranking_score: 53.93,
+          ranking_band: "promising",
+        }),
+        JSON.stringify({
+          event_id: "evt-filtered-equivalent",
+          timestamp: "2026-03-21T10:00:00.000Z",
+          run_id: "run-promote-filtered-equivalent",
+          task_id: "promote-filtered-equivalent",
+          baseline_id: "baseline-test-live",
+          run_fingerprint: "promote-filtered-equivalent-fingerprint",
+          decision: "promote",
+          reason: "Filtered NAS100 promote",
+          planner_campaign_id: "reduce_drawdown",
+          planner_campaign_objective: "reduce_drawdown",
+          aggregate_summary: sharedAggregate,
+          crisis_summary: sharedCrisis,
+          walkforward_summary: sharedWalkforward,
+          ranking_score: 53.93,
+          ranking_band: "promising",
+        }),
+      ].join("\n") + "\n",
+      "utf8",
+    );
+
+    await writeRunArtifacts(config.paths.runsDir, "run-promote-broad-equivalent");
+    await writeRunArtifacts(config.paths.runsDir, "run-promote-filtered-equivalent");
+
+    const boardReport = await buildResearchPromotionBoard(config);
+    const packageReport = await buildResearchPromotionPackageReport({
+      config,
+      boardReport,
+    });
+
+    expect(packageReport.summary.review_ready_count).toBe(2);
+    expect(packageReport.summary.ready_for_live_review_count).toBe(1);
+    expect(packageReport.summary.blocked_count).toBe(1);
+
+    const broadPackage = packageReport.packages.find(
+      (pkg) => pkg.package_id === "package-task-promote-broad-equivalent",
+    );
+    const filteredPackage = packageReport.packages.find(
+      (pkg) => pkg.package_id === "package-task-promote-filtered-equivalent",
+    );
+
+    expect(broadPackage?.review.ready_for_live_review).toBe(false);
+    expect(broadPackage?.review.blockers).toContain(
+      "Broader overlapping scope than equivalent narrower package 'package-task-promote-filtered-equivalent'. Canonical Promote -> Paper handoff keeps the narrowest equivalent task scope.",
+    );
+    expect(filteredPackage?.review.ready_for_live_review).toBe(true);
+    expect(
+      filteredPackage?.review.blockers.some((blocker) => blocker.includes("Overlapping ready-for-live-review scope")),
+    ).toBe(false);
   });
 
   it("treats backfilled legacy metadata as caution instead of blocker", async () => {

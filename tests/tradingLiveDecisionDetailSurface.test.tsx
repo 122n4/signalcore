@@ -114,7 +114,7 @@ describe("trading live decision detail surface", () => {
     expect(html).toContain("1.0780 - 1.0765");
     expect(html).toContain("Live Feed");
     expect(html).toContain("Short EURUSD below 1.0820");
-    expect(html).toContain("Trading live chart");
+    expect(html).toContain("Live market chart");
     expect(html).toContain("Trigger");
     expect(html).toContain("Invalidation");
     expect(html).toContain("Risk");
@@ -168,7 +168,7 @@ describe("trading live decision detail surface", () => {
       />,
     );
 
-    expect(html).toContain("No chart candles available for this snapshot.");
+    expect(html).toContain("No market candles are available for this snapshot yet.");
     expect(html).toContain("Target");
     expect(html).toContain("Risk");
     expect(html).toContain("No explanation attached to this trading snapshot.");

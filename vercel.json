@@ -5,6 +5,10 @@
       "schedule": "0 0 * * *"
     },
     {
+      "path": "/api/trading/bot/paper-daemon",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/engine/loop",
       "schedule": "15 3 * * *"
     }

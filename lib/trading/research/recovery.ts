@@ -1,11 +1,17 @@
 import { appendJsonLine, writeJsonAtomic } from "./fs";
 import {
   buildResearchRunArtifactPaths,
-  verifyResearchRunArtifacts,
+  verifyResearchRunCompletionArtifacts,
+  writeResearchRunChecksums,
   writeResearchFailureArtifacts,
 } from "./artifactContract";
 import { classifyResearchFailure } from "./forensics";
-import { classifyResearchLockHealth, readResearchLock, releaseResearchLock } from "./lock";
+import {
+  classifyResearchLockHealth,
+  isResearchLockRunnerAlive,
+  readResearchLock,
+  releaseResearchLock,
+} from "./lock";
 import {
   finalizeResearchTask,
   readResearchQueue,
@@ -32,7 +38,9 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
     return { recovered: false, message: "No active research lock found." };
   }
 
-  const health = classifyResearchLockHealth(config, lock);
+  const timeHealth = classifyResearchLockHealth(config, lock);
+  const runnerAlive = isResearchLockRunnerAlive(lock);
+  const health = runnerAlive === false && timeHealth === "healthy" ? "stale" : timeHealth;
   const runtimeHealth = await buildResearchRuntimeHealth({ config });
   const stageTimedOut =
     runtimeHealth.activeRun.runId === lock.run_id &&
@@ -51,15 +59,16 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   const runPaths = buildResearchRunArtifactPaths(config.paths.runsDir, lock.run_id);
   const decision = await readJsonIfExists<ResearchRunDecision>(runPaths.decisionPath);
   const status = await readJsonIfExists<ResearchRunStatus>(runPaths.statusPath);
-  const artifactsValid = await verifyResearchRunArtifacts(runPaths);
+  const completionArtifactsValid = await verifyResearchRunCompletionArtifacts(runPaths);
   const now = new Date().toISOString();
 
   if (
     decision &&
-    artifactsValid &&
+    completionArtifactsValid &&
     !decision.operational_failure &&
     status?.status !== "failed"
   ) {
+    await writeResearchRunChecksums(runPaths);
     const awaitingDecisionQueue = updateResearchTaskStatus(
       queue,
       lock.task_id,

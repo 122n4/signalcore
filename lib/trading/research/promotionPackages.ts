@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { fileExists, ensureDirectory, sanitizeFileSegment, writeJsonAtomic } from "./fs";
+import { fileExists, ensureDirectory, readJsonIfExists, sanitizeFileSegment, writeJsonAtomic } from "./fs";
 import { buildResearchReportProvenance } from "./provenance";
 import { readResearchQueue } from "./queue";
 import { readLatestResearchRegistryReport } from "./registry";
@@ -18,6 +18,7 @@ import type {
   ResearchPromotionPackageRunArtifact,
   ResearchRegistryArtifactEntry,
   ResearchRegistryReport,
+  ResearchTask,
 } from "./types";
 
 async function readDecisionLedgerEntries(
@@ -113,6 +114,301 @@ function buildPackageReview(entry: ResearchPromotionBoardEntry): ResearchPromoti
   };
 }
 
+type ResearchPromotionPackageTaskScope = {
+  package_id: string;
+  instrument: string | null;
+  sessions: string[];
+  setup_types: string[];
+  risk_modes: string[];
+  execution_statuses: string[];
+  quality_grades: string[];
+  clarity_levels: string[];
+  environment_states: string[];
+};
+
+function normalizeScopeString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeScopeList(values: string[] | undefined): string[] {
+  return Array.from(
+    new Set(
+      (values ?? [])
+        .map((value) => normalizeScopeString(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ).sort();
+}
+
+function buildPackageTaskScope(args: {
+  pkg: ResearchPromotionPackage;
+  task: ResearchTask | null;
+}): ResearchPromotionPackageTaskScope | null {
+  if (args.pkg.source !== "task" || !args.task) {
+    return null;
+  }
+
+  const instruments = normalizeScopeList(args.task.candidate_scope.instruments);
+  return {
+    package_id: args.pkg.package_id,
+    instrument: instruments[0] ?? null,
+    sessions: normalizeScopeList(args.task.candidate_scope.sessions),
+    setup_types: normalizeScopeList(args.task.candidate_scope.setup_types),
+    risk_modes: normalizeScopeList(args.task.candidate_scope.risk_modes),
+    execution_statuses: normalizeScopeList(args.task.candidate_scope.execution_statuses),
+    quality_grades: normalizeScopeList(args.task.candidate_scope.quality_grades),
+    clarity_levels: normalizeScopeList(args.task.candidate_scope.clarity_levels),
+    environment_states: normalizeScopeList(args.task.candidate_scope.environment_states),
+  };
+}
+
+function scopeValueOverlaps(left: string | null, right: string | null): boolean {
+  return !left || !right || left === right;
+}
+
+function scopeListOverlaps(left: string[], right: string[]): boolean {
+  if (left.length === 0 || right.length === 0) {
+    return true;
+  }
+  return left.some((value) => right.includes(value));
+}
+
+function packageScopesOverlap(
+  left: ResearchPromotionPackageTaskScope,
+  right: ResearchPromotionPackageTaskScope,
+): boolean {
+  return (
+    scopeValueOverlaps(left.instrument, right.instrument) &&
+    scopeListOverlaps(left.sessions, right.sessions) &&
+    scopeListOverlaps(left.setup_types, right.setup_types) &&
+    scopeListOverlaps(left.risk_modes, right.risk_modes) &&
+    scopeListOverlaps(left.execution_statuses, right.execution_statuses) &&
+    scopeListOverlaps(left.quality_grades, right.quality_grades) &&
+    scopeListOverlaps(left.clarity_levels, right.clarity_levels) &&
+    scopeListOverlaps(left.environment_states, right.environment_states)
+  );
+}
+
+function scopeValueIsSubset(current: string | null, allowed: string | null): boolean {
+  if (!current) {
+    return !allowed;
+  }
+  if (!allowed) {
+    return true;
+  }
+  return current === allowed;
+}
+
+function scopeListIsSubset(current: string[], allowed: string[]): boolean {
+  if (current.length === 0) {
+    return allowed.length === 0;
+  }
+  if (allowed.length === 0) {
+    return true;
+  }
+  return current.every((value) => allowed.includes(value));
+}
+
+function packageScopeIsSubset(
+  current: ResearchPromotionPackageTaskScope,
+  allowed: ResearchPromotionPackageTaskScope,
+): boolean {
+  return (
+    scopeValueIsSubset(current.instrument, allowed.instrument) &&
+    scopeListIsSubset(current.sessions, allowed.sessions) &&
+    scopeListIsSubset(current.setup_types, allowed.setup_types) &&
+    scopeListIsSubset(current.risk_modes, allowed.risk_modes) &&
+    scopeListIsSubset(current.execution_statuses, allowed.execution_statuses) &&
+    scopeListIsSubset(current.quality_grades, allowed.quality_grades) &&
+    scopeListIsSubset(current.clarity_levels, allowed.clarity_levels) &&
+    scopeListIsSubset(current.environment_states, allowed.environment_states)
+  );
+}
+
+function packageScopeIsStrictSubset(
+  current: ResearchPromotionPackageTaskScope,
+  allowed: ResearchPromotionPackageTaskScope,
+): boolean {
+  return (
+    packageScopeIsSubset(current, allowed) &&
+    !packageScopeIsSubset(allowed, current)
+  );
+}
+
+async function buildPackageScientificEquivalenceKey(
+  pkg: ResearchPromotionPackage,
+): Promise<string | null> {
+  const comparisonPath = pkg.artifacts.run_artifacts[0]?.comparison_path ?? null;
+  if (!comparisonPath) {
+    return null;
+  }
+
+  const comparison = await readJsonIfExists<Record<string, unknown>>(comparisonPath);
+  if (!comparison) {
+    return null;
+  }
+
+  return JSON.stringify({
+    baseline_id: pkg.baseline_id,
+    decision: pkg.decision,
+    primary_campaign_id: pkg.primary_campaign_id ?? null,
+    primary_campaign_objective: pkg.primary_campaign_objective ?? null,
+    score: pkg.score ?? null,
+    band: pkg.band ?? null,
+    aggregate_summary: pkg.aggregate_summary ?? null,
+    crisis_summary: pkg.crisis_summary ?? null,
+    walkforward_summary: pkg.walkforward_summary ?? null,
+    comparison: {
+      aggregate: comparison.aggregate ?? null,
+      crisis: comparison.crisis ?? null,
+      walkForward: comparison.walkForward ?? null,
+      robustness: comparison.robustness ?? null,
+      statistical_validation: comparison.statistical_validation ?? null,
+      gates: comparison.gates ?? null,
+    },
+  });
+}
+
+async function applyAmbiguousTaskScopeBlockers(args: {
+  packages: ResearchPromotionPackage[];
+  tasksById: Map<string, ResearchTask>;
+}): Promise<ResearchPromotionPackage[]> {
+  const canonicalDuplicateBlockers = new Map<string, string>();
+  const overlapsByPackageId = new Map<string, Set<string>>();
+  const candidateScopes = (
+    await Promise.all(
+      args.packages
+        .filter((pkg) => pkg.source === "task" && pkg.review.ready_for_live_review)
+        .map(async (pkg) => ({
+          pkg,
+          scope: buildPackageTaskScope({
+            pkg,
+            task: args.tasksById.get(pkg.task_ids[0] ?? "") ?? null,
+          }),
+          scientificKey: await buildPackageScientificEquivalenceKey(pkg),
+        })),
+    )
+  )
+    .filter(
+      (
+        entry,
+      ): entry is {
+        pkg: ResearchPromotionPackage;
+        scope: ResearchPromotionPackageTaskScope;
+        scientificKey: string | null;
+      } => Boolean(entry.scope),
+    );
+
+  for (let leftIndex = 0; leftIndex < candidateScopes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < candidateScopes.length; rightIndex += 1) {
+      const left = candidateScopes[leftIndex];
+      const right = candidateScopes[rightIndex];
+      if (!left || !right) {
+        continue;
+      }
+      if (!packageScopesOverlap(left.scope, right.scope)) {
+        continue;
+      }
+
+      const scopesAreEquivalent =
+        Boolean(left.scientificKey) &&
+        left.scientificKey === right.scientificKey;
+      const leftIsNarrower = packageScopeIsStrictSubset(left.scope, right.scope);
+      const rightIsNarrower = packageScopeIsStrictSubset(right.scope, left.scope);
+
+      if (scopesAreEquivalent && leftIsNarrower) {
+        canonicalDuplicateBlockers.set(right.pkg.package_id, left.pkg.package_id);
+        continue;
+      }
+      if (scopesAreEquivalent && rightIsNarrower) {
+        canonicalDuplicateBlockers.set(left.pkg.package_id, right.pkg.package_id);
+        continue;
+      }
+    }
+  }
+
+  const activeCandidatePackageIds = new Set(
+    candidateScopes
+      .map((entry) => entry.pkg.package_id)
+      .filter((packageId) => !canonicalDuplicateBlockers.has(packageId)),
+  );
+
+  for (let leftIndex = 0; leftIndex < candidateScopes.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < candidateScopes.length; rightIndex += 1) {
+      const left = candidateScopes[leftIndex];
+      const right = candidateScopes[rightIndex];
+      if (!left || !right) {
+        continue;
+      }
+      if (
+        !activeCandidatePackageIds.has(left.pkg.package_id) ||
+        !activeCandidatePackageIds.has(right.pkg.package_id)
+      ) {
+        continue;
+      }
+      if (!packageScopesOverlap(left.scope, right.scope)) {
+        continue;
+      }
+
+      const leftOverlaps = overlapsByPackageId.get(left.pkg.package_id) ?? new Set<string>();
+      leftOverlaps.add(right.pkg.package_id);
+      overlapsByPackageId.set(left.pkg.package_id, leftOverlaps);
+
+      const rightOverlaps = overlapsByPackageId.get(right.pkg.package_id) ?? new Set<string>();
+      rightOverlaps.add(left.pkg.package_id);
+      overlapsByPackageId.set(right.pkg.package_id, rightOverlaps);
+    }
+  }
+
+  if (overlapsByPackageId.size === 0 && canonicalDuplicateBlockers.size === 0) {
+    return args.packages;
+  }
+
+  return args.packages.map((pkg) => {
+    const narrowerPackageId = canonicalDuplicateBlockers.get(pkg.package_id);
+    if (narrowerPackageId) {
+      return {
+        ...pkg,
+        review: {
+          ...pkg.review,
+          ready_for_live_review: false,
+          blockers: Array.from(
+            new Set([
+              ...pkg.review.blockers,
+              `Broader overlapping scope than equivalent narrower package '${narrowerPackageId}'. Canonical Promote -> Paper handoff keeps the narrowest equivalent task scope.`,
+            ]),
+          ),
+        },
+      };
+    }
+
+    const overlaps = overlapsByPackageId.get(pkg.package_id);
+    if (!overlaps || overlaps.size === 0) {
+      return pkg;
+    }
+
+    const overlapBlockers = Array.from(overlaps)
+      .sort()
+      .map(
+        (packageId) =>
+          `Overlapping ready-for-live-review scope with package '${packageId}'. Canonical Promote -> Paper handoff requires a unique scope.`,
+      );
+
+    return {
+      ...pkg,
+      review: {
+        ...pkg.review,
+        ready_for_live_review: false,
+        blockers: Array.from(new Set([...pkg.review.blockers, ...overlapBlockers])),
+      },
+    };
+  });
+}
+
 function mapLatestLedgerByTaskId(args: {
   entries: ResearchDecisionLedgerEntry[];
   liveBaselineId: string | null;
@@ -205,6 +501,7 @@ export async function buildResearchPromotionPackageReport(args: {
   boardReport: ResearchPromotionBoardReport;
 }): Promise<ResearchPromotionPackageReport> {
   const queue = await readResearchQueue(args.config);
+  const tasksById = new Map(queue.tasks.map((task) => [task.id, task] as const));
   const ledgerEntries = await readDecisionLedgerEntries(args.config);
   const latestLedgerByTaskId = mapLatestLedgerByTaskId({
     entries: ledgerEntries,
@@ -313,7 +610,10 @@ export async function buildResearchPromotionPackageReport(args: {
       }),
   );
 
-  const sortedPackages = packages.sort(sortPackages);
+  const sortedPackages = (await applyAmbiguousTaskScopeBlockers({
+    packages,
+    tasksById,
+  })).sort(sortPackages);
 
   return {
     schema_version: resolveResearchReportSchemaVersion("promotionPackages"),
@@ -337,6 +637,17 @@ export async function buildResearchPromotionPackageReport(args: {
     },
     packages: sortedPackages,
   };
+}
+
+export async function readLatestResearchPromotionPackageReport(
+  config: ResearchConfig,
+): Promise<ResearchPromotionPackageReport | null> {
+  const latestJsonPath = path.join(
+    config.paths.reportsDir,
+    "packages",
+    "promotion-packages-latest.json",
+  );
+  return readJsonIfExists<ResearchPromotionPackageReport>(latestJsonPath);
 }
 
 function renderPackageMarkdown(pkg: ResearchPromotionPackage): string {

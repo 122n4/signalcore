@@ -133,6 +133,11 @@ describe("trading risk framing engine", () => {
 
   it("stacks a second NAS100 overlap reduction only in london_ny_overlap", () => {
     const input = createExecutionInput({
+      playbookOverrides: {
+        baseRules: {
+          blockedTradeValidContexts: [],
+        },
+      },
       snapshotOverrides: {
         instrument: "NAS100",
         marketType: "equities",
@@ -274,6 +279,11 @@ describe("trading risk framing engine", () => {
 
   it("halves BTCUSD breakout continuation exposure in weekend_drift even for aggressive trades", () => {
     const input = createExecutionInput({
+      playbookOverrides: {
+        baseRules: {
+          blockedTradeValidContexts: [],
+        },
+      },
       snapshotOverrides: {
         instrument: "BTCUSD",
         marketType: "crypto",

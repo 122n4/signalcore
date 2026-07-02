@@ -18,6 +18,69 @@ import {
   writeResearchCandidateLibrary,
 } from "./helpers/tradingResearchFixtures";
 
+async function writeTaskComparison(args: {
+  runsDir: string;
+  runId: string;
+  deflatedSharpeRatio: number;
+  pboEstimate: number;
+  adjustedPValue: number;
+}) {
+  const runDir = path.join(args.runsDir, args.runId);
+  await mkdir(runDir, { recursive: true });
+  await writeJsonAtomic(path.join(runDir, "comparison.json"), {
+    aggregate: {
+      baseline: createMetricSummary(),
+      current: createMetricSummary({ expectancy: 0.28, profitFactor: 1.8 }),
+    },
+    crisis: {
+      baseline: createMetricSummary({ expectancy: -0.05, profitFactor: 0.98 }),
+      current: createMetricSummary({ expectancy: 0.02, profitFactor: 1.15 }),
+    },
+    walkForward: {
+      baseline: createMetricSummary({ expectancy: 0.01, profitFactor: 1.01 }),
+      current: createMetricSummary({ expectancy: 0.11, profitFactor: 1.12 }),
+      affectedInstruments: ["NAS100"],
+    },
+    gates: {
+      aggregateExpectancyStable: true,
+      aggregateProfitFactorStable: true,
+      aggregateDrawdownStable: true,
+      crisisExpectancyStable: true,
+      crisisProfitFactorStable: true,
+      crisisDrawdownStable: true,
+      walkForwardExpectancyStable: true,
+      walkForwardProfitFactorStable: true,
+      walkForwardDrawdownStable: true,
+      walkForwardBreakEvenOrBetter: true,
+      statisticalValidationPass: true,
+      aggregateImproved: true,
+      crisisImproved: true,
+      walkForwardImproved: true,
+      promotionThresholdMet: true,
+      allHardGatesPass: true,
+    },
+    statistical_validation: {
+      sample_size: 120,
+      independent_trial_count: 1,
+      trade_level_sharpe_ratio: 0.88,
+      deflated_sharpe_ratio: args.deflatedSharpeRatio,
+      pbo: {
+        value: args.pboEstimate,
+        risk_band: "low",
+      },
+      white_reality_check: {
+        p_value: 0.09,
+        adjusted_p_value: args.adjustedPValue,
+        bootstrap_iterations: 500,
+      },
+      diagnostics: {
+        out_of_sample_checks: [],
+        notes: [],
+      },
+    },
+  });
+}
+
 describe("trading research promotion board", () => {
   it("builds a ranked board from task decisions and bundle reports", async () => {
     const rootDir = await createResearchTempDir();
@@ -318,6 +381,65 @@ describe("trading research promotion board", () => {
     expect(outputs.latestJsonPath).toContain("promotion-board-latest.json");
   });
 
+  it("hydrates task-level statistical validation fields from canonical comparison artifacts", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+
+    const promoteTask = createResearchTask({
+      id: "promote-stats",
+      status: "completed",
+      decision: "promote",
+      decision_reason: "Strong promote with statistical validation",
+      planner_source: {
+        campaign_id: "increase_expectancy",
+        campaign_objective: "increase_expectancy",
+        family_id: "risk-family",
+        template_id: "promote-stats-template",
+        auto_enqueued: true,
+      },
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([promoteTask]));
+    await mkdir(path.dirname(config.paths.decisionsPath), { recursive: true });
+    await writeFile(
+      config.paths.decisionsPath,
+      JSON.stringify({
+        event_id: "evt-stats",
+        timestamp: "2026-03-21T10:00:00.000Z",
+        run_id: "run-promote-stats",
+        task_id: "promote-stats",
+        baseline_id: "baseline-test-live",
+        run_fingerprint: "promote-stats-fingerprint",
+        decision: "promote",
+        reason: "Strong promote with statistical validation",
+        planner_campaign_id: "increase_expectancy",
+        planner_campaign_objective: "increase_expectancy",
+        aggregate_summary: createMetricSummary({ expectancy: 0.28, profitFactor: 1.8 }),
+        crisis_summary: createMetricSummary({ expectancy: 0.02, profitFactor: 1.15 }),
+        walkforward_summary: createMetricSummary({ expectancy: 0.11, profitFactor: 1.12 }),
+        ranking_score: 86,
+        ranking_band: "strong",
+      }) + "\n",
+      "utf8",
+    );
+
+    await writeTaskComparison({
+      runsDir: config.paths.runsDir,
+      runId: "run-promote-stats",
+      deflatedSharpeRatio: 0.67,
+      pboEstimate: 0.12,
+      adjustedPValue: 0.08,
+    });
+
+    const report = await buildResearchPromotionBoard(config);
+    const entry = report.entries[0];
+
+    expect(entry?.statistical_validation_passed).toBe(true);
+    expect(entry?.deflated_sharpe_ratio).toBe(0.67);
+    expect(entry?.pbo_estimate).toBe(0.12);
+    expect(entry?.white_reality_check_p_value).toBe(0.08);
+  });
+
   it("backfills campaign and ranking metadata for legacy promotes from queue and library context", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);
@@ -408,7 +530,7 @@ describe("trading research promotion board", () => {
     expect(report.campaign_performance[0]?.task_promotes).toBe(1);
   });
 
-  it("drops an older review-ready promote when a newer rerun of the same template is rejected", async () => {
+  it("keeps the latest positive board entry when a newer rerun of the same template is rejected", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);
 
@@ -492,11 +614,14 @@ describe("trading research promotion board", () => {
 
     const report = await buildResearchPromotionBoard(config);
 
-    expect(report.entries).toHaveLength(0);
-    expect(report.summary.task_promotes).toBe(0);
-    expect(report.summary.review_ready_count).toBe(0);
+    expect(report.entries).toHaveLength(1);
+    expect(report.entries[0]?.decision).toBe("promote");
+    expect(report.entries[0]?.board_status).toBe("review_ready");
+    expect(report.entries[0]?.task_ids).toEqual(["nas100-block-old"]);
+    expect(report.summary.task_promotes).toBe(1);
+    expect(report.summary.review_ready_count).toBe(1);
     expect(report.campaign_performance[0]?.campaign_id).toBe("reduce_drawdown");
-    expect(report.campaign_performance[0]?.task_promotes).toBe(0);
+    expect(report.campaign_performance[0]?.task_promotes).toBe(1);
     expect(report.campaign_performance[0]?.task_rejects_or_failed).toBe(1);
   });
 });

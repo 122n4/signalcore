@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+const ATOMIC_TEMP_STALE_MS = 60_000;
 
 export function stableStringify(value: unknown): string {
   return JSON.stringify(sortValue(value));
@@ -47,6 +49,7 @@ export async function writeJsonAtomic(targetPath: string, value: unknown): Promi
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     await ensureDirectory(path.dirname(targetPath));
+    await cleanupStaleAtomicTemps(targetPath);
     const tempPath = `${targetPath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
 
     try {
@@ -73,6 +76,46 @@ export async function writeJsonAtomic(targetPath: string, value: unknown): Promi
       await delay(25 * (attempt + 1));
     }
   }
+}
+
+async function cleanupStaleAtomicTemps(targetPath: string): Promise<void> {
+  const directory = path.dirname(targetPath);
+  const prefix = `${path.basename(targetPath)}.`;
+  const now = Date.now();
+
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+
+  await Promise.all(
+    names.map(async (name) => {
+      if (!name.startsWith(prefix) || !name.endsWith(".tmp")) {
+        return;
+      }
+
+      const tempPath = path.join(directory, name);
+
+      try {
+        const details = await stat(tempPath);
+        if (now - details.mtimeMs < ATOMIC_TEMP_STALE_MS) {
+          return;
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return;
+        }
+        throw error;
+      }
+
+      await removeFileIfExists(tempPath);
+    }),
+  );
 }
 
 function delay(milliseconds: number): Promise<void> {

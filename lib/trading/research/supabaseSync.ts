@@ -12,7 +12,11 @@ import {
   buildResearchDataAcquisitionPlan,
   buildResearchDatasetRequirementsReport,
 } from "./datasetRequirements";
-import { buildResearchLatestReportsOverview } from "./reportsOverview";
+import {
+  buildResearchLatestReportsOverview,
+  buildResearchPromotionReadinessOverview,
+} from "./reportsOverview";
+import { buildResearchPaperPromotionSnapshot } from "./paperPromotion";
 import { buildResearchRuntimeHealth } from "./runtimeHealth";
 import type {
   ResearchBaselineManifest,
@@ -262,7 +266,7 @@ export async function buildResearchSupabasePayload(args: {
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan] = await Promise.all([
+  const [runtime, queue, baseline, decisions, reportsOverview, datasetRequirements, dataAcquisitionPlan, paperPromotion] = await Promise.all([
     buildResearchRuntimeHealth({ config }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
@@ -270,7 +274,12 @@ export async function buildResearchSupabasePayload(args: {
     buildResearchLatestReportsOverview(config),
     buildResearchDatasetRequirementsReport(config),
     buildResearchDataAcquisitionPlan(config),
+    buildResearchPaperPromotionSnapshot(config),
   ]);
+  const promotionReadiness = await buildResearchPromotionReadinessOverview({
+    config,
+    paperPromotion,
+  });
   const runs = await readRecentRunRows(config, queue, decisions, args.runLimit ?? 80);
   const lastSuccessfulRunAt =
     runs.find((run) => run.status === "completed")?.updated_at ??
@@ -311,8 +320,10 @@ export async function buildResearchSupabasePayload(args: {
         queueOverview: summarizeQueue(queue),
         baseline,
         reportsOverview,
+        promotionReadiness,
         datasetRequirements,
         dataAcquisitionPlan,
+        paperPromotion,
       },
     },
     decisionRows: decisions.map(decisionRow),

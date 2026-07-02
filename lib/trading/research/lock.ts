@@ -77,3 +77,20 @@ export function classifyResearchLockHealth(
   }
   return "healthy";
 }
+
+export function isResearchLockRunnerAlive(lock: ResearchLock): boolean | null {
+  if (lock.hostname !== os.hostname()) {
+    return null;
+  }
+
+  if (!Number.isInteger(lock.runner_pid) || lock.runner_pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(lock.runner_pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}

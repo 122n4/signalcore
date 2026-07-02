@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { buildResearchDatasetHealthSummary } from "./datasetHealth";
 import { buildResearchPlannerFuelStatus } from "./planner";
+import { classifyResearchFailure } from "./forensics";
 import { buildResearchReportProvenance } from "./provenance";
 import { readResearchQueue } from "./queue";
 import { resolveResearchReportSchemaVersion } from "./schema";
@@ -68,7 +69,7 @@ function buildFailureForensicsSummary(
   const summary: Partial<Record<ResearchFailureCategory, number>> = {};
 
   for (const entry of entries) {
-    const category = entry.failure_forensics?.category;
+    const category = resolveLedgerFailureCategory(entry);
     if (!category) {
       continue;
     }
@@ -76,6 +77,23 @@ function buildFailureForensicsSummary(
   }
 
   return summary;
+}
+
+function resolveLedgerFailureCategory(
+  entry: ResearchDecisionLedgerEntry,
+): ResearchFailureCategory | null {
+  if (entry.failure_forensics?.category) {
+    return entry.failure_forensics.category;
+  }
+
+  if (entry.decision !== "reject" && entry.decision !== "failed") {
+    return null;
+  }
+
+  return classifyResearchFailure({
+    reason: entry.reason,
+    error: entry.error ?? null,
+  }).category;
 }
 
 function renderFuelStatusMarkdown(report: {
@@ -351,7 +369,7 @@ export async function buildResearchCycleReport(
       planner_campaign_objective: entry.planner_campaign_objective ?? null,
       ranking_score: entry.ranking_score ?? null,
       ranking_band: entry.ranking_band ?? null,
-      failure_category: entry.failure_forensics?.category ?? null,
+      failure_category: resolveLedgerFailureCategory(entry),
     })),
     queue_snapshot: buildQueueSnapshot(queue),
     idle_reason: queue.idle_reason,

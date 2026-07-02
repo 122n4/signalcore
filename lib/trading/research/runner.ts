@@ -45,7 +45,12 @@ import {
   writeResearchWindowReport,
 } from "./report";
 import { refreshResearchBundleValidationReportIfNeeded } from "./bundleValidation";
+import {
+  buildResearchOpportunityReviewReport,
+  writeResearchOpportunityReviewReport,
+} from "./opportunityReview";
 import { buildResearchRegistryReport, writeResearchRegistryReport } from "./registry";
+import { buildResearchStatisticalValidation } from "./statisticalValidation";
 import { resolveEffectiveResearchInstruments } from "./taskScope";
 import { evaluateResearchValidationGates } from "./validationGates";
 import type {
@@ -65,6 +70,7 @@ import type {
   ResearchTaskExecutorMap,
   ResearchTaskRunnerDependencies,
 } from "./types";
+import type { TradingBacktestTrade } from "@/lib/trading/backtest/types";
 
 export function buildMetricSummary(
   input: Partial<ResearchMetricSummary> | ResearchMetricSummary | null | undefined,
@@ -243,7 +249,25 @@ function buildResearchComparison(args: {
   affectedInstruments: string[];
   thresholds: ResearchConfig["validationProfiles"][keyof ResearchConfig["validationProfiles"]]["thresholds"];
   robustness?: ResearchSupplementalValidation | null;
+  baselineTrades?: TradingBacktestTrade[];
+  currentTrades?: TradingBacktestTrade[];
+  independentTrialCount?: number;
 }): ResearchRunComparison {
+  const statisticalValidation =
+    Array.isArray(args.baselineTrades) &&
+    args.baselineTrades.length > 0 &&
+    Array.isArray(args.currentTrades) &&
+    args.currentTrades.length > 0
+      ? buildResearchStatisticalValidation({
+          baselineTrades: args.baselineTrades,
+          currentTrades: args.currentTrades,
+          aggregateCurrent: args.aggregateCurrent,
+          walkForwardCurrent: args.walkForwardCurrent,
+          robustness: args.robustness,
+          independentTrialCount: args.independentTrialCount ?? 1,
+        })
+      : null;
+
   return {
     aggregate: {
       baseline: buildMetricSummary(args.aggregateBaseline),
@@ -259,6 +283,7 @@ function buildResearchComparison(args: {
       affectedInstruments: args.affectedInstruments,
     },
     robustness: args.robustness,
+    statistical_validation: statisticalValidation,
     gates: evaluateResearchValidationGates({
       aggregateBaseline: args.aggregateBaseline,
       aggregateCurrent: args.aggregateCurrent,
@@ -276,6 +301,7 @@ function buildResearchComparison(args: {
       monteCarloCurrent: args.robustness?.monteCarlo?.current,
       costStressBaseline: args.robustness?.costStress?.baseline,
       costStressCurrent: args.robustness?.costStress?.current,
+      statisticalValidation: statisticalValidation ?? undefined,
       thresholds: args.thresholds,
     }),
   };
@@ -355,6 +381,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
       affectedInstruments: scenarioResult.affectedInstruments,
       thresholds,
       robustness,
+      baselineTrades: report.baseline.aggregateTrades,
+      currentTrades: scenarioResult.aggregate.trades,
+      independentTrialCount: 1,
     });
 
     if (context.config.study.robustness?.monteCarlo?.enabled && comparison.gates.allHardGatesPass) {
@@ -382,6 +411,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         affectedInstruments: scenarioResult.affectedInstruments,
         thresholds,
         robustness,
+        baselineTrades: report.baseline.aggregateTrades,
+        currentTrades: scenarioResult.aggregate.trades,
+        independentTrialCount: 1,
       });
     }
 
@@ -410,6 +442,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         affectedInstruments: scenarioResult.affectedInstruments,
         thresholds,
         robustness,
+        baselineTrades: report.baseline.aggregateTrades,
+        currentTrades: scenarioResult.aggregate.trades,
+        independentTrialCount: 1,
       });
     }
 
@@ -438,6 +473,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         affectedInstruments: scenarioResult.affectedInstruments,
         thresholds,
         robustness,
+        baselineTrades: report.baseline.aggregateTrades,
+        currentTrades: scenarioResult.aggregate.trades,
+        independentTrialCount: 1,
       });
     }
 
@@ -516,6 +554,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
       affectedInstruments: scenarioResult.affectedInstruments,
       thresholds,
       robustness,
+      baselineTrades: report.baseline.aggregateTrades,
+      currentTrades: scenarioResult.aggregate.trades,
+      independentTrialCount: 1,
     });
 
     if (context.config.study.robustness?.monteCarlo?.enabled && comparison.gates.allHardGatesPass) {
@@ -543,6 +584,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         affectedInstruments: scenarioResult.affectedInstruments,
         thresholds,
         robustness,
+        baselineTrades: report.baseline.aggregateTrades,
+        currentTrades: scenarioResult.aggregate.trades,
+        independentTrialCount: 1,
       });
     }
 
@@ -571,6 +615,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         affectedInstruments: scenarioResult.affectedInstruments,
         thresholds,
         robustness,
+        baselineTrades: report.baseline.aggregateTrades,
+        currentTrades: scenarioResult.aggregate.trades,
+        independentTrialCount: 1,
       });
     }
 
@@ -599,6 +646,9 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         affectedInstruments: scenarioResult.affectedInstruments,
         thresholds,
         robustness,
+        baselineTrades: report.baseline.aggregateTrades,
+        currentTrades: scenarioResult.aggregate.trades,
+        independentTrialCount: 1,
       });
     }
 
@@ -651,6 +701,14 @@ async function refreshResearchOpportunities(
     config,
     report: packageReport,
   });
+  const opportunityReviewReport = await buildResearchOpportunityReviewReport(config, {
+    boardReport,
+    packageReport,
+  });
+  const opportunityReviewOutputs = await writeResearchOpportunityReviewReport({
+    config,
+    report: opportunityReviewReport,
+  });
   const datasetHealthReport = await buildResearchDatasetHealthReport(config);
   const datasetHealthOutputs = await writeResearchDatasetHealthReport({
     config,
@@ -677,6 +735,10 @@ async function refreshResearchOpportunities(
     packages: {
       jsonPath: packageOutputs.latestJsonPath,
       markdownPath: packageOutputs.latestMarkdownPath,
+    },
+    review: {
+      jsonPath: opportunityReviewOutputs.latestJsonPath,
+      markdownPath: opportunityReviewOutputs.latestMarkdownPath,
     },
     datasetHealth: {
       jsonPath: datasetHealthOutputs.latestJsonPath,
@@ -1154,6 +1216,7 @@ export async function processResearchQueue(
       bundle: opportunityOutputs.bundle,
       board: opportunityOutputs.board,
       packages: opportunityOutputs.packages,
+      review: opportunityOutputs.review,
       datasetHealth: opportunityOutputs.datasetHealth,
       registry: opportunityOutputs.registry,
     },

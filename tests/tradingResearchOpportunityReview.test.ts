@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildAndWriteResearchOpportunityReviewReport,
   buildResearchOpportunityReviewReport,
+  readJsonIfExists,
   writeJsonAtomic,
   type ResearchPromotionBoardReport,
   type ResearchPromotionPackageReport,
@@ -253,6 +255,123 @@ describe("trading research opportunity review", () => {
     expect(report.bundle.status).toBe("insufficient_candidates");
   });
 
+  it("ignores packages that are no longer ready for live review after canonical blocking", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const task = createResearchTask({
+      id: "review-task-blocked",
+      status: "completed",
+      decision: "promote",
+      type: "context_filter",
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        family_id: "family-blocked",
+        template_id: "template-blocked",
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        auto_enqueued: true,
+      },
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([task]));
+    const { boardReport, packageReport } = createBoardAndPackageReports({
+      taskIds: [task.id],
+      baselineId: "baseline-test-live",
+    });
+    packageReport.summary.ready_for_live_review_count = 0;
+    packageReport.summary.blocked_count = 1;
+    packageReport.packages[0].review.ready_for_live_review = false;
+    packageReport.packages[0].review.blockers = [
+      "Overlapping ready-for-live-review scope with package 'package-other'. Canonical Promote -> Paper handoff requires a unique scope.",
+    ];
+
+    const report = await buildResearchOpportunityReviewReport(config, {
+      boardReport,
+      packageReport,
+      executors: {
+        context_filter: async () => {
+          throw new Error("executor should not run when no package is ready for live review");
+        },
+      },
+      now: () => new Date("2026-03-21T00:00:00.000Z"),
+    });
+
+    expect(report.summary.reviewed_item_count).toBe(0);
+    expect(report.summary.package_ready_for_live_review_count).toBe(0);
+    expect(report.bundle.status).toBe("insufficient_candidates");
+    expect(report.items).toEqual([]);
+  });
+
+  it("prefers canonical run comparison artifacts before re-executing a ready package", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const task = createResearchTask({
+      id: "review-task-artifact",
+      status: "completed",
+      decision: "promote",
+      type: "context_filter",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        family_id: "family-artifact",
+        template_id: "template-artifact",
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        auto_enqueued: true,
+      },
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([task]));
+    const { boardReport, packageReport } = createBoardAndPackageReports({
+      taskIds: [task.id],
+      baselineId: "baseline-test-live",
+    });
+
+    const artifactDir = `${rootDir}/canonical-review-artifacts`;
+    const comparisonPath = `${artifactDir}/comparison.json`;
+    await writeJsonAtomic(comparisonPath, createComparison());
+
+    packageReport.packages[0].artifacts.run_artifacts = [
+      {
+        task_id: task.id,
+        run_id: "run-review-task-artifact",
+        manifest_path: null,
+        comparison_path: comparisonPath,
+        decision_path: null,
+        manifest_artifact_id: null,
+        manifest_artifact_version: null,
+        comparison_artifact_id: "comparison-artifact",
+        comparison_artifact_version: "v1",
+        decision_artifact_id: null,
+        decision_artifact_version: null,
+      },
+    ];
+
+    const report = await buildResearchOpportunityReviewReport(config, {
+      boardReport,
+      packageReport,
+      executors: {
+        context_filter: async () => {
+          throw new Error("executor should not run when canonical comparison exists");
+        },
+      },
+      now: () => new Date("2026-03-21T00:00:00.000Z"),
+    });
+
+    expect(report.summary.reviewed_item_count).toBe(1);
+    expect(report.items[0]?.task_id).toBe(task.id);
+    expect(report.items[0]?.isolated_decision).toBe("promote");
+    expect(report.bundle.status).toBe("insufficient_candidates");
+  });
+
   it("validates a compatible bundle when two ready opportunities are present", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);
@@ -377,5 +496,86 @@ describe("trading research opportunity review", () => {
     expect(report.summary.reviewed_item_count).toBe(2);
     expect(report.bundle.status).toBe("validated");
     expect(report.bundle.decision?.decision).toBe("candidate");
+  });
+
+  it("keeps latest board/package reports aligned with the written opportunity review", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const task = createResearchTask({
+      id: "review-task-sync",
+      status: "completed",
+      decision: "promote",
+      type: "context_filter",
+      candidate_scope: {
+        instruments: ["NAS100"],
+        sessions: ["ny_open"],
+        setup_types: ["breakout_continuation"],
+      },
+      candidate_mutation: {
+        kind: "blocked_context",
+      },
+      planner_source: {
+        family_id: "family-sync",
+        template_id: "template-sync",
+        campaign_id: "reduce_drawdown",
+        campaign_objective: "reduce_drawdown",
+        auto_enqueued: true,
+      },
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([task]));
+    const { boardReport, packageReport } = createBoardAndPackageReports({
+      taskIds: [task.id],
+      baselineId: "baseline-test-live",
+    });
+
+    const { report } = await buildAndWriteResearchOpportunityReviewReport(config, {
+      boardReport: {
+        ...boardReport,
+        report_id: "board-sync",
+        generated_at: "2026-03-22T00:00:00.000Z",
+      },
+      packageReport: {
+        ...packageReport,
+        report_id: "packages-sync",
+        generated_at: "2026-03-22T00:00:00.000Z",
+        provenance: {
+          ...packageReport.provenance,
+          upstream_report_ids: ["board-sync"],
+        },
+        packages: packageReport.packages.map((pkg) => ({
+          ...pkg,
+          generated_at: "2026-03-22T00:00:00.000Z",
+          artifacts: {
+            ...pkg.artifacts,
+            board_report_id: "board-sync",
+          },
+        })),
+      },
+      executors: {
+        context_filter: async () => ({
+          affectedInstruments: ["NAS100"],
+          comparison: createComparison(),
+          artifacts: {
+            aggregateReport: {},
+            crisisReport: {},
+            walkForwardReport: {},
+          },
+        }),
+      },
+      now: () => new Date("2026-03-22T00:00:00.000Z"),
+    });
+
+    const latestBoard = await readJsonIfExists<ResearchPromotionBoardReport>(
+      `${config.paths.reportsDir}/boards/promotion-board-latest.json`,
+    );
+    const latestPackages = await readJsonIfExists<ResearchPromotionPackageReport>(
+      `${config.paths.reportsDir}/packages/promotion-packages-latest.json`,
+    );
+
+    expect(latestBoard?.report_id).toBe("board-sync");
+    expect(latestPackages?.report_id).toBe("packages-sync");
+    expect(report.source_board_report_id).toBe("board-sync");
+    expect(report.source_package_report_id).toBe("packages-sync");
   });
 });

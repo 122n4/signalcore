@@ -53,6 +53,43 @@ describe("trading research reporting", () => {
     expect(outputs.markdownPath.endsWith(".md")).toBe(true);
   });
 
+  it("backfills missing historical failure forensics in report summaries", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([createResearchTask({ id: "task-report-next" })]),
+    );
+
+    await appendJsonLine(config.paths.decisionsPath, {
+      event_id: "evt-report-failed-1",
+      timestamp: "2026-03-19T10:00:00.000Z",
+      run_id: "run-report-failed-1",
+      task_id: "task-report-failed-1",
+      baseline_id: "baseline-test-live",
+      run_fingerprint: "fp-report-failed-1",
+      decision: "failed",
+      reason: "Stage timeout while finalization was waiting on aggregate-report.json.",
+      error: "timed out during aggregate finalization",
+    });
+    await appendJsonLine(config.paths.decisionsPath, {
+      event_id: "evt-report-reject-1",
+      timestamp: "2026-03-19T10:05:00.000Z",
+      run_id: "run-report-reject-1",
+      task_id: "task-report-reject-1",
+      baseline_id: "baseline-test-live",
+      run_fingerprint: "fp-report-reject-1",
+      decision: "reject",
+      reason: "Hard validation gates failed: aggregate expectancy degraded.",
+    });
+
+    const report = await buildDailyResearchReport(config, new Date("2026-03-19T12:00:00.000Z"));
+
+    expect(report.runs_failed).toBe(1);
+    expect(report.failure_forensics_summary.runtime_timeout).toBe(1);
+    expect(report.failure_forensics_summary.validation_gate).toBe(1);
+  });
+
   it("renders a cycle report for the processed runs", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);
@@ -100,6 +137,36 @@ describe("trading research reporting", () => {
     expect(report.dataset_health.eligible_instrument_count).toBeGreaterThan(0);
     expect(outputs.jsonPath.endsWith(".json")).toBe(true);
     expect(outputs.markdownPath.endsWith(".md")).toBe(true);
+  });
+
+  it("backfills cycle failure categories when historical ledger entries predate forensics", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([createResearchTask({ id: "task-cycle-next" })]),
+    );
+
+    await appendJsonLine(config.paths.decisionsPath, {
+      event_id: "evt-cycle-failed-legacy",
+      timestamp: "2026-03-19T10:00:00.000Z",
+      run_id: "run-cycle-failed-legacy",
+      task_id: "task-cycle-failed-legacy",
+      baseline_id: "baseline-test-live",
+      run_fingerprint: "fp-cycle-failed-legacy",
+      decision: "failed",
+      reason: "Recovered stale or hung run without complete artifact contract.",
+    });
+
+    const report = await buildResearchCycleReport(config, {
+      processedRunIds: ["run-cycle-failed-legacy"],
+      startedAt: new Date("2026-03-19T09:00:00.000Z"),
+      finishedAt: new Date("2026-03-19T11:00:00.000Z"),
+    });
+
+    expect(report.runs).toHaveLength(1);
+    expect(report.runs[0]?.failure_category).toBe("artifact_contract");
+    expect(report.failure_forensics_summary.artifact_contract).toBe(1);
   });
 
   it("renders a rolling window report for the last 8 hours", async () => {

@@ -384,6 +384,11 @@ describe("trading backtest risk overrides", () => {
 
   it("supports selective backtest risk shaping by execution status", () => {
     const input = createExecutionInput({
+      playbookOverrides: {
+        baseRules: {
+          blockedTradeValidContexts: [],
+        },
+      },
       snapshotOverrides: {
         instrument: "NAS100",
       },

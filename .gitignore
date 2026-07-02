@@ -38,3 +38,4 @@ tsconfig.tsbuildinfo
 /curl
 /daily_current.png
 /.codex-next-dev.err.log & echo started
+.env*

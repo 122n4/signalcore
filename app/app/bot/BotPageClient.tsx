@@ -602,7 +602,7 @@ export default function BotPageClient({ userId }: { userId: string }) {
               <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-500">Paper trading memory</p>
               <h2 className="mt-2 text-3xl font-black">6-month paper history</h2>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                The paper daemon checks the latest stored Syntrake signal automatically every 10 minutes. You can still run a manual paper cycle here.
+                The paper daemon checks the latest stored Syntrake signal on the production schedule. You can still run a manual paper cycle here.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -661,7 +661,7 @@ export default function BotPageClient({ userId }: { userId: string }) {
 
           {paperObservability ? (
             <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/35 p-4 text-xs leading-5 text-slate-300">
-              Canonical paper source: <span className="font-black text-white">{paperObservability.schemaReady ? "paper_trades" : "legacy journal fallback"}</span>
+              Canonical paper source: <span className="font-black text-white">{paperObservability.schemaReady ? "paper_trades" : "paper_trades unavailable"}</span>
               {" | "}Reconciliation: <span className="font-black text-white">{paperObservability.reconciliationStatus}</span>
               {" | "}Historical cycles reconciled: {paperObservability.reconciledHistoricalCycles}
               {" | "}Repaired now: {paperObservability.repairedThisRun}

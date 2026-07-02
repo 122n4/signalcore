@@ -32,6 +32,7 @@ import type {
   ResearchPromotionBoardReport,
   ResearchPromotionBoardStatus,
   ResearchRankingMetadataSource,
+  ResearchRunComparison,
   ResearchTask,
 } from "./types";
 
@@ -393,7 +394,7 @@ function resolveRankingMetadata(args: {
   };
 }
 
-function buildLatestTaskLedgerEntries(args: {
+function buildLatestTaskOutcomeLedgerEntries(args: {
   ledgerEntries: ResearchDecisionLedgerEntry[];
   liveBaselineId: string | null;
   queueTasksById: Map<string, ResearchTask>;
@@ -423,54 +424,101 @@ function buildLatestTaskLedgerEntries(args: {
   return [...latestByOpportunity.values()];
 }
 
+function buildLatestTaskBoardLedgerEntries(args: {
+  ledgerEntries: ResearchDecisionLedgerEntry[];
+  liveBaselineId: string | null;
+  queueTasksById: Map<string, ResearchTask>;
+}): ResearchDecisionLedgerEntry[] {
+  if (!args.liveBaselineId) {
+    return [];
+  }
+
+  const latestPositiveByOpportunity = new Map<string, ResearchDecisionLedgerEntry>();
+
+  for (const entry of args.ledgerEntries) {
+    if (entry.baseline_id !== args.liveBaselineId) {
+      continue;
+    }
+    if (entry.decision !== "promote" && entry.decision !== "candidate") {
+      continue;
+    }
+
+    const task = args.queueTasksById.get(entry.task_id) ?? null;
+    const key = buildLedgerOpportunityKey({
+      entry,
+      task,
+    });
+    const previous = latestPositiveByOpportunity.get(key);
+    if (!previous || previous.timestamp.localeCompare(entry.timestamp) < 0) {
+      latestPositiveByOpportunity.set(key, entry);
+    }
+  }
+
+  return [...latestPositiveByOpportunity.values()];
+}
+
 function buildTaskEntries(args: {
+  config: ResearchConfig;
   latestTaskLedgerEntries: ResearchDecisionLedgerEntry[];
   queueTasksById: Map<string, ResearchTask>;
   candidateLookup: CandidateCampaignLookup;
   campaignMap: Map<string, ResearchCampaignDefinition>;
-}): ResearchPromotionBoardEntry[] {
-  return args.latestTaskLedgerEntries
-    .filter((entry) => entry.decision === "promote" || entry.decision === "candidate")
-    .map((entry) => {
-    const decision = entry.decision === "promote" ? "promote" : "candidate";
-    const task = args.queueTasksById.get(entry.task_id) ?? null;
-    const campaignMetadata = resolveCampaignMetadata({
-      ledgerEntry: entry,
-      task,
-      candidateLookup: args.candidateLookup,
-      campaignMap: args.campaignMap,
-    });
-    const rankingMetadata = resolveRankingMetadata({
-      ledgerEntry: entry,
-      aggregateSummary: entry.aggregate_summary ?? null,
-      crisisSummary: entry.crisis_summary ?? null,
-      walkforwardSummary: entry.walkforward_summary ?? null,
-    });
+}): Promise<ResearchPromotionBoardEntry[]> {
+  return Promise.all(
+    args.latestTaskLedgerEntries
+      .filter((entry) => entry.decision === "promote" || entry.decision === "candidate")
+      .map(async (entry) => {
+        const decision = entry.decision === "promote" ? "promote" : "candidate";
+        const task = args.queueTasksById.get(entry.task_id) ?? null;
+        const campaignMetadata = resolveCampaignMetadata({
+          ledgerEntry: entry,
+          task,
+          candidateLookup: args.candidateLookup,
+          campaignMap: args.campaignMap,
+        });
+        const rankingMetadata = resolveRankingMetadata({
+          ledgerEntry: entry,
+          aggregateSummary: entry.aggregate_summary ?? null,
+          crisisSummary: entry.crisis_summary ?? null,
+          walkforwardSummary: entry.walkforward_summary ?? null,
+        });
+        const comparison =
+          entry.run_id
+            ? await readJsonIfExists<ResearchRunComparison>(
+                path.join(args.config.paths.runsDir, entry.run_id, "comparison.json"),
+              )
+            : null;
 
-    return {
-      entry_id: `task-${entry.task_id}`,
-      source: "task",
-      baseline_id: entry.baseline_id,
-      task_ids: [entry.task_id],
-      campaign_ids: campaignMetadata.campaignIds,
-      campaign_objectives: campaignMetadata.campaignObjectives,
-      primary_campaign_id: campaignMetadata.primaryCampaignId,
-      primary_campaign_objective: campaignMetadata.primaryCampaignObjective,
-      campaign_metadata_source: campaignMetadata.campaignMetadataSource,
-      campaign_mode: campaignMetadata.campaignMode,
-      run_id: entry.run_id,
-      decision,
-      board_status: decision === "promote" ? "review_ready" : "watchlist",
-      summary: entry.reason,
-      score: rankingMetadata.score,
-      band: rankingMetadata.band,
-      ranking_metadata_source: rankingMetadata.rankingMetadataSource,
-      aggregate_summary: entry.aggregate_summary ?? null,
-      crisis_summary: entry.crisis_summary ?? null,
-      walkforward_summary: entry.walkforward_summary ?? null,
-      generated_at: entry.timestamp,
-    };
-  });
+        return {
+          entry_id: `task-${entry.task_id}`,
+          source: "task",
+          baseline_id: entry.baseline_id,
+          task_ids: [entry.task_id],
+          campaign_ids: campaignMetadata.campaignIds,
+          campaign_objectives: campaignMetadata.campaignObjectives,
+          primary_campaign_id: campaignMetadata.primaryCampaignId,
+          primary_campaign_objective: campaignMetadata.primaryCampaignObjective,
+          campaign_metadata_source: campaignMetadata.campaignMetadataSource,
+          campaign_mode: campaignMetadata.campaignMode,
+          run_id: entry.run_id,
+          decision,
+          board_status: decision === "promote" ? "review_ready" : "watchlist",
+          summary: entry.reason,
+          score: rankingMetadata.score,
+          band: rankingMetadata.band,
+          ranking_metadata_source: rankingMetadata.rankingMetadataSource,
+          statistical_validation_passed: comparison?.gates?.statisticalValidationPass ?? null,
+          deflated_sharpe_ratio: comparison?.statistical_validation?.deflated_sharpe_ratio ?? null,
+          pbo_estimate: comparison?.statistical_validation?.pbo?.value ?? null,
+          white_reality_check_p_value:
+            comparison?.statistical_validation?.white_reality_check?.adjusted_p_value ?? null,
+          aggregate_summary: entry.aggregate_summary ?? null,
+          crisis_summary: entry.crisis_summary ?? null,
+          walkforward_summary: entry.walkforward_summary ?? null,
+          generated_at: entry.timestamp,
+        };
+      }),
+  );
 }
 
 function buildBundleEntries(args: {
@@ -586,7 +634,7 @@ function buildBundleEntries(args: {
 
 function buildCampaignPerformance(args: {
   entries: ResearchPromotionBoardEntry[];
-  latestTaskLedgerEntries: ResearchDecisionLedgerEntry[];
+  latestTaskOutcomeLedgerEntries: ResearchDecisionLedgerEntry[];
   queueTasksById: Map<string, ResearchTask>;
   candidateLookup: CandidateCampaignLookup;
   campaignMap: Map<string, ResearchCampaignDefinition>;
@@ -612,7 +660,7 @@ function buildCampaignPerformance(args: {
     return current;
   };
 
-  for (const ledgerEntry of args.latestTaskLedgerEntries) {
+  for (const ledgerEntry of args.latestTaskOutcomeLedgerEntries) {
     const task = args.queueTasksById.get(ledgerEntry.task_id) ?? null;
     const campaignMetadata = resolveCampaignMetadata({
       ledgerEntry,
@@ -629,13 +677,7 @@ function buildCampaignPerformance(args: {
       campaignMetadata.primaryCampaignObjective,
     );
 
-    if (ledgerEntry.decision === "promote") {
-      current.task_promotes += 1;
-      current.review_ready_count += 1;
-    } else if (ledgerEntry.decision === "candidate") {
-      current.task_candidates += 1;
-      current.watchlist_count += 1;
-    } else if (ledgerEntry.decision === "reject" || ledgerEntry.decision === "failed") {
+    if (ledgerEntry.decision === "reject" || ledgerEntry.decision === "failed") {
       current.task_rejects_or_failed += 1;
     }
 
@@ -664,7 +706,19 @@ function buildCampaignPerformance(args: {
     }
 
     const current = ensureEntry(entry.primary_campaign_id, entry.primary_campaign_objective);
-    if (entry.source === "bundle") {
+    if (entry.source === "task") {
+      if (entry.decision === "promote") {
+        current.task_promotes += 1;
+      } else if (entry.decision === "candidate") {
+        current.task_candidates += 1;
+      }
+
+      if (entry.board_status === "watchlist") {
+        current.watchlist_count += 1;
+      } else if (entry.board_status === "review_ready") {
+        current.review_ready_count += 1;
+      }
+    } else if (entry.source === "bundle") {
       if (entry.decision === "promote") {
         current.bundle_promotes += 1;
       } else if (entry.decision === "candidate") {
@@ -720,14 +774,20 @@ export async function buildResearchPromotionBoard(
     libraries: candidateLibraries,
     campaignMap,
   });
-  const latestTaskLedgerEntries = buildLatestTaskLedgerEntries({
+  const latestTaskOutcomeLedgerEntries = buildLatestTaskOutcomeLedgerEntries({
+    ledgerEntries,
+    liveBaselineId: queue.live_baseline_id,
+    queueTasksById,
+  });
+  const latestTaskBoardLedgerEntries = buildLatestTaskBoardLedgerEntries({
     ledgerEntries,
     liveBaselineId: queue.live_baseline_id,
     queueTasksById,
   });
 
-  const taskEntries = buildTaskEntries({
-    latestTaskLedgerEntries,
+  const taskEntries = await buildTaskEntries({
+    config,
+    latestTaskLedgerEntries: latestTaskBoardLedgerEntries,
     queueTasksById,
     candidateLookup,
     campaignMap,
@@ -748,7 +808,7 @@ export async function buildResearchPromotionBoard(
   const entries = [...taskEntries, ...bundleEntries].sort(sortBoardEntries);
   const campaignPerformance = buildCampaignPerformance({
     entries,
-    latestTaskLedgerEntries,
+    latestTaskOutcomeLedgerEntries,
     queueTasksById,
     candidateLookup,
     campaignMap,

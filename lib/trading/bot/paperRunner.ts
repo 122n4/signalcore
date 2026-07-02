@@ -8,7 +8,6 @@ import {
   runAutonomousBotCycle,
 } from "@/lib/trading/bot";
 import {
-  settlePaperTradeRows,
   summarizePaperPerformance,
   type PaperTradeHistoryRow,
 } from "@/lib/trading/bot/paperPerformance";
@@ -133,41 +132,19 @@ function paperHistoryErrorMessage(error: unknown) {
 
 export async function readPaperRows(userId: string, days = 183) {
   const canonical = await readCanonicalPaperRows(userId, days);
-  if (canonical.schemaReady) {
-    const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
-    if (!reconciliation.schemaReady) return canonical.rows.length > 0 ? canonical.rows : legacyRows;
-
-    const refreshedCanonical = await readCanonicalPaperRows(userId, days);
-    return refreshedCanonical.schemaReady ? refreshedCanonical.rows : legacyRows;
+  if (!canonical.schemaReady) {
+    throw new Error(canonical.error || "paper_trades_missing");
   }
 
-  const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
-  if (!reconciliation.schemaReady) return legacyRows;
+  const { reconciliation } = await reconcileLegacyPaperWindow(userId, days);
+  if (!reconciliation.schemaReady) return canonical.rows;
 
   const refreshedCanonical = await readCanonicalPaperRows(userId, days);
-  return refreshedCanonical.schemaReady ? refreshedCanonical.rows : legacyRows;
+  return refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows;
 }
 
 export async function readSettledPaperRows(userId: string, days = 183, maxSettlements = 8) {
   return (await readCanonicalPaperHistory(userId, { days, maxSettlements })).rows;
-}
-
-async function readLegacySettledPaperRows(userId: string, days = 183, maxSettlements = 8) {
-  const sb = getSupabaseAdmin();
-  const rows = await readLegacyPaperRows(userId, days);
-  return settlePaperTradeRows({
-    rows,
-    maxSettlements,
-    updateDetails: async (id, details) => {
-      const { error } = await sb
-        .from("journal_entries")
-        .update({ details })
-        .eq("id", id)
-        .eq("user_id", userId)
-        .eq("type", "trading_bot_paper_cycle");
-      if (error) throw new Error(error.message || "paper_outcome_update_failed");
-    },
-  });
 }
 
 async function readCanonicalPaperHistory(
@@ -178,31 +155,15 @@ async function readCanonicalPaperHistory(
   const maxSettlements = args.maxSettlements ?? 8;
   const canonical = await readCanonicalPaperRows(userId, days);
 
-  if (canonical.schemaReady) {
-    const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
-    if (!reconciliation.schemaReady) {
-      const settlement = await settleCanonicalPaperRows({
-        userId,
-        rows: canonical.rows,
-        maxSettlements,
-      });
+  if (!canonical.schemaReady) {
+    throw new Error(canonical.error || "paper_trades_missing");
+  }
 
-      return {
-        rows: settlement.rows,
-        observability: buildPaperObservability({
-          schemaReady: true,
-          reconciledHistoricalCycles: 0,
-          repairedThisRun: settlement.repaired,
-          rows: settlement.rows,
-          error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
-        }),
-      };
-    }
-
-    const refreshedCanonical = await readCanonicalPaperRows(userId, days);
+  const { reconciliation } = await reconcileLegacyPaperWindow(userId, days);
+  if (!reconciliation.schemaReady) {
     const settlement = await settleCanonicalPaperRows({
       userId,
-      rows: refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows,
+      rows: canonical.rows,
       maxSettlements,
     });
 
@@ -210,7 +171,7 @@ async function readCanonicalPaperHistory(
       rows: settlement.rows,
       observability: buildPaperObservability({
         schemaReady: true,
-        reconciledHistoricalCycles: reconciliation.reconciled,
+        reconciledHistoricalCycles: 0,
         repairedThisRun: settlement.repaired,
         rows: settlement.rows,
         error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
@@ -218,39 +179,10 @@ async function readCanonicalPaperHistory(
     };
   }
 
-  const { legacyRows, reconciliation } = await reconcileLegacyPaperWindow(userId, days);
-
-  if (!reconciliation.schemaReady) {
-    const fallbackRows = await readLegacySettledPaperRows(userId, days, maxSettlements);
-    return {
-      rows: fallbackRows,
-      observability: buildPaperObservability({
-        schemaReady: false,
-        reconciledHistoricalCycles: 0,
-        repairedThisRun: 0,
-        rows: fallbackRows,
-        error: reconciliation.error,
-      }),
-    };
-  }
-
   const refreshedCanonical = await readCanonicalPaperRows(userId, days);
-  if (!refreshedCanonical.schemaReady) {
-    return {
-      rows: legacyRows,
-      observability: buildPaperObservability({
-        schemaReady: false,
-        reconciledHistoricalCycles: reconciliation.reconciled,
-        repairedThisRun: 0,
-        rows: legacyRows,
-        error: refreshedCanonical.error,
-      }),
-    };
-  }
-
   const settlement = await settleCanonicalPaperRows({
     userId,
-    rows: refreshedCanonical.rows,
+    rows: refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows,
     maxSettlements,
   });
 
@@ -390,8 +322,10 @@ export async function runPaperBotCycleForUser(args: {
       ok: false,
       status: "blocked",
       generatedAt,
-      message: "Paper cycle blocked by bot policy.",
-      result: { planned, execution: null },
+      message: snapshotPlan.researchApproval?.approved === false
+        ? snapshotPlan.researchApproval.reason
+        : "Paper cycle blocked by bot policy.",
+      result: { planned, execution: null, researchApproval: snapshotPlan.researchApproval },
       ...(await readPaperHistoryPayload(args.userId, { maxSettlements: historyMaxSettlements })),
     };
   }
@@ -449,6 +383,7 @@ export async function runPaperBotCycleForUser(args: {
       equity: snapshotPlan.account.equity,
       currency: snapshotPlan.account.currency,
     },
+    researchApproval: snapshotPlan.researchApproval,
     planned: result.planned,
     intent: result.planned.intent,
     execution: result.execution,
@@ -473,7 +408,10 @@ export async function runPaperBotCycleForUser(args: {
   }).select("id,title,details,created_at").single();
   if (error) throw new Error(error.message || "paper_cycle_write_failed");
   if (insertedRow) {
-    await upsertCanonicalPaperTradeFromJournal(args.userId, insertedRow as PaperTradeHistoryRow);
+    const canonicalWrite = await upsertCanonicalPaperTradeFromJournal(args.userId, insertedRow as PaperTradeHistoryRow);
+    if (!canonicalWrite.schemaReady || canonicalWrite.error) {
+      throw new Error(canonicalWrite.error || "paper_trade_canonical_write_failed");
+    }
   }
 
   return {

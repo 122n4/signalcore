@@ -12,7 +12,13 @@ import {
 import { readJsonIfExists } from "@/lib/trading/research/fs";
 import { readResearchQueue } from "@/lib/trading/research/queue";
 import { canonicalizeResearchRunSnapshot } from "@/lib/trading/research/runCanonicalization";
-import { buildResearchLatestReportsOverview, type ResearchLatestReportsOverview } from "@/lib/trading/research/reportsOverview";
+import {
+  buildResearchLatestReportsOverview,
+  buildResearchPromotionReadinessOverview,
+  emptyResearchPromotionReadinessOverview,
+  type ResearchLatestReportsOverview,
+  type ResearchPromotionReadinessOverview,
+} from "@/lib/trading/research/reportsOverview";
 import { buildResearchRuntimeHealth } from "@/lib/trading/research/runtimeHealth";
 import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
 import type {
@@ -95,6 +101,7 @@ export type ResearchLabOverview = {
     recent: ResearchLabRunEntry[];
   };
   reports: ResearchLatestReportsOverview;
+  promotionReadiness: ResearchPromotionReadinessOverview;
   datasetRequirements: ResearchDatasetRequirementsReport;
   dataAcquisitionPlan: ResearchDataAcquisitionPlan;
   operatorActions: Array<{
@@ -386,77 +393,19 @@ export async function buildResearchLabOverview(args: {
     buildResearchDatasetRequirementsReport(config),
     buildResearchDataAcquisitionPlan(config),
   ]);
-  const remote = await readResearchLabRemoteSnapshot({ runLimit: 40, decisionLimit: 120 });
-  const remotePayload = remote.state?.payload ?? null;
-  if (remote.schemaReady && remote.state && remotePayload?.runtime) {
-    const remoteDecisions = remote.decisions.map(decisionFromRemote);
-    const decisionCounts = remoteDecisions.reduce<Record<string, number>>((acc, entry) => {
-      acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
-      return acc;
-    }, {});
-
-    return {
-      generatedAt: remote.state.generated_at ?? generatedAt,
-      config: {
-        queueId: config.queueId,
-        baselineId: config.liveBaselineSource.baselineId,
-        datasetProfile: config.liveBaselineSource.datasetProfile,
-        validationProfile: config.liveBaselineSource.validationProfile,
-        instruments: config.study.instruments,
-        timeframes: config.study.timeframes,
-        paths: {
-          queuePath: config.paths.queuePath,
-          runsDir: config.paths.runsDir,
-          decisionsPath: config.paths.decisionsPath,
-        },
-      },
-      runtime: remotePayload.runtime,
-      baseline: remotePayload.baseline ?? null,
-      queue: queueFromRemote(remotePayload.queueOverview),
-      decisions: {
-        counts: decisionCounts,
-        recent: remoteDecisions.slice(0, 18),
-        promotedOrCandidate: remoteDecisions
-          .filter((entry) => entry.decision === "promote" || entry.decision === "candidate")
-          .slice(0, 10),
-        rejectedOrFailed: remoteDecisions
-          .filter((entry) => entry.decision === "reject" || entry.decision === "failed")
-          .slice(0, 14),
-      },
-      runs: {
-        recent: remote.runs.map(runFromRemote),
-      },
-      reports: remotePayload.reportsOverview ?? {
-        bundleValidation: null,
-        promotionBoard: null,
-        promotionPackages: null,
-        opportunityReview: null,
-        datasetHealth: null,
-        registry: null,
-      },
-      datasetRequirements: remotePayload.datasetRequirements ?? datasetRequirements,
-      dataAcquisitionPlan: remotePayload.dataAcquisitionPlan ?? dataAcquisitionPlan,
-      operatorActions: operatorActions(),
-      storage: {
-        localArtifactBacked: false,
-        remoteBacked: true,
-        remoteSchemaReady: true,
-        note: "This view is reading Research Lab state from Supabase, synced by the external worker/VPS.",
-      },
-    };
-  }
 
   const baselinePath = path.join(
     config.paths.baselinesDir,
     config.liveBaselineSource.baselineId,
     "baseline-manifest.json",
   );
-  const [runtime, queue, baseline, decisions, reports] = await Promise.all([
+  const [runtime, queue, baseline, decisions, reports, promotionReadiness] = await Promise.all([
     buildResearchRuntimeHealth({ config, now: args.now }),
     readResearchQueue(config, { createIfMissing: false }),
     readJsonIfExists<ResearchBaselineManifest>(baselinePath),
     readDecisionEntries(config.paths.decisionsPath),
     buildResearchLatestReportsOverview(config),
+    buildResearchPromotionReadinessOverview({ config }),
   ]);
   const recentRuns = await readRecentRuns(config, queue, decisions);
   const decisionCounts = decisions.reduce<Record<string, number>>((acc, entry) => {
@@ -469,6 +418,97 @@ export async function buildResearchLabOverview(args: {
   const rejectedOrFailed = decisions
     .filter((entry) => entry.decision === "reject" || entry.decision === "failed")
     .slice(0, 14);
+  const localArtifactBacked = Boolean(
+    baseline ||
+      decisions.length > 0 ||
+      recentRuns.length > 0 ||
+      queue.tasks.length > 0 ||
+      queue.active_run_id ||
+      queue.idle_reason,
+  );
+
+  if (!localArtifactBacked) {
+    const remote = await readResearchLabRemoteSnapshot({ runLimit: 40, decisionLimit: 120 });
+    const remotePayload = remote.state?.payload ?? null;
+
+    if (remote.schemaReady && remote.state && remotePayload?.runtime) {
+      const remoteDecisions = remote.decisions.map(decisionFromRemote);
+      const decisionCounts = remoteDecisions.reduce<Record<string, number>>((acc, entry) => {
+        acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      return {
+        generatedAt: remote.state.generated_at ?? generatedAt,
+        config: {
+          queueId: config.queueId,
+          baselineId: config.liveBaselineSource.baselineId,
+          datasetProfile: config.liveBaselineSource.datasetProfile,
+          validationProfile: config.liveBaselineSource.validationProfile,
+          instruments: config.study.instruments,
+          timeframes: config.study.timeframes,
+          paths: {
+            queuePath: config.paths.queuePath,
+            runsDir: config.paths.runsDir,
+            decisionsPath: config.paths.decisionsPath,
+          },
+        },
+        runtime: remotePayload.runtime,
+        baseline: remotePayload.baseline ?? null,
+        queue: queueFromRemote(remotePayload.queueOverview),
+        decisions: {
+          counts: decisionCounts,
+          recent: remoteDecisions.slice(0, 18),
+          promotedOrCandidate: remoteDecisions
+            .filter((entry) => entry.decision === "promote" || entry.decision === "candidate")
+            .slice(0, 10),
+          rejectedOrFailed: remoteDecisions
+            .filter((entry) => entry.decision === "reject" || entry.decision === "failed")
+            .slice(0, 14),
+        },
+        runs: {
+          recent: remote.runs.map(runFromRemote),
+        },
+        reports: remotePayload.reportsOverview ?? {
+          bundleValidation: null,
+          promotionBoard: null,
+          promotionPackages: null,
+          opportunityReview: null,
+          datasetHealth: null,
+          registry: null,
+        },
+        promotionReadiness:
+          remotePayload.promotionReadiness ??
+          (remotePayload.paperPromotion
+            ? {
+                ...emptyResearchPromotionReadinessOverview(),
+                paperGate: {
+                  readyPackageCount: Number(remotePayload.paperPromotion.ready_package_count ?? 0),
+                  executableTaskScopeCount: Number(remotePayload.paperPromotion.executable_task_scope_count ?? 0),
+                  bundleOnlyReadyPackageCount: Number(remotePayload.paperPromotion.bundle_only_ready_package_count ?? 0),
+                  status:
+                    Number(remotePayload.paperPromotion.executable_task_scope_count ?? 0) > 0
+                      ? "ready"
+                      : Number(remotePayload.paperPromotion.bundle_only_ready_package_count ?? 0) > 0
+                        ? "bundle_only"
+                        : Number(remotePayload.paperPromotion.ready_package_count ?? 0) > 0
+                          ? "blocked"
+                          : "idle",
+                },
+              }
+            : emptyResearchPromotionReadinessOverview()),
+        datasetRequirements: remotePayload.datasetRequirements ?? datasetRequirements,
+        dataAcquisitionPlan: remotePayload.dataAcquisitionPlan ?? dataAcquisitionPlan,
+        operatorActions: operatorActions(),
+        storage: {
+          localArtifactBacked: false,
+          remoteBacked: true,
+          remoteSchemaReady: true,
+          note: "This view is reading Research Lab state from Supabase, synced by the external worker/VPS.",
+        },
+      };
+    }
+  }
 
   return {
     generatedAt,
@@ -498,18 +538,17 @@ export async function buildResearchLabOverview(args: {
       recent: recentRuns,
     },
     reports,
+    promotionReadiness,
     datasetRequirements,
     dataAcquisitionPlan,
     operatorActions: operatorActions(),
     storage: {
-      localArtifactBacked: Boolean(baseline || decisions.length > 0 || recentRuns.length > 0),
+      localArtifactBacked,
       remoteBacked: false,
-      remoteSchemaReady: remote.schemaReady,
-      note: remote.error
-        ? `Supabase lab state unavailable (${remote.error}). Falling back to local artifacts.`
-        : baseline || decisions.length > 0 || recentRuns.length > 0
-          ? "This view is reading local research artifacts from the current workspace."
-          : "No local lab artifacts are available in this runtime. Sync lab state to Supabase to make this page complete in production.",
+      remoteSchemaReady: false,
+      note: localArtifactBacked
+        ? "This view is reading canonical local Research Lab artifacts from the current workspace. Supabase remains a mirror/read model only and was not queried."
+        : "No local lab artifacts are available in this runtime. Sync lab state to Supabase to make this page complete in production.",
     },
   };
 }

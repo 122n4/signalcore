@@ -224,7 +224,7 @@ export async function readCanonicalPaperRows(userId: string, days = 183) {
   const { data, error } = await sb
     .from("paper_trades")
     .select(
-      "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,created_at",
+      "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,raw_details,created_at",
     )
     .eq("user_id", userId)
     .gte("created_at", since)

@@ -246,10 +246,75 @@ function DataAcquisitionAgentPanel({ lab }: { lab: Awaited<ReturnType<typeof bui
   );
 }
 
+function PromotionReadinessPanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
+  const promotion = lab.promotionReadiness;
+  const board = promotion.board;
+  const packages = promotion.packages;
+  const opportunity = promotion.opportunity;
+  const paperGate = promotion.paperGate;
+  const panelTone = tone(
+    paperGate?.status === "ready"
+      ? "ok"
+      : (packages?.blockedCount ?? 0) > 0 || paperGate?.status === "blocked"
+        ? "blocked"
+        : paperGate?.status === "bundle_only"
+          ? "warn"
+          : "idle",
+  );
+
+  return (
+    <section className={`mt-7 rounded-[30px] border p-6 shadow-2xl shadow-black/20 ${panelTone}`}>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] opacity-70">Promote to paper</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Canonical handoff readiness</h2>
+          <p className="mt-3 max-w-4xl text-sm opacity-85">
+            This panel reads the canonical promotion board, promotion packages, opportunity review, and current paper
+            gate snapshot. It shows whether promoted research can actually flow into paper without ambiguity.
+          </p>
+        </div>
+        <div className="rounded-full border border-white/20 bg-black/20 px-4 py-2 text-sm font-black uppercase tracking-[0.18em]">
+          {paperGate?.status ?? "unavailable"}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <Metric label="Board review ready" value={board?.reviewReadyCount ?? "n/a"} />
+        <Metric label="Live-review packages" value={packages?.readyForLiveReviewCount ?? "n/a"} />
+        <Metric label="Blocked packages" value={packages?.blockedCount ?? "n/a"} />
+        <Metric label="Executable paper scopes" value={paperGate?.executableTaskScopeCount ?? "n/a"} />
+        <Metric label="Bundle confirmed" value={board?.bundleConfirmedCount ?? "n/a"} />
+        <Metric label="Reviewed opportunities" value={opportunity?.reviewedItemCount ?? "n/a"} />
+        <Metric label="Bundle status" value={opportunity?.bundleStatus ?? "n/a"} />
+        <Metric label="Bundle-only ready" value={paperGate?.bundleOnlyReadyPackageCount ?? "n/a"} />
+      </div>
+
+      {packages?.topBlockers?.length ? (
+        <div className="mt-4 rounded-2xl border border-white/15 bg-black/20 p-4 text-sm">
+          <p className="font-bold text-white">Current blockers</p>
+          <div className="mt-3 space-y-2">
+            {packages.topBlockers.map((blocker) => (
+              <p key={blocker} className="rounded-2xl border border-white/10 bg-slate-950/35 p-3 opacity-90">
+                {blocker}
+              </p>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-white/15 bg-black/20 p-4 text-sm opacity-85">
+          {paperGate?.status === "ready"
+            ? "At least one promoted research scope is currently executable by the paper planner without ambiguity."
+            : "No explicit promotion-package blocker is currently recorded in the latest canonical artifacts."}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PaperTradingPanel({ paper }: { paper: Awaited<ReturnType<typeof readPaperHistoryPayloadSafe>> }) {
   const summary = paper.summary;
   const observability = paper.observability;
-  const source = observability.schemaReady ? "paper_trades" : "legacy journal fallback";
+  const source = observability.schemaReady ? "paper_trades" : "paper_trades unavailable";
 
   return (
     <section className="mt-7 rounded-[30px] border border-emerald-300/20 bg-emerald-400/10 p-6 text-emerald-50 shadow-2xl shadow-black/20">
@@ -397,6 +462,8 @@ export default async function ResearchLabPage({
         <DatasetRequirementsPanel lab={lab} />
 
         <DataAcquisitionAgentPanel lab={lab} />
+
+        <PromotionReadinessPanel lab={lab} />
 
         <PaperTradingPanel paper={paper} />
 

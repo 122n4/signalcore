@@ -37,6 +37,11 @@ export const RESEARCH_RUN_MANDATORY_ARTIFACT_KEYS: Array<keyof ResearchRunArtifa
   "checksumsPath",
 ];
 
+export const RESEARCH_RUN_COMPLETION_ARTIFACT_KEYS: Array<keyof ResearchRunArtifactPaths> =
+  RESEARCH_RUN_MANDATORY_ARTIFACT_KEYS.filter(
+    (key): key is keyof ResearchRunArtifactPaths => key !== "checksumsPath",
+  );
+
 export function buildResearchRunArtifactPaths(runsDir: string, runId: string): ResearchRunArtifactPaths {
   const runDir = path.join(runsDir, runId);
   return {
@@ -80,6 +85,17 @@ export async function writeResearchRunChecksums(paths: ResearchRunArtifactPaths)
 
 export async function verifyResearchRunArtifacts(paths: ResearchRunArtifactPaths): Promise<boolean> {
   for (const key of RESEARCH_RUN_MANDATORY_ARTIFACT_KEYS) {
+    if (!(await fileExists(paths[key]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export async function verifyResearchRunCompletionArtifacts(
+  paths: ResearchRunArtifactPaths,
+): Promise<boolean> {
+  for (const key of RESEARCH_RUN_COMPLETION_ARTIFACT_KEYS) {
     if (!(await fileExists(paths[key]))) {
       return false;
     }

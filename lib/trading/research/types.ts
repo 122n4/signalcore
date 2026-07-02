@@ -978,6 +978,53 @@ export type ResearchOpportunityReviewReport = {
   bundle: ResearchOpportunityReviewBundle;
 };
 
+export type ResearchPaperPromotionScope = {
+  package_id: string;
+  entry_id: string;
+  task_id: string;
+  source: ResearchPromotionBoardEntrySource;
+  baseline_id: string;
+  instrument: string | null;
+  sessions: string[];
+  setup_types: string[];
+  risk_modes: string[];
+  execution_statuses: string[];
+  quality_grades: string[];
+  clarity_levels: string[];
+  environment_states: string[];
+  package_ready_for_live_review: boolean;
+};
+
+export type ResearchPaperPromotionSnapshot = {
+  generated_at: string;
+  live_baseline_id: string | null;
+  ready_package_count: number;
+  executable_task_scope_count: number;
+  bundle_only_ready_package_count: number;
+  scopes: ResearchPaperPromotionScope[];
+};
+
+export type ResearchPaperPromotionApproval = {
+  approved: boolean;
+  source: "local_artifact" | "remote_state" | "missing";
+  reason: string;
+  snapshot: ResearchPaperPromotionSnapshot | null;
+  matched_scope: ResearchPaperPromotionScope | null;
+  candidate_summary: {
+    instrument: string | null;
+    session: string | null;
+    setup_type: string | null;
+    risk_mode: string | null;
+    execution_status: string | null;
+    quality_grade: string | null;
+    clarity_level: string | null;
+    environment_state: string | null;
+  };
+};
+
+export type ResearchPaperPromotionCandidateSummary =
+  ResearchPaperPromotionApproval["candidate_summary"];
+
 export type ResearchDatasetHealthStatus =
   | "eligible"
   | "degraded"
@@ -1150,6 +1197,7 @@ export type ResearchPostCycleOpportunityOutputs = {
   board: ResearchReportFileOutput;
   datasetHealth: ResearchReportFileOutput;
   packages: ResearchReportFileOutput;
+  review?: ResearchReportFileOutput;
   registry?: ResearchReportFileOutput;
 };
 
@@ -1160,6 +1208,7 @@ export type ResearchProcessReportOutputs = {
   board: ResearchReportFileOutput;
   datasetHealth: ResearchReportFileOutput;
   packages: ResearchReportFileOutput;
+  review?: ResearchReportFileOutput;
   registry?: ResearchReportFileOutput;
 };
 
