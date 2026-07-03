@@ -115,7 +115,7 @@ function scannerCandidate() {
   };
 }
 
-describe("bot snapshot planner research gate", () => {
+describe("bot snapshot planner research context", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.readLatestTradingScannerSnapshots.mockResolvedValue({
@@ -135,7 +135,7 @@ describe("bot snapshot planner research gate", () => {
     });
   });
 
-  it("blocks the bot plan when research approval rejects the candidate", async () => {
+  it("keeps paper execution aligned with the current live baseline when research approval rejects the candidate", async () => {
     mocks.resolveResearchPaperPromotionApproval.mockResolvedValue({
       approved: false,
       source: "local_artifact",
@@ -162,8 +162,8 @@ describe("bot snapshot planner research gate", () => {
     });
 
     expect(plan.researchApproval?.approved).toBe(false);
-    expect(plan.plan?.action).toBe("blocked");
-    expect(plan.plan?.reasons[0]).toContain("No Research promotion package is ready");
+    expect(plan.plan?.action).toBe("ready");
+    expect(plan.plan?.intent?.instrument).toBe("BTCUSD");
   });
 
   it("keeps the normal paper plan when research approval passes", async () => {
@@ -271,7 +271,7 @@ describe("bot snapshot planner research gate", () => {
     expect(plan.plan?.action).toBe("ready");
   });
 
-  it("fails closed when research approval reports an ambiguous promote-to-paper match", async () => {
+  it("keeps paper execution ready when research approval reports an ambiguous promote-to-paper match", async () => {
     mocks.resolveResearchPaperPromotionApproval.mockResolvedValue({
       approved: false,
       source: "local_artifact",
@@ -305,7 +305,38 @@ describe("bot snapshot planner research gate", () => {
     });
 
     expect(plan.researchApproval?.approved).toBe(false);
+    expect(plan.plan?.action).toBe("ready");
+    expect(plan.plan?.intent?.instrument).toBe("BTCUSD");
+  });
+
+  it("still fails closed for real-money mode when research approval is unavailable", async () => {
+    mocks.resolveResearchPaperPromotionApproval.mockResolvedValue({
+      approved: false,
+      source: "missing",
+      reason: "Research promotion snapshot is unavailable.",
+      snapshot: null,
+      matched_scope: null,
+      candidate_summary: {
+        instrument: "BTCUSD",
+        session: "ny_open",
+        setup_type: "liquidity_sweep_reversal",
+        risk_mode: "normal",
+        execution_status: "allowed",
+        quality_grade: "A",
+        clarity_level: "high",
+        environment_state: "favorable",
+      },
+    });
+
+    const plan = await buildBotSnapshotPlan({
+      userId: "owner_1",
+      option: "real_money_when_armed",
+      armedAt: "2026-06-29T18:04:00.000Z",
+      asOf: "2026-06-29T18:05:00.000Z",
+    });
+
+    expect(plan.researchApproval?.approved).toBe(false);
     expect(plan.plan?.action).toBe("blocked");
-    expect(plan.plan?.reasons[0]).toContain("ambiguous");
+    expect(plan.plan?.reasons[0]).toContain("Research promotion snapshot is unavailable");
   });
 });

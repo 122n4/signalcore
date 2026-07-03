@@ -181,13 +181,15 @@ export async function buildBotSnapshotPlan(args: {
       });
     }
   }
-  const plan = researchApproval.approved
-    ? planAutonomousBotCycle({ config, account, decision })
-    : buildResearchBlockedPlan({
-        option: args.option,
-        instrument: decision.instrument,
-        reason: researchApproval.reason,
-      });
+  const policyPlan = planAutonomousBotCycle({ config, account, decision });
+  const plan =
+    args.option === "real_money_when_armed" && !researchApproval.approved
+      ? buildResearchBlockedPlan({
+          option: args.option,
+          instrument: decision.instrument,
+          reason: researchApproval.reason,
+        })
+      : policyPlan;
 
   return {
     option: args.option,
