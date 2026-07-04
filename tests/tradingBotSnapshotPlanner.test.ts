@@ -112,6 +112,27 @@ function scannerCandidate() {
       actionableFreshness: true,
       staleReason: null,
     },
+    liveBaseline: {
+      baseline_id: "baseline-live-current-xau-btc-breakout-risk-shaped",
+      engine_hash: "engine-hash-abc123",
+      strategy_id: "baseline-live-current-xau-btc-breakout-risk-shaped",
+      validation_profile: "default_live_safe",
+      dataset_profile: "core_20y",
+      source: "research_live_baseline" as const,
+      valid: true,
+      loaded_at: "2026-06-29T18:00:00.000Z",
+      invalid_reason: null,
+    },
+    signal: {
+      signal_id: "sig_planner_btcusd",
+      source: "trading_scanner" as const,
+      origin: "current_live_baseline" as const,
+      timestamp: "2026-06-29T18:00:00.000Z",
+      baseline_id: "baseline-live-current-xau-btc-breakout-risk-shaped",
+      engine_hash: "engine-hash-abc123",
+      strategy_id: "baseline-live-current-xau-btc-breakout-risk-shaped",
+      validation_profile: "default_live_safe",
+    },
   };
 }
 
@@ -164,6 +185,7 @@ describe("bot snapshot planner research context", () => {
     expect(plan.researchApproval?.approved).toBe(false);
     expect(plan.plan?.action).toBe("ready");
     expect(plan.plan?.intent?.instrument).toBe("BTCUSD");
+    expect(mocks.readResearchLabRemoteSnapshot).not.toHaveBeenCalled();
   });
 
   it("keeps the normal paper plan when research approval passes", async () => {
@@ -202,6 +224,7 @@ describe("bot snapshot planner research context", () => {
     expect(plan.researchApproval?.approved).toBe(true);
     expect(plan.plan?.action).toBe("ready");
     expect(plan.plan?.intent?.instrument).toBe("BTCUSD");
+    expect(mocks.readResearchLabRemoteSnapshot).not.toHaveBeenCalled();
   });
 
   it("falls back to the mirrored remote paper-promotion snapshot when local artifacts are unavailable", async () => {
@@ -269,6 +292,7 @@ describe("bot snapshot planner research context", () => {
     expect(plan.researchApproval?.approved).toBe(true);
     expect(plan.researchApproval?.matched_scope?.package_id).toBe("pkg-btc");
     expect(plan.plan?.action).toBe("ready");
+    expect(mocks.readResearchLabRemoteSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("keeps paper execution ready when research approval reports an ambiguous promote-to-paper match", async () => {
@@ -307,6 +331,7 @@ describe("bot snapshot planner research context", () => {
     expect(plan.researchApproval?.approved).toBe(false);
     expect(plan.plan?.action).toBe("ready");
     expect(plan.plan?.intent?.instrument).toBe("BTCUSD");
+    expect(mocks.readResearchLabRemoteSnapshot).not.toHaveBeenCalled();
   });
 
   it("still fails closed for real-money mode when research approval is unavailable", async () => {

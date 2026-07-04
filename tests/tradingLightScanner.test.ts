@@ -10,8 +10,14 @@ import {
   summarizeTradingLightScannerDiagnostics,
 } from "@/lib/trading/lightScanner";
 
-const { getCandlesMock } = vi.hoisted(() => ({
+const {
+  ensureResearchBaselineSnapshotMock,
+  getCandlesMock,
+  loadResearchConfigMock,
+} = vi.hoisted(() => ({
+  ensureResearchBaselineSnapshotMock: vi.fn(),
   getCandlesMock: vi.fn(),
+  loadResearchConfigMock: vi.fn(),
 }));
 
 vi.mock("@/lib/market/marketClient", () => ({
@@ -21,6 +27,14 @@ vi.mock("@/lib/market/marketClient", () => ({
       String(process.env.TWELVEDATA_API_KEY || "").trim() ||
         String(process.env.FINNHUB_API_KEY || "").trim(),
     ),
+}));
+
+vi.mock("@/lib/trading/research/baseline", () => ({
+  ensureResearchBaselineSnapshot: ensureResearchBaselineSnapshotMock,
+}));
+
+vi.mock("@/lib/trading/research/config", () => ({
+  loadResearchConfig: loadResearchConfigMock,
 }));
 
 function buildTrendCandles(seed: number, points = 120) {
@@ -53,6 +67,24 @@ function buildTradingCandles(seed: number, points = 120) {
   }));
 }
 
+function setCurrentLiveBaseline(baselineId: string, engineHash: string) {
+  loadResearchConfigMock.mockResolvedValue({
+    liveBaselineSource: {
+      baselineId,
+      validationProfile: "default_live_safe",
+      datasetProfile: "core_20y",
+    },
+  });
+  ensureResearchBaselineSnapshotMock.mockResolvedValue({
+    manifest: {
+      baseline_id: baselineId,
+      engine_manifest_hash: engineHash,
+      validation_profile: "default_live_safe",
+      dataset_profile: "core_20y",
+    },
+  });
+}
+
 describe("trading light scanner", () => {
   const originalKey = process.env.TWELVEDATA_API_KEY;
   const originalFinnhubKey = process.env.FINNHUB_API_KEY;
@@ -65,6 +97,7 @@ describe("trading light scanner", () => {
     setTradingLightScannerFallbackCatalogForTests(null);
     process.env.TWELVEDATA_API_KEY = "test-key";
     delete process.env.FINNHUB_API_KEY;
+    setCurrentLiveBaseline("baseline-a", "engine-a");
     getCandlesMock.mockImplementation(async (symbol: string, timeframe: { interval: string }) => {
       const baseBySymbol: Record<string, number> = {
         "EUR/USD": 1.08,
@@ -113,6 +146,8 @@ describe("trading light scanner", () => {
       originalOpenMarketLiveFetchLimit;
     resetTradingLightScannerTestState();
     setTradingLightScannerFallbackCatalogForTests(null);
+    ensureResearchBaselineSnapshotMock.mockReset();
+    loadResearchConfigMock.mockReset();
     getCandlesMock.mockReset();
   });
 
@@ -412,6 +447,40 @@ describe("trading light scanner", () => {
     });
 
     expect(getCandlesMock.mock.calls.length).toBe(callsAfterFirstPass);
+  });
+
+  it("does not serve scanner cache entries across Current Live Baseline changes", async () => {
+    const instruments = [
+      {
+        instrument: "EURUSD",
+        dataSymbol: "EUR/USD",
+        marketType: "forex",
+        sessionProfile: "forex",
+        provider: "twelvedata",
+        focusGroup: "forex",
+      },
+    ] as const;
+
+    setCurrentLiveBaseline("baseline-a", "engine-a");
+    const first = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      forceProviderRefresh: true,
+      instruments,
+    });
+
+    setCurrentLiveBaseline("baseline-b", "engine-b");
+    const second = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:30.000Z",
+      forceProviderRefresh: true,
+      instruments,
+    });
+
+    expect(getCandlesMock).toHaveBeenCalledTimes(2);
+    expect(first[0]?.liveBaseline?.baseline_id).toBe("baseline-a");
+    expect(first[0]?.signal?.baseline_id).toBe("baseline-a");
+    expect(second[0]?.liveBaseline?.baseline_id).toBe("baseline-b");
+    expect(second[0]?.signal?.baseline_id).toBe("baseline-b");
   });
 
   it("reuses a fresh provider cache before re-hitting the live provider", async () => {

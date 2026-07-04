@@ -378,6 +378,8 @@ export async function runPaperBotCycleForUser(args: {
       snapshot: scannerContext.snapshot,
       contextSummary: scannerContext.contextSummary,
       executionPlan: scannerContext.executionPlan,
+      liveBaseline: scannerContext.liveBaseline,
+      signal: scannerContext.signal,
     },
     account: {
       equity: snapshotPlan.account.equity,

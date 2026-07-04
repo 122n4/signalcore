@@ -32,6 +32,19 @@ function asObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function hasValidSignalPedigree(context: Record<string, unknown>) {
+  const liveBaseline = asObject(context.liveBaseline);
+  const signal = asObject(context.signal);
+  return Boolean(
+    liveBaseline.valid === true &&
+      cleanText(liveBaseline.baseline_id, 120) &&
+      cleanText(liveBaseline.engine_hash, 120) &&
+      cleanText(signal.signal_id, 120) &&
+      cleanText(signal.baseline_id, 120) === cleanText(liveBaseline.baseline_id, 120) &&
+      cleanText(signal.engine_hash, 120) === cleanText(liveBaseline.engine_hash, 120),
+  );
+}
+
 function resolveTraderAction(context: Record<string, unknown>) {
   const direction = cleanText(context.direction, 16).toUpperCase();
   if (direction.includes("SHORT") || direction.includes("SELL")) return "ENTER SHORT";
@@ -39,13 +52,17 @@ function resolveTraderAction(context: Record<string, unknown>) {
   return "ENTER TRADE";
 }
 
-function resolvePlanRecommendation(context: Record<string, unknown>) {
+export function resolvePlanRecommendation(context: Record<string, unknown>) {
   const explicit = cleanText(context.recommendation, 40).toUpperCase();
   if (explicit) return explicit;
 
   const state = cleanText(context.currentState, 40).toUpperCase();
   const executionStatus = cleanText(context.executionStatus, 40).toLowerCase();
-  if ((state === "TRADE_VALID" || state === "TRADE_ACTIVE") && executionStatus === "allowed") {
+  if (
+    hasValidSignalPedigree(context) &&
+    (state === "TRADE_VALID" || state === "TRADE_ACTIVE") &&
+    executionStatus === "allowed"
+  ) {
     return "ENTER";
   }
   if (state === "SETUP_FORMING") return "MONITOR";
@@ -88,7 +105,9 @@ function resolvePlanDiscipline(args: {
   const hasValidTrigger =
     Boolean(args.context.hasValidTrigger ?? inherited.hasValidTrigger) ||
     finiteNumber(args.context.triggerLevel ?? inherited.triggerLevel) != null;
+  const signalPedigreeReady = hasValidSignalPedigree({ ...inherited, ...args.context });
   const allowedPlan =
+    signalPedigreeReady &&
     (state === "TRADE_VALID" || state === "TRADE_ACTIVE") &&
     executionStatus === "allowed" &&
     (planState === "READY" || planIntent === "execute_now") &&
@@ -104,6 +123,8 @@ function resolvePlanDiscipline(args: {
         ? "Trade taken without valid trigger"
         : recommendation !== "ENTER"
           ? `Syntrake recommendation was ${recommendation}`
+          : !signalPedigreeReady
+            ? "Trade plan was missing Current Live Baseline signal pedigree"
           : executionStatus !== "allowed"
             ? "Execution gate was not allowed"
             : "Trade taken outside a READY plan";

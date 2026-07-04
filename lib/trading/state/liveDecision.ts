@@ -48,6 +48,8 @@ export function composeTradingLiveDecision(
     reasons: uniqueReasons(input.executionPlan.executionStatus.reasons),
     nextDisciplineStep: input.executionPlan.executionStatus.nextDisciplineStep ?? null,
     feed: stateFeed.memory.events,
+    liveBaseline: input.liveBaseline ?? null,
+    signal: input.signal ?? null,
   };
 
   return {

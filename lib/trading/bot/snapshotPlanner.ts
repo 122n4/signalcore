@@ -58,6 +58,17 @@ function parseTargetZone(value: string | null | undefined) {
   return (valid[0] + valid[1]) / 2;
 }
 
+function hasValidLiveBaseline(input: ComposeTradingLiveDecisionInput) {
+  return Boolean(
+    input.liveBaseline?.valid === true &&
+      input.liveBaseline.baseline_id &&
+      input.liveBaseline.engine_hash &&
+      input.signal?.signal_id &&
+      input.signal.baseline_id === input.liveBaseline.baseline_id &&
+      input.signal.engine_hash === input.liveBaseline.engine_hash,
+  );
+}
+
 function buildResearchBlockedPlan(args: {
   option: BotAutonomyOption;
   instrument: string;
@@ -73,8 +84,11 @@ function buildResearchBlockedPlan(args: {
 }
 
 function candidateScore(input: ComposeTradingLiveDecisionInput) {
-  const isTradeValid = input.decisionCore.decision.currentState === "TRADE_VALID" ? 1000 : 0;
-  const isAllowed = input.executionPlan.executionStatus.executionStatus === "allowed" ? 250 : 0;
+  const baselineReady = hasValidLiveBaseline(input);
+  const isTradeValid =
+    baselineReady && input.decisionCore.decision.currentState === "TRADE_VALID" ? 1000 : 0;
+  const isAllowed =
+    baselineReady && input.executionPlan.executionStatus.executionStatus === "allowed" ? 250 : 0;
   const isCaution = input.executionPlan.executionStatus.executionStatus === "caution" ? 100 : 0;
   const isFresh = input.scannerSnapshot?.actionableFreshness ? 180 : 0;
   const isOpen = input.market.session.marketOpen ? 120 : 0;
@@ -95,12 +109,17 @@ export function toBotDecision(input: ComposeTradingLiveDecisionInput): BotMarket
   const setup = input.setupCore.setup;
   const decision = input.decisionCore.decision;
   const side = setup.direction === "short" ? "sell" : "buy";
+  const baselineReady = hasValidLiveBaseline(input);
+  const baselineReason =
+    input.liveBaseline?.invalid_reason ??
+    "Current Live Baseline signal pedigree is unavailable. Paper execution is blocked for this signal.";
 
   return {
+    signalId: input.signal?.signal_id ?? null,
     instrument: input.snapshot.instrument,
     side,
-    tradeValid: decision.currentState === "TRADE_VALID",
-    executionStatus: input.executionPlan.executionStatus.executionStatus,
+    tradeValid: baselineReady && decision.currentState === "TRADE_VALID",
+    executionStatus: baselineReady ? input.executionPlan.executionStatus.executionStatus : "restricted",
     marketOpen: input.market.session.marketOpen,
     snapshotFresh: Boolean(input.scannerSnapshot?.actionableFreshness),
     snapshotAt: input.snapshot.snapshotAt,
@@ -111,7 +130,7 @@ export function toBotDecision(input: ComposeTradingLiveDecisionInput): BotMarket
     target: parseTargetZone(path.targetZone),
     confidence: decision.confidence,
     riskReward: path.riskRewardEstimate ?? null,
-    reason: decision.reasons[0] ?? decision.primaryMessage ?? null,
+    reason: baselineReady ? (decision.reasons[0] ?? decision.primaryMessage ?? null) : baselineReason,
   };
 }
 

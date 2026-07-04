@@ -1,7 +1,11 @@
 "use client";
 
 import React from "react";
-import { resolveTradingAlertGuidance, type TradingWatchlistEntry } from "@/lib/trading/state";
+import {
+  resolveTradingActionGuidance,
+  resolveTradingAlertGuidance,
+  type TradingWatchlistEntry,
+} from "@/lib/trading/state";
 import {
   useFollowedTradingInstruments,
   type FollowedTradingPosition,
@@ -107,7 +111,7 @@ function resolveFollowUpLabel(entry: TradingWatchlistEntry) {
     return "Sell / close review";
   }
 
-  if (entry.executionStatus === "allowed" && entry.currentState === "TRADE_VALID") {
+  if (resolveTradingActionGuidance(entry).intent === "execute_now") {
     return entry.liveDecision.direction === "short" ? "Sell / short plan" : "Buy / execute plan";
   }
 

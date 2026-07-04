@@ -260,6 +260,19 @@ function firstTradingActionCopy(values: Array<string | null | undefined>) {
   return null;
 }
 
+function hasValidLiveBaseline(entry: TradingWatchlistEntry) {
+  const liveBaseline = entry.liveDecision.liveBaseline;
+  const signal = entry.liveDecision.signal;
+  return Boolean(
+    liveBaseline?.valid === true &&
+      liveBaseline.baseline_id &&
+      liveBaseline.engine_hash &&
+      signal?.signal_id &&
+      signal.baseline_id === liveBaseline.baseline_id &&
+      signal.engine_hash === liveBaseline.engine_hash,
+  );
+}
+
 export function resolveTradingActionGuidance(
   entry: TradingWatchlistEntry,
 ): TradingActionGuidance {
@@ -273,6 +286,7 @@ export function resolveTradingActionGuidance(
   ]);
 
   if (
+    hasValidLiveBaseline(entry) &&
     (entry.currentState === "TRADE_VALID" || entry.currentState === "TRADE_ACTIVE") &&
     entry.executionStatus === "allowed"
   ) {

@@ -231,6 +231,104 @@ describe("research paper promotion approval", () => {
     expect(approval.source).toBe("local_artifact");
   });
 
+  it("fails closed when a package is marked ready but carries an explicit failed validation gate", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const task = createResearchTask({
+      id: "task-invalid-gate",
+      candidate_scope: {
+        instruments: ["BTCUSD"],
+        sessions: ["ny_open"],
+        setup_types: ["liquidity_sweep_reversal"],
+        risk_modes: ["normal"],
+        execution_statuses: ["allowed"],
+        quality_grades: ["A"],
+        clarity_levels: ["high"],
+        environment_states: ["favorable"],
+      },
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, createResearchQueue([task]));
+    await writeJsonAtomic(
+      path.join(config.paths.reportsDir, "packages", "promotion-packages-latest.json"),
+      {
+        schema_version: "research.promotion-packages-report.v1",
+        provenance: { owner: "research_lab", config_path: config.paths.rootDir, live_baseline_id: task.baseline_id, dataset_manifest_hash: "", engine_manifest_hash: "", dataset_refs: [], upstream_report_ids: [] },
+        report_id: "promotion-packages-explicit-failed-gate",
+        generated_at: "2026-06-29T18:00:00.000Z",
+        live_baseline_id: task.baseline_id,
+        summary: {
+          package_count: 1,
+          review_ready_count: 1,
+          bundle_confirmed_count: 0,
+          ready_for_live_review_count: 1,
+          blocked_count: 0,
+        },
+        packages: [
+          {
+            package_id: "pkg-invalid-gate",
+            generated_at: "2026-06-29T18:00:00.000Z",
+            baseline_id: task.baseline_id,
+            entry_id: "entry-invalid-gate",
+            source: "task",
+            board_status: "review_ready",
+            decision: "promote",
+            summary: "Inconsistent ready package.",
+            task_ids: [task.id],
+            campaign_ids: ["improve_crisis"],
+            campaign_objectives: ["improve_crisis"],
+            primary_campaign_id: "improve_crisis",
+            primary_campaign_objective: "improve_crisis",
+            campaign_metadata_source: "recorded",
+            campaign_mode: "single",
+            run_id: "run-invalid-gate",
+            score: 80,
+            band: "elite_watch",
+            ranking_metadata_source: "recorded",
+            portfolio_stress_passed: true,
+            portfolio_stress_overlap_ratio: 0.1,
+            portfolio_stress_max_concurrent: 1,
+            statistical_validation_passed: false,
+            deflated_sharpe_ratio: 0.2,
+            pbo_estimate: 0.1,
+            white_reality_check_p_value: 0.05,
+            aggregate_summary: null,
+            crisis_summary: null,
+            walkforward_summary: null,
+            review: {
+              ready_for_live_review: true,
+              blockers: [],
+              cautions: [],
+              checklist: [],
+            },
+            artifacts: {
+              board_report_id: "board-invalid-gate",
+              board_json_path: null,
+              board_markdown_path: null,
+              bundle_report_id: null,
+              bundle_json_path: null,
+              bundle_markdown_path: null,
+              registry_report_id: null,
+              registry_json_path: null,
+              run_artifacts: [],
+            },
+          },
+        ],
+      },
+    );
+
+    const snapshot = await buildResearchPaperPromotionSnapshot(config);
+    const approval = await resolveResearchPaperPromotionApproval({
+      candidate: candidate(),
+      config,
+    });
+
+    expect(snapshot?.ready_package_count).toBe(0);
+    expect(snapshot?.executable_task_scope_count).toBe(0);
+    expect(approval.approved).toBe(false);
+    expect(approval.reason).toContain("No Research promotion package is ready");
+  });
+
   it("fails closed when multiple ready-for-live-review scopes match the same paper candidate", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);

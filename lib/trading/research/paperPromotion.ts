@@ -9,6 +9,7 @@ import type {
   ResearchPaperPromotionCandidateSummary,
   ResearchPaperPromotionScope,
   ResearchPaperPromotionSnapshot,
+  ResearchPromotionPackage,
   ResearchPromotionPackageReport,
   ResearchQueue,
 } from "./types";
@@ -63,12 +64,22 @@ function matchesScope(
   );
 }
 
+function hasExecutablePromotionApproval(pkg: ResearchPromotionPackage): boolean {
+  return (
+    pkg.review.ready_for_live_review &&
+    pkg.decision === "promote" &&
+    pkg.board_status !== "watchlist" &&
+    pkg.statistical_validation_passed !== false &&
+    pkg.portfolio_stress_passed !== false
+  );
+}
+
 function buildSnapshotFromPackageReport(args: {
   report: ResearchPromotionPackageReport;
   queue: ResearchQueue;
 }): ResearchPaperPromotionSnapshot {
   const tasksById = new Map(args.queue.tasks.map((task) => [task.id, task] as const));
-  const readyPackages = args.report.packages.filter((pkg) => pkg.review.ready_for_live_review);
+  const readyPackages = args.report.packages.filter(hasExecutablePromotionApproval);
   const scopes: ResearchPaperPromotionScope[] = [];
   let bundleOnlyReadyPackageCount = 0;
 

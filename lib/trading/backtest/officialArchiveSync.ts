@@ -16,7 +16,12 @@ export type TradingOfficialSyncMonth = {
   month: number;
 };
 
-export type TradingOfficialSyncStatus = "downloaded" | "existing" | "missing_local" | "unsupported_remote_sync";
+export type TradingOfficialSyncStatus =
+  | "downloaded"
+  | "existing"
+  | "missing_local"
+  | "missing_remote"
+  | "unsupported_remote_sync";
 
 export type TradingOfficialSyncEntry = {
   instrument: TradingOfficialSyncInstrument;
@@ -90,6 +95,20 @@ export function buildBinanceMonthlyKlineZipUrl(symbol: string, part: TradingOffi
   return `https://data.binance.vision/data/spot/monthly/klines/${symbol}/1m/${symbol}-1m-${label}.zip`;
 }
 
+class RemoteArchiveMissingError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "RemoteArchiveMissingError";
+  }
+}
+
+function isRemoteArchiveMissingError(error: unknown): error is RemoteArchiveMissingError {
+  return error instanceof RemoteArchiveMissingError;
+}
+
 async function fileExists(targetPath: string): Promise<boolean> {
   try {
     await access(targetPath);
@@ -106,6 +125,12 @@ async function ensureParentDirectory(targetPath: string): Promise<void> {
 async function downloadFile(url: string, targetPath: string): Promise<void> {
   const response = await fetch(url);
   if (!response.ok || !response.body) {
+    if (response.status === 404 || response.status === 410) {
+      throw new RemoteArchiveMissingError(
+        `Remote archive is not available yet for ${url}: ${response.status} ${response.statusText}`,
+        response.status,
+      );
+    }
     throw new Error(`Download failed for ${url}: ${response.status} ${response.statusText}`);
   }
 
@@ -303,19 +328,34 @@ export async function syncBinanceMonthlyArchive(args: {
       continue;
     }
 
-    const download = await downloadBinanceMonthlyCsv({
-      symbol: localDataset.symbol,
-      part,
-      targetPath,
-    });
-    entries.push({
-      instrument: args.instrument,
-      status: "downloaded",
-      targetPath,
-      remoteUrl: download.remoteUrl,
-      checksumVerified: download.checksumVerified,
-      periodLabel: createMonthLabel(part),
-    });
+    try {
+      const download = await downloadBinanceMonthlyCsv({
+        symbol: localDataset.symbol,
+        part,
+        targetPath,
+      });
+      entries.push({
+        instrument: args.instrument,
+        status: "downloaded",
+        targetPath,
+        remoteUrl: download.remoteUrl,
+        checksumVerified: download.checksumVerified,
+        periodLabel: createMonthLabel(part),
+      });
+    } catch (error) {
+      if (!isRemoteArchiveMissingError(error)) {
+        throw error;
+      }
+
+      entries.push({
+        instrument: args.instrument,
+        status: "missing_remote",
+        targetPath,
+        remoteUrl: buildBinanceMonthlyKlineZipUrl(localDataset.symbol, part),
+        checksumVerified: null,
+        periodLabel: createMonthLabel(part),
+      });
+    }
   }
 
   return entries;
@@ -373,12 +413,14 @@ export async function summarizeSyncResult(result: TradingOfficialSyncResult): Pr
   downloaded: number;
   existing: number;
   missingLocal: number;
+  missingRemote: number;
   unsupported: number;
 }> {
   const summary = {
     downloaded: 0,
     existing: 0,
     missingLocal: 0,
+    missingRemote: 0,
     unsupported: 0,
   };
 
@@ -389,6 +431,8 @@ export async function summarizeSyncResult(result: TradingOfficialSyncResult): Pr
       summary.existing += 1;
     } else if (entry.status === "missing_local") {
       summary.missingLocal += 1;
+    } else if (entry.status === "missing_remote") {
+      summary.missingRemote += 1;
     } else if (entry.status === "unsupported_remote_sync") {
       summary.unsupported += 1;
     }

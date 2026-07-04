@@ -5,6 +5,7 @@ export type BotOrderType = "market" | "limit";
 export type BotTimeInForce = "day" | "gtc";
 
 export type BotMarketDecision = {
+  signalId?: string | null;
   instrument: string;
   side: BotSide;
   tradeValid: boolean;
@@ -61,6 +62,7 @@ export type AutonomousBotConfig = {
 };
 
 export type BotOrderIntent = {
+  signalId?: string | null;
   idempotencyKey: string;
   mode: BotExecutionMode;
   instrument: string;

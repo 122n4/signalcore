@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   getCandles,
   hasAnyMarketDataProviderConfigured,
@@ -31,7 +33,13 @@ import {
   runPlaybookCheck,
 } from "@/lib/trading/playbook";
 import { createSetupCore } from "@/lib/trading/setups";
-import type { ComposeTradingLiveDecisionInput } from "@/lib/trading/state";
+import { ensureResearchBaselineSnapshot } from "@/lib/trading/research/baseline";
+import { loadResearchConfig } from "@/lib/trading/research/config";
+import type {
+  ComposeTradingLiveDecisionInput,
+  TradingSignalBaselineIdentity,
+  TradingSignalIdentity,
+} from "@/lib/trading/state";
 
 type TradingScannerInstrumentConfig = {
   instrument: string;
@@ -582,13 +590,17 @@ function prioritizeTradingScannerInstruments(
 function buildTradingLightScannerCacheKey(
   instruments: TradingScannerInstrumentConfig[],
   asOf: string,
+  liveBaseline: TradingSignalBaselineIdentity,
 ) {
   const asOfMs = new Date(asOf).getTime();
   const minuteBucket = Number.isFinite(asOfMs)
     ? Math.floor(asOfMs / 60_000)
     : Math.floor(Date.now() / 60_000);
+  const baselineKey = liveBaseline.valid
+    ? `${liveBaseline.baseline_id}:${liveBaseline.engine_hash}`
+    : `invalid:${liveBaseline.invalid_reason ?? "unknown"}`;
 
-  return `${minuteBucket}:${instruments.map((instrument) => instrument.instrument).join("|")}`;
+  return `${minuteBucket}:${baselineKey}:${instruments.map((instrument) => instrument.instrument).join("|")}`;
 }
 
 function resolveTradingLightScannerLiveFetchLimit() {
@@ -1078,6 +1090,7 @@ async function scanInstrument(
     forceProviderRefresh?: boolean;
     includeInactiveMarkets?: boolean;
     storedInput?: ComposeTradingLiveDecisionInput | null;
+    liveBaseline?: TradingSignalBaselineIdentity | null;
   },
 ): Promise<ComposeTradingLiveDecisionInput | null> {
   const currentSession = resolveLightScannerSession(config, asOf);
@@ -1145,6 +1158,11 @@ async function scanInstrument(
     session: currentSession.session,
     asOf,
   });
+  const liveBaselineGateReason =
+    options?.liveBaseline?.valid === true
+      ? null
+      : options?.liveBaseline?.invalid_reason ??
+        "Current Live Baseline is unavailable. Syntrake can explain the setup but cannot execute it.";
 
   if (researchExecutionGateReason) {
     playbookCheck = {
@@ -1180,6 +1198,18 @@ async function scanInstrument(
       nextDisciplineStep: premarketCoverageGateReason,
     };
   }
+
+  if (liveBaselineGateReason) {
+    playbookCheck = {
+      ...playbookCheck,
+      rulesAligned: false,
+      executionAllowed: false,
+      hardBlock: true,
+      reasons: Array.from(new Set([liveBaselineGateReason, ...playbookCheck.reasons])),
+      nextDisciplineStep: liveBaselineGateReason,
+    };
+  }
+
   const behaviorGuard = runBehaviorGuard(operationalInput);
   let executionPlan = createExecutionPlan({
     ...operationalInput,
@@ -1213,7 +1243,7 @@ async function scanInstrument(
     };
   }
 
-  return {
+  const draft = {
     snapshot,
     market,
     setupCore,
@@ -1223,6 +1253,7 @@ async function scanInstrument(
     behaviorGuard,
     executionPlan,
     memory: null,
+    liveBaseline: options?.liveBaseline ?? null,
     scannerSnapshot: {
       source,
       providerError,
@@ -1234,6 +1265,123 @@ async function scanInstrument(
     },
     scannerCoverage: coverage,
   };
+
+  return {
+    ...draft,
+    signal: buildTradingSignalIdentity({
+      input: draft,
+      liveBaseline: options?.liveBaseline ?? null,
+    }),
+  };
+}
+
+function invalidLiveBaselineIdentity(args: {
+  asOf: string;
+  reason: string;
+}): TradingSignalBaselineIdentity {
+  return {
+    baseline_id: "",
+    engine_hash: "",
+    strategy_id: "",
+    validation_profile: "",
+    dataset_profile: null,
+    source: "research_live_baseline",
+    valid: false,
+    loaded_at: args.asOf,
+    invalid_reason: args.reason,
+  };
+}
+
+function hashSignalPayload(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function buildTradingSignalIdentity(args: {
+  input: Pick<
+    ComposeTradingLiveDecisionInput,
+    "snapshot" | "setupCore" | "decisionCore" | "executionPlan"
+  >;
+  liveBaseline: TradingSignalBaselineIdentity | null | undefined;
+}): TradingSignalIdentity | null {
+  const liveBaseline = args.liveBaseline;
+  if (!liveBaseline?.valid || !liveBaseline.baseline_id || !liveBaseline.engine_hash) {
+    return null;
+  }
+
+  const payload = {
+    baseline_id: liveBaseline.baseline_id,
+    engine_hash: liveBaseline.engine_hash,
+    strategy_id: liveBaseline.strategy_id,
+    validation_profile: liveBaseline.validation_profile,
+    instrument: args.input.snapshot.instrument,
+    snapshot_at: args.input.snapshot.snapshotAt,
+    current_state: args.input.decisionCore.decision.currentState,
+    execution_status: args.input.executionPlan.executionStatus.executionStatus,
+    direction: args.input.setupCore.setup.direction,
+    trigger: args.input.executionPlan.entryZone.triggerLevel ?? args.input.setupCore.setup.triggerLevel ?? null,
+    entry_low: args.input.executionPlan.entryZone.entryZoneLow ?? null,
+    entry_high: args.input.executionPlan.entryZone.entryZoneHigh ?? null,
+    invalidation:
+      args.input.executionPlan.invalidation.invalidationLevel ??
+      args.input.setupCore.setup.invalidationLevel ??
+      null,
+    target: args.input.executionPlan.tradePath.targetZone ?? null,
+  };
+
+  return {
+    signal_id: `sig_${hashSignalPayload(payload)}`,
+    source: "trading_scanner",
+    origin: "current_live_baseline",
+    timestamp: args.input.snapshot.snapshotAt,
+    baseline_id: liveBaseline.baseline_id,
+    engine_hash: liveBaseline.engine_hash,
+    strategy_id: liveBaseline.strategy_id,
+    validation_profile: liveBaseline.validation_profile,
+  };
+}
+
+export async function loadCurrentTradingSignalBaseline(
+  asOf: string,
+): Promise<TradingSignalBaselineIdentity> {
+  try {
+    const config = await loadResearchConfig();
+    const baseline = await ensureResearchBaselineSnapshot(config);
+    const manifest = baseline.manifest;
+    const baselineId = String(manifest.baseline_id || config.liveBaselineSource.baselineId || "").trim();
+    const engineHash = String(manifest.engine_manifest_hash || "").trim();
+    const validationProfile = String(
+      manifest.validation_profile || config.liveBaselineSource.validationProfile || "",
+    ).trim();
+
+    if (!baselineId || !engineHash || !validationProfile) {
+      return invalidLiveBaselineIdentity({
+        asOf,
+        reason: "Current Live Baseline manifest is incomplete.",
+      });
+    }
+
+    return {
+      baseline_id: baselineId,
+      engine_hash: engineHash,
+      strategy_id: baselineId,
+      validation_profile: validationProfile,
+      dataset_profile: manifest.dataset_profile ?? config.liveBaselineSource.datasetProfile ?? null,
+      source: "research_live_baseline",
+      valid: true,
+      loaded_at: asOf,
+      invalid_reason: null,
+    };
+  } catch (error: any) {
+    return invalidLiveBaselineIdentity({
+      asOf,
+      reason: error?.message
+        ? `Current Live Baseline could not be loaded: ${error.message}`
+        : "Current Live Baseline could not be loaded.",
+    });
+  }
 }
 
 export async function buildTradingLightScannerInputs(args: {
@@ -1257,7 +1405,8 @@ export async function buildTradingLightScannerInputs(args: {
   );
   const liveFetchLimit = resolveTradingLightScannerLiveFetchLimit();
   const openMarketLiveFetchLimit = resolveTradingLightScannerOpenMarketLiveFetchLimit();
-  const cacheKey = buildTradingLightScannerCacheKey(instruments, args.asOf);
+  const liveBaseline = await loadCurrentTradingSignalBaseline(args.asOf);
+  const cacheKey = buildTradingLightScannerCacheKey(instruments, args.asOf, liveBaseline);
   const cached = TRADING_LIGHT_SCANNER_CACHE.get(cacheKey);
 
   if (!args.forceRefresh && cached && cached.exp > Date.now()) {
@@ -1342,6 +1491,7 @@ export async function buildTradingLightScannerInputs(args: {
               args.forceProviderRefresh === true && shouldFetchOpenMarketLive,
             includeInactiveMarkets: args.includeInactiveMarkets === true,
             storedInput: entry.storedInput,
+            liveBaseline,
           },
         );
       },

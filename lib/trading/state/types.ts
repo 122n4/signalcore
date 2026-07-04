@@ -90,6 +90,31 @@ export type TradingLiveDecision = {
   reasons: string[];
   nextDisciplineStep?: string | null;
   feed: TradingFeedEvent[];
+  liveBaseline?: TradingSignalBaselineIdentity | null;
+  signal?: TradingSignalIdentity | null;
+};
+
+export type TradingSignalBaselineIdentity = {
+  baseline_id: string;
+  engine_hash: string;
+  strategy_id: string;
+  validation_profile: string;
+  dataset_profile?: string | null;
+  source: "research_live_baseline";
+  valid: boolean;
+  loaded_at: string;
+  invalid_reason?: string | null;
+};
+
+export type TradingSignalIdentity = {
+  signal_id: string;
+  source: "trading_scanner";
+  origin: "current_live_baseline";
+  timestamp: string;
+  baseline_id: string;
+  engine_hash: string;
+  strategy_id: string;
+  validation_profile: string;
 };
 
 export type TradingPlaybookWorkspaceSnapshot = {
@@ -194,6 +219,8 @@ export type ComposeTradingLiveDecisionInput = Omit<StateFeedInput, "memory"> & {
   playbook?: TradingPlaybook | null;
   playbookCheck?: PlaybookCheckOutput | null;
   behaviorGuard?: BehaviorGuardOutput | null;
+  liveBaseline?: TradingSignalBaselineIdentity | null;
+  signal?: TradingSignalIdentity | null;
   scannerSnapshot?: {
     source: "provider" | "cache" | "catalog" | "empty";
     providerError: string | null;

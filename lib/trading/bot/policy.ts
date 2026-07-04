@@ -115,6 +115,10 @@ function buildIdempotencyKey(args: {
   stop: number;
   target: number;
 }) {
+  if (args.decision.signalId) {
+    return [args.ownerUserId, args.decision.signalId].join(":").replace(/[^a-zA-Z0-9:._-]/g, "_");
+  }
+
   const raw = [
     args.ownerUserId,
     args.decision.instrument,
@@ -225,6 +229,7 @@ function createOrderIntent(args: {
   return {
     reasons: [],
     intent: {
+      signalId: decision.signalId ?? null,
       idempotencyKey: buildIdempotencyKey({
         ownerUserId: config.ownerUserId,
         decision,
