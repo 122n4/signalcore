@@ -16,6 +16,7 @@ import {
   buildResearchLatestReportsOverview,
   buildResearchPromotionReadinessOverview,
 } from "./reportsOverview";
+import { buildResearchIntelligenceReport } from "./intelligence";
 import { buildResearchPaperPromotionSnapshot } from "./paperPromotion";
 import { buildResearchRuntimeHealth } from "./runtimeHealth";
 import type {
@@ -276,6 +277,12 @@ export async function buildResearchSupabasePayload(args: {
     buildResearchDataAcquisitionPlan(config),
     buildResearchPaperPromotionSnapshot(config),
   ]);
+  const researchIntelligence = await buildResearchIntelligenceReport({
+    config,
+    queue,
+    baseline,
+    generatedAt,
+  });
   const promotionReadiness = await buildResearchPromotionReadinessOverview({
     config,
     paperPromotion,
@@ -321,6 +328,7 @@ export async function buildResearchSupabasePayload(args: {
         baseline,
         reportsOverview,
         promotionReadiness,
+        researchIntelligence,
         datasetRequirements,
         dataAcquisitionPlan,
         paperPromotion,

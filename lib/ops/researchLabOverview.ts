@@ -10,6 +10,10 @@ import {
   type ResearchDatasetRequirementsReport,
 } from "@/lib/trading/research/datasetRequirements";
 import { readJsonIfExists } from "@/lib/trading/research/fs";
+import {
+  buildResearchIntelligenceReport,
+  type ResearchIntelligenceReport,
+} from "@/lib/trading/research/intelligence";
 import { readResearchQueue } from "@/lib/trading/research/queue";
 import { canonicalizeResearchRunSnapshot } from "@/lib/trading/research/runCanonicalization";
 import {
@@ -102,6 +106,7 @@ export type ResearchLabOverview = {
   };
   reports: ResearchLatestReportsOverview;
   promotionReadiness: ResearchPromotionReadinessOverview;
+  researchIntelligence: ResearchIntelligenceReport;
   datasetRequirements: ResearchDatasetRequirementsReport;
   dataAcquisitionPlan: ResearchDataAcquisitionPlan;
   operatorActions: Array<{
@@ -407,6 +412,12 @@ export async function buildResearchLabOverview(args: {
     buildResearchLatestReportsOverview(config),
     buildResearchPromotionReadinessOverview({ config }),
   ]);
+  const researchIntelligence = await buildResearchIntelligenceReport({
+    config,
+    queue,
+    baseline,
+    generatedAt,
+  });
   const recentRuns = await readRecentRuns(config, queue, decisions);
   const decisionCounts = decisions.reduce<Record<string, number>>((acc, entry) => {
     acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
@@ -497,6 +508,9 @@ export async function buildResearchLabOverview(args: {
                 },
               }
             : emptyResearchPromotionReadinessOverview()),
+        researchIntelligence:
+          remotePayload.researchIntelligence ??
+          researchIntelligence,
         datasetRequirements: remotePayload.datasetRequirements ?? datasetRequirements,
         dataAcquisitionPlan: remotePayload.dataAcquisitionPlan ?? dataAcquisitionPlan,
         operatorActions: operatorActions(),
@@ -539,6 +553,7 @@ export async function buildResearchLabOverview(args: {
     },
     reports,
     promotionReadiness,
+    researchIntelligence,
     datasetRequirements,
     dataAcquisitionPlan,
     operatorActions: operatorActions(),

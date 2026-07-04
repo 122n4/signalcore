@@ -17,13 +17,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function tone(status: string | null | undefined) {
-  if (["error", "failed", "fail", "timed_out", "hung"].includes(String(status))) {
+  if (["error", "failed", "fail", "timed_out", "hung", "weak"].includes(String(status))) {
     return "border-red-400/40 bg-red-500/10 text-red-100";
   }
-  if (["warn", "long_running", "stale", "reject", "blocked"].includes(String(status))) {
+  if (["warn", "long_running", "stale", "reject", "blocked", "watch", "insufficient_evidence"].includes(String(status))) {
     return "border-amber-300/40 bg-amber-400/10 text-amber-100";
   }
-  if (["promote", "candidate", "ok", "healthy", "completed"].includes(String(status))) {
+  if (["promote", "candidate", "ok", "healthy", "strong", "completed"].includes(String(status))) {
     return "border-emerald-300/40 bg-emerald-400/10 text-emerald-100";
   }
   return "border-slate-600/50 bg-slate-900/70 text-slate-200";
@@ -63,6 +63,56 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
       <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
       <div className="mt-2 text-lg font-bold text-white">{value}</div>
     </div>
+  );
+}
+
+function intelligenceValue(metric: Awaited<ReturnType<typeof buildResearchLabOverview>>["researchIntelligence"]["summary"]["confidence"]) {
+  if (metric.value === null) return "n/a";
+  if (metric.unit === "percent" || metric.unit === "ratio") return `${fmt(metric.value)}%`;
+  if (metric.unit === "risk") return `${fmt(metric.value)}/100`;
+  return fmt(metric.value);
+}
+
+function ResearchIntelligencePanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
+  const intelligence = lab.researchIntelligence;
+  const metrics = Object.values(intelligence.summary);
+
+  return (
+    <section className="mt-7 rounded-[30px] border border-cyan-300/20 bg-cyan-400/10 p-6 text-cyan-50 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-100/70">Research intelligence</p>
+          <h2 className="mt-2 text-2xl font-black text-white">Engine health and quality evidence</h2>
+          <p className="mt-3 max-w-4xl text-sm text-cyan-50/80">
+            Derived from canonical Research Lab artifacts only: queue, decisions, baseline manifest, candidate library
+            and run comparisons. Missing evidence is shown explicitly instead of being scored artificially.
+          </p>
+        </div>
+        <div className={`rounded-full border px-4 py-2 text-sm font-black uppercase tracking-[0.18em] ${tone(intelligence.summary.confidence.grade)}`}>
+          {intelligence.summary.confidence.grade}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        {metrics.map((item) => (
+          <div key={item.label} className={`rounded-2xl border p-4 ${tone(item.grade)}`}>
+            <p className="text-xs font-black uppercase tracking-[0.16em] opacity-70">{item.label}</p>
+            <div className="mt-2 text-xl font-black text-white">{intelligenceValue(item)}</div>
+            <p className="mt-2 text-xs opacity-80">{item.evidence}</p>
+            {item.missingEvidence.length > 0 ? (
+              <p className="mt-2 text-xs opacity-80">Missing: {item.missingEvidence.join(", ")}</p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <Metric label="Decision events" value={intelligence.evidence.decisionEvents} />
+        <Metric label="Explored templates" value={`${intelligence.evidence.exploredTemplates}/${intelligence.evidence.enabledTemplates}`} />
+        <Metric label="Operational failures" value={intelligence.evidence.operationalFailures} />
+        <Metric label="Stat validations" value={`${intelligence.evidence.comparisonsWithStatisticalValidation}/${intelligence.evidence.comparisonsInspected}`} />
+      </div>
+    </section>
   );
 }
 
@@ -456,6 +506,8 @@ export default async function ResearchLabPage({
         ) : null}
 
         <LabControlPanel />
+
+        <ResearchIntelligencePanel lab={lab} />
 
         <DataCoveragePanel lab={lab} />
 

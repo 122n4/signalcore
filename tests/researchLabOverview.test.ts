@@ -277,6 +277,11 @@ describe("research lab overview", () => {
     expect(overview.promotionReadiness.opportunity?.bundleStatus).toBe("insufficient_candidates");
     expect(overview.datasetRequirements.summary.officialGapCount).toBe(1);
     expect(overview.dataAcquisitionPlan.summary.manualCount).toBe(1);
+    expect(overview.researchIntelligence.source).toBe("canonical_artifacts");
+    expect(overview.researchIntelligence.evidence.decisionEvents).toBe(1);
+    expect(overview.researchIntelligence.summary.baselineResistance.value).not.toBeNull();
+    expect(overview.researchIntelligence.summary.searchSpaceCoverage.grade).toBe("insufficient_evidence");
+    expect(overview.researchIntelligence.summary.overfittingRisk.grade).toBe("insufficient_evidence");
     expect(overview.storage.localArtifactBacked).toBe(true);
   });
 
@@ -475,6 +480,93 @@ describe("research lab overview", () => {
               status: "blocked",
             },
           },
+          researchIntelligence: {
+            generatedAt: "2026-05-18T14:00:00.000Z",
+            source: "canonical_artifacts",
+            summary: {
+              confidence: {
+                label: "Research Confidence",
+                value: 80,
+                unit: "score",
+                grade: "healthy",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              baselineResistance: {
+                label: "Baseline Strength / Resistance",
+                value: 75,
+                unit: "score",
+                grade: "healthy",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              searchSpaceCoverage: {
+                label: "Search Space Coverage",
+                value: 12,
+                unit: "percent",
+                grade: "weak",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              promotionEfficiency: {
+                label: "Promotion Efficiency",
+                value: 1,
+                unit: "percent",
+                grade: "weak",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              candidateConversion: {
+                label: "Candidate Conversion",
+                value: 2,
+                unit: "percent",
+                grade: "weak",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              engineStability: {
+                label: "Engine Stability",
+                value: 90,
+                unit: "percent",
+                grade: "strong",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              reproducibility: {
+                label: "Reproducibility",
+                value: 95,
+                unit: "percent",
+                grade: "strong",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+              overfittingRisk: {
+                label: "Overfitting Risk",
+                value: 30,
+                unit: "risk",
+                grade: "healthy",
+                evidence: "remote mirror",
+                missingEvidence: [],
+              },
+            },
+            evidence: {
+              queueTasks: 0,
+              completedTasks: 0,
+              failedTasks: 0,
+              decisionEvents: 0,
+              scientificRejects: 0,
+              operationalFailures: 0,
+              candidates: 0,
+              promotes: 0,
+              enabledTemplates: 0,
+              exploredTemplates: 0,
+              baselineId: null,
+              baselineTradeCount: null,
+              crisisTradeCount: null,
+              comparisonsInspected: 0,
+              comparisonsWithStatisticalValidation: 0,
+            },
+          },
           reportsOverview: {
             bundleValidation: null,
             promotionBoard: null,
@@ -498,5 +590,6 @@ describe("research lab overview", () => {
     expect(overview.storage.localArtifactBacked).toBe(false);
     expect(overview.promotionReadiness.packages?.blockedCount).toBe(2);
     expect(overview.promotionReadiness.paperGate?.status).toBe("blocked");
+    expect(overview.researchIntelligence.summary.confidence.value).toBe(80);
   });
 });
