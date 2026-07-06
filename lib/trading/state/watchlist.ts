@@ -273,6 +273,32 @@ function hasValidLiveBaseline(entry: TradingWatchlistEntry) {
   );
 }
 
+function finitePositive(value: unknown) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+}
+
+function parseTargetZone(value: string | null | undefined) {
+  const raw = String(value || "");
+  const numbers = raw.match(/-?\d+(?:\.\d+)?/g)?.map((item) => Number(item)) ?? [];
+  const valid = numbers.filter((item) => Number.isFinite(item) && item > 0);
+  if (!valid.length) return null;
+  if (valid.length === 1) return valid[0];
+  return (valid[0] + valid[1]) / 2;
+}
+
+function hasExecutableOrderLevels(entry: TradingWatchlistEntry) {
+  const decision = entry.liveDecision;
+  const entryLevel =
+    finitePositive(decision.entryZoneLow) ??
+    finitePositive(decision.entryZoneHigh) ??
+    finitePositive(decision.triggerLevel);
+  const stop = finitePositive(decision.invalidationLevel);
+  const target = parseTargetZone(decision.targetZone);
+
+  return entryLevel != null && stop != null && target != null;
+}
+
 export function resolveTradingActionGuidance(
   entry: TradingWatchlistEntry,
 ): TradingActionGuidance {
@@ -287,6 +313,7 @@ export function resolveTradingActionGuidance(
 
   if (
     hasValidLiveBaseline(entry) &&
+    hasExecutableOrderLevels(entry) &&
     (entry.currentState === "TRADE_VALID" || entry.currentState === "TRADE_ACTIVE") &&
     entry.executionStatus === "allowed"
   ) {

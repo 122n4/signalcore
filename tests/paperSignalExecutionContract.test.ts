@@ -434,4 +434,53 @@ describe("paper signal execution contract", () => {
     expect(supabase.paperUpserts).toHaveLength(0);
     expect(result.result.planned?.reasons.join(" ")).toContain("Execution status is restricted");
   });
+
+  it("does not advertise Execute now or open paper when signal pedigree or executable levels are incomplete", async () => {
+    const mismatchedSignal = scannerCandidate({
+      signal: {
+        ...SIGNAL,
+        baseline_id: "baseline-other",
+      },
+    });
+    const missingTarget = scannerCandidate({
+      executionPlan: {
+        tradePath: {
+          targetZone: null,
+          primaryPath: "up",
+          secondaryPath: null,
+          riskRewardEstimate: 2.4,
+        },
+      },
+    });
+
+    expect(resolveTradingActionGuidance(composeTradingWatchlistEntry(mismatchedSignal)).intent).not.toBe(
+      "execute_now",
+    );
+    expect(resolveTradingActionGuidance(composeTradingWatchlistEntry(missingTarget)).intent).not.toBe(
+      "execute_now",
+    );
+
+    for (const candidate of [mismatchedSignal, missingTarget]) {
+      const supabase = createSupabaseHarness();
+      mocks.getSupabaseAdmin.mockReturnValue(supabase.client);
+      mocks.readLatestTradingScannerSnapshots.mockResolvedValue({
+        schemaReady: true,
+        inputs: [candidate],
+        generatedAt: "2026-07-04T08:00:00.000Z",
+        excludedStaleOpenCount: 0,
+        error: null,
+      });
+
+      const result = await runPaperBotCycleForUser({
+        userId: "owner_1",
+        source: "daemon",
+        allowDuplicateIntent: true,
+        maxTradesPerDay: 3,
+      });
+
+      expect(result.status).toBe("blocked");
+      expect(supabase.journalInserts).toHaveLength(0);
+      expect(supabase.paperUpserts).toHaveLength(0);
+    }
+  });
 });

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 
 import {
   getCandles,
@@ -33,8 +34,10 @@ import {
   runPlaybookCheck,
 } from "@/lib/trading/playbook";
 import { createSetupCore } from "@/lib/trading/setups";
-import { ensureResearchBaselineSnapshot } from "@/lib/trading/research/baseline";
 import { loadResearchConfig } from "@/lib/trading/research/config";
+import { readJsonIfExists } from "@/lib/trading/research/fs";
+import { readResearchLabRemoteSnapshot } from "@/lib/trading/research/supabaseSync";
+import type { ResearchBaselineManifest, ResearchConfig } from "@/lib/trading/research/types";
 import type {
   ComposeTradingLiveDecisionInput,
   TradingSignalBaselineIdentity,
@@ -1343,37 +1346,79 @@ function buildTradingSignalIdentity(args: {
   };
 }
 
+function baselineIdentityFromManifest(args: {
+  asOf: string;
+  config: ResearchConfig;
+  manifest: ResearchBaselineManifest;
+}): TradingSignalBaselineIdentity {
+  const baselineId = String(
+    args.manifest.baseline_id || args.config.liveBaselineSource.baselineId || "",
+  ).trim();
+  const engineHash = String(args.manifest.engine_manifest_hash || "").trim();
+  const validationProfile = String(
+    args.manifest.validation_profile || args.config.liveBaselineSource.validationProfile || "",
+  ).trim();
+
+  if (!baselineId || !engineHash || !validationProfile) {
+    return invalidLiveBaselineIdentity({
+      asOf: args.asOf,
+      reason: "Current Live Baseline manifest is incomplete.",
+    });
+  }
+
+  return {
+    baseline_id: baselineId,
+    engine_hash: engineHash,
+    strategy_id: baselineId,
+    validation_profile: validationProfile,
+    dataset_profile: args.manifest.dataset_profile ?? args.config.liveBaselineSource.datasetProfile ?? null,
+    source: "research_live_baseline",
+    valid: true,
+    loaded_at: args.asOf,
+    invalid_reason: null,
+  };
+}
+
+async function readCurrentLiveBaselineManifest(
+  config: ResearchConfig,
+): Promise<ResearchBaselineManifest | null> {
+  const baselineId = String(config.liveBaselineSource.baselineId || "").trim();
+  if (!baselineId) return null;
+
+  const manifestPath = path.join(
+    config.paths.baselinesDir,
+    baselineId,
+    "baseline-manifest.json",
+  );
+  const localManifest = await readJsonIfExists<ResearchBaselineManifest>(manifestPath);
+  if (localManifest?.baseline_id === baselineId) {
+    return localManifest;
+  }
+
+  const remote = await readResearchLabRemoteSnapshot({ runLimit: 0, decisionLimit: 0 });
+  const remotePayload = remote.state?.payload as { baseline?: ResearchBaselineManifest | null } | null;
+  const remoteManifest = remotePayload?.baseline ?? null;
+  if (remoteManifest?.baseline_id === baselineId) {
+    return remoteManifest;
+  }
+
+  return null;
+}
+
 export async function loadCurrentTradingSignalBaseline(
   asOf: string,
 ): Promise<TradingSignalBaselineIdentity> {
   try {
     const config = await loadResearchConfig();
-    const baseline = await ensureResearchBaselineSnapshot(config);
-    const manifest = baseline.manifest;
-    const baselineId = String(manifest.baseline_id || config.liveBaselineSource.baselineId || "").trim();
-    const engineHash = String(manifest.engine_manifest_hash || "").trim();
-    const validationProfile = String(
-      manifest.validation_profile || config.liveBaselineSource.validationProfile || "",
-    ).trim();
-
-    if (!baselineId || !engineHash || !validationProfile) {
+    const manifest = await readCurrentLiveBaselineManifest(config);
+    if (!manifest) {
       return invalidLiveBaselineIdentity({
         asOf,
-        reason: "Current Live Baseline manifest is incomplete.",
+        reason: "Current Live Baseline manifest is unavailable from local artifacts and Supabase sync.",
       });
     }
 
-    return {
-      baseline_id: baselineId,
-      engine_hash: engineHash,
-      strategy_id: baselineId,
-      validation_profile: validationProfile,
-      dataset_profile: manifest.dataset_profile ?? config.liveBaselineSource.datasetProfile ?? null,
-      source: "research_live_baseline",
-      valid: true,
-      loaded_at: asOf,
-      invalid_reason: null,
-    };
+    return baselineIdentityFromManifest({ asOf, config, manifest });
   } catch (error: any) {
     return invalidLiveBaselineIdentity({
       asOf,

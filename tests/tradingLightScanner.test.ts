@@ -11,13 +11,15 @@ import {
 } from "@/lib/trading/lightScanner";
 
 const {
-  ensureResearchBaselineSnapshotMock,
   getCandlesMock,
   loadResearchConfigMock,
+  readJsonIfExistsMock,
+  readResearchLabRemoteSnapshotMock,
 } = vi.hoisted(() => ({
-  ensureResearchBaselineSnapshotMock: vi.fn(),
   getCandlesMock: vi.fn(),
   loadResearchConfigMock: vi.fn(),
+  readJsonIfExistsMock: vi.fn(),
+  readResearchLabRemoteSnapshotMock: vi.fn(),
 }));
 
 vi.mock("@/lib/market/marketClient", () => ({
@@ -29,12 +31,22 @@ vi.mock("@/lib/market/marketClient", () => ({
     ),
 }));
 
-vi.mock("@/lib/trading/research/baseline", () => ({
-  ensureResearchBaselineSnapshot: ensureResearchBaselineSnapshotMock,
-}));
-
 vi.mock("@/lib/trading/research/config", () => ({
   loadResearchConfig: loadResearchConfigMock,
+}));
+
+vi.mock("@/lib/trading/research/fs", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/trading/research/fs")>(
+    "@/lib/trading/research/fs",
+  );
+  return {
+    ...actual,
+    readJsonIfExists: readJsonIfExistsMock,
+  };
+});
+
+vi.mock("@/lib/trading/research/supabaseSync", () => ({
+  readResearchLabRemoteSnapshot: readResearchLabRemoteSnapshotMock,
 }));
 
 function buildTrendCandles(seed: number, points = 120) {
@@ -69,19 +81,27 @@ function buildTradingCandles(seed: number, points = 120) {
 
 function setCurrentLiveBaseline(baselineId: string, engineHash: string) {
   loadResearchConfigMock.mockResolvedValue({
+    paths: {
+      baselinesDir: "artifacts/trading-research/baselines",
+    },
     liveBaselineSource: {
       baselineId,
       validationProfile: "default_live_safe",
       datasetProfile: "core_20y",
     },
   });
-  ensureResearchBaselineSnapshotMock.mockResolvedValue({
-    manifest: {
-      baseline_id: baselineId,
-      engine_manifest_hash: engineHash,
-      validation_profile: "default_live_safe",
-      dataset_profile: "core_20y",
-    },
+  readJsonIfExistsMock.mockResolvedValue({
+    baseline_id: baselineId,
+    engine_manifest_hash: engineHash,
+    validation_profile: "default_live_safe",
+    dataset_profile: "core_20y",
+  });
+  readResearchLabRemoteSnapshotMock.mockResolvedValue({
+    schemaReady: true,
+    error: null,
+    state: null,
+    runs: [],
+    decisions: [],
   });
 }
 
@@ -146,8 +166,9 @@ describe("trading light scanner", () => {
       originalOpenMarketLiveFetchLimit;
     resetTradingLightScannerTestState();
     setTradingLightScannerFallbackCatalogForTests(null);
-    ensureResearchBaselineSnapshotMock.mockReset();
     loadResearchConfigMock.mockReset();
+    readJsonIfExistsMock.mockReset();
+    readResearchLabRemoteSnapshotMock.mockReset();
     getCandlesMock.mockReset();
   });
 
@@ -481,6 +502,95 @@ describe("trading light scanner", () => {
     expect(first[0]?.signal?.baseline_id).toBe("baseline-a");
     expect(second[0]?.liveBaseline?.baseline_id).toBe("baseline-b");
     expect(second[0]?.signal?.baseline_id).toBe("baseline-b");
+  });
+
+  it("loads the Current Live Baseline from the Supabase research mirror when local artifacts are unavailable", async () => {
+    const instruments = [
+      {
+        instrument: "EURUSD",
+        dataSymbol: "EUR/USD",
+        marketType: "forex",
+        sessionProfile: "forex",
+        provider: "twelvedata",
+        focusGroup: "forex",
+      },
+    ] as const;
+
+    loadResearchConfigMock.mockResolvedValue({
+      paths: {
+        baselinesDir: "artifacts/trading-research/baselines",
+      },
+      liveBaselineSource: {
+        baselineId: "baseline-remote",
+        validationProfile: "default_live_safe",
+        datasetProfile: "core_20y",
+      },
+    });
+    readJsonIfExistsMock.mockResolvedValue(null);
+    readResearchLabRemoteSnapshotMock.mockResolvedValue({
+      schemaReady: true,
+      error: null,
+      state: {
+        payload: {
+          baseline: {
+            baseline_id: "baseline-remote",
+            engine_manifest_hash: "engine-remote",
+            validation_profile: "default_live_safe",
+            dataset_profile: "core_20y",
+          },
+        },
+      },
+      runs: [],
+      decisions: [],
+    });
+
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      forceProviderRefresh: true,
+      instruments,
+    });
+
+    expect(inputs[0]?.liveBaseline?.valid).toBe(true);
+    expect(inputs[0]?.liveBaseline?.baseline_id).toBe("baseline-remote");
+    expect(inputs[0]?.signal?.baseline_id).toBe("baseline-remote");
+    expect(inputs[0]?.signal?.engine_hash).toBe("engine-remote");
+  });
+
+  it("does not generate a baseline-backed trading signal when no Current Live Baseline manifest is available", async () => {
+    const instruments = [
+      {
+        instrument: "EURUSD",
+        dataSymbol: "EUR/USD",
+        marketType: "forex",
+        sessionProfile: "forex",
+        provider: "twelvedata",
+        focusGroup: "forex",
+      },
+    ] as const;
+
+    readJsonIfExistsMock.mockResolvedValue(null);
+    readResearchLabRemoteSnapshotMock.mockResolvedValue({
+      schemaReady: true,
+      error: null,
+      state: null,
+      runs: [],
+      decisions: [],
+    });
+
+    const inputs = await buildTradingLightScannerInputs({
+      asOf: "2026-03-10T14:00:00.000Z",
+      forceRefresh: true,
+      forceProviderRefresh: true,
+      instruments,
+    });
+
+    expect(inputs[0]?.liveBaseline?.valid).toBe(false);
+    expect(inputs[0]?.liveBaseline?.invalid_reason).toContain(
+      "Current Live Baseline manifest is unavailable",
+    );
+    expect(inputs[0]?.signal).toBeNull();
+    expect(inputs[0]?.executionPlan.executionStatus.executionStatus).toBe("restricted");
   });
 
   it("reuses a fresh provider cache before re-hitting the live provider", async () => {
