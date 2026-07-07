@@ -50,10 +50,24 @@ describe("research lab overview", () => {
         crisis: "crisis.json",
         walkforward: "walkforward.json",
       },
-      live_summary: createMetricSummary({ totalTrades: 243 }),
+      live_summary: createMetricSummary({ totalTrades: 243, annualizedTrades: null }),
       crisis_summary: createMetricSummary({ totalTrades: 88, expectancy: -0.068 }),
     });
-    await writeJsonAtomic(path.join(baselineDir, "aggregate-baseline.json"), { ok: true });
+    await writeJsonAtomic(path.join(baselineDir, "aggregate-baseline.json"), {
+      request: {
+        periods: [
+          { label: "2020", from: "2020-01-01T00:00:00.000Z", to: "2020-12-31T23:59:59.000Z" },
+          { label: "2021", from: "2021-01-01T00:00:00.000Z", to: "2021-12-31T23:59:59.000Z" },
+          { label: "2022", from: "2022-01-01T00:00:00.000Z", to: "2022-12-31T23:59:59.000Z" },
+          { label: "2023", from: "2023-01-01T00:00:00.000Z", to: "2023-12-31T23:59:59.000Z" },
+          { label: "2024", from: "2024-01-01T00:00:00.000Z", to: "2024-12-31T23:59:59.000Z" },
+          { label: "2025", from: "2025-01-01T00:00:00.000Z", to: "2025-12-31T23:59:59.000Z" },
+        ],
+      },
+      aggregate: {
+        summary: createMetricSummary({ totalTrades: 243 }),
+      },
+    });
     await writeJsonAtomic(path.join(baselineDir, "crisis-baseline.json"), { ok: true });
     await writeJsonAtomic(path.join(baselineDir, "walkforward-baseline.json"), { ok: true });
     await appendJsonLine(config.paths.decisionsPath, {
@@ -279,6 +293,7 @@ describe("research lab overview", () => {
     expect(overview.dataAcquisitionPlan.summary.manualCount).toBe(1);
     expect(overview.researchIntelligence.source).toBe("canonical_artifacts");
     expect(overview.researchIntelligence.evidence.decisionEvents).toBe(1);
+    expect(overview.researchIntelligence.evidence.baselineAnnualizedTrades).toBeCloseTo(40.5, 1);
     expect(overview.researchIntelligence.summary.baselineResistance.value).not.toBeNull();
     expect(overview.researchIntelligence.summary.searchSpaceCoverage.grade).toBe("insufficient_evidence");
     expect(overview.researchIntelligence.summary.overfittingRisk.grade).toBe("insufficient_evidence");

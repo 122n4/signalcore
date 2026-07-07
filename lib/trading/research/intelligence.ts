@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 
 import { buildResearchRunArtifactPaths } from "./artifactContract";
 import { readJsonIfExists } from "./fs";
@@ -11,6 +12,35 @@ import type {
   ResearchQueue,
   ResearchRunComparison,
 } from "./types";
+
+type BaselineAggregateArtifact = {
+  request?: {
+    periods?: Array<{ label: string; from: string; to: string }>;
+  };
+  aggregate?: {
+    summary?: Partial<ResearchMetricSummary> | ResearchMetricSummary | null;
+  };
+};
+
+const RESEARCH_ARTIFACTS_ROOT = path.join(
+  /*turbopackIgnore: true*/ process.cwd(),
+  "artifacts",
+  "trading-research",
+);
+const RESEARCH_ARTIFACTS_PREFIX = ["artifacts", "trading-research"].join(path.sep);
+
+function resolveResearchArtifactPath(artifactPath: string): string | null {
+  const normalized = artifactPath.replace(/\\/g, path.sep);
+  const prefixIndex = normalized.indexOf(RESEARCH_ARTIFACTS_PREFIX);
+  if (prefixIndex < 0) return null;
+
+  const relativeToResearchRoot = normalized
+    .slice(prefixIndex + RESEARCH_ARTIFACTS_PREFIX.length)
+    .replace(/^[/\\]+/, "");
+  if (!relativeToResearchRoot || relativeToResearchRoot.startsWith("..")) return null;
+
+  return path.join(/*turbopackIgnore: true*/ RESEARCH_ARTIFACTS_ROOT, relativeToResearchRoot);
+}
 
 export type ResearchIntelligenceGrade =
   | "strong"
@@ -152,6 +182,48 @@ async function readDecisionEntries(config: ResearchConfig): Promise<DecisionLike
 
 async function readCandidateLibrary(config: ResearchConfig): Promise<ResearchCandidateLibrary | null> {
   return readJsonIfExists<ResearchCandidateLibrary>(config.paths.candidateLibraryPath);
+}
+
+function resolveBaselineAggregateArtifactPaths(config: ResearchConfig, baseline: ResearchBaselineManifest): string[] {
+  const candidates: string[] = [];
+  const configuredPath = baseline.source_artifacts?.aggregate;
+  if (configuredPath) {
+    const resolvedPath = resolveResearchArtifactPath(configuredPath);
+    if (resolvedPath) candidates.push(resolvedPath);
+  }
+
+  candidates.push(path.join(config.paths.baselinesDir, baseline.baseline_id, "aggregate-baseline.json"));
+  return Array.from(new Set(candidates));
+}
+
+async function readBaselineLiveSummary(
+  config: ResearchConfig,
+  baseline: ResearchBaselineManifest | null,
+): Promise<ResearchMetricSummary | null> {
+  if (!baseline?.live_summary) return null;
+
+  const directSummary = buildResearchMetricSummary(baseline.live_summary, config.study.yearlyPeriods);
+  if (directSummary.annualizedTrades != null) return directSummary;
+
+  let aggregateArtifact: BaselineAggregateArtifact | null = null;
+  for (const artifactPath of resolveBaselineAggregateArtifactPaths(config, baseline)) {
+    aggregateArtifact = await readJsonIfExists<BaselineAggregateArtifact>(artifactPath);
+    if (aggregateArtifact) break;
+  }
+  const artifactSummary = aggregateArtifact?.aggregate?.summary;
+  const artifactPeriods = aggregateArtifact?.request?.periods;
+
+  if (!artifactSummary || !Array.isArray(artifactPeriods) || artifactPeriods.length === 0) {
+    return directSummary;
+  }
+
+  return buildResearchMetricSummary(
+    {
+      ...baseline.live_summary,
+      ...artifactSummary,
+    },
+    artifactPeriods,
+  );
 }
 
 function countEnabledTemplates(library: ResearchCandidateLibrary | null): number {
@@ -374,9 +446,7 @@ export async function buildResearchIntelligenceReport(args: {
     : null;
   const overfittingRisk = scoreOverfittingRisk(comparisons);
   const baselineResistance = scoreBaselineResistance(args.baseline);
-  const baselineLiveSummary = args.baseline?.live_summary
-    ? buildResearchMetricSummary(args.baseline.live_summary, args.config.study.yearlyPeriods)
-    : null;
+  const baselineLiveSummary = await readBaselineLiveSummary(args.config, args.baseline);
 
   const confidenceInputs = [
     engineStabilityPct,

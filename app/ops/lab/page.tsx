@@ -73,9 +73,15 @@ function intelligenceValue(metric: Awaited<ReturnType<typeof buildResearchLabOve
   return fmt(metric.value);
 }
 
+function candidateEvidenceValue(value: number | null, usefulDecisions: number) {
+  if (value !== null) return value;
+  return usefulDecisions > 0 ? "n/a" : "no candidate yet";
+}
+
 function ResearchIntelligencePanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
   const intelligence = lab.researchIntelligence;
   const metrics = Object.values(intelligence.summary);
+  const usefulDecisions = intelligence.evidence.candidates + intelligence.evidence.promotes;
 
   return (
     <section className="mt-7 rounded-[30px] border border-cyan-300/20 bg-cyan-400/10 p-6 text-cyan-50 shadow-2xl shadow-black/20">
@@ -86,6 +92,9 @@ function ResearchIntelligencePanel({ lab }: { lab: Awaited<ReturnType<typeof bui
           <p className="mt-3 max-w-4xl text-sm text-cyan-50/80">
             Derived from canonical Research Lab artifacts only: queue, decisions, baseline manifest, candidate library
             and run comparisons. Missing evidence is shown explicitly instead of being scored artificially.
+          </p>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/55">
+            Snapshot {time(intelligence.generatedAt)} · decisions/templates are point-in-time values and can move during an active lab cycle.
           </p>
         </div>
         <div className={`rounded-full border px-4 py-2 text-sm font-black uppercase tracking-[0.18em] ${tone(intelligence.summary.confidence.grade)}`}>
@@ -110,15 +119,15 @@ function ResearchIntelligencePanel({ lab }: { lab: Awaited<ReturnType<typeof bui
         <Metric label="Decision events" value={intelligence.evidence.decisionEvents} />
         <Metric label="Explored templates" value={`${intelligence.evidence.exploredTemplates}/${intelligence.evidence.enabledTemplates}`} />
         <Metric label="Baseline trades/year" value={intelligence.evidence.baselineAnnualizedTrades ?? "n/a"} />
-        <Metric label="Runs / candidate" value={intelligence.evidence.scientificRunsPerCandidate ?? "n/a"} />
+        <Metric label="Runs / candidate" value={candidateEvidenceValue(intelligence.evidence.scientificRunsPerCandidate, usefulDecisions)} />
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-4">
-        <Metric label="Templates / candidate" value={intelligence.evidence.templatesPerCandidate ?? "n/a"} />
+        <Metric label="Templates / candidate" value={candidateEvidenceValue(intelligence.evidence.templatesPerCandidate, usefulDecisions)} />
         <Metric label="Operational failures" value={intelligence.evidence.operationalFailures} />
         <Metric label="Stat validations" value={`${intelligence.evidence.comparisonsWithStatisticalValidation}/${intelligence.evidence.comparisonsInspected}`} />
-        <Metric label="First candidate after" value={intelligence.evidence.firstCandidateAfterDecisions ?? "n/a"} />
-        <Metric label="Templates to candidate" value={intelligence.evidence.templatesUntilFirstCandidate ?? "n/a"} />
+        <Metric label="First candidate after" value={candidateEvidenceValue(intelligence.evidence.firstCandidateAfterDecisions, usefulDecisions)} />
+        <Metric label="Templates to candidate" value={candidateEvidenceValue(intelligence.evidence.templatesUntilFirstCandidate, usefulDecisions)} />
       </div>
     </section>
   );
