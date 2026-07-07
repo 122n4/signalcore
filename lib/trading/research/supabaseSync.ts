@@ -46,12 +46,53 @@ export type ResearchRemoteSnapshot = {
   decisions: any[];
 };
 
+export const RESEARCH_REMOTE_RUN_COLUMNS = [
+  "run_id",
+  "task_id",
+  "status",
+  "stage",
+  "started_at",
+  "updated_at",
+  "completed_at",
+  "profit_factor",
+  "win_rate",
+  "expectancy",
+  "max_drawdown",
+  "aggregate_summary",
+  "crisis_summary",
+  "walkforward_summary",
+  "error",
+  "synced_at",
+].join(",");
+
+export const RESEARCH_REMOTE_DECISION_COLUMNS = [
+  "event_id",
+  "timestamp",
+  "run_id",
+  "task_id",
+  "decision",
+  "reason",
+  "profit_factor",
+  "win_rate",
+  "expectancy",
+  "max_drawdown",
+  "aggregate_summary",
+  "crisis_summary",
+  "walkforward_summary",
+  "error",
+  "synced_at",
+].join(",");
+
 function metric(value: unknown): ResearchMetricSummary | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Partial<ResearchMetricSummary>;
   if (!Number.isFinite(Number(raw.totalTrades))) return null;
   return {
     totalTrades: Number(raw.totalTrades),
+    annualizedTrades:
+      raw.annualizedTrades == null || !Number.isFinite(Number(raw.annualizedTrades))
+        ? null
+        : Number(raw.annualizedTrades),
     winRate: Number(raw.winRate ?? 0),
     averageRiskReward: raw.averageRiskReward == null ? null : Number(raw.averageRiskReward),
     expectancy: Number(raw.expectancy ?? 0),
@@ -410,12 +451,12 @@ export async function readResearchLabRemoteSnapshot(args: {
       sb.from("research_lab_state").select("*").eq("id", "default").maybeSingle(),
       sb
         .from("research_lab_runs")
-        .select("*")
+        .select(RESEARCH_REMOTE_RUN_COLUMNS)
         .order("updated_at", { ascending: false, nullsFirst: false })
         .limit(args.runLimit ?? 40),
       sb
         .from("research_lab_decisions")
-        .select("*")
+        .select(RESEARCH_REMOTE_DECISION_COLUMNS)
         .order("timestamp", { ascending: false })
         .limit(args.decisionLimit ?? 80),
     ]);

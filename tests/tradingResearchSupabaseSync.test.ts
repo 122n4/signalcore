@@ -1,9 +1,12 @@
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildResearchSupabasePayload,
+  readResearchLabRemoteSnapshot,
+  RESEARCH_REMOTE_DECISION_COLUMNS,
+  RESEARCH_REMOTE_RUN_COLUMNS,
   writeJsonAtomic,
 } from "@/lib/trading/research";
 
@@ -13,6 +16,12 @@ import {
   createResearchTask,
   createResearchTempDir,
 } from "./helpers/tradingResearchFixtures";
+
+const getSupabaseAdminMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: getSupabaseAdminMock,
+}));
 
 describe("trading research supabase sync payload", () => {
   it("includes the canonical paper-promotion snapshot in the mirrored state payload", async () => {
@@ -126,5 +135,42 @@ describe("trading research supabase sync payload", () => {
     expect(promotionReadiness).not.toBeNull();
     expect(promotionReadiness?.packages?.readyForLiveReviewCount).toBe(1);
     expect(promotionReadiness?.paperGate?.status).toBe("ready");
+  });
+
+  it("reads compact remote run and decision columns to control Supabase egress", async () => {
+    const selectedByTable: Record<string, string[]> = {};
+    const limitsByTable: Record<string, number[]> = {};
+
+    const createQuery = (table: string) => {
+      const query: any = {
+        select: vi.fn((columns: string) => {
+          selectedByTable[table] = [...(selectedByTable[table] ?? []), columns];
+          return query;
+        }),
+        eq: vi.fn(() => query),
+        maybeSingle: vi.fn(async () => ({ data: { id: "default" }, error: null })),
+        order: vi.fn(() => query),
+        limit: vi.fn(async (limit: number) => {
+          limitsByTable[table] = [...(limitsByTable[table] ?? []), limit];
+          return { data: [], error: null };
+        }),
+      };
+      return query;
+    };
+
+    getSupabaseAdminMock.mockReturnValue({
+      from: vi.fn((table: string) => createQuery(table)),
+    });
+
+    const snapshot = await readResearchLabRemoteSnapshot({ runLimit: 7, decisionLimit: 11 });
+
+    expect(snapshot.schemaReady).toBe(true);
+    expect(selectedByTable.research_lab_state).toEqual(["*"]);
+    expect(selectedByTable.research_lab_runs).toEqual([RESEARCH_REMOTE_RUN_COLUMNS]);
+    expect(selectedByTable.research_lab_decisions).toEqual([RESEARCH_REMOTE_DECISION_COLUMNS]);
+    expect(RESEARCH_REMOTE_RUN_COLUMNS).not.toContain("payload");
+    expect(RESEARCH_REMOTE_DECISION_COLUMNS).not.toContain("payload");
+    expect(limitsByTable.research_lab_runs).toEqual([7]);
+    expect(limitsByTable.research_lab_decisions).toEqual([11]);
   });
 });

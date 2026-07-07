@@ -19,6 +19,7 @@ import { loadResearchConfig } from "./config";
 import { decideResearchRun } from "./decisionEngine";
 import { buildResearchDatasetHealthReport, writeResearchDatasetHealthReport } from "./datasetHealth";
 import { classifyResearchFailure } from "./forensics";
+import { buildResearchMetricSummary } from "./metrics";
 import { ensureDirectory, appendJsonLine, fileExists, readJsonFile, writeJsonAtomic } from "./fs";
 import { computeResearchTaskFingerprint, readFingerprintIndexEntry, writeRunIndexEntry, type ResearchRunIndexEntry } from "./idempotency";
 import { acquireResearchLock, classifyResearchLockHealth, readResearchLock, releaseResearchLock, updateResearchLockHeartbeat } from "./lock";
@@ -53,6 +54,7 @@ import { buildResearchRegistryReport, writeResearchRegistryReport } from "./regi
 import { buildResearchStatisticalValidation } from "./statisticalValidation";
 import { resolveEffectiveResearchInstruments } from "./taskScope";
 import { evaluateResearchValidationGates } from "./validationGates";
+import type { TradingHistoricalPeriod } from "@/lib/trading/backtest/periods";
 import type {
   ResearchConfig,
   ResearchDecisionLedgerEntry,
@@ -74,25 +76,9 @@ import type { TradingBacktestTrade } from "@/lib/trading/backtest/types";
 
 export function buildMetricSummary(
   input: Partial<ResearchMetricSummary> | ResearchMetricSummary | null | undefined,
+  annualizationPeriods?: TradingHistoricalPeriod[] | null,
 ): ResearchMetricSummary {
-  return {
-    totalTrades: Number.isFinite(Number(input?.totalTrades)) ? Number(input?.totalTrades) : 0,
-    winRate: Number.isFinite(Number(input?.winRate)) ? Number(input?.winRate) : 0,
-    averageRiskReward:
-      input?.averageRiskReward === null
-        ? null
-        : Number.isFinite(Number(input?.averageRiskReward))
-          ? Number(input?.averageRiskReward)
-          : null,
-    expectancy: Number.isFinite(Number(input?.expectancy)) ? Number(input?.expectancy) : 0,
-    profitFactor:
-      input?.profitFactor === null
-        ? null
-        : Number.isFinite(Number(input?.profitFactor))
-          ? Number(input?.profitFactor)
-          : null,
-    maxDrawdown: Number.isFinite(Number(input?.maxDrawdown)) ? Number(input?.maxDrawdown) : 0,
-  };
+  return buildResearchMetricSummary(input, annualizationPeriods);
 }
 
 export function buildResearchRiskScenarioFromTask(args: {
@@ -252,7 +238,18 @@ function buildResearchComparison(args: {
   baselineTrades?: TradingBacktestTrade[];
   currentTrades?: TradingBacktestTrade[];
   independentTrialCount?: number;
+  annualizationPeriods?: TradingHistoricalPeriod[] | null;
 }): ResearchRunComparison {
+  const aggregateBaseline = buildMetricSummary(
+    args.aggregateBaseline,
+    args.annualizationPeriods,
+  );
+  const aggregateCurrent = buildMetricSummary(args.aggregateCurrent, args.annualizationPeriods);
+  const crisisBaseline = buildMetricSummary(args.crisisBaseline);
+  const crisisCurrent = buildMetricSummary(args.crisisCurrent);
+  const walkForwardBaseline = buildMetricSummary(args.walkForwardBaseline);
+  const walkForwardCurrent = buildMetricSummary(args.walkForwardCurrent);
+
   const statisticalValidation =
     Array.isArray(args.baselineTrades) &&
     args.baselineTrades.length > 0 &&
@@ -261,8 +258,8 @@ function buildResearchComparison(args: {
       ? buildResearchStatisticalValidation({
           baselineTrades: args.baselineTrades,
           currentTrades: args.currentTrades,
-          aggregateCurrent: args.aggregateCurrent,
-          walkForwardCurrent: args.walkForwardCurrent,
+          aggregateCurrent,
+          walkForwardCurrent,
           robustness: args.robustness,
           independentTrialCount: args.independentTrialCount ?? 1,
         })
@@ -270,27 +267,27 @@ function buildResearchComparison(args: {
 
   return {
     aggregate: {
-      baseline: buildMetricSummary(args.aggregateBaseline),
-      current: buildMetricSummary(args.aggregateCurrent),
+      baseline: aggregateBaseline,
+      current: aggregateCurrent,
     },
     crisis: {
-      baseline: buildMetricSummary(args.crisisBaseline),
-      current: buildMetricSummary(args.crisisCurrent),
+      baseline: crisisBaseline,
+      current: crisisCurrent,
     },
     walkForward: {
-      baseline: buildMetricSummary(args.walkForwardBaseline),
-      current: buildMetricSummary(args.walkForwardCurrent),
+      baseline: walkForwardBaseline,
+      current: walkForwardCurrent,
       affectedInstruments: args.affectedInstruments,
     },
     robustness: args.robustness,
     statistical_validation: statisticalValidation,
     gates: evaluateResearchValidationGates({
-      aggregateBaseline: args.aggregateBaseline,
-      aggregateCurrent: args.aggregateCurrent,
-      crisisBaseline: args.crisisBaseline,
-      crisisCurrent: args.crisisCurrent,
-      walkForwardBaseline: args.walkForwardBaseline,
-      walkForwardCurrent: args.walkForwardCurrent,
+      aggregateBaseline,
+      aggregateCurrent,
+      crisisBaseline,
+      crisisCurrent,
+      walkForwardBaseline,
+      walkForwardCurrent,
       holdoutBaseline: args.robustness?.holdout?.baseline,
       holdoutCurrent: args.robustness?.holdout?.current,
       finalHoldoutBaseline: args.robustness?.finalHoldout?.baseline,
@@ -384,6 +381,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
       baselineTrades: report.baseline.aggregateTrades,
       currentTrades: scenarioResult.aggregate.trades,
       independentTrialCount: 1,
+      annualizationPeriods: context.config.study.yearlyPeriods,
     });
 
     if (context.config.study.robustness?.monteCarlo?.enabled && comparison.gates.allHardGatesPass) {
@@ -414,6 +412,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         baselineTrades: report.baseline.aggregateTrades,
         currentTrades: scenarioResult.aggregate.trades,
         independentTrialCount: 1,
+        annualizationPeriods: context.config.study.yearlyPeriods,
       });
     }
 
@@ -445,6 +444,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         baselineTrades: report.baseline.aggregateTrades,
         currentTrades: scenarioResult.aggregate.trades,
         independentTrialCount: 1,
+        annualizationPeriods: context.config.study.yearlyPeriods,
       });
     }
 
@@ -476,6 +476,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         baselineTrades: report.baseline.aggregateTrades,
         currentTrades: scenarioResult.aggregate.trades,
         independentTrialCount: 1,
+        annualizationPeriods: context.config.study.yearlyPeriods,
       });
     }
 
@@ -557,6 +558,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
       baselineTrades: report.baseline.aggregateTrades,
       currentTrades: scenarioResult.aggregate.trades,
       independentTrialCount: 1,
+      annualizationPeriods: context.config.study.yearlyPeriods,
     });
 
     if (context.config.study.robustness?.monteCarlo?.enabled && comparison.gates.allHardGatesPass) {
@@ -587,6 +589,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         baselineTrades: report.baseline.aggregateTrades,
         currentTrades: scenarioResult.aggregate.trades,
         independentTrialCount: 1,
+        annualizationPeriods: context.config.study.yearlyPeriods,
       });
     }
 
@@ -618,6 +621,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         baselineTrades: report.baseline.aggregateTrades,
         currentTrades: scenarioResult.aggregate.trades,
         independentTrialCount: 1,
+        annualizationPeriods: context.config.study.yearlyPeriods,
       });
     }
 
@@ -649,6 +653,7 @@ export function buildDefaultResearchExecutorMap(): ResearchTaskExecutorMap {
         baselineTrades: report.baseline.aggregateTrades,
         currentTrades: scenarioResult.aggregate.trades,
         independentTrialCount: 1,
+        annualizationPeriods: context.config.study.yearlyPeriods,
       });
     }
 

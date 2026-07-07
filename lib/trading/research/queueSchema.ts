@@ -37,6 +37,7 @@ const DATASET_PROFILES = new Set<ResearchDatasetProfile>([
 const VALIDATION_PROFILES = new Set<ResearchValidationProfileId>([
   "default_live_safe",
   "elite_push",
+  "frequency_annual_180_500_live_safe",
 ]);
 
 const IDLE_REASONS = new Set<ResearchIdleReason>([

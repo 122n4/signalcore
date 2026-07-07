@@ -109,8 +109,16 @@ function ResearchIntelligencePanel({ lab }: { lab: Awaited<ReturnType<typeof bui
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <Metric label="Decision events" value={intelligence.evidence.decisionEvents} />
         <Metric label="Explored templates" value={`${intelligence.evidence.exploredTemplates}/${intelligence.evidence.enabledTemplates}`} />
+        <Metric label="Baseline trades/year" value={intelligence.evidence.baselineAnnualizedTrades ?? "n/a"} />
+        <Metric label="Runs / candidate" value={intelligence.evidence.scientificRunsPerCandidate ?? "n/a"} />
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <Metric label="Templates / candidate" value={intelligence.evidence.templatesPerCandidate ?? "n/a"} />
         <Metric label="Operational failures" value={intelligence.evidence.operationalFailures} />
         <Metric label="Stat validations" value={`${intelligence.evidence.comparisonsWithStatisticalValidation}/${intelligence.evidence.comparisonsInspected}`} />
+        <Metric label="First candidate after" value={intelligence.evidence.firstCandidateAfterDecisions ?? "n/a"} />
+        <Metric label="Templates to candidate" value={intelligence.evidence.templatesUntilFirstCandidate ?? "n/a"} />
       </div>
     </section>
   );
@@ -302,6 +310,7 @@ function PromotionReadinessPanel({ lab }: { lab: Awaited<ReturnType<typeof build
   const packages = promotion.packages;
   const opportunity = promotion.opportunity;
   const paperGate = promotion.paperGate;
+  const challenger = promotion.challengerGovernance;
   const panelTone = tone(
     paperGate?.status === "ready"
       ? "ok"
@@ -337,6 +346,31 @@ function PromotionReadinessPanel({ lab }: { lab: Awaited<ReturnType<typeof build
         <Metric label="Reviewed opportunities" value={opportunity?.reviewedItemCount ?? "n/a"} />
         <Metric label="Bundle status" value={opportunity?.bundleStatus ?? "n/a"} />
         <Metric label="Bundle-only ready" value={paperGate?.bundleOnlyReadyPackageCount ?? "n/a"} />
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-white/15 bg-black/20 p-4 text-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="font-black text-white">Challenger governance</p>
+            <p className="mt-2 opacity-85">
+              {challenger?.reason ??
+                "No challenger governance snapshot is available from the canonical promotion artifacts."}
+            </p>
+          </div>
+          <div className="rounded-full border border-white/20 bg-slate-950/35 px-4 py-2 text-xs font-black uppercase tracking-[0.18em]">
+            {challenger?.status ?? "unavailable"}
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          <Metric label="Watchlist" value={challenger?.candidateWatchlistCount ?? "n/a"} />
+          <Metric label="Challenger review" value={challenger?.challengerReviewCount ?? "n/a"} />
+          <Metric label="Confirmed" value={challenger?.challengerConfirmedCount ?? "n/a"} />
+          <Metric label="Paper eligible" value={challenger?.paperEligibleCount ?? "n/a"} />
+          <Metric label="Baseline replacements" value={challenger?.baselineReplacementReadyCount ?? "n/a"} />
+        </div>
+        <p className="mt-3 text-xs opacity-70">
+          Auto baseline promotion: {challenger?.autoBaselinePromotionEnabled ? "enabled" : "disabled by governance"}.
+        </p>
       </div>
 
       {packages?.topBlockers?.length ? (

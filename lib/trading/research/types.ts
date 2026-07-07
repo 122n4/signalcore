@@ -81,7 +81,10 @@ export type ResearchIdleReason =
   | "all_candidates_deduped_for_current_baseline";
 
 export type ResearchDatasetProfile = "core_20y" | "crisis_windows" | "walkforward_full";
-export type ResearchValidationProfileId = "default_live_safe" | "elite_push";
+export type ResearchValidationProfileId =
+  | "default_live_safe"
+  | "elite_push"
+  | "frequency_annual_180_500_live_safe";
 
 export type ResearchTaskScope = {
   instruments?: string[];
@@ -164,6 +167,7 @@ export type ResearchLock = {
 
 export type ResearchMetricSummary = {
   totalTrades: number;
+  annualizedTrades?: number | null;
   winRate: number;
   averageRiskReward: number | null;
   expectancy: number;
@@ -226,6 +230,8 @@ export type ResearchValidationThresholds = {
   requireWalkForwardBreakEven: boolean;
   minAggregateTrades?: number;
   maxAggregateTrades?: number;
+  minAnnualizedTrades?: number;
+  maxAnnualizedTrades?: number;
   minAggregateTradeRetentionPct?: number;
   requireCrisisImprovementForPromotion?: boolean;
   requireHoldoutBreakEven?: boolean;
@@ -248,6 +254,7 @@ export type ResearchGateEvaluation = {
   aggregateProfitFactorStable: boolean;
   aggregateDrawdownStable: boolean;
   aggregateTradeCountStable?: boolean;
+  annualizedTradeCadencePass?: boolean;
   aggregateTradeCadencePass?: boolean;
   crisisExpectancyStable: boolean;
   crisisProfitFactorStable: boolean;

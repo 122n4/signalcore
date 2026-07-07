@@ -113,6 +113,7 @@ export async function writeResearchDecisionArtifact(
 export function createZeroResearchMetricSummary(): ResearchMetricSummary {
   return {
     totalTrades: 0,
+    annualizedTrades: null,
     winRate: 0,
     averageRiskReward: null,
     expectancy: 0,

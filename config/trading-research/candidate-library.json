@@ -2813,7 +2813,7 @@
           "type": "risk_shaping",
           "priority": 100,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "BTCUSD"
@@ -2836,7 +2836,7 @@
           "type": "risk_shaping",
           "priority": 95,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "BTCUSD"
@@ -2864,7 +2864,7 @@
           "type": "risk_shaping",
           "priority": 90,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "ETHUSD"
@@ -2887,7 +2887,7 @@
           "type": "risk_shaping",
           "priority": 85,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "ETHUSD"
@@ -2923,7 +2923,7 @@
           "type": "risk_shaping",
           "priority": 100,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "EURUSD"
@@ -2946,7 +2946,7 @@
           "type": "risk_shaping",
           "priority": 95,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "USDJPY"
@@ -2974,7 +2974,7 @@
           "type": "risk_shaping",
           "priority": 90,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "GBPUSD"
@@ -3000,7 +3000,7 @@
           "type": "risk_shaping",
           "priority": 85,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "XAUUSD"
@@ -3028,7 +3028,7 @@
           "type": "risk_shaping",
           "priority": 80,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "US500"
@@ -3056,7 +3056,7 @@
           "type": "risk_shaping",
           "priority": 75,
           "dataset_profile": "core_20y",
-          "validation_profile": "default_live_safe",
+          "validation_profile": "frequency_annual_180_500_live_safe",
           "candidate_scope": {
             "instruments": [
               "BTCUSD"

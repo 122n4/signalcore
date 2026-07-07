@@ -14,6 +14,10 @@ function normalizeRetentionPct(value: number | null | undefined): number | null 
   return bounded > 1 ? bounded / 100 : bounded;
 }
 
+function finiteThreshold(value: number | null | undefined): number | null {
+  return value == null || !Number.isFinite(Number(value)) ? null : Number(value);
+}
+
 export function evaluateResearchValidationGates(args: {
   aggregateBaseline: ResearchMetricSummary;
   aggregateCurrent: ResearchMetricSummary;
@@ -58,15 +62,30 @@ export function evaluateResearchValidationGates(args: {
   const tradeRetentionPct = normalizeRetentionPct(args.thresholds.minAggregateTradeRetentionPct);
   const minTrades = args.thresholds.minAggregateTrades;
   const maxTrades = args.thresholds.maxAggregateTrades;
+  const minAnnualizedTrades = finiteThreshold(args.thresholds.minAnnualizedTrades);
+  const maxAnnualizedTrades = finiteThreshold(args.thresholds.maxAnnualizedTrades);
+  const hasAnnualizedCadenceThreshold =
+    minAnnualizedTrades != null || maxAnnualizedTrades != null;
+  const currentAnnualizedTrades =
+    args.aggregateCurrent.annualizedTrades == null ||
+    !Number.isFinite(Number(args.aggregateCurrent.annualizedTrades))
+      ? null
+      : Number(args.aggregateCurrent.annualizedTrades);
   const aggregateTradeCountStable =
     tradeRetentionPct == null
       ? true
       : args.aggregateCurrent.totalTrades >=
         Math.floor(args.aggregateBaseline.totalTrades * tradeRetentionPct);
+  const annualizedTradeCadencePass = !hasAnnualizedCadenceThreshold
+    ? undefined
+    : currentAnnualizedTrades != null &&
+      (minAnnualizedTrades == null || currentAnnualizedTrades >= minAnnualizedTrades) &&
+      (maxAnnualizedTrades == null || currentAnnualizedTrades <= maxAnnualizedTrades);
   const aggregateTradeCadencePass =
     aggregateTradeCountStable &&
     (minTrades == null || args.aggregateCurrent.totalTrades >= minTrades) &&
-    (maxTrades == null || args.aggregateCurrent.totalTrades <= maxTrades);
+    (maxTrades == null || args.aggregateCurrent.totalTrades <= maxTrades) &&
+    (annualizedTradeCadencePass ?? true);
 
   const crisisExpectancyStable = positiveStable(
     args.crisisCurrent.expectancy,
@@ -327,6 +346,7 @@ export function evaluateResearchValidationGates(args: {
     aggregateProfitFactorStable,
     aggregateDrawdownStable,
     aggregateTradeCountStable,
+    annualizedTradeCadencePass,
     aggregateTradeCadencePass,
     crisisExpectancyStable,
     crisisProfitFactorStable,

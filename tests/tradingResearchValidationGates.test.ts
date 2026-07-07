@@ -52,6 +52,96 @@ describe("trading research validation gates", () => {
     expect(tooFewTrades.promotionThresholdMet).toBe(false);
   });
 
+  it("enforces annualized cadence when the validation profile configures trades per year", () => {
+    const thresholds = {
+      epsilon: 0.0001,
+      aggregateExpectancyMinDelta: 0.005,
+      aggregateProfitFactorMinDelta: 0.01,
+      crisisExpectancyMinDelta: 0.005,
+      crisisProfitFactorMinDelta: 0.01,
+      maxDrawdownMinImprovement: 0.1,
+      requireWalkForwardBreakEven: true,
+      minAggregateTrades: 220,
+      maxAggregateTrades: 3200,
+      minAnnualizedTrades: 180,
+      maxAnnualizedTrades: 500,
+      minAggregateTradeRetentionPct: 0.9,
+      requireCrisisImprovementForPromotion: true,
+    };
+
+    const common = {
+      aggregateBaseline: createMetricSummary({
+        totalTrades: 243,
+        annualizedTrades: 40.5,
+        expectancy: 0.2,
+        profitFactor: 1.69,
+      }),
+      crisisBaseline: createMetricSummary({
+        totalTrades: 88,
+        expectancy: -0.068,
+        profitFactor: 1.0576,
+        maxDrawdown: 4.38,
+      }),
+      crisisCurrent: createMetricSummary({
+        totalTrades: 320,
+        expectancy: -0.05,
+        profitFactor: 1.08,
+        maxDrawdown: 4.2,
+      }),
+      walkForwardBaseline: createMetricSummary({
+        expectancy: 0.05,
+        profitFactor: 1.01,
+        maxDrawdown: 2.4,
+      }),
+      walkForwardCurrent: createMetricSummary({
+        expectancy: 0.06,
+        profitFactor: 1.02,
+        maxDrawdown: 2.3,
+      }),
+      thresholds,
+    };
+
+    const inRange = evaluateResearchValidationGates({
+      ...common,
+      aggregateCurrent: createMetricSummary({
+        totalTrades: 2100,
+        annualizedTrades: 260,
+        expectancy: 0.23,
+        profitFactor: 1.72,
+      }),
+    });
+
+    expect(inRange.annualizedTradeCadencePass).toBe(true);
+    expect(inRange.aggregateTradeCadencePass).toBe(true);
+    expect(inRange.allHardGatesPass).toBe(true);
+
+    const belowAnnualizedRange = evaluateResearchValidationGates({
+      ...common,
+      aggregateCurrent: createMetricSummary({
+        totalTrades: 2100,
+        annualizedTrades: 170,
+        expectancy: 0.23,
+        profitFactor: 1.72,
+      }),
+    });
+
+    expect(belowAnnualizedRange.annualizedTradeCadencePass).toBe(false);
+    expect(belowAnnualizedRange.aggregateTradeCadencePass).toBe(false);
+    expect(belowAnnualizedRange.allHardGatesPass).toBe(false);
+
+    const missingAnnualizedEvidence = evaluateResearchValidationGates({
+      ...common,
+      aggregateCurrent: createMetricSummary({
+        totalTrades: 2100,
+        expectancy: 0.23,
+        profitFactor: 1.72,
+      }),
+    });
+
+    expect(missingAnnualizedEvidence.annualizedTradeCadencePass).toBe(false);
+    expect(missingAnnualizedEvidence.aggregateTradeCadencePass).toBe(false);
+  });
+
   it("treats holdout, final holdout, perturbation, monte carlo, and cost stress as extra hard gates when configured", () => {
     const result = evaluateResearchValidationGates({
       aggregateBaseline: createMetricSummary(),

@@ -11,6 +11,7 @@ function buildFailedGateReasons(gates: ResearchGateEvaluation): string[] {
   add(!gates.aggregateExpectancyStable, "aggregate expectancy degraded");
   add(!gates.aggregateProfitFactorStable, "aggregate profit factor degraded");
   add(!gates.aggregateDrawdownStable, "aggregate drawdown worsened");
+  add(gates.annualizedTradeCadencePass === false, "annualized trade cadence left the allowed range");
   add(gates.aggregateTradeCadencePass === false, "aggregate trade cadence left the allowed range");
   add(!gates.crisisExpectancyStable, "crisis expectancy degraded");
   add(!gates.crisisProfitFactorStable, "crisis profit factor degraded");
@@ -44,6 +45,9 @@ function buildPromotionMissReasons(gates: ResearchGateEvaluation): string[] {
   }
   if (gates.aggregateTradeCadencePass === false) {
     reasons.push("trade cadence outside configured range");
+  }
+  if (gates.annualizedTradeCadencePass === false) {
+    reasons.push("annualized trade cadence outside configured range");
   }
   return reasons.slice(0, 6);
 }

@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 
 import { buildResearchRunArtifactPaths } from "./artifactContract";
 import { readJsonIfExists } from "./fs";
+import { buildResearchMetricSummary } from "./metrics";
 import type {
   ResearchBaselineManifest,
   ResearchCandidateLibrary,
@@ -36,6 +37,7 @@ export type ResearchIntelligenceReport = {
     searchSpaceCoverage: ResearchIntelligenceMetric;
     promotionEfficiency: ResearchIntelligenceMetric;
     candidateConversion: ResearchIntelligenceMetric;
+    researchEfficiency: ResearchIntelligenceMetric;
     engineStability: ResearchIntelligenceMetric;
     reproducibility: ResearchIntelligenceMetric;
     overfittingRisk: ResearchIntelligenceMetric;
@@ -49,10 +51,17 @@ export type ResearchIntelligenceReport = {
     operationalFailures: number;
     candidates: number;
     promotes: number;
+    rejectGateBreakdown: Record<string, number>;
     enabledTemplates: number;
     exploredTemplates: number;
+    templatesPerCandidate: number | null;
+    templatesUntilFirstCandidate: number | null;
+    scientificRunsPerCandidate: number | null;
+    firstCandidateAfterDecisions: number | null;
+    hoursToFirstCandidate: number | null;
     baselineId: string | null;
     baselineTradeCount: number | null;
+    baselineAnnualizedTrades: number | null;
     crisisTradeCount: number | null;
     comparisonsInspected: number;
     comparisonsWithStatisticalValidation: number;
@@ -62,6 +71,7 @@ export type ResearchIntelligenceReport = {
 type DecisionLike = {
   decision: string;
   reason?: string | null;
+  timestamp?: string | null;
   plannerTemplateId?: string | null;
   failureCategory?: string | null;
 };
@@ -89,6 +99,10 @@ function pct(numerator: number, denominator: number): number | null {
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value * 100) / 100));
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function metric(args: {
@@ -121,6 +135,7 @@ async function readDecisionEntries(config: ResearchConfig): Promise<DecisionLike
         return {
           decision: String(parsed.decision ?? "unknown"),
           reason: typeof parsed.reason === "string" ? parsed.reason : null,
+          timestamp: typeof parsed.timestamp === "string" ? parsed.timestamp : null,
           plannerTemplateId:
             typeof parsed.planner_template_id === "string" ? parsed.planner_template_id : null,
           failureCategory:
@@ -148,6 +163,37 @@ function countEnabledTemplates(library: ResearchCandidateLibrary | null): number
 
 function hasMetricEvidence(summary: ResearchMetricSummary | null | undefined): summary is ResearchMetricSummary {
   return Boolean(summary && Number.isFinite(summary.totalTrades) && summary.totalTrades > 0);
+}
+
+function extractFailedGateReasons(reason: string | null | undefined): string[] {
+  if (!reason?.startsWith("Hard validation gates failed:")) return [];
+  return reason
+    .replace(/^Hard validation gates failed:\s*/i, "")
+    .replace(/\.$/, "")
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildRejectGateBreakdown(decisions: DecisionLike[]): Record<string, number> {
+  const breakdown: Record<string, number> = {};
+  for (const decision of decisions) {
+    if (decision.decision !== "reject") continue;
+    for (const reason of extractFailedGateReasons(decision.reason)) {
+      breakdown[reason] = (breakdown[reason] ?? 0) + 1;
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(breakdown).sort(([, a], [, b]) => b - a),
+  );
+}
+
+function hoursBetween(start: string | null | undefined, end: string | null | undefined): number | null {
+  if (!start || !end) return null;
+  const from = new Date(start).getTime();
+  const to = new Date(end).getTime();
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return null;
+  return round((to - from) / (60 * 60 * 1000));
 }
 
 function scoreBaselineResistance(baseline: ResearchBaselineManifest | null): ResearchIntelligenceMetric {
@@ -261,10 +307,46 @@ export async function buildResearchIntelligenceReport(args: {
   const rejects = decisions.filter((entry) => entry.decision === "reject").length;
   const operationalFailures = decisions.filter((entry) => entry.decision === "failed").length;
   const scientificDecisions = promotes + candidates + rejects;
+  const usefulScientificDecisions = promotes + candidates;
+  const sortedScientificDecisions = decisions
+    .filter((entry) => ["promote", "candidate", "reject"].includes(entry.decision))
+    .slice()
+    .sort((a, b) => {
+      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return aTime - bTime;
+    });
+  const firstUsefulIndex = sortedScientificDecisions.findIndex((entry) =>
+    ["promote", "candidate"].includes(entry.decision),
+  );
+  const firstUsefulDecision = firstUsefulIndex >= 0 ? sortedScientificDecisions[firstUsefulIndex] : null;
+  const firstScientificDecision = sortedScientificDecisions[0] ?? null;
   const enabledTemplates = countEnabledTemplates(candidateLibrary);
   const exploredTemplates = new Set(
     decisions.map((entry) => entry.plannerTemplateId).filter((value): value is string => Boolean(value)),
   ).size;
+  const exploredBeforeFirstCandidate =
+    firstUsefulIndex >= 0
+      ? new Set(
+          sortedScientificDecisions
+            .slice(0, firstUsefulIndex + 1)
+            .map((entry) => entry.plannerTemplateId)
+            .filter((value): value is string => Boolean(value)),
+        ).size
+      : null;
+  const rejectGateBreakdown = buildRejectGateBreakdown(decisions);
+  const templatesPerCandidate =
+    usefulScientificDecisions > 0 && exploredTemplates > 0
+      ? round(exploredTemplates / usefulScientificDecisions)
+      : null;
+  const scientificRunsPerCandidate =
+    usefulScientificDecisions > 0 && scientificDecisions > 0
+      ? round(scientificDecisions / usefulScientificDecisions)
+      : null;
+  const hoursToFirstCandidate = hoursBetween(
+    firstScientificDecision?.timestamp,
+    firstUsefulDecision?.timestamp,
+  );
   const fingerprintedCompleted = args.queue.tasks.filter(
     (task) => task.status === "completed" && Boolean(task.run_fingerprint) && Boolean(task.last_run_id),
   ).length;
@@ -276,11 +358,25 @@ export async function buildResearchIntelligenceReport(args: {
   const searchCoveragePct = pct(exploredTemplates, enabledTemplates);
   const promotionEfficiencyPct = pct(promotes, scientificDecisions);
   const candidateConversionPct = pct(promotes + candidates, scientificDecisions);
+  const candidateTemplateYieldPct = pct(usefulScientificDecisions, exploredTemplates);
+  const researchEfficiencyPct =
+    scientificDecisions <= 0
+      ? null
+      : usefulScientificDecisions === 0
+        ? 0
+        : clampScore(
+            ((candidateConversionPct ?? 0) * 0.5) +
+              ((candidateTemplateYieldPct ?? 0) * 0.35) +
+              ((promotionEfficiencyPct ?? 0) * 0.15),
+          );
   const reproducibilityPct = completedTasks > 0
     ? clampScore((fingerprintedCompleted / completedTasks) * 80 + (baselineHashesPresent ? 20 : 0))
     : null;
   const overfittingRisk = scoreOverfittingRisk(comparisons);
   const baselineResistance = scoreBaselineResistance(args.baseline);
+  const baselineLiveSummary = args.baseline?.live_summary
+    ? buildResearchMetricSummary(args.baseline.live_summary, args.config.study.yearlyPeriods)
+    : null;
 
   const confidenceInputs = [
     engineStabilityPct,
@@ -329,6 +425,19 @@ export async function buildResearchIntelligenceReport(args: {
         evidence: `${promotes + candidates}/${scientificDecisions} scientific decisions became candidate/promote.`,
         missingEvidence: scientificDecisions > 0 ? [] : ["scientific decisions"],
       }),
+      researchEfficiency: metric({
+        label: "Research Efficiency",
+        value: researchEfficiencyPct,
+        unit: "score",
+        evidence:
+          usefulScientificDecisions > 0
+            ? `${exploredTemplates} explored templates produced ${usefulScientificDecisions} candidate/promote decisions; ${scientificRunsPerCandidate ?? "n/a"} scientific runs per useful decision.`
+            : `${exploredTemplates} explored templates and ${scientificDecisions} scientific decisions have not produced a candidate/promote yet.`,
+        missingEvidence:
+          scientificDecisions > 0
+            ? []
+            : ["scientific decisions", "decision ledger template ids"],
+      }),
       engineStability: metric({
         label: "Engine Stability",
         value: engineStabilityPct,
@@ -354,10 +463,17 @@ export async function buildResearchIntelligenceReport(args: {
       operationalFailures,
       candidates,
       promotes,
+      rejectGateBreakdown,
       enabledTemplates,
       exploredTemplates,
+      templatesPerCandidate,
+      templatesUntilFirstCandidate: exploredBeforeFirstCandidate,
+      scientificRunsPerCandidate,
+      firstCandidateAfterDecisions: firstUsefulIndex >= 0 ? firstUsefulIndex + 1 : null,
+      hoursToFirstCandidate,
       baselineId: args.baseline?.baseline_id ?? null,
       baselineTradeCount: args.baseline?.live_summary.totalTrades ?? null,
+      baselineAnnualizedTrades: baselineLiveSummary?.annualizedTrades ?? null,
       crisisTradeCount: args.baseline?.crisis_summary.totalTrades ?? null,
       comparisonsInspected: comparisons.length,
       comparisonsWithStatisticalValidation: comparisons.filter((comparison) => comparison.statistical_validation).length,

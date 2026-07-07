@@ -60,6 +60,16 @@ export type ResearchPromotionReadinessOverview = {
     bundleOnlyReadyPackageCount: number;
     status: "ready" | "blocked" | "bundle_only" | "idle";
   } | null;
+  challengerGovernance: {
+    candidateWatchlistCount: number;
+    challengerReviewCount: number;
+    challengerConfirmedCount: number;
+    paperEligibleCount: number;
+    baselineReplacementReadyCount: number;
+    autoBaselinePromotionEnabled: false;
+    status: "idle" | "watching" | "paper_ready" | "baseline_blocked";
+    reason: string;
+  } | null;
 };
 
 export function emptyResearchPromotionReadinessOverview(): ResearchPromotionReadinessOverview {
@@ -68,6 +78,7 @@ export function emptyResearchPromotionReadinessOverview(): ResearchPromotionRead
     packages: null,
     opportunity: null,
     paperGate: null,
+    challengerGovernance: null,
   };
 }
 
@@ -97,6 +108,28 @@ function summarizePromotionReadiness(args: {
               (args.packages?.summary.blocked_count ?? 0) > 0
             ? "blocked"
             : "idle";
+
+  const candidateWatchlistCount = args.board?.summary.watchlist_count ?? 0;
+  const challengerReviewCount = args.packages?.summary.review_ready_count ?? 0;
+  const challengerConfirmedCount = args.packages?.summary.bundle_confirmed_count ?? 0;
+  const paperEligibleCount = args.paperPromotion?.executable_task_scope_count ?? 0;
+  const baselineReplacementReadyCount = 0;
+  const challengerStatus =
+    paperEligibleCount > 0
+      ? "paper_ready"
+      : challengerReviewCount > 0 || challengerConfirmedCount > 0
+        ? "baseline_blocked"
+        : candidateWatchlistCount > 0
+          ? "watching"
+          : "idle";
+  const challengerReason =
+    challengerStatus === "paper_ready"
+      ? "At least one challenger scope is eligible for Paper execution, but Current Live Baseline replacement still requires explicit approval."
+      : challengerStatus === "baseline_blocked"
+        ? "Challengers exist, but no automatic Current Live Baseline replacement is enabled."
+        : challengerStatus === "watching"
+          ? "Candidates are being watched; none are ready for Paper execution or baseline replacement."
+          : "No active challenger evidence is available.";
 
   return {
     board: args.board
@@ -133,6 +166,18 @@ function summarizePromotionReadiness(args: {
           executableTaskScopeCount: args.paperPromotion.executable_task_scope_count,
           bundleOnlyReadyPackageCount: args.paperPromotion.bundle_only_ready_package_count,
           status: paperGateStatus ?? "idle",
+        }
+      : null,
+    challengerGovernance: args.board || args.packages || args.paperPromotion
+      ? {
+          candidateWatchlistCount,
+          challengerReviewCount,
+          challengerConfirmedCount,
+          paperEligibleCount,
+          baselineReplacementReadyCount,
+          autoBaselinePromotionEnabled: false,
+          status: challengerStatus,
+          reason: challengerReason,
         }
       : null,
   };

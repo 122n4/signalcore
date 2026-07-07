@@ -46,6 +46,7 @@ describe("trading research runner", () => {
   it("coerces null or partial metric summaries without crashing", () => {
     expect(buildMetricSummary(undefined)).toEqual({
       totalTrades: 0,
+      annualizedTrades: null,
       winRate: 0,
       averageRiskReward: null,
       expectancy: 0,
@@ -55,12 +56,31 @@ describe("trading research runner", () => {
 
     expect(buildMetricSummary({ totalTrades: 12, expectancy: 0.14 })).toEqual({
       totalTrades: 12,
+      annualizedTrades: null,
       winRate: 0,
       averageRiskReward: null,
       expectancy: 0.14,
       profitFactor: null,
       maxDrawdown: 0,
     });
+
+    expect(
+      buildMetricSummary(
+        { totalTrades: 600, expectancy: 0.14 },
+        [
+          {
+            label: "2024",
+            from: "2024-01-01T00:00:00.000Z",
+            to: "2024-12-31T23:59:59.000Z",
+          },
+          {
+            label: "2025",
+            from: "2025-01-01T00:00:00.000Z",
+            to: "2025-12-31T23:59:59.000Z",
+          },
+        ],
+      ).annualizedTrades,
+    ).toBeCloseTo(300, 0);
   });
 
   it("expands research task scopes across every targeted instrument", () => {
