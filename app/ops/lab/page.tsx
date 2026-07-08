@@ -73,8 +73,8 @@ function intelligenceValue(metric: Awaited<ReturnType<typeof buildResearchLabOve
   return fmt(metric.value);
 }
 
-function candidateEvidenceValue(value: number | null, usefulDecisions: number) {
-  if (value !== null) return value;
+function candidateEvidenceValue(value: number | null | undefined, usefulDecisions: number) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   return usefulDecisions > 0 ? "n/a" : "no candidate yet";
 }
 

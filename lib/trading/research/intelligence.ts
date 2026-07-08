@@ -432,7 +432,8 @@ export async function buildResearchIntelligenceReport(args: {
   );
 
   const engineStabilityPct = pct(completedTasks, completedTasks + failedTasks);
-  const searchCoveragePct = pct(exploredTemplates, enabledTemplates);
+  const rawSearchCoveragePct = pct(exploredTemplates, enabledTemplates);
+  const searchCoveragePct = rawSearchCoveragePct == null ? null : clampScore(rawSearchCoveragePct);
   const promotionEfficiencyPct = pct(promotes, scientificDecisions);
   const candidateConversionPct = pct(promotes + candidates, scientificDecisions);
   const candidateTemplateYieldPct = pct(usefulScientificDecisions, exploredTemplates);
