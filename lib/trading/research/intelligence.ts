@@ -217,11 +217,16 @@ async function readBaselineLiveSummary(
     return directSummary;
   }
 
+  const mergedSummary: Partial<ResearchMetricSummary> = {
+    ...baseline.live_summary,
+    ...artifactSummary,
+  };
+  if (mergedSummary.annualizedTrades === null) {
+    delete mergedSummary.annualizedTrades;
+  }
+
   return buildResearchMetricSummary(
-    {
-      ...baseline.live_summary,
-      ...artifactSummary,
-    },
+    mergedSummary,
     artifactPeriods,
   );
 }

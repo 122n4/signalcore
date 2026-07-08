@@ -65,7 +65,10 @@ describe("research lab overview", () => {
         ],
       },
       aggregate: {
-        summary: createMetricSummary({ totalTrades: 243 }),
+        summary: {
+          ...createMetricSummary({ totalTrades: 243 }),
+          annualizedTrades: undefined,
+        },
       },
     });
     await writeJsonAtomic(path.join(baselineDir, "crisis-baseline.json"), { ok: true });
