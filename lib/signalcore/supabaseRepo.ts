@@ -218,7 +218,7 @@ export async function upsertDefaultPlanIfMissing(userId: string, mode: Mode, exi
   return { ok: false, created: false, warning: "user_settings schema mismatch", message: String(lastErr?.message ?? "") };
 }
 
-// ---------- Portfolio (schema-proof read) ----------
+// ---------- Legacy portfolio snapshot compatibility ----------
 type PortfolioRow = Record<string, any>;
 
 async function tryReadPortfolio(args: { userId: string; mode: Mode; modeCol: string; snapCol: string }) {
@@ -247,7 +247,11 @@ async function tryReadPortfolio(args: { userId: string; mode: Mode; modeCol: str
 }
 
 /**
- * Reads canonical snapshot from portfolios, supporting varying schemas.
+ * Compatibility read for legacy portfolio snapshots.
+ *
+ * Runtime holdings are canonical in portfolio_items via /api/portfolio-items.
+ * Keep this reader only for older plan/setup paths that still expect a compact
+ * snapshot object while migration is completed.
  */
 export async function readPortfolioSnapshot(userId: string, mode: Mode): Promise<PortfolioSnapshot | null> {
   const modeCols = ["mode", "autopilot_mode", "goal_type"];

@@ -295,6 +295,8 @@ async function writePortfolioState(args: {
     },
   };
 
+  // Compatibility mirror only: portfolio_items remains the canonical holdings
+  // source for /api/daily-bundle and the Investing workspace.
   const upsertBase: any = {
     user_id: userId,
     mode,
