@@ -39,12 +39,12 @@ jobs:
           ENGINE_LOOP_SECRET: ${{ secrets.ENGINE_LOOP_SECRET }}
         run: |
           if [ -z "$QA_BASE_URL" ]; then
-            echo "Skipping post-deploy smoke: QA_BASE_URL is not configured."
-            exit 0
+            echo "Post-deploy smoke cannot run: QA_BASE_URL is not configured."
+            exit 1
           fi
           if [ -z "$CRON_SECRET" ] && [ -z "$ENGINE_LOOP_SECRET" ]; then
-            echo "Skipping post-deploy smoke: refresh secret is not configured."
-            exit 0
+            echo "Post-deploy smoke cannot run: refresh secret is not configured."
+            exit 1
           fi
           npm run qa:post-deploy
 
@@ -57,8 +57,8 @@ jobs:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
         run: |
           if [ -z "$QA_SIGN_IN_URL" ] && { [ -z "$CLERK_SECRET_KEY" ] || { [ -z "$QA_CLERK_USER_ID" ] && [ -z "$QA_CLERK_EMAIL" ]; }; }; then
-            echo "Skipping trading production audit: QA auth is not configured."
-            exit 0
+            echo "Trading production audit cannot run: QA auth is not configured."
+            exit 1
           fi
           npm run qa:trading:prod
 
@@ -74,8 +74,8 @@ jobs:
         run: |
           OWNER_FALLBACK="${SC_OWNER_USER_ID:-${SC_OWNER_USER_IDS%%,*}}"
           if [ -z "$QA_SIGN_IN_URL" ] && { [ -z "$CLERK_SECRET_KEY" ] || { [ -z "$QA_CLERK_USER_ID" ] && [ -z "$QA_CLERK_EMAIL" ] && [ -z "$OWNER_FALLBACK" ]; }; }; then
-            echo "Skipping investing production audit: QA auth is not configured."
-            exit 0
+            echo "Investing production audit cannot run: QA auth is not configured."
+            exit 1
           fi
           npm run qa:investing:prod
 
@@ -87,7 +87,7 @@ jobs:
           SC_OWNER_USER_IDS: ${{ secrets.SC_OWNER_USER_IDS }}
         run: |
           if [ -z "$CLERK_SECRET_KEY" ]; then
-            echo "Skipping billing audit: CLERK_SECRET_KEY is not configured."
-            exit 0
+            echo "Billing audit cannot run: CLERK_SECRET_KEY is not configured."
+            exit 1
           fi
           npm run qa:billing:strict
