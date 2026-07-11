@@ -7,10 +7,12 @@ import {
   readResearchLabRemoteSnapshot,
   RESEARCH_REMOTE_DECISION_COLUMNS,
   RESEARCH_REMOTE_RUN_COLUMNS,
+  syncResearchLabToSupabase,
   writeJsonAtomic,
 } from "@/lib/trading/research";
 
 import {
+  createMetricSummary,
   createResearchConfig,
   createResearchQueue,
   createResearchTask,
@@ -172,5 +174,91 @@ describe("trading research supabase sync payload", () => {
     expect(RESEARCH_REMOTE_DECISION_COLUMNS).not.toContain("payload");
     expect(limitsByTable.research_lab_runs).toEqual([7]);
     expect(limitsByTable.research_lab_decisions).toEqual([11]);
+  });
+
+  it("does not overwrite the canonical mirrored state with lower accumulated metrics for the same baseline", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    const baselineId = config.liveBaselineSource.baselineId;
+    await writeJsonAtomic(
+      path.join(config.paths.baselinesDir, baselineId, "baseline-manifest.json"),
+      {
+        baseline_id: baselineId,
+        created_at: "2026-07-10T19:00:00.000Z",
+        dataset_profile: config.liveBaselineSource.datasetProfile,
+        validation_profile: config.liveBaselineSource.validationProfile,
+        dataset_manifest_hash: "dataset-hash",
+        engine_manifest_hash: "engine-hash",
+        source_artifacts: {
+          aggregate: null,
+          crisis: null,
+          walkforward: null,
+        },
+        live_summary: createMetricSummary(),
+        crisis_summary: createMetricSummary(),
+      },
+    );
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([
+        createResearchTask({
+          status: "completed",
+          run_fingerprint: "new-fingerprint",
+          last_run_id: "run-low-count",
+        }),
+      ]),
+    );
+
+    const stateUpsertMock = vi.fn(async () => ({ error: null }));
+    const existingState = {
+      id: "default",
+      payload: {
+        baseline: {
+          baseline_id: baselineId,
+        },
+        researchIntelligence: {
+          evidence: {
+            decisionEvents: 368,
+            exploredTemplates: 266,
+            completedTasks: 267,
+          },
+        },
+        promotionReadiness: {
+          board: {
+            taskPromotes: 2,
+            taskCandidates: 1,
+          },
+          paperGate: {
+            executableTaskScopeCount: 1,
+          },
+        },
+      },
+    };
+    const stateQuery: any = {
+      select: vi.fn(() => stateQuery),
+      eq: vi.fn(() => stateQuery),
+      maybeSingle: vi.fn(async () => ({ data: existingState, error: null })),
+      upsert: stateUpsertMock,
+    };
+    const inertTable = {
+      upsert: vi.fn(async () => ({ error: null })),
+    };
+
+    getSupabaseAdminMock.mockReturnValue({
+      from: vi.fn((table: string) => (table === "research_lab_state" ? stateQuery : inertTable)),
+    });
+
+    const result = await syncResearchLabToSupabase({
+      config,
+      runLimit: 0,
+      decisionLimit: 0,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.stateSynced).toBe(false);
+    expect(result.stateSkippedReason).toContain("regressive_research_lab_state_same_baseline");
+    expect(result.stateSkippedReason).toContain("decisionEvents:368->0");
+    expect(result.stateSkippedReason).toContain("completedTasks:267->1");
+    expect(stateUpsertMock).not.toHaveBeenCalled();
   });
 });

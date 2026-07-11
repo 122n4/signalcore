@@ -33,6 +33,7 @@ export type ResearchSupabaseSyncResult = {
   generatedAt: string;
   schemaReady: boolean;
   stateSynced: boolean;
+  stateSkippedReason?: string | null;
   runsSynced: number;
   decisionsSynced: number;
   error: string | null;
@@ -292,8 +293,92 @@ function decisionRow(entry: ResearchDecisionLedgerEntry) {
   };
 }
 
+function readAccumulatedCounter(stateRow: any, key: string): number {
+  const value = stateRow?.payload?.researchIntelligence?.evidence?.[key];
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function readPromotionCounter(stateRow: any, path: string[]): number {
+  let value = stateRow?.payload?.promotionReadiness;
+  for (const key of path) {
+    value = value?.[key];
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function readStateBaselineId(stateRow: any): string | null {
+  const payload = stateRow?.payload ?? {};
+  const baselineId =
+    payload.baseline?.baseline_id ??
+    payload.baseline?.baselineId ??
+    payload.researchIntelligence?.evidence?.baselineId ??
+    null;
+  return typeof baselineId === "string" && baselineId.trim() ? baselineId.trim() : null;
+}
+
+function shouldSkipRegressiveStateOverwrite(args: {
+  existingState: any | null;
+  nextState: any;
+}) {
+  const existing = args.existingState;
+  if (!existing?.payload) return null;
+
+  const existingBaselineId = readStateBaselineId(existing);
+  const nextBaselineId = readStateBaselineId(args.nextState);
+  if (!existingBaselineId || !nextBaselineId || existingBaselineId !== nextBaselineId) {
+    return null;
+  }
+
+  const checks = [
+    {
+      label: "decisionEvents",
+      previous: readAccumulatedCounter(existing, "decisionEvents"),
+      next: readAccumulatedCounter(args.nextState, "decisionEvents"),
+    },
+    {
+      label: "exploredTemplates",
+      previous: readAccumulatedCounter(existing, "exploredTemplates"),
+      next: readAccumulatedCounter(args.nextState, "exploredTemplates"),
+    },
+    {
+      label: "completedTasks",
+      previous: readAccumulatedCounter(existing, "completedTasks"),
+      next: readAccumulatedCounter(args.nextState, "completedTasks"),
+    },
+    {
+      label: "taskPromotes",
+      previous: readPromotionCounter(existing, ["board", "taskPromotes"]),
+      next: readPromotionCounter(args.nextState, ["board", "taskPromotes"]),
+    },
+    {
+      label: "taskCandidates",
+      previous: readPromotionCounter(existing, ["board", "taskCandidates"]),
+      next: readPromotionCounter(args.nextState, ["board", "taskCandidates"]),
+    },
+    {
+      label: "executableTaskScopeCount",
+      previous: readPromotionCounter(existing, ["paperGate", "executableTaskScopeCount"]),
+      next: readPromotionCounter(args.nextState, ["paperGate", "executableTaskScopeCount"]),
+    },
+  ];
+
+  const regressed = checks.filter((check) => check.next < check.previous);
+  if (regressed.length === 0) return null;
+
+  return `regressive_research_lab_state_same_baseline:${regressed
+    .map((check) => `${check.label}:${check.previous}->${check.next}`)
+    .join(",")}`;
+}
+
 export function researchSupabaseSyncEnabled() {
   return String(process.env.RESEARCH_SUPABASE_SYNC ?? "1").trim() !== "0";
+}
+
+function regressiveResearchStateOverwriteAllowed() {
+  const value = String(process.env.RESEARCH_SUPABASE_ALLOW_REGRESSIVE_STATE ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 export async function buildResearchSupabasePayload(args: {
@@ -400,8 +485,21 @@ export async function syncResearchLabToSupabase(args: {
   try {
     const sb = getSupabaseAdmin();
     const payload = await buildResearchSupabasePayload(args);
-    const state = await sb.from("research_lab_state").upsert(payload.stateRow, { onConflict: "id" });
-    if (state.error) throw state.error;
+    const existingStateRes = await sb.from("research_lab_state").select("*").eq("id", "default").maybeSingle();
+    if (existingStateRes.error) throw existingStateRes.error;
+
+    const stateSkippedReason = regressiveResearchStateOverwriteAllowed()
+      ? null
+      : shouldSkipRegressiveStateOverwrite({
+          existingState: existingStateRes.data ?? null,
+          nextState: payload.stateRow,
+        });
+    let stateSynced = false;
+    if (!stateSkippedReason) {
+      const state = await sb.from("research_lab_state").upsert(payload.stateRow, { onConflict: "id" });
+      if (state.error) throw state.error;
+      stateSynced = true;
+    }
 
     let runsSynced = 0;
     if (payload.runs.length > 0) {
@@ -423,7 +521,8 @@ export async function syncResearchLabToSupabase(args: {
       ok: true,
       generatedAt: payload.generatedAt,
       schemaReady: true,
-      stateSynced: true,
+      stateSynced,
+      stateSkippedReason,
       runsSynced,
       decisionsSynced,
       error: null,
