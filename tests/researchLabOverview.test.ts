@@ -452,6 +452,14 @@ describe("research lab overview", () => {
   it("uses mirrored promotion readiness when only the remote lab state is available", async () => {
     const rootDir = await createResearchTempDir();
     const config = await createResearchConfig(rootDir);
+    config.study.yearlyPeriods = [
+      { label: "2020", from: "2020-01-01T00:00:00.000Z", to: "2020-12-31T23:59:59.000Z" },
+      { label: "2021", from: "2021-01-01T00:00:00.000Z", to: "2021-12-31T23:59:59.000Z" },
+      { label: "2022", from: "2022-01-01T00:00:00.000Z", to: "2022-12-31T23:59:59.000Z" },
+      { label: "2023", from: "2023-01-01T00:00:00.000Z", to: "2023-12-31T23:59:59.000Z" },
+      { label: "2024", from: "2024-01-01T00:00:00.000Z", to: "2024-12-31T23:59:59.000Z" },
+      { label: "2025", from: "2025-01-01T00:00:00.000Z", to: "2025-12-31T23:59:59.000Z" },
+    ];
 
     vi.spyOn(researchSupabaseSync, "readResearchLabRemoteSnapshot").mockResolvedValue({
       schemaReady: true,
@@ -461,7 +469,21 @@ describe("research lab overview", () => {
         generated_at: "2026-05-18T14:00:00.000Z",
         payload: {
           runtime: { severity: "ok", queue: { activeRunId: null, idleReason: null }, lock: { health: "healthy" }, activeRun: { stage: null, stageHealth: "ok" }, backfill: {}, dataHunter: {}, alerts: [] },
-          baseline: null,
+          baseline: {
+            baseline_id: config.liveBaselineSource.baselineId,
+            created_at: "2026-05-17T10:00:00.000Z",
+            dataset_profile: config.liveBaselineSource.datasetProfile,
+            validation_profile: config.liveBaselineSource.validationProfile,
+            dataset_manifest_hash: "dataset-hash",
+            engine_manifest_hash: "engine-hash",
+            source_artifacts: {
+              aggregate: "aggregate.json",
+              crisis: "crisis.json",
+              walkforward: "walkforward.json",
+            },
+            live_summary: createMetricSummary({ totalTrades: 243, annualizedTrades: null }),
+            crisis_summary: createMetricSummary({ totalTrades: 88 }),
+          },
           queueOverview: {
             activeRunId: null,
             idleReason: null,
@@ -624,5 +646,6 @@ describe("research lab overview", () => {
     expect(overview.promotionReadiness.packages?.blockedCount).toBe(2);
     expect(overview.promotionReadiness.paperGate?.status).toBe("blocked");
     expect(overview.researchIntelligence.summary.confidence.value).toBe(80);
+    expect(overview.researchIntelligence.evidence.baselineAnnualizedTrades).toBeCloseTo(40.5, 1);
   });
 });

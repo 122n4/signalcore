@@ -14,6 +14,7 @@ import {
   buildResearchIntelligenceReport,
   type ResearchIntelligenceReport,
 } from "@/lib/trading/research/intelligence";
+import { buildResearchMetricSummary } from "@/lib/trading/research/metrics";
 import { readResearchQueue } from "@/lib/trading/research/queue";
 import { canonicalizeResearchRunSnapshot } from "@/lib/trading/research/runCanonicalization";
 import {
@@ -388,6 +389,36 @@ function runFromRemote(row: any): ResearchLabRunEntry {
   };
 }
 
+function hydrateRemoteBaselineAnnualizedTrades(args: {
+  report: ResearchIntelligenceReport;
+  baseline: ResearchBaselineManifest | null;
+  config: ResearchConfig;
+}): ResearchIntelligenceReport {
+  const existingAnnualizedTrades = args.report.evidence.baselineAnnualizedTrades;
+  if (
+    existingAnnualizedTrades !== null &&
+    existingAnnualizedTrades !== undefined &&
+    Number.isFinite(Number(existingAnnualizedTrades))
+  ) {
+    return args.report;
+  }
+
+  const liveSummary = args.baseline?.live_summary;
+  if (!liveSummary) return args.report;
+
+  const summary = buildResearchMetricSummary(liveSummary, args.config.study.yearlyPeriods);
+  if (summary.annualizedTrades === null || summary.annualizedTrades === undefined) return args.report;
+
+  return {
+    ...args.report,
+    evidence: {
+      ...args.report.evidence,
+      baselineTradeCount: args.report.evidence.baselineTradeCount ?? summary.totalTrades,
+      baselineAnnualizedTrades: summary.annualizedTrades,
+    },
+  };
+}
+
 export async function buildResearchLabOverview(args: {
   config?: ResearchConfig;
   now?: Date;
@@ -444,6 +475,14 @@ export async function buildResearchLabOverview(args: {
 
     if (remote.schemaReady && remote.state && remotePayload?.runtime) {
       const remoteDecisions = remote.decisions.map(decisionFromRemote);
+      const remoteBaseline = (remotePayload.baseline ?? null) as ResearchBaselineManifest | null;
+      const remoteResearchIntelligence = remotePayload.researchIntelligence
+        ? hydrateRemoteBaselineAnnualizedTrades({
+            report: remotePayload.researchIntelligence,
+            baseline: remoteBaseline,
+            config,
+          })
+        : researchIntelligence;
       const decisionCounts = remoteDecisions.reduce<Record<string, number>>((acc, entry) => {
         acc[entry.decision] = (acc[entry.decision] ?? 0) + 1;
         return acc;
@@ -465,7 +504,7 @@ export async function buildResearchLabOverview(args: {
           },
         },
         runtime: remotePayload.runtime,
-        baseline: remotePayload.baseline ?? null,
+        baseline: remoteBaseline,
         queue: queueFromRemote(remotePayload.queueOverview),
         decisions: {
           counts: decisionCounts,
@@ -508,9 +547,7 @@ export async function buildResearchLabOverview(args: {
                 },
               }
             : emptyResearchPromotionReadinessOverview()),
-        researchIntelligence:
-          remotePayload.researchIntelligence ??
-          researchIntelligence,
+        researchIntelligence: remoteResearchIntelligence,
         datasetRequirements: remotePayload.datasetRequirements ?? datasetRequirements,
         dataAcquisitionPlan: remotePayload.dataAcquisitionPlan ?? dataAcquisitionPlan,
         operatorActions: operatorActions(),
