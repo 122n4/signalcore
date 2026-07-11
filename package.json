@@ -58,6 +58,9 @@
     "trading:scanner:fallback-catalog": "node scripts/trading/generateTradingScannerFallbackCatalog.mjs"
   },
   "overrides": {
+    "@clerk/shared": "3.47.7",
+    "js-cookie": "3.0.7",
+    "ws": "8.21.0",
     "postcss": "8.5.14"
   },
   "dependencies": {
