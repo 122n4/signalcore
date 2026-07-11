@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { createExecutionPlan } from "@/lib/trading/execution";
 import { applyBacktestRiskOverrides } from "@/lib/trading/backtest";
+import { createDefaultTradingPlaybook } from "@/lib/trading/playbook";
 
 import { createExecutionInput } from "./helpers/tradingOperationalFixtures";
+
+const DEFAULT_BASE_RULES = createDefaultTradingPlaybook().baseRules;
 
 describe("trading backtest risk overrides", () => {
   it("raises aggressive risk framing to a configured high-edge risk target", () => {
@@ -386,6 +389,7 @@ describe("trading backtest risk overrides", () => {
     const input = createExecutionInput({
       playbookOverrides: {
         baseRules: {
+          ...DEFAULT_BASE_RULES,
           blockedTradeValidContexts: [],
         },
       },

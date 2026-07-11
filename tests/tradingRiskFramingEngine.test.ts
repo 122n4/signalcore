@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { buildRiskFraming } from "@/lib/trading/execution";
+import { createDefaultTradingPlaybook } from "@/lib/trading/playbook";
 
 import { createExecutionInput } from "./helpers/tradingOperationalFixtures";
+
+const DEFAULT_BASE_RULES = createDefaultTradingPlaybook().baseRules;
 
 describe("trading risk framing engine", () => {
   it("returns normal framing for an aligned trade-valid setup", () => {
@@ -135,6 +138,7 @@ describe("trading risk framing engine", () => {
     const input = createExecutionInput({
       playbookOverrides: {
         baseRules: {
+          ...DEFAULT_BASE_RULES,
           blockedTradeValidContexts: [],
         },
       },
@@ -281,6 +285,7 @@ describe("trading risk framing engine", () => {
     const input = createExecutionInput({
       playbookOverrides: {
         baseRules: {
+          ...DEFAULT_BASE_RULES,
           blockedTradeValidContexts: [],
         },
       },

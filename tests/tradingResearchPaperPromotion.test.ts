@@ -21,6 +21,10 @@ function candidate(overrides: Partial<ComposeTradingLiveDecisionInput> = {}): Co
     snapshot: {
       instrument: "BTCUSD",
       snapshotAt: "2026-06-29T18:00:00.000Z",
+      marketType: "crypto",
+      sessionProfile: "crypto",
+      availableTimeframes: ["15m"],
+      timeframes: {},
     },
     market: {
       instrument: "BTCUSD",
@@ -480,6 +484,10 @@ describe("research paper promotion approval", () => {
         snapshot: {
           instrument: "NAS100",
           snapshotAt: "2026-06-29T18:00:00.000Z",
+          marketType: "equities",
+          sessionProfile: "ny_equities",
+          availableTimeframes: ["15m"],
+          timeframes: {},
         },
         market: {
           ...candidate().market,

@@ -44,6 +44,7 @@ import { runPaperBotCycleForUser } from "@/lib/trading/bot/paperRunner";
 import {
   composeTradingWatchlistEntry,
   resolveTradingActionGuidance,
+  type ComposeTradingLiveDecisionInput,
 } from "@/lib/trading/state";
 
 const LIVE_BASELINE = {
@@ -69,12 +70,14 @@ const SIGNAL = {
   validation_profile: LIVE_BASELINE.validation_profile,
 };
 
-function scannerCandidate(overrides: Record<string, any> = {}) {
-  const base = {
+function scannerCandidate(overrides: Record<string, any> = {}): ComposeTradingLiveDecisionInput {
+  const base: ComposeTradingLiveDecisionInput = {
     snapshot: {
       instrument: "BTCUSD",
       snapshotAt: "2026-07-04T08:00:00.000Z",
-      availableTimeframes: ["15m"],
+      marketType: "crypto" as const,
+      sessionProfile: "crypto" as const,
+      availableTimeframes: ["15m" as const],
       timeframes: {
         "15m": [
           {
@@ -91,7 +94,7 @@ function scannerCandidate(overrides: Record<string, any> = {}) {
     market: {
       instrument: "BTCUSD",
       snapshotAt: "2026-07-04T08:00:00.000Z",
-      timeframes: ["15m"],
+      timeframes: ["15m" as const],
       structure: { state: "uptrend", direction: "long", score: 70, confidence: 70 },
       regime: { state: "trending", score: 70, confidence: 70 },
       volatility: { state: "normal", score: 65, confidence: 65 },
@@ -432,7 +435,9 @@ describe("paper signal execution contract", () => {
     expect(result.status).toBe("blocked");
     expect(supabase.journalInserts).toHaveLength(0);
     expect(supabase.paperUpserts).toHaveLength(0);
-    expect(result.result.planned?.reasons.join(" ")).toContain("Execution status is restricted");
+    expect("result" in result ? result.result.planned?.reasons.join(" ") : "").toContain(
+      "Execution status is restricted",
+    );
   });
 
   it("does not advertise Execute now or open paper when signal pedigree or executable levels are incomplete", async () => {

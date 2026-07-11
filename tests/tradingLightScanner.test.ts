@@ -471,7 +471,7 @@ describe("trading light scanner", () => {
   });
 
   it("does not serve scanner cache entries across Current Live Baseline changes", async () => {
-    const instruments = [
+    const instruments: NonNullable<Parameters<typeof buildTradingLightScannerInputs>[0]["instruments"]> = [
       {
         instrument: "EURUSD",
         dataSymbol: "EUR/USD",
@@ -480,7 +480,7 @@ describe("trading light scanner", () => {
         provider: "twelvedata",
         focusGroup: "forex",
       },
-    ] as const;
+    ];
 
     setCurrentLiveBaseline("baseline-a", "engine-a");
     const first = await buildTradingLightScannerInputs({
@@ -505,7 +505,7 @@ describe("trading light scanner", () => {
   });
 
   it("loads the Current Live Baseline from the Supabase research mirror when local artifacts are unavailable", async () => {
-    const instruments = [
+    const instruments: NonNullable<Parameters<typeof buildTradingLightScannerInputs>[0]["instruments"]> = [
       {
         instrument: "EURUSD",
         dataSymbol: "EUR/USD",
@@ -514,7 +514,7 @@ describe("trading light scanner", () => {
         provider: "twelvedata",
         focusGroup: "forex",
       },
-    ] as const;
+    ];
 
     loadResearchConfigMock.mockResolvedValue({
       paths: {
@@ -558,7 +558,7 @@ describe("trading light scanner", () => {
   });
 
   it("does not generate a baseline-backed trading signal when no Current Live Baseline manifest is available", async () => {
-    const instruments = [
+    const instruments: NonNullable<Parameters<typeof buildTradingLightScannerInputs>[0]["instruments"]> = [
       {
         instrument: "EURUSD",
         dataSymbol: "EUR/USD",
@@ -567,7 +567,7 @@ describe("trading light scanner", () => {
         provider: "twelvedata",
         focusGroup: "forex",
       },
-    ] as const;
+    ];
 
     readJsonIfExistsMock.mockResolvedValue(null);
     readResearchLabRemoteSnapshotMock.mockResolvedValue({
