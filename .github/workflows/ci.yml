@@ -34,7 +34,7 @@ jobs:
 
       - name: Post-deploy production smoke
         env:
-          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL || 'https://www.syntrake.com' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ENGINE_LOOP_SECRET: ${{ secrets.ENGINE_LOOP_SECRET }}
         run: |
@@ -50,7 +50,7 @@ jobs:
 
       - name: Trading production audit
         env:
-          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL || 'https://www.syntrake.com' }}
           QA_SIGN_IN_URL: ${{ secrets.QA_SIGN_IN_URL }}
           QA_CLERK_USER_ID: ${{ secrets.QA_CLERK_USER_ID }}
           QA_CLERK_EMAIL: ${{ secrets.QA_CLERK_EMAIL }}
@@ -64,7 +64,7 @@ jobs:
 
       - name: Investing production audit
         env:
-          QA_BASE_URL: ${{ secrets.QA_BASE_URL }}
+          QA_BASE_URL: ${{ secrets.QA_BASE_URL || 'https://www.syntrake.com' }}
           QA_SIGN_IN_URL: ${{ secrets.QA_SIGN_IN_URL }}
           QA_CLERK_USER_ID: ${{ secrets.QA_CLERK_USER_ID }}
           QA_CLERK_EMAIL: ${{ secrets.QA_CLERK_EMAIL }}
