@@ -5,6 +5,7 @@ import type { ResearchMetricSummary } from "./types";
 const YEAR_MS = 365.25 * 24 * 60 * 60 * 1000;
 
 function finiteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
   const normalized = Number(value);
   return Number.isFinite(normalized) ? normalized : null;
 }
@@ -37,13 +38,12 @@ export function buildResearchMetricSummary(
   annualizationPeriods?: TradingHistoricalPeriod[] | null,
 ): ResearchMetricSummary {
   const totalTrades = finiteNumber(input?.totalTrades) ?? 0;
-  const explicitAnnualizedTrades =
-    input?.annualizedTrades === null ? null : finiteNumber(input?.annualizedTrades);
+  const explicitAnnualizedTrades = finiteNumber(input?.annualizedTrades);
+  const estimatedAnnualizedTrades = estimateAnnualizedTrades(totalTrades, annualizationPeriods);
 
   return {
     totalTrades,
-    annualizedTrades:
-      explicitAnnualizedTrades ?? estimateAnnualizedTrades(totalTrades, annualizationPeriods),
+    annualizedTrades: explicitAnnualizedTrades ?? estimatedAnnualizedTrades,
     winRate: finiteNumber(input?.winRate) ?? 0,
     averageRiskReward:
       input?.averageRiskReward === null ? null : finiteNumber(input?.averageRiskReward),

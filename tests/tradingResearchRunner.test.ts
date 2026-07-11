@@ -81,6 +81,44 @@ describe("trading research runner", () => {
         ],
       ).annualizedTrades,
     ).toBeCloseTo(300, 0);
+
+    expect(
+      buildMetricSummary(
+        { totalTrades: 243, annualizedTrades: null },
+        [
+          {
+            label: "2020",
+            from: "2020-01-01T00:00:00.000Z",
+            to: "2020-12-31T23:59:59.000Z",
+          },
+          {
+            label: "2021",
+            from: "2021-01-01T00:00:00.000Z",
+            to: "2021-12-31T23:59:59.000Z",
+          },
+          {
+            label: "2022",
+            from: "2022-01-01T00:00:00.000Z",
+            to: "2022-12-31T23:59:59.000Z",
+          },
+          {
+            label: "2023",
+            from: "2023-01-01T00:00:00.000Z",
+            to: "2023-12-31T23:59:59.000Z",
+          },
+          {
+            label: "2024",
+            from: "2024-01-01T00:00:00.000Z",
+            to: "2024-12-31T23:59:59.000Z",
+          },
+          {
+            label: "2025",
+            from: "2025-01-01T00:00:00.000Z",
+            to: "2025-12-31T23:59:59.000Z",
+          },
+        ],
+      ).annualizedTrades,
+    ).toBeCloseTo(40.5, 1);
   });
 
   it("expands research task scopes across every targeted instrument", () => {
