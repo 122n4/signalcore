@@ -161,6 +161,12 @@ export default async function OpsPage() {
               Research Lab
             </a>
             <a
+              href="/ops/trades"
+              className="rounded-full border border-amber-200/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100 transition hover:bg-amber-300/15"
+            >
+              Trade Ledger
+            </a>
+            <a
               href="/ops/marketing"
               className="rounded-full border border-cyan-200/30 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/15"
             >
