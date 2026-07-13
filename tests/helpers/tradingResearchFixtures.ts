@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 
 import type {
   ResearchCampaignLibrary,
@@ -125,6 +125,69 @@ function createBaselineComparativeReport(args: {
   };
 }
 
+async function writeLocalHistoricalFixture(args: {
+  rootDir: string;
+  relativePath: string;
+  lines: string[];
+}) {
+  const targetPath = path.join(args.rootDir, args.relativePath);
+  await mkdir(path.dirname(targetPath), { recursive: true });
+  await writeFile(targetPath, `${args.lines.join("\n")}\n`, "utf8");
+}
+
+async function writeLocalHistoricalFixtures(rootDir: string): Promise<void> {
+  const localDataRoot = path.join(rootDir, "local-data");
+  const years = [2020, 2021, 2022, 2023, 2024, 2025];
+
+  for (const year of years) {
+    await Promise.all([
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `forex/eurusd/DAT_ASCII_EURUSD_M1_${year}.csv`,
+        lines: [`${year}0101 000000;1.1000;1.1100;1.0900;1.1050;1000`],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `forex/gbpusd/DAT_ASCII_GBPUSD_M1_${year}.csv`,
+        lines: [`${year}0101 000000;1.2500;1.2550;1.2450;1.2520;1000`],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `forex/usdjpy/DAT_ASCII_USDJPY_M1_${year}.csv`,
+        lines: [`${year}0101 000000;145.00;145.20;144.80;145.10;1000`],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `forex/xauusd/DAT_ASCII_XAUUSD_M1_${year}.csv`,
+        lines: [`${year}0101 000000;2000.0;2005.0;1995.0;2002.0;1000`],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `indices/nasdaq/nasdaq_${year}.csv`,
+        lines: [
+          "DateTime,Open,High,Low,Close,Volume,TickVolume",
+          `${year}-01-01 00:00:00,15000,15010,14990,15005,1000,1000`,
+        ],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `indices/us500/DAT_ASCII_SPXUSD_M1_${year}.csv`,
+        lines: [`${year}0101 000000;4800.0;4810.0;4790.0;4805.0;1000`],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `cripto/btcusdt/BTCUSDT-1m-${year}-01.csv`,
+        lines: ["1704067200000,42000,42100,41900,42050,1000"],
+      }),
+      writeLocalHistoricalFixture({
+        rootDir: localDataRoot,
+        relativePath: `cripto/ethusdt/ETHUSDT-1m-${year}-01.csv`,
+        lines: ["1704067200000,2200,2210,2190,2205,1000"],
+      }),
+    ]);
+  }
+}
+
 export async function createResearchConfig(rootDir: string): Promise<ResearchConfig> {
   const baselineAggregatePath = path.join(rootDir, "source-aggregate.json");
   const baselineCrisisPath = path.join(rootDir, "source-crisis.json");
@@ -133,8 +196,11 @@ export async function createResearchConfig(rootDir: string): Promise<ResearchCon
   const candidateReserveLibraryPath = path.join(rootDir, "candidate-library-reserve.json");
   const campaignLibraryPath = path.join(rootDir, "campaigns.json");
   const coverageAuditPath = path.join(rootDir, "coverage-audit.json");
+  const localDataRoot = path.join(rootDir, "local-data");
 
   const baselineInstruments = ["NAS100", "US500", "EURUSD", "USDJPY", "XAUUSD", "GBPUSD"];
+
+  await writeLocalHistoricalFixtures(rootDir);
 
   await writeJsonAtomic(baselineAggregatePath, {
     ...createBaselineComparativeReport({
@@ -322,10 +388,22 @@ export async function createResearchConfig(rootDir: string): Promise<ResearchCon
     },
     study: {
       yearlyPeriods: [],
+      yearlyPeriodAutoRange: {
+        enabled: true,
+        startYear: 2020,
+        deriveEndYearFrom: "walk_forward_to",
+      },
       crisisPeriods: [],
       instruments: ["NAS100"],
       timeframes: ["4h", "1h", "15m"],
       sourcePreference: "local_only",
+      datasetLocalDataRoot: localDataRoot,
+      datasetTimezone: "UTC",
+      providerComparability: {
+        canonicalProvider: "local_archive",
+        fallbackProviders: ["twelvedata", "polygon", "databento"],
+        preserveProvenance: true,
+      },
       walkForward: {
         from: "2020-01-01T00:00:00.000Z",
         to: "2025-12-31T23:59:59.000Z",

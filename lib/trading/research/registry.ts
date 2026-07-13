@@ -78,7 +78,6 @@ async function buildRunArtifactEntries(args: {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
-  const datasetIds = args.datasets.map((dataset) => dataset.dataset_id);
   const selectedRunDirs = runDirs.slice(-(args.runLimit ?? 80));
   const allEntries = await Promise.all(
     selectedRunDirs.map(async (runId) => {
@@ -90,6 +89,11 @@ async function buildRunArtifactEntries(args: {
       ]);
       const taskId = manifest?.task_id ?? status?.task_id ?? null;
       const dependencyIds: string[] = [];
+      const datasetIds = manifest?.dataset_snapshot_id
+        ? [manifest.dataset_snapshot_id]
+        : args.datasets
+            .filter((dataset) => dataset.kind === "scientific_snapshot")
+            .map((dataset) => dataset.dataset_id);
       const entries: ResearchRegistryArtifactEntry[] = [];
 
       for (const key of RESEARCH_RUN_MANDATORY_ARTIFACT_KEYS) {

@@ -286,7 +286,7 @@ describe("research lab overview", () => {
     expect(overview.decisions.promotedOrCandidate[0]?.runId).toBe("run-1");
     expect(overview.reports.datasetHealth?.report_id).toBe(datasetHealth.report_id);
     expect(overview.reports.registry?.report_id).toBe(registry.report_id);
-    expect(overview.reports.registry?.dataset_ref_count).toBe(4);
+    expect(overview.reports.registry?.dataset_ref_count).toBe(3);
     expect(overview.promotionReadiness.board?.reviewReadyCount).toBe(2);
     expect(overview.promotionReadiness.packages?.readyForLiveReviewCount).toBe(0);
     expect(overview.promotionReadiness.packages?.blockedCount).toBe(2);

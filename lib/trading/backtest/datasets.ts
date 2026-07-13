@@ -26,6 +26,7 @@ export type TradingHistoricalDatasetRequest = {
   to: string;
   timeframes?: TradingTimeframe[];
   sourcePreference?: TradingHistoricalSourcePreference;
+  localDataRoot?: string | null;
 };
 
 export type TradingHistoricalLocalDatasetFormat =

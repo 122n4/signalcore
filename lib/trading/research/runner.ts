@@ -28,6 +28,7 @@ import { buildResearchPromotionBoard, writeResearchPromotionBoard } from "./prom
 import { buildResearchPromotionPackageReport, writeResearchPromotionPackageReport } from "./promotionPackages";
 import { readResearchQueue, selectNextResearchTask, setResearchQueueActiveRun, updateResearchTaskStatus, writeResearchQueue, finalizeResearchTask } from "./queue";
 import { autoEnqueueNextResearchTask, getSupportedPlannerTaskTypes } from "./planner";
+import { buildResearchPreservationReport, writeResearchPreservationReport } from "./preservation";
 import { recoverResearchRunner } from "./recovery";
 import {
   runResearchContextCostStressValidation,
@@ -50,6 +51,10 @@ import {
   buildResearchOpportunityReviewReport,
   writeResearchOpportunityReviewReport,
 } from "./opportunityReview";
+import {
+  buildResearchNegativeKnowledgeReport,
+  writeResearchNegativeKnowledgeReport,
+} from "./negativeKnowledge";
 import { buildResearchRegistryReport, writeResearchRegistryReport } from "./registry";
 import { buildResearchStatisticalValidation } from "./statisticalValidation";
 import { resolveEffectiveResearchInstruments } from "./taskScope";
@@ -724,6 +729,16 @@ async function refreshResearchOpportunities(
     config,
     report: registryReport,
   });
+  const negativeKnowledgeReport = await buildResearchNegativeKnowledgeReport(config);
+  const negativeKnowledgeOutputs = await writeResearchNegativeKnowledgeReport({
+    config,
+    report: negativeKnowledgeReport,
+  });
+  const preservationReport = await buildResearchPreservationReport(config);
+  const preservationOutputs = await writeResearchPreservationReport({
+    config,
+    report: preservationReport,
+  });
 
   return {
     bundle: bundleRefresh.report
@@ -753,6 +768,8 @@ async function refreshResearchOpportunities(
       jsonPath: registryOutputs.latestJsonPath,
       markdownPath: registryOutputs.latestMarkdownPath,
     },
+    knowledgeBase: negativeKnowledgeOutputs,
+    preservation: preservationOutputs,
   };
 }
 
@@ -904,6 +921,10 @@ async function runSingleResearchTask(
     started_at: startedAt,
     dataset_profile: task.dataset_profile,
     validation_profile: task.validation_profile,
+    dataset_manifest_hash: baseline.manifest.dataset_manifest_hash,
+    engine_manifest_hash: baseline.manifest.engine_manifest_hash,
+    dataset_snapshot_id: baseline.manifest.dataset_snapshot_id,
+    dataset_snapshot_version: baseline.manifest.dataset_snapshot_version,
   };
   const status: ResearchRunStatus = {
     ...buildInitialRunStatus(runId, task.id, startedAt),
@@ -1186,11 +1207,9 @@ export async function processResearchQueue(
     const completedTask = updatedQueue.tasks.find((task) => task.id === nextTask.id);
     if (completedTask?.last_run_id) {
       processedRunIds.push(completedTask.last_run_id);
-      latestOpportunityOutputs = await (
-        dependencies.postRunOpportunityRefresh ??
-        dependencies.postCycleOpportunityRefresh ??
-        refreshResearchOpportunities
-      )(config);
+      if (dependencies.postRunOpportunityRefresh) {
+        latestOpportunityOutputs = await dependencies.postRunOpportunityRefresh(config);
+      }
     }
   }
 
@@ -1208,9 +1227,9 @@ export async function processResearchQueue(
     date: cycleFinishedAt,
   });
   await writeResearchWindowReport(config, windowReport);
-  const opportunityOutputs =
-    latestOpportunityOutputs ??
-    (await (dependencies.postCycleOpportunityRefresh ?? refreshResearchOpportunities)(config));
+  const opportunityOutputs = await (
+    dependencies.postCycleOpportunityRefresh ?? refreshResearchOpportunities
+  )(config);
 
   return {
     processedRunIds,

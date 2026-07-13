@@ -64,14 +64,15 @@ describe("trading research registry", () => {
     const latest = await readJsonFile<typeof report>(outputs.latestJsonPath);
 
     expect(report.schema_version).toBe("research.registry-report.v1");
-    expect(report.provenance.dataset_refs).toHaveLength(4);
-    expect(report.summary.dataset_count).toBe(4);
+    expect(report.provenance.dataset_refs).toHaveLength(3);
+    expect(report.summary.dataset_count).toBe(5);
     expect(report.summary.bronze_dataset_count).toBe(2);
     expect(report.summary.silver_dataset_count).toBe(1);
-    expect(report.summary.gold_dataset_count).toBe(1);
-    expect(report.summary.verified_dataset_count).toBe(1);
+    expect(report.summary.gold_dataset_count).toBe(2);
+    expect(report.summary.verified_dataset_count).toBe(2);
     expect(report.datasets.some((dataset) => dataset.dataset_id === "coverage_audit_local_only")).toBe(true);
     expect(report.datasets.some((dataset) => dataset.dataset_id === "active_research_universe_core_20y")).toBe(true);
+    expect(report.datasets.some((dataset) => dataset.kind === "scientific_snapshot")).toBe(true);
     expect(
       report.datasets.find((dataset) => dataset.dataset_id === "coverage_audit_local_only")?.data_plane,
     ).toMatchObject({
@@ -108,5 +109,35 @@ describe("trading research registry", () => {
     ).toBe(true);
     expect(latest.summary.run_count).toBe(1);
     expect(path.basename(outputs.latestMarkdownPath)).toBe("registry-latest.md");
+  });
+
+  it("marks the active research universe as degraded when coverage audit reports suspended instruments", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    config.study.instruments = ["NAS100", "US500"];
+    await writeJsonAtomic(config.paths.coverageAuditPath, {
+      generatedAt: "2026-03-15T00:00:00.000Z",
+      summary: {
+        byInstrument: {
+          NAS100: { validPeriods: 1, invalidPeriods: 0, failedPeriods: 0, sources: ["local_archive"] },
+          US500: { validPeriods: 0, invalidPeriods: 1, failedPeriods: 0, sources: ["local_archive"] },
+        },
+      },
+    });
+
+    const report = await buildResearchRegistryReport(config);
+    const activeUniverse = report.datasets.find((dataset) => dataset.dataset_id === "active_research_universe_core_20y");
+
+    expect(activeUniverse).toMatchObject({
+      status: "degraded",
+      data_plane: {
+        coverage: {
+          scoped_items: 2,
+          ready_items: 1,
+          gap_items: 1,
+          gap_detected: true,
+        },
+      },
+    });
   });
 });

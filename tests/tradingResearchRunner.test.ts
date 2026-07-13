@@ -670,9 +670,75 @@ describe("trading research runner", () => {
     });
 
     expect(refreshCount).toBe(2);
-    expect(result.reportOutputs?.board.jsonPath).toBe("board-2.json");
-    expect(result.reportOutputs?.packages.jsonPath).toBe("packages-2.json");
-    expect(result.reportOutputs?.review?.jsonPath).toBe("review-2.json");
+    expect(result.reportOutputs?.board.jsonPath).not.toBe("board-2.json");
+    expect(result.reportOutputs?.packages.jsonPath).not.toBe("packages-2.json");
+    expect(result.reportOutputs?.review?.jsonPath).not.toBe("review-2.json");
+    expect(result.reportOutputs?.datasetHealth.jsonPath).not.toBe("stub-dataset-health.json");
+  }, 15000);
+
+  it("does not reuse the heavy end-of-cycle refresh callback for each processed run by default", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    await writeJsonAtomic(
+      config.paths.queuePath,
+      createResearchQueue([
+        createResearchTask({ id: "task-heavy-a", priority: 100 }),
+        createResearchTask({ id: "task-heavy-b", priority: 90 }),
+      ]),
+    );
+
+    let cycleRefreshCount = 0;
+
+    await processResearchQueue(config, {
+      executors: {
+        risk_shaping: async () => ({
+          affectedInstruments: ["NAS100"],
+          comparison: {
+            aggregate: {
+              baseline: createMetricSummary(),
+              current: createMetricSummary({ profitFactor: 1.62, maxDrawdown: 3.8 }),
+            },
+            crisis: {
+              baseline: createMetricSummary({ expectancy: -0.05, profitFactor: 0.98, maxDrawdown: 5 }),
+              current: createMetricSummary({ expectancy: -0.02, profitFactor: 1.05, maxDrawdown: 4.6 }),
+            },
+            walkForward: {
+              baseline: createMetricSummary({ expectancy: 0.05, profitFactor: 1.01, maxDrawdown: 2.4 }),
+              current: createMetricSummary({ expectancy: 0.08, profitFactor: 1.04, maxDrawdown: 2.2 }),
+              affectedInstruments: ["NAS100"],
+            },
+            gates: {
+              aggregateExpectancyStable: true,
+              aggregateProfitFactorStable: true,
+              aggregateDrawdownStable: true,
+              crisisExpectancyStable: true,
+              crisisProfitFactorStable: true,
+              crisisDrawdownStable: true,
+              walkForwardExpectancyStable: true,
+              walkForwardProfitFactorStable: true,
+              walkForwardDrawdownStable: true,
+              walkForwardBreakEvenOrBetter: true,
+              aggregateImproved: true,
+              crisisImproved: true,
+              walkForwardImproved: true,
+              promotionThresholdMet: true,
+              allHardGatesPass: true,
+            },
+          },
+          artifacts: {
+            aggregateReport: { ok: true },
+            crisisReport: { ok: true },
+            walkForwardReport: { ok: true },
+          },
+        }),
+      },
+      postCycleOpportunityRefresh: async () => {
+        cycleRefreshCount += 1;
+        return stubOpportunityRefresh();
+      },
+    });
+
+    expect(cycleRefreshCount).toBe(1);
   }, 15000);
 
   it("auto-enqueues one supported candidate from the library when the queue is empty", async () => {

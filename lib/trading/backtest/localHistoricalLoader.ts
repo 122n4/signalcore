@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { access } from "node:fs/promises";
+import { access, stat } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -22,7 +22,7 @@ const TIMEFRAME_MS: Record<TradingTimeframe, number> = {
   "1d": 24 * 60 * 60_000,
 };
 
-function resolveLocalHistoricalBaseDir(): string {
+export function resolveLocalHistoricalBaseDir(): string {
   const configuredDir = process.env.TRADING_BACKTEST_LOCAL_DATA_DIR?.trim();
   if (configuredDir) {
     return path.resolve(/* turbopackIgnore: true */ configuredDir);
@@ -71,12 +71,13 @@ function buildMonthRange(from: string, to: string): Array<{ year: number; month:
   return output;
 }
 
-async function resolveLocalFiles(args: {
+export async function resolveLocalHistoricalFiles(args: {
   config: TradingHistoricalLocalDatasetConfig;
   from: string;
   to: string;
+  baseDir?: string | null;
 }): Promise<string[]> {
-  const baseDir = resolveLocalHistoricalBaseDir();
+  const baseDir = args.baseDir ? path.resolve(args.baseDir) : resolveLocalHistoricalBaseDir();
   const root = path.join(/* turbopackIgnore: true */ baseDir, ...args.config.pathSegments);
   const files: string[] = [];
 
@@ -124,6 +125,21 @@ async function resolveLocalFiles(args: {
   }
 
   return files;
+}
+
+export async function inspectLocalHistoricalFiles(args: {
+  files: string[];
+}): Promise<Array<{ path: string; sizeBytes: number; modifiedAt: string }>> {
+  return Promise.all(
+    args.files.map(async (filePath) => {
+      const details = await stat(filePath);
+      return {
+        path: filePath,
+        sizeBytes: details.size,
+        modifiedAt: details.mtime.toISOString(),
+      };
+    }),
+  );
 }
 
 function parseForexTimestamp(value: string): string | null {
@@ -412,10 +428,11 @@ export async function loadLocalHistoricalTradingDataset(
     request.timeframes?.length
       ? request.timeframes
       : ["4h", "1h", "15m", "5m"];
-  const files = await resolveLocalFiles({
+  const files = await resolveLocalHistoricalFiles({
     config: localDataset,
     from,
     to,
+    baseDir: request.localDataRoot ?? null,
   });
 
   if (files.length === 0) {

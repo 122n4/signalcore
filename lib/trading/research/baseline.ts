@@ -3,6 +3,8 @@ import path from "node:path";
 import type { TradingBacktestComparativeReport } from "@/lib/trading/backtest/comparativeSweep";
 
 import { ensureDirectory, readJsonFile, readJsonIfExists, sha256File, sha256Json, writeJsonAtomic } from "./fs";
+import { ensureResearchScientificDatasetSnapshot } from "./datasetSnapshots";
+import { buildResearchScienceManifest } from "./scienceManifest";
 import type { ResearchBaselineManifest, ResearchConfig } from "./types";
 
 type ResearchBaselineSnapshot = {
@@ -41,6 +43,7 @@ export async function ensureResearchBaselineSnapshot(
     const crisisComparative = await readJsonFile<TradingBacktestComparativeReport>(
       config.liveBaselineSource.crisisComparativePath,
     );
+    const datasetSnapshot = await ensureResearchScientificDatasetSnapshot(config);
 
     await writeJsonAtomic(paths.aggregatePath, aggregateComparative);
     await writeJsonAtomic(paths.crisisPath, crisisComparative);
@@ -51,17 +54,26 @@ export async function ensureResearchBaselineSnapshot(
 
     const datasetManifest = {
       dataset_profile: config.liveBaselineSource.datasetProfile,
+      dataset_snapshot_id: datasetSnapshot.snapshot_id,
+      dataset_snapshot_version: datasetSnapshot.dataset_version,
+      dataset_content_address: datasetSnapshot.content_address,
+      dataset_timezone: datasetSnapshot.timezone,
+      universe: datasetSnapshot.universe,
+      instruments: datasetSnapshot.instruments.map((entry) => ({
+        instrument: entry.instrument,
+        provider: entry.selected_provider,
+        selected_symbol: entry.selected_symbol,
+        timeframes: entry.timeframes,
+        row_counts: entry.row_counts,
+        files: entry.files.map((file) => ({
+          path: file.path,
+          sha256: file.sha256,
+        })),
+      })),
       aggregate_source: path.resolve(config.liveBaselineSource.aggregateComparativePath),
       crisis_source: path.resolve(config.liveBaselineSource.crisisComparativePath),
     };
-    const engineManifest = {
-      files: await Promise.all(
-        config.liveBaselineSource.engineManifestFiles.map(async (filePath) => ({
-          path: filePath,
-          sha256: await sha256File(path.resolve(filePath)),
-        })),
-      ),
-    };
+    const engineManifest = await buildResearchScienceManifest(config);
 
     await writeJsonAtomic(paths.datasetManifestPath, datasetManifest);
     await writeJsonAtomic(paths.engineManifestPath, engineManifest);
@@ -73,6 +85,8 @@ export async function ensureResearchBaselineSnapshot(
       validation_profile: config.liveBaselineSource.validationProfile,
       dataset_manifest_hash: sha256Json(datasetManifest),
       engine_manifest_hash: sha256Json(engineManifest),
+      dataset_snapshot_id: datasetSnapshot.snapshot_id,
+      dataset_snapshot_version: datasetSnapshot.dataset_version,
       source_artifacts: {
         aggregate: paths.aggregatePath,
         crisis: paths.crisisPath,

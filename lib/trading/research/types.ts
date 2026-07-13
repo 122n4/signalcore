@@ -182,6 +182,8 @@ export type ResearchBaselineManifest = {
   validation_profile: ResearchValidationProfileId;
   dataset_manifest_hash: string;
   engine_manifest_hash: string;
+  dataset_snapshot_id: string;
+  dataset_snapshot_version: string;
   source_artifacts: {
     aggregate: string;
     crisis: string;
@@ -201,6 +203,10 @@ export type ResearchRunManifest = {
   started_at: string;
   dataset_profile: ResearchDatasetProfile;
   validation_profile: ResearchValidationProfileId;
+  dataset_manifest_hash?: string;
+  engine_manifest_hash?: string;
+  dataset_snapshot_id?: string;
+  dataset_snapshot_version?: string;
 };
 
 export type ResearchRunStatus = {
@@ -423,11 +429,29 @@ export type ResearchLiveBaselineSource = {
 };
 
 export type ResearchStudyConfig = {
-  yearlyPeriods: TradingHistoricalPeriod[];
+  yearlyPeriods?: TradingHistoricalPeriod[];
+  yearlyPeriodAutoRange?: {
+    enabled: boolean;
+    startYear: number;
+    endYear?: number | null;
+    deriveEndYearFrom?: "walk_forward_to" | "holdout_to" | "final_holdout_to";
+  };
   crisisPeriods: TradingHistoricalPeriod[];
   instruments: string[];
   timeframes: TradingTimeframe[];
   sourcePreference: TradingHistoricalSourcePreference;
+  datasetLocalDataRoot?: string | null;
+  datasetTimezone?: string | null;
+  providerComparability?: {
+    canonicalProvider: string;
+    fallbackProviders: string[];
+    preserveProvenance: boolean;
+  };
+  adjustmentPolicies?: Partial<Record<string, {
+    splits: "not_applicable" | "raw" | "adjusted" | "unknown";
+    dividends: "not_applicable" | "raw" | "adjusted" | "unknown";
+    note?: string | null;
+  }>>;
   walkForward: {
     from: string;
     to: string;
@@ -1090,6 +1114,9 @@ export type ResearchDatasetReference = {
   status: ResearchRegistryDatasetStatus;
   generated_at: string | null;
   source_path: string | null;
+  snapshot_id?: string | null;
+  content_address?: string | null;
+  checksum?: string | null;
 };
 
 export type ResearchReportProvenance = {
@@ -1105,15 +1132,22 @@ export type ResearchReportProvenance = {
 export type ResearchRegistryDatasetEntry = {
   dataset_id: string;
   dataset_version: string;
-  kind: "coverage_audit" | "active_research_universe" | "market_data_backfill" | "market_data_harvest";
+  kind:
+    | "coverage_audit"
+    | "active_research_universe"
+    | "market_data_backfill"
+    | "market_data_harvest"
+    | "scientific_snapshot";
   owner: "research_lab";
   status: ResearchRegistryDatasetStatus;
   source_path: string | null;
   generated_at: string | null;
+  snapshot_id?: string | null;
+  content_address?: string | null;
   data_plane: {
     tier: "bronze" | "silver" | "gold";
     storage: {
-      kind: "local_file" | "report_artifact" | "derived_manifest" | "catalog";
+      kind: "local_file" | "report_artifact" | "derived_manifest" | "catalog" | "content_addressed_snapshot";
       primary_root: string | null;
       secondary_root: string | null;
       format: string | null;
@@ -1143,6 +1177,74 @@ export type ResearchRegistryDatasetEntry = {
     artifact_paths: string[];
   };
   payload: Record<string, unknown>;
+};
+
+export type ResearchScientificDatasetFileRef = {
+  path: string;
+  sha256: string;
+  size_bytes: number;
+  line_count: number;
+  modified_at: string;
+};
+
+export type ResearchScientificDatasetInstrumentSnapshot = {
+  instrument: string;
+  dataset_id: string;
+  selected_provider: string;
+  provider_candidates: string[];
+  universe: string;
+  market_type: string;
+  session_profile: string;
+  source_preference: TradingHistoricalSourcePreference;
+  symbols: Array<{
+    symbol: string;
+    relation: "direct" | "proxy";
+    label?: string | null;
+  }>;
+  selected_symbol: string;
+  selected_symbol_relation: "direct" | "proxy";
+  timeframe_base: TradingTimeframe | "1m";
+  timeframes: TradingTimeframe[];
+  from: string;
+  to: string;
+  timezone: string;
+  adjustment_policy: {
+    splits: "not_applicable" | "raw" | "adjusted" | "unknown";
+    dividends: "not_applicable" | "raw" | "adjusted" | "unknown";
+    note: string | null;
+  };
+  row_counts: Partial<Record<TradingTimeframe, number>>;
+  files: ResearchScientificDatasetFileRef[];
+  comparability: {
+    canonical_provider: string;
+    fallback_providers: string[];
+    preserve_provenance: boolean;
+  };
+};
+
+export type ResearchScientificDatasetSnapshot = {
+  schema_version: "research.scientific-dataset-snapshot.v1";
+  snapshot_id: string;
+  dataset_id: string;
+  dataset_version: string;
+  created_at: string;
+  dataset_profile: ResearchDatasetProfile;
+  source_preference: TradingHistoricalSourcePreference;
+  timezone: string;
+  universe: string;
+  periods: {
+    yearly: TradingHistoricalPeriod[];
+    crisis: TradingHistoricalPeriod[];
+    walk_forward: ResearchStudyConfig["walkForward"];
+    robustness: ResearchStudyConfig["robustness"] | null;
+  };
+  instruments: ResearchScientificDatasetInstrumentSnapshot[];
+  provider_matrix: {
+    canonical_provider: string;
+    fallback_providers: string[];
+    selected_providers: string[];
+  };
+  content_address: string;
 };
 
 export type ResearchRegistryArtifactEntry = {
@@ -1206,6 +1308,8 @@ export type ResearchPostCycleOpportunityOutputs = {
   packages: ResearchReportFileOutput;
   review?: ResearchReportFileOutput;
   registry?: ResearchReportFileOutput;
+  knowledgeBase?: ResearchReportFileOutput;
+  preservation?: ResearchReportFileOutput;
 };
 
 export type ResearchProcessReportOutputs = {
@@ -1217,6 +1321,8 @@ export type ResearchProcessReportOutputs = {
   packages: ResearchReportFileOutput;
   review?: ResearchReportFileOutput;
   registry?: ResearchReportFileOutput;
+  knowledgeBase?: ResearchReportFileOutput;
+  preservation?: ResearchReportFileOutput;
 };
 
 export type ResearchCandidateTemplate = {

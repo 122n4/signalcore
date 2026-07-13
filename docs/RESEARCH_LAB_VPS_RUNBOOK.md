@@ -168,6 +168,15 @@ Volumes:
 
 These keep lab artifacts, datasets, and config persistent outside the container.
 
+## Scientific Reproducibility
+
+The Research Lab now persists:
+- content-addressed scientific dataset snapshots under `artifacts/trading-research/datasets/snapshots`
+- baseline dataset + science manifests under each baseline directory
+- run manifests with dataset and science manifest hashes
+
+These artifacts are governance-only. They do not change validation gates, promotion rules, or scientific thresholds.
+
 ## Health Check
 
 CLI:
@@ -211,12 +220,33 @@ When recovery is needed it:
 - appends a decision ledger event
 - continues without manual intervention
 
+Recovery artifacts must remain semantically consistent:
+- `status=failed` must never preserve `failed_stage=completed`
+- `status=completed` must clear `error` and `failed_stage`
+
 Manual recovery:
 
 ```bash
 npm run research:recover
 npm run research:sync
 ```
+
+## Scientific Preservation
+
+Immutable preservation artifacts are written to:
+- `artifacts/trading-research/reports/preservation`
+- `artifacts/trading-research/reports/knowledge`
+
+Preservation policy:
+- scientific dataset snapshots are content-addressed and never rewritten in place
+- baseline and run manifests retain hashes for dataset and engine/science inputs
+- preservation reports hash the current baseline, run, and dataset snapshot artifacts
+- negative-knowledge reports consolidate reusable reject/failure patterns from the decision ledger
+
+Restore verification:
+- read `reports/preservation/preservation-latest.json`
+- verify every listed file exists and matches its recorded SHA-256
+- treat any missing or mismatched file as a scientific-governance incident
 
 ## Deploy Update Flow
 

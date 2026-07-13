@@ -2,6 +2,10 @@ import path from "node:path";
 
 import { DEFAULT_RESEARCH_CONFIG_PATH } from "./config";
 import { buildResearchDatasetHealthSummary } from "./datasetHealth";
+import {
+  ensureResearchScientificDatasetSnapshot,
+  scientificDatasetSnapshotToRegistryEntry,
+} from "./datasetSnapshots";
 import { fileExists, readJsonIfExists, sha256File, sha256Json } from "./fs";
 import type {
   ResearchConfig,
@@ -174,6 +178,7 @@ async function buildCoverageAuditDataset(config: ResearchConfig): Promise<Resear
 
 async function buildActiveUniverseDataset(config: ResearchConfig): Promise<ResearchRegistryDatasetEntry> {
   const coverageAuditPath = config.paths.coverageAuditPath ?? null;
+  const summary = await buildResearchDatasetHealthSummary(config);
   const payload = {
     liveBaselineId: config.liveBaselineSource.baselineId,
     datasetProfile: config.liveBaselineSource.datasetProfile,
@@ -185,13 +190,25 @@ async function buildActiveUniverseDataset(config: ResearchConfig): Promise<Resea
     crisisPeriods: config.study.crisisPeriods,
     walkForward: config.study.walkForward,
   };
+  const scopedItems = config.study.instruments.length;
+  const readyItems = Math.min(summary.eligible_instrument_count, scopedItems);
+  const gapItems = Math.max(
+    summary.suspended_instrument_count + summary.missing_instrument_count,
+    Math.max(0, scopedItems - readyItems),
+  );
+  const status =
+    !summary.audit_loaded
+      ? "missing"
+      : gapItems > 0
+        ? "degraded"
+        : "ready";
 
   return {
     dataset_id: `active_research_universe_${config.liveBaselineSource.datasetProfile}`,
     dataset_version: sha256Json(payload),
     kind: "active_research_universe",
     owner: "research_lab",
-    status: "ready",
+    status,
     source_path: null,
     generated_at: new Date().toISOString(),
     data_plane: {
@@ -203,11 +220,11 @@ async function buildActiveUniverseDataset(config: ResearchConfig): Promise<Resea
         format: "research_universe_manifest",
       },
       coverage: {
-        scoped_items: config.study.instruments.length,
-        ready_items: config.study.instruments.length,
-        gap_items: 0,
-        coverage_ratio: config.study.instruments.length > 0 ? 1 : null,
-        gap_detected: false,
+        scoped_items: scopedItems,
+        ready_items: readyItems,
+        gap_items: gapItems,
+        coverage_ratio: toCoverageRatio(readyItems, scopedItems),
+        gap_detected: gapItems > 0,
       },
       provider_quality: {
         providers: [config.study.sourcePreference],
@@ -391,12 +408,21 @@ async function buildHarvesterDataset(config: ResearchConfig): Promise<ResearchRe
 export async function buildResearchDatasetCatalog(
   config: ResearchConfig,
 ): Promise<ResearchRegistryDatasetEntry[]> {
-  return Promise.all([
+  const scientificSnapshot = await ensureResearchScientificDatasetSnapshot(config);
+  const [coverageAudit, activeUniverse, backfill, harvester] = await Promise.all([
     buildCoverageAuditDataset(config),
     buildActiveUniverseDataset(config),
     buildBackfillDataset(config),
     buildHarvesterDataset(config),
   ]);
+  const scientificSnapshotEntry = await scientificDatasetSnapshotToRegistryEntry(scientificSnapshot, config);
+  return [
+    scientificSnapshotEntry,
+    coverageAudit,
+    activeUniverse,
+    backfill,
+    harvester,
+  ];
 }
 
 export function toResearchDatasetReference(
@@ -408,5 +434,8 @@ export function toResearchDatasetReference(
     status: dataset.status,
     generated_at: dataset.generated_at,
     source_path: dataset.source_path,
+    snapshot_id: dataset.snapshot_id ?? null,
+    content_address: dataset.content_address ?? null,
+    checksum: dataset.data_plane.integrity.source_checksum,
   };
 }

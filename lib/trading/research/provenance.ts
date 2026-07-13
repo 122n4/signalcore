@@ -17,7 +17,9 @@ export async function buildResearchReportProvenance(args: {
     live_baseline_id: config.liveBaselineSource.baselineId ?? null,
     dataset_manifest_hash: baseline.manifest.dataset_manifest_hash,
     engine_manifest_hash: baseline.manifest.engine_manifest_hash,
-    dataset_refs: datasets.map(toResearchDatasetReference),
+    dataset_refs: datasets
+      .filter((dataset) => dataset.kind === "scientific_snapshot" || !((dataset.source_path ?? "").includes("latest.json")))
+      .map(toResearchDatasetReference),
     upstream_report_ids: [...new Set((args.upstreamReportIds ?? []).filter((value) => value.trim().length > 0))],
   };
 }

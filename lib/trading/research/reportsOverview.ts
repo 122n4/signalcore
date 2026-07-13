@@ -113,7 +113,9 @@ function summarizePromotionReadiness(args: {
   const challengerReviewCount = args.packages?.summary.review_ready_count ?? 0;
   const challengerConfirmedCount = args.packages?.summary.bundle_confirmed_count ?? 0;
   const paperEligibleCount = args.paperPromotion?.executable_task_scope_count ?? 0;
-  const baselineReplacementReadyCount = 0;
+  const baselineReplacementReadyCount = paperGateStatus === "ready"
+    ? paperEligibleCount
+    : 0;
   const challengerStatus =
     paperEligibleCount > 0
       ? "paper_ready"

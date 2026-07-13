@@ -121,6 +121,15 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
     reason: recoveryReason,
     error: recoveryReason,
   });
+  const rawFailedStage = runtimeHealth.activeRun.stage ?? lock.stage;
+  const failedStage =
+    rawFailedStage === "completed" || rawFailedStage === "failed"
+      ? status?.stage && status.stage !== "completed" && status.stage !== "failed"
+        ? status.stage
+        : lock.stage === "completed"
+          ? "decision"
+          : lock.stage
+      : rawFailedStage;
   const recoveryError = stageTimedOut
     ? `${recoveryReason} Artifact contract was incomplete.`
     : "Recovered stale or hung lock without complete artifact contract.";
@@ -137,7 +146,7 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
     stage_hard_timeout_ms: status?.stage_hard_timeout_ms ?? null,
     progress_note: status?.progress_note ?? null,
     completed_stages: status?.completed_stages ?? [],
-    failed_stage: runtimeHealth.activeRun.stage ?? lock.stage,
+    failed_stage: failedStage,
     error: recoveryError,
   };
   await writeResearchFailureArtifacts({
