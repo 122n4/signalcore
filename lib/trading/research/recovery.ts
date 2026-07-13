@@ -45,12 +45,13 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
   const stageTimedOut =
     runtimeHealth.activeRun.runId === lock.run_id &&
     runtimeHealth.activeRun.stageHealth === "timed_out";
+  const timedOutRunnerConfirmedStopped = stageTimedOut && runnerAlive === false;
 
-  if (health === "healthy" && !stageTimedOut) {
+  if (health === "healthy" && !timedOutRunnerConfirmedStopped) {
     return { recovered: false, message: "Active research lock is healthy." };
   }
 
-  const recoveryReason = stageTimedOut
+  const recoveryReason = timedOutRunnerConfirmedStopped
     ? `Recovered stage-timeout run in '${runtimeHealth.activeRun.stage ?? lock.stage}' after ${runtimeHealth.activeRun.stageElapsedMs ?? "unknown"}ms.`
     : "Recovered stale or hung run without complete artifact contract.";
 
@@ -130,7 +131,7 @@ export async function recoverResearchRunner(config: ResearchConfig): Promise<{
           ? "decision"
           : lock.stage
       : rawFailedStage;
-  const recoveryError = stageTimedOut
+  const recoveryError = timedOutRunnerConfirmedStopped
     ? `${recoveryReason} Artifact contract was incomplete.`
     : "Recovered stale or hung lock without complete artifact contract.";
   const failedStatus: ResearchRunStatus = {

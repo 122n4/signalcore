@@ -115,9 +115,108 @@ describe("paper runner history reads", () => {
 
     const result = await readPaperHistoryPayloadSafe("owner_1", { days: 183, maxSettlements: 4 });
 
+    expect(result.windowDays).toBe(183);
     expect(result.count).toBe(0);
     expect(result.history).toEqual([]);
     expect(result.observability.error).toContain("statement timeout");
+  });
+
+  it("reports the actual requested windowDays in the payload metadata", async () => {
+    const canonicalRows = [
+      {
+        id: "paper-55",
+        title: "Paper cycle 55",
+        created_at: "2026-06-29T00:00:00.000Z",
+        details: {
+          planned: { action: "ready" },
+          execution: { status: "paper_queued" },
+          intent: { instrument: "BTCUSD", side: "buy" },
+          paperOutcome: { status: "open", checkedAt: "2026-06-29T00:05:00.000Z" },
+        },
+      },
+    ];
+
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRows,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: canonicalRows,
+        error: null,
+      });
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
+      schemaReady: true,
+      reconciled: 0,
+      error: null,
+    });
+    mocks.settleCanonicalPaperRows.mockResolvedValue({
+      rows: canonicalRows,
+      repaired: 0,
+      failures: 0,
+    });
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult([]));
+
+    const result = await readPaperHistoryPayloadSafe("owner_1", { days: 30, maxSettlements: 4 });
+
+    expect(result.windowDays).toBe(30);
+  });
+
+  it("sorts paper history newest-first before returning it to the UI", async () => {
+    const unsortedRows = [
+      {
+        id: "paper-older",
+        title: "Paper cycle older",
+        created_at: "2026-06-27T00:00:00.000Z",
+        details: {
+          planned: { action: "ready" },
+          execution: { status: "paper_queued" },
+          intent: { instrument: "GBPUSD", side: "sell" },
+          paperOutcome: { status: "open", checkedAt: "2026-06-27T00:05:00.000Z" },
+        },
+      },
+      {
+        id: "paper-newer",
+        title: "Paper cycle newer",
+        created_at: "2026-06-29T00:00:00.000Z",
+        details: {
+          planned: { action: "ready" },
+          execution: { status: "paper_queued" },
+          intent: { instrument: "ETHUSD", side: "buy" },
+          paperOutcome: { status: "open", checkedAt: "2026-06-29T00:05:00.000Z" },
+        },
+      },
+    ];
+
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: unsortedRows,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        schemaReady: true,
+        rows: unsortedRows,
+        error: null,
+      });
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
+      schemaReady: true,
+      reconciled: 0,
+      error: null,
+    });
+    mocks.settleCanonicalPaperRows.mockResolvedValue({
+      rows: unsortedRows,
+      repaired: 0,
+      failures: 0,
+    });
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult([]));
+
+    const result = await readPaperHistoryPayloadSafe("owner_1", { days: 183, maxSettlements: 4 });
+
+    expect(result.history[0]?.id).toBe("paper-newer");
+    expect(result.history[1]?.id).toBe("paper-older");
   });
 
   it("fails closed instead of serving legacy history when canonical paper storage is unavailable", async () => {
@@ -293,6 +392,7 @@ describe("paper runner history reads", () => {
     const result = await readPaperRows("owner_1", 183);
 
     expect(result).toHaveLength(2);
-    expect(result[1]?.id).toBe("paper-2");
+    expect(result[0]?.id).toBe("paper-2");
+    expect(result[1]?.id).toBe("paper-1");
   });
 });

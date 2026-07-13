@@ -186,13 +186,13 @@ describe("trading research recovery", () => {
     });
 
     const result = await recoverResearchRunner(config);
-    expect(result.recovered).toBe(true);
-    expect(result.message).toContain("automatic retry");
+    expect(result.recovered).toBe(false);
+    expect(result.message).toBe("Active research lock is healthy.");
 
     const queue = await readResearchQueue(config);
-    expect(queue.active_run_id).toBeNull();
-    expect(queue.tasks[0].status).toBe("pending");
-    expect(queue.tasks[0].error).toContain("Recovered stage-timeout run");
+    expect(queue.active_run_id).toBe("run-stage-timeout-001");
+    expect(queue.tasks[0].status).toBe("running");
+    expect(queue.tasks[0].error).toBeNull();
   });
 
   it("recovers a local lock with a dead runner even when the heartbeat is recent", async () => {
@@ -234,5 +234,62 @@ describe("trading research recovery", () => {
     expect(queue.active_run_id).toBeNull();
     expect(queue.tasks[0].status).toBe("pending");
     expect(queue.tasks[0].error).toContain("Recovered stale or hung lock");
+  });
+
+  it("recovers a timed-out run after the runner is confirmed dead", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+    config.timing.stageWarnMs = 1000;
+    config.timing.stageHardTimeoutMs = 2000;
+    const task = createResearchTask({
+      id: "task-stage-timeout-dead-runner",
+      status: "running",
+      attempt: 1,
+      max_attempts: 2,
+      retryable: true,
+      started_at: "2026-03-19T10:00:00.000Z",
+      last_run_id: "run-stage-timeout-dead-runner-001",
+      run_fingerprint: "fp-stage-timeout-dead-runner",
+    });
+
+    await writeJsonAtomic(config.paths.queuePath, {
+      ...createResearchQueue([task]),
+      active_run_id: "run-stage-timeout-dead-runner-001",
+    });
+    await writeJsonAtomic(config.paths.lockPath, {
+      version: 1,
+      run_id: "run-stage-timeout-dead-runner-001",
+      task_id: "task-stage-timeout-dead-runner",
+      runner_pid: 999_999_999,
+      hostname: os.hostname(),
+      started_at: "2026-03-19T10:00:00.000Z",
+      heartbeat_at: new Date().toISOString(),
+      stage: "aggregate",
+      run_fingerprint: "fp-stage-timeout-dead-runner",
+      baseline_id: "baseline-test-live",
+    });
+
+    const paths = buildResearchRunArtifactPaths(config.paths.runsDir, "run-stage-timeout-dead-runner-001");
+    await writeJsonAtomic(paths.statusPath, {
+      run_id: "run-stage-timeout-dead-runner-001",
+      task_id: "task-stage-timeout-dead-runner",
+      status: "running",
+      stage: "aggregate",
+      started_at: "2026-03-19T10:00:00.000Z",
+      updated_at: new Date().toISOString(),
+      stage_started_at: "2026-03-19T10:00:00.000Z",
+      completed_stages: [],
+      failed_stage: null,
+      error: null,
+    });
+
+    const result = await recoverResearchRunner(config);
+    expect(result.recovered).toBe(true);
+    expect(result.message).toContain("automatic retry");
+
+    const queue = await readResearchQueue(config);
+    expect(queue.active_run_id).toBeNull();
+    expect(queue.tasks[0].status).toBe("pending");
+    expect(queue.tasks[0].error).toContain("Recovered stage-timeout run");
   });
 });

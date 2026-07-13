@@ -21,6 +21,7 @@ export type QuoteNormalized = {
   currency?: string;
   timestamp?: number; // ms
   provider: "alphavantage" | "binance" | "coinbase" | "finnhub" | "fmp" | "kraken" | "twelvedata";
+  cacheState?: MarketCacheState;
 };
 
 export type Candle = {
@@ -30,6 +31,17 @@ export type Candle = {
   l: number;
   c: number;
   v?: number;
+};
+
+export type MarketCacheState = {
+  stale: boolean;
+  servedFromFallback: boolean;
+  state: "fresh" | "last_known_good";
+  lastGoodAt: number | null;
+};
+
+export type CandleSeries = Candle[] & {
+  cacheState?: MarketCacheState;
 };
 
 export type Timeframe =

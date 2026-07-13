@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { isEngineLoopAuthorized } from "@/lib/engine/loopAuth";
-import { getOwnerUserIds } from "@/lib/signalcore/owner";
+import { selectPaperOwnerBatch } from "@/lib/trading/bot/ownerBatch";
 import { runPaperSettlementCycleForUser } from "@/lib/trading/bot/paperRunner";
 
 export const runtime = "nodejs";
@@ -18,7 +18,7 @@ async function handleSettlement(req: Request) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const owners = getOwnerUserIds();
+  const owners = selectPaperOwnerBatch();
   if (owners.length === 0) {
     return NextResponse.json(
       { ok: false, error: "missing_owner_user_ids" },
@@ -28,7 +28,7 @@ async function handleSettlement(req: Request) {
 
   const generatedAt = new Date().toISOString();
   const results = [];
-  for (const userId of owners.slice(0, 3)) {
+  for (const userId of owners) {
     try {
       results.push(
         await runPaperSettlementCycleForUser({

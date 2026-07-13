@@ -1,10 +1,12 @@
 // lib/market/marketClient.ts
 import type {
   Candle,
+  CandleSeries,
   QuoteNormalized,
   Timeframe,
   AssetKind,
   MarketFetchOptions,
+  MarketCacheState,
 } from "@/lib/market/types";
 import { inferAssetKind } from "@/lib/market/symbols";
 import { alphaVantageCandles, alphaVantageQuote } from "@/lib/market/providers/alphavantage";
@@ -457,6 +459,38 @@ function setLastGood<T>(store: Map<string, LastGoodEntry<T>>, key: string, value
   });
 }
 
+function buildCacheState(args: {
+  stale: boolean;
+  servedFromFallback: boolean;
+  lastGoodAt: number | null;
+}): MarketCacheState {
+  return {
+    stale: args.stale,
+    servedFromFallback: args.servedFromFallback,
+    state: args.servedFromFallback ? "last_known_good" : "fresh",
+    lastGoodAt: args.lastGoodAt,
+  };
+}
+
+function withQuoteCacheState(
+  quote: QuoteNormalized,
+  cacheState: MarketCacheState,
+): QuoteNormalized {
+  return {
+    ...quote,
+    cacheState,
+  };
+}
+
+function withCandleSeriesCacheState(
+  candles: Candle[],
+  cacheState: MarketCacheState,
+): CandleSeries {
+  const series = [...candles] as CandleSeries;
+  series.cacheState = cacheState;
+  return series;
+}
+
 export async function getQuote(
   symbol: string,
   pref: ProviderPref = "auto",
@@ -520,6 +554,14 @@ async function getQuoteInternal(
       if (p === "kraken") quote = await krakenQuote(symbol, undefined, options);
       if (p === "twelvedata") quote = await tdQuoteNormalized(symbol, undefined, options);
       if (quote) {
+        const normalizedQuote = withQuoteCacheState(
+          quote,
+          buildCacheState({
+            stale: false,
+            servedFromFallback: false,
+            lastGoodAt: null,
+          }),
+        );
         recordProviderCall({
           provider: p,
           kind: "quote",
@@ -529,8 +571,8 @@ async function getQuoteInternal(
           ok: true,
           elapsedMs: Date.now() - startedAt,
         });
-        setLastGood(LAST_GOOD_QUOTES, lastGoodKey, quote);
-        return quote;
+        setLastGood(LAST_GOOD_QUOTES, lastGoodKey, normalizedQuote);
+        return normalizedQuote;
       }
       providerErrors[p] = "empty_quote_response";
       recordProviderCall({
@@ -562,7 +604,17 @@ async function getQuoteInternal(
   }
 
   const stale = getLastGood(LAST_GOOD_QUOTES, lastGoodKey);
-  if (stale) return stale;
+  if (stale) {
+    const staleSavedAt = LAST_GOOD_QUOTES.get(lastGoodKey)?.savedAt ?? null;
+    return withQuoteCacheState(
+      stale,
+      buildCacheState({
+        stale: true,
+        servedFromFallback: true,
+        lastGoodAt: staleSavedAt,
+      }),
+    );
+  }
 
   throw new Error(formatProviderErrors(providerErrors) ?? "All quote providers failed");
 }
@@ -572,7 +624,7 @@ export async function getCandles(
   tf: Timeframe,
   pref: ProviderPref = "auto",
   options?: MarketFetchOptions,
-): Promise<Candle[]> {
+): Promise<CandleSeries> {
   if (options?.bypassInFlightDedupe) {
     return getCandlesInternal(symbol, tf, pref, options);
   }
@@ -593,7 +645,7 @@ async function getCandlesInternal(
   tf: Timeframe,
   pref: ProviderPref = "auto",
   options?: MarketFetchOptions,
-): Promise<Candle[]> {
+): Promise<CandleSeries> {
   const kind: AssetKind = inferAssetKind(symbol);
   const order = resolveProviderOrder(kind, pref);
   const providerErrors: Partial<Record<Exclude<ProviderPref, "auto">, string>> = {};
@@ -633,6 +685,14 @@ async function getCandlesInternal(
       if (p === "kraken") candles = await krakenCandles(symbol, tf, undefined, options);
       if (p === "twelvedata") candles = await tdCandles(symbol, tf, undefined, options);
       if (candles && candles.length > 0) {
+        const normalizedCandles = withCandleSeriesCacheState(
+          candles,
+          buildCacheState({
+            stale: false,
+            servedFromFallback: false,
+            lastGoodAt: null,
+          }),
+        );
         recordProviderCall({
           provider: p,
           kind: "candles",
@@ -643,8 +703,8 @@ async function getCandlesInternal(
           ok: true,
           elapsedMs: Date.now() - startedAt,
         });
-        setLastGood(LAST_GOOD_CANDLES, lastGoodKey, candles);
-        return candles;
+        setLastGood(LAST_GOOD_CANDLES, lastGoodKey, normalizedCandles);
+        return normalizedCandles;
       }
       providerErrors[p] = "empty_candles_response";
       recordProviderCall({
@@ -678,7 +738,17 @@ async function getCandlesInternal(
   }
 
   const stale = getLastGood(LAST_GOOD_CANDLES, lastGoodKey);
-  if (stale) return stale;
+  if (stale) {
+    const staleSavedAt = LAST_GOOD_CANDLES.get(lastGoodKey)?.savedAt ?? null;
+    return withCandleSeriesCacheState(
+      stale,
+      buildCacheState({
+        stale: true,
+        servedFromFallback: true,
+        lastGoodAt: staleSavedAt,
+      }),
+    );
+  }
 
   throw new Error(formatProviderErrors(providerErrors) ?? "All candles providers failed");
 }

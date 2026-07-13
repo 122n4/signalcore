@@ -174,6 +174,15 @@ function paperHistoryErrorMessage(error: unknown) {
   return String(error || "paper_history_failed");
 }
 
+function sortPaperRowsNewestFirst(rows: PaperTradeHistoryRow[]) {
+  return [...rows].sort((a, b) => {
+    const aTime = a.created_at ? Date.parse(a.created_at) : Number.NEGATIVE_INFINITY;
+    const bTime = b.created_at ? Date.parse(b.created_at) : Number.NEGATIVE_INFINITY;
+    if (aTime !== bTime) return bTime - aTime;
+    return String(b.id || "").localeCompare(String(a.id || ""));
+  });
+}
+
 export async function readPaperRows(userId: string, days = 183) {
   const canonical = await readCanonicalPaperRows(userId, days);
   if (!canonical.schemaReady) {
@@ -181,10 +190,10 @@ export async function readPaperRows(userId: string, days = 183) {
   }
 
   const { reconciliation } = await reconcileLegacyPaperWindow(userId, days);
-  if (!reconciliation.schemaReady) return canonical.rows;
+  if (!reconciliation.schemaReady) return sortPaperRowsNewestFirst(canonical.rows);
 
   const refreshedCanonical = await readCanonicalPaperRows(userId, days);
-  return refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows;
+  return sortPaperRowsNewestFirst(refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows);
 }
 
 export async function readSettledPaperRows(userId: string, days = 183, maxSettlements = 8) {
@@ -210,14 +219,15 @@ async function readCanonicalPaperHistory(
       rows: canonical.rows,
       maxSettlements,
     });
+    const rows = sortPaperRowsNewestFirst(settlement.rows);
 
     return {
-      rows: settlement.rows,
+      rows,
       observability: buildPaperObservability({
         schemaReady: true,
         reconciledHistoricalCycles: 0,
         repairedThisRun: settlement.repaired,
-        rows: settlement.rows,
+        rows,
         error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
       }),
     };
@@ -229,14 +239,15 @@ async function readCanonicalPaperHistory(
     rows: refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows,
     maxSettlements,
   });
+  const rows = sortPaperRowsNewestFirst(settlement.rows);
 
   return {
-    rows: settlement.rows,
+    rows,
     observability: buildPaperObservability({
       schemaReady: true,
       reconciledHistoricalCycles: reconciliation.reconciled,
       repairedThisRun: settlement.repaired,
-      rows: settlement.rows,
+      rows,
       error: settlement.failures > 0 ? `${settlement.failures} paper settlement updates failed.` : null,
     }),
   };
@@ -268,8 +279,9 @@ function hasDuplicateIntent(rows: PaperTradeHistoryRow[], idempotencyKey: string
 
 export async function readPaperHistoryPayload(userId: string, args: { days?: number; maxSettlements?: number } = {}) {
   const { rows, observability } = await readCanonicalPaperHistory(userId, args);
+  const windowDays = Math.max(1, Math.min(183, Math.round(args.days ?? 183)));
   return {
-    windowDays: 183,
+    windowDays,
     count: rows.length,
     summary: summarizePaperPerformance(rows),
     research: buildPaperResearchReport(rows),
@@ -290,19 +302,20 @@ export async function readPaperHistoryPayloadSafe(
     try {
       const canonical = await readCanonicalPaperRows(userId, args.days ?? 183);
       if (canonical.schemaReady) {
+        const rows = sortPaperRowsNewestFirst(canonical.rows);
         return {
           windowDays: args.days ?? 183,
-          count: canonical.rows.length,
-          summary: summarizePaperPerformance(canonical.rows),
-          research: buildPaperResearchReport(canonical.rows),
+          count: rows.length,
+          summary: summarizePaperPerformance(rows),
+          research: buildPaperResearchReport(rows),
           observability: buildPaperObservability({
             schemaReady: true,
             reconciledHistoricalCycles: 0,
             repairedThisRun: 0,
-            rows: canonical.rows,
+            rows,
             error: errorMessage,
           }),
-          history: canonical.rows.map(normalizePaperHistory),
+          history: rows.map(normalizePaperHistory),
         };
       }
     } catch {

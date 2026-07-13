@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 type BotOption = "paper_only" | "real_money_when_armed";
@@ -217,6 +217,7 @@ export default function BotPageClient({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(false);
   const [paperLoading, setPaperLoading] = useState(false);
   const [paperNotice, setPaperNotice] = useState<string | null>(null);
+  const historyListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     try {
@@ -233,6 +234,12 @@ export default function BotPageClient({ userId }: { userId: string }) {
 
   const selectedCopy = useMemo(() => optionCopy(option), [option]);
   const isLiveOption = option === "real_money_when_armed";
+  const latestPaperCycle = paperHistory[0] || null;
+
+  function resetPaperHistoryScroll() {
+    if (!historyListRef.current) return;
+    historyListRef.current.scrollTo({ top: 0, behavior: "auto" });
+  }
 
   async function refreshPlan(nextOption = option, nextArmedAt = armedAt) {
     setLoading(true);
@@ -270,6 +277,7 @@ export default function BotPageClient({ userId }: { userId: string }) {
         setPaperSummary(data.summary || null);
         setPaperResearch(data.research || null);
         setPaperObservability(data.observability || null);
+        requestAnimationFrame(resetPaperHistoryScroll);
       } else {
         setPaperNotice(data.error || "Paper history unavailable.");
       }
@@ -299,7 +307,10 @@ export default function BotPageClient({ userId }: { userId: string }) {
       });
       const data = (await res.json().catch(() => ({}))) as PaperHistoryResponse & { status?: string };
       setPaperNotice(data.message || (data.ok ? "Paper cycle saved." : data.error || "Paper cycle blocked."));
-      if (Array.isArray(data.history)) setPaperHistory(data.history);
+      if (Array.isArray(data.history)) {
+        setPaperHistory(data.history);
+        requestAnimationFrame(resetPaperHistoryScroll);
+      }
       if (data.summary) setPaperSummary(data.summary);
       if (data.research) setPaperResearch(data.research);
       if (data.observability) setPaperObservability(data.observability);
@@ -548,6 +559,9 @@ export default function BotPageClient({ userId }: { userId: string }) {
             <p className="mt-3 text-sm leading-6 text-slate-300">
               {plan?.message || "Loading the latest stored trading snapshot..."}
             </p>
+            <p className="mt-2 text-xs leading-5 text-slate-400">
+              Ready here means the current stored signal can be executed. It is only written into paper history after you run a paper cycle or the daemon executes one.
+            </p>
 
             {plan?.candidate ? (
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -630,6 +644,15 @@ export default function BotPageClient({ userId }: { userId: string }) {
             </div>
           ) : null}
 
+          {latestPaperCycle ? (
+            <div className="mt-4 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-sm text-emerald-50">
+              Latest saved cycle: <span className="font-black text-white">{latestPaperCycle.instrument || "Unknown instrument"}</span>
+              {" | "}{latestPaperCycle.createdAt ? new Date(latestPaperCycle.createdAt).toLocaleString() : "n/a"}
+              {" | "}execution <span className="font-black text-white">{latestPaperCycle.status || latestPaperCycle.action || "recorded"}</span>
+              {" | "}outcome <span className="font-black text-white">{latestPaperCycle.outcome?.status || "paper"}</span>
+            </div>
+          ) : null}
+
           <div className="mt-5 grid gap-3 md:grid-cols-3">
             <Metric label="Saved cycles" value={paperHistory.length} />
             <Metric label="Window" value="183 days" />
@@ -654,7 +677,7 @@ export default function BotPageClient({ userId }: { userId: string }) {
             <Metric label="Avg R" value={paperSummary?.averageR != null ? `${paperSummary.averageR}R` : "n/a"} />
             <Metric label="Unsettled" value={paperObservability?.unsettledCycleCount ?? 0} />
             <Metric
-              label="Last settlement"
+              label="Last settlement check"
               value={paperObservability?.lastSettlementAt ? new Date(paperObservability.lastSettlementAt).toLocaleString() : "n/a"}
             />
           </div>
@@ -713,7 +736,7 @@ export default function BotPageClient({ userId }: { userId: string }) {
             </div>
           ) : null}
 
-          <div className="mt-5 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+          <div ref={historyListRef} className="mt-5 max-h-[520px] space-y-3 overflow-y-auto pr-1">
             {paperHistory.length > 0 ? paperHistory.map((item) => (
               <div key={item.id} className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">

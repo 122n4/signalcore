@@ -120,6 +120,12 @@ describe("market client provider routing", () => {
       undefined,
     );
     expect(candles).toHaveLength(1);
+    expect(candles.cacheState).toEqual({
+      stale: false,
+      servedFromFallback: false,
+      state: "fresh",
+      lastGoodAt: null,
+    });
   });
 
   it("treats TWELVEDATA_API_KEYS as a configured Twelve Data provider", async () => {
@@ -309,7 +315,13 @@ describe("market client provider routing", () => {
     alphaVantageCandlesMock.mockRejectedValue(new Error("alpha_unavailable"));
 
     const stale = await getCandles("EUR/USD", { interval: "5min", points: 2 }, "auto");
-    expect(stale).toEqual(fresh);
+    expect([...stale]).toEqual([...fresh]);
+    expect(stale.cacheState).toMatchObject({
+      stale: true,
+      servedFromFallback: true,
+      state: "last_known_good",
+    });
+    expect(typeof stale.cacheState?.lastGoodAt).toBe("number");
   });
 
   it("returns last known good quotes when every provider later fails", async () => {
@@ -323,6 +335,12 @@ describe("market client provider routing", () => {
 
     const fresh = await getQuote("EUR/USD", "auto");
     expect(fresh.price).toBe(1.09);
+    expect(fresh.cacheState).toEqual({
+      stale: false,
+      servedFromFallback: false,
+      state: "fresh",
+      lastGoodAt: null,
+    });
 
     tdQuoteMock.mockRejectedValue(new Error("rate_limited"));
     fmpQuoteMock.mockRejectedValue(new Error("fmp_unavailable"));
@@ -330,6 +348,12 @@ describe("market client provider routing", () => {
     alphaVantageQuoteMock.mockRejectedValue(new Error("alpha_unavailable"));
 
     const stale = await getQuote("EUR/USD", "auto");
-    expect(stale).toEqual(fresh);
+    expect({ ...stale, cacheState: undefined }).toEqual({ ...fresh, cacheState: undefined });
+    expect(stale.cacheState).toMatchObject({
+      stale: true,
+      servedFromFallback: true,
+      state: "last_known_good",
+    });
+    expect(typeof stale.cacheState?.lastGoodAt).toBe("number");
   });
 });
