@@ -14,6 +14,10 @@ describe("paper daemon production schedule", () => {
           path: "/api/trading/bot/paper-daemon",
           schedule: "0 7 * * *",
         }),
+        expect.objectContaining({
+          path: "/api/trading/bot/paper-settlement",
+          schedule: "10 7 * * *",
+        }),
       ]),
     );
   });

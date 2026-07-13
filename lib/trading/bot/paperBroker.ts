@@ -8,7 +8,7 @@ export function createPaperBrokerAdapter(): BrokerExecutionAdapter {
       return {
         ok: true,
         brokerOrderId: `paper_${intent.idempotencyKey}`,
-        status: "paper_queued",
+        status: "accepted",
         message: "Paper bracket order accepted. No real broker order was sent.",
         raw: {
           instrument: intent.instrument,

@@ -34,7 +34,7 @@ function paperRow(details: any = {}): PaperTradeHistoryRow {
     created_at: "2026-06-21T10:00:00.000Z",
     details: {
       planned: { action: "ready" },
-      execution: { status: "paper_queued" },
+      execution: { status: "accepted" },
       intent: {
         instrument: "BTCUSD",
         side: "buy",

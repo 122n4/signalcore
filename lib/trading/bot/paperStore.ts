@@ -22,6 +22,26 @@ export type PaperTradeObservability = {
   error: string | null;
 };
 
+export type PaperTriggerSource = "cron" | "manual" | "reconcile" | "retry" | "scheduler";
+
+export type PaperTradeRunStatus =
+  | "accepted"
+  | "rejected"
+  | "duplicate_skipped"
+  | "restricted"
+  | "failed"
+  | "daily_limit_reached"
+  | "no_signal"
+  | "settlement_completed"
+  | "settlement_failed"
+  | "lock_busy";
+
+export type PaperTradeLock = {
+  acquired: boolean;
+  lockAcquiredAt: string | null;
+  lockExpiresAt: string | null;
+};
+
 type CanonicalPaperTradeDbRow = {
   id: string;
   user_id: string;
@@ -33,6 +53,11 @@ type CanonicalPaperTradeDbRow = {
   broker: string | null;
   execution_status: string | null;
   status: PaperTradeOutcomeStatus;
+  idempotency_key?: string | null;
+  signal_id?: string | null;
+  trigger_source?: string | null;
+  reason_code?: string | null;
+  reason_detail?: string | null;
   entry_price: number | string | null;
   stop_price: number | string | null;
   target_price: number | string | null;
@@ -44,6 +69,16 @@ type CanonicalPaperTradeDbRow = {
   settled_at: string | null;
   last_settlement_at: string | null;
   settlement_error: string | null;
+  cron_scheduled_at?: string | null;
+  cron_fired_at?: string | null;
+  signal_loaded_at?: string | null;
+  policy_evaluated_at?: string | null;
+  lock_acquired_at?: string | null;
+  lock_released_at?: string | null;
+  persist_started_at?: string | null;
+  persist_completed_at?: string | null;
+  settlement_started_at?: string | null;
+  settlement_completed_at?: string | null;
   raw_details?: any;
   created_at: string | null;
 };
@@ -53,6 +88,7 @@ function asObject(value: unknown): Record<string, any> {
 }
 
 function finite(value: unknown) {
+  if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -80,10 +116,31 @@ function outcomeFromCanonical(row: CanonicalPaperTradeDbRow): PaperTradeOutcome 
 
 function rowToHistory(row: CanonicalPaperTradeDbRow): PaperTradeHistoryRow {
   const details = asObject(row.raw_details);
+  const mergedIntent = {
+    ...asObject(details.intent),
+    signalId: row.signal_id ?? details.intent?.signalId ?? null,
+    idempotencyKey: row.idempotency_key ?? details.intent?.idempotencyKey ?? null,
+  };
   const synthesizedDetails = {
     ...details,
     source: row.source ?? details.source ?? "paper_bot",
+    triggerSource: row.trigger_source ?? details.triggerSource ?? details.source ?? "paper_bot",
     broker: row.broker ?? details.broker ?? null,
+    reasonCode: row.reason_code ?? details.reasonCode ?? null,
+    reasonDetail: row.reason_detail ?? details.reasonDetail ?? row.settlement_error ?? null,
+    timeline: {
+      ...asObject(details.timeline),
+      cronScheduledAt: row.cron_scheduled_at ?? details.timeline?.cronScheduledAt ?? null,
+      cronFiredAt: row.cron_fired_at ?? details.timeline?.cronFiredAt ?? null,
+      signalLoadedAt: row.signal_loaded_at ?? details.timeline?.signalLoadedAt ?? null,
+      policyEvaluatedAt: row.policy_evaluated_at ?? details.timeline?.policyEvaluatedAt ?? null,
+      lockAcquiredAt: row.lock_acquired_at ?? details.timeline?.lockAcquiredAt ?? null,
+      lockReleasedAt: row.lock_released_at ?? details.timeline?.lockReleasedAt ?? null,
+      persistStartedAt: row.persist_started_at ?? details.timeline?.persistStartedAt ?? null,
+      persistCompletedAt: row.persist_completed_at ?? details.timeline?.persistCompletedAt ?? null,
+      settlementStartedAt: row.settlement_started_at ?? details.timeline?.settlementStartedAt ?? null,
+      settlementCompletedAt: row.settlement_completed_at ?? details.timeline?.settlementCompletedAt ?? null,
+    },
     planned: {
       action:
         details.planned?.action ??
@@ -92,7 +149,7 @@ function rowToHistory(row: CanonicalPaperTradeDbRow): PaperTradeHistoryRow {
     },
     execution: {
       ...asObject(details.execution),
-      status: row.execution_status ?? details.execution?.status ?? "unknown",
+      status: row.execution_status === "paper_queued" ? "accepted" : row.execution_status ?? details.execution?.status ?? "unknown",
       message:
         details.execution?.message ??
         (row.execution_status === "paper_queued"
@@ -102,6 +159,7 @@ function rowToHistory(row: CanonicalPaperTradeDbRow): PaperTradeHistoryRow {
             : null),
     },
     intent: {
+      ...mergedIntent,
       instrument: row.instrument || details.intent?.instrument || null,
       side: row.side ?? details.intent?.side ?? null,
       estimatedEntry: finite(row.entry_price ?? details.intent?.estimatedEntry),
@@ -149,6 +207,11 @@ function legacyRowToCanonicalPayload(userId: string, row: PaperTradeHistoryRow) 
     broker: details.broker ? String(details.broker) : null,
     execution_status: String(details.execution?.status || "unknown"),
     status,
+    idempotency_key: intent.idempotencyKey ? String(intent.idempotencyKey) : null,
+    signal_id: intent.signalId ? String(intent.signalId) : candidate.signalId ? String(candidate.signalId) : null,
+    trigger_source: details.triggerSource ? String(details.triggerSource) : details.source ? String(details.source) : "manual",
+    reason_code: details.reasonCode ? String(details.reasonCode) : null,
+    reason_detail: details.reasonDetail ? String(details.reasonDetail) : outcome.reason ? String(outcome.reason) : null,
     entry_price: finite(intent.estimatedEntry),
     stop_price: finite(intent.stopLoss),
     target_price: finite(intent.takeProfit),
@@ -160,6 +223,16 @@ function legacyRowToCanonicalPayload(userId: string, row: PaperTradeHistoryRow) 
     settled_at: status === "won" || status === "lost" || status === "rejected" ? closedAt || checkedAt || row.created_at : null,
     last_settlement_at: checkedAt,
     settlement_error: outcome.reason ? String(outcome.reason) : null,
+    cron_scheduled_at: details.timeline?.cronScheduledAt ?? null,
+    cron_fired_at: details.timeline?.cronFiredAt ?? null,
+    signal_loaded_at: details.timeline?.signalLoadedAt ?? null,
+    policy_evaluated_at: details.timeline?.policyEvaluatedAt ?? null,
+    lock_acquired_at: details.timeline?.lockAcquiredAt ?? null,
+    lock_released_at: details.timeline?.lockReleasedAt ?? null,
+    persist_started_at: details.timeline?.persistStartedAt ?? null,
+    persist_completed_at: details.timeline?.persistCompletedAt ?? null,
+    settlement_started_at: details.timeline?.settlementStartedAt ?? null,
+    settlement_completed_at: details.timeline?.settlementCompletedAt ?? null,
     raw_details: {
       ...details,
       paperOutcome: outcome.status
@@ -195,6 +268,126 @@ export async function upsertCanonicalPaperTradeFromJournal(userId: string, row: 
   return { schemaReady: true, error: null as string | null };
 }
 
+export async function createCanonicalPaperTradeCycle(payload: Record<string, any>) {
+  const sb = getSupabaseAdmin();
+  const { data, error } = await sb.rpc("create_paper_trade_cycle", {
+    p_payload: payload,
+  });
+
+  if (error) {
+    if (missingTable(error)) return { schemaReady: false, error: error.message || "paper_trades_missing", data: null };
+    throw new Error(error.message || "paper_trade_cycle_rpc_failed");
+  }
+
+  return {
+    schemaReady: true,
+    error: null as string | null,
+    data: asObject(data),
+  };
+}
+
+export async function acquirePaperTradeLock(args: {
+  userId: string;
+  lockScope: "execution" | "settlement";
+  leaseToken: string;
+  ttlSec?: number;
+  triggerSource: PaperTriggerSource;
+}): Promise<PaperTradeLock> {
+  const sb = getSupabaseAdmin();
+  const { data, error } = await sb.rpc("acquire_paper_trade_lock", {
+    p_user_id: args.userId,
+    p_lock_scope: args.lockScope,
+    p_lease_token: args.leaseToken,
+    p_ttl_seconds: Math.max(5, Math.min(3600, Math.round(args.ttlSec ?? 180))),
+    p_trigger_source: args.triggerSource,
+  });
+
+  if (error) throw new Error(error.message || "paper_trade_lock_acquire_failed");
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    acquired: Boolean(row?.acquired),
+    lockAcquiredAt: row?.lock_acquired_at ?? null,
+    lockExpiresAt: row?.lock_expires_at ?? null,
+  };
+}
+
+export async function releasePaperTradeLock(args: {
+  userId: string;
+  lockScope: "execution" | "settlement";
+  leaseToken: string;
+}) {
+  const sb = getSupabaseAdmin();
+  const { data, error } = await sb.rpc("release_paper_trade_lock", {
+    p_user_id: args.userId,
+    p_lock_scope: args.lockScope,
+    p_lease_token: args.leaseToken,
+  });
+
+  if (error) throw new Error(error.message || "paper_trade_lock_release_failed");
+  return Boolean(data);
+}
+
+export async function recordPaperTradeRun(args: {
+  userId: string;
+  runKind?: "execution" | "settlement";
+  triggerSource: PaperTriggerSource;
+  lifecycleStatus: PaperTradeRunStatus;
+  reasonCode?: string | null;
+  reasonDetail?: string | null;
+  paperTradeId?: string | null;
+  journalEntryId?: string | null;
+  idempotencyKey?: string | null;
+  signalId?: string | null;
+  instrument?: string | null;
+  side?: string | null;
+  broker?: string | null;
+  cronScheduledAt?: string | null;
+  cronFiredAt?: string | null;
+  requestStartedAt?: string | null;
+  signalLoadedAt?: string | null;
+  policyEvaluatedAt?: string | null;
+  lockAcquiredAt?: string | null;
+  lockReleasedAt?: string | null;
+  persistStartedAt?: string | null;
+  persistCompletedAt?: string | null;
+  settlementStartedAt?: string | null;
+  settlementCompletedAt?: string | null;
+  rawDetails?: Record<string, any>;
+}) {
+  const sb = getSupabaseAdmin();
+  const { error } = await sb.from("paper_trade_runs").insert({
+    user_id: args.userId,
+    run_kind: args.runKind ?? "execution",
+    trigger_source: args.triggerSource,
+    lifecycle_status: args.lifecycleStatus,
+    reason_code: args.reasonCode ?? null,
+    reason_detail: args.reasonDetail ?? null,
+    paper_trade_id: args.paperTradeId ?? null,
+    journal_entry_id: args.journalEntryId ?? null,
+    idempotency_key: args.idempotencyKey ?? null,
+    signal_id: args.signalId ?? null,
+    instrument: args.instrument ?? null,
+    side: args.side ?? null,
+    broker: args.broker ?? null,
+    cron_scheduled_at: args.cronScheduledAt ?? null,
+    cron_fired_at: args.cronFiredAt ?? null,
+    request_started_at: args.requestStartedAt ?? new Date().toISOString(),
+    signal_loaded_at: args.signalLoadedAt ?? null,
+    policy_evaluated_at: args.policyEvaluatedAt ?? null,
+    lock_acquired_at: args.lockAcquiredAt ?? null,
+    lock_released_at: args.lockReleasedAt ?? null,
+    persist_started_at: args.persistStartedAt ?? null,
+    persist_completed_at: args.persistCompletedAt ?? null,
+    settlement_started_at: args.settlementStartedAt ?? null,
+    settlement_completed_at: args.settlementCompletedAt ?? null,
+    raw_details: args.rawDetails ?? {},
+  });
+
+  if (error && !missingTable(error)) {
+    throw new Error(error.message || "paper_trade_run_write_failed");
+  }
+}
+
 export async function reconcileCanonicalPaperTrades(args: {
   userId: string;
   legacyRows: PaperTradeHistoryRow[];
@@ -224,7 +417,7 @@ export async function readCanonicalPaperRows(userId: string, days = 183) {
   const { data, error } = await sb
     .from("paper_trades")
     .select(
-      "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,raw_details,created_at",
+      "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,idempotency_key,signal_id,trigger_source,reason_code,reason_detail,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,cron_scheduled_at,cron_fired_at,signal_loaded_at,policy_evaluated_at,lock_acquired_at,lock_released_at,persist_started_at,persist_completed_at,settlement_started_at,settlement_completed_at,raw_details,created_at",
     )
     .eq("user_id", userId)
     .gte("created_at", since)
@@ -247,6 +440,7 @@ export async function settleCanonicalPaperRows(args: {
   userId: string;
   rows: PaperTradeHistoryRow[];
   maxSettlements?: number;
+  settledBy?: PaperTriggerSource;
 }) {
   const sb = getSupabaseAdmin();
   const now = new Date();
@@ -254,19 +448,30 @@ export async function settleCanonicalPaperRows(args: {
   let repaired = 0;
   let failures = 0;
   const output: PaperTradeHistoryRow[] = [];
+  const settledBy = args.settledBy ?? "scheduler";
 
   for (const row of args.rows) {
     const details = asObject(row.details);
     const existing = asObject(details.paperOutcome) as Partial<PaperTradeOutcome>;
-    const final =
-      isFinalPaperOutcomeStatus(existing.status);
+    const final = isFinalPaperOutcomeStatus(existing.status);
     if (final || repaired >= maxSettlements) {
       output.push(row);
       continue;
     }
 
+    const settlementStartedAt = now.toISOString();
     const outcome = await evaluatePaperTradeOutcome(row, now);
-    const nextDetails = { ...details, paperOutcome: outcome };
+    const settlementCompletedAt = new Date().toISOString();
+    const nextDetails = {
+      ...details,
+      triggerSource: details.triggerSource ?? settledBy,
+      timeline: {
+        ...asObject(details.timeline),
+        settlementStartedAt,
+        settlementCompletedAt,
+      },
+      paperOutcome: outcome,
+    };
     const payload = legacyRowToCanonicalPayload(args.userId, {
       ...row,
       details: nextDetails,
@@ -280,6 +485,8 @@ export async function settleCanonicalPaperRows(args: {
         settled_at: payload.settled_at,
         last_settlement_at: payload.last_settlement_at || now.toISOString(),
         settlement_error: payload.settlement_error,
+        settlement_started_at: settlementStartedAt,
+        settlement_completed_at: settlementCompletedAt,
         raw_details: payload.raw_details,
       })
       .eq("id", row.id)
@@ -287,7 +494,8 @@ export async function settleCanonicalPaperRows(args: {
 
     if (error) {
       failures += 1;
-      throw new Error(error.message || "paper_trade_settlement_update_failed");
+      output.push(row);
+      continue;
     }
 
     repaired += 1;

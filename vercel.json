@@ -9,6 +9,10 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/trading/bot/paper-settlement",
+      "schedule": "10 7 * * *"
+    },
+    {
       "path": "/api/engine/loop",
       "schedule": "15 3 * * *"
     }

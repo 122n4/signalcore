@@ -53,12 +53,14 @@ describe("paper daemon route", () => {
     expect(runPaperBotCycleForUserMock).toHaveBeenCalledTimes(2);
     expect(runPaperBotCycleForUserMock).toHaveBeenNthCalledWith(1, {
       userId: "owner_1",
-      source: "daemon",
+      triggerSource: "cron",
+      cronScheduledAt: expect.any(String),
       maxTradesPerDay: 4,
     });
     expect(runPaperBotCycleForUserMock).toHaveBeenNthCalledWith(2, {
       userId: "owner_2",
-      source: "daemon",
+      triggerSource: "cron",
+      cronScheduledAt: expect.any(String),
       maxTradesPerDay: 4,
     });
   });

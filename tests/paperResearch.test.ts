@@ -18,7 +18,7 @@ describe("paper research report", () => {
       [
         row("winner", {
           planned: { action: "ready" },
-          execution: { status: "paper_queued" },
+          execution: { status: "accepted" },
           intent: { instrument: "BTCUSD", side: "buy" },
           paperResearchContext: {
             instrument: "BTCUSD",
@@ -30,7 +30,7 @@ describe("paper research report", () => {
         }),
         row("loser", {
           planned: { action: "ready" },
-          execution: { status: "paper_queued" },
+          execution: { status: "accepted" },
           intent: { instrument: "ETHUSD", side: "sell" },
           paperResearchContext: {
             instrument: "ETHUSD",
@@ -71,7 +71,7 @@ describe("paper research report", () => {
       [
         row("retryable", {
           planned: { action: "ready" },
-          execution: { status: "paper_queued" },
+          execution: { status: "accepted" },
           intent: { instrument: "BTCUSD", side: "buy" },
           paperResearchContext: {
             instrument: "BTCUSD",

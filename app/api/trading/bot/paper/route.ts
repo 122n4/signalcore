@@ -62,7 +62,7 @@ export async function POST(req: Request) {
 
     const result = await runPaperBotCycleForUser({
       userId,
-      source: "manual",
+      triggerSource: "manual",
       maxTradesPerDay: 3,
     });
     return jsonWithRequestContext(context, result, {

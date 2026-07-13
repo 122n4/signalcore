@@ -45,6 +45,7 @@ function asObject(value: unknown): Record<string, any> {
 }
 
 function finite(value: unknown) {
+  if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -218,7 +219,7 @@ export async function evaluatePaperTradeOutcome(row: PaperTradeHistoryRow, now =
       closedAt: null,
       resultR: null,
       exitPrice: null,
-      reason: "Paper trade was not accepted/queued or is missing executable entry, stop, target, side, or timestamp.",
+      reason: "Paper trade was not accepted or is missing executable entry, stop, target, side, or timestamp.",
     };
   }
 

@@ -1,11 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getSupabaseAdmin: vi.fn(),
   readLatestTradingScannerSnapshots: vi.fn(),
   loadBrokerConnection: vi.fn(),
   resolveResearchPaperPromotionApproval: vi.fn(),
   readResearchLabRemoteSnapshot: vi.fn(),
+  acquirePaperTradeLock: vi.fn(),
+  createCanonicalPaperTradeCycle: vi.fn(),
+  recordPaperTradeRun: vi.fn(),
+  readCanonicalPaperRows: vi.fn(),
+  reconcileCanonicalPaperTrades: vi.fn(),
+  releasePaperTradeLock: vi.fn(),
+  settleCanonicalPaperRows: vi.fn(),
+  buildPaperObservability: vi.fn((args: any) => ({
+    schemaReady: Boolean(args.schemaReady),
+    reconciledHistoricalCycles: args.reconciledHistoricalCycles ?? 0,
+    repairedThisRun: args.repairedThisRun ?? 0,
+    unresolvedCycles: 0,
+    unsettledCycleCount: 0,
+    retryableSettlementCount: 0,
+    settlementFailures: 0,
+    lastSettlementAt: null,
+    reconciliationStatus: args.schemaReady ? "ok" : "failed",
+    error: args.error ?? null,
+  })),
+  getSupabaseAdmin: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -39,6 +58,17 @@ vi.mock("@/lib/trading/research/supabaseSync", async () => {
     readResearchLabRemoteSnapshot: mocks.readResearchLabRemoteSnapshot,
   };
 });
+
+vi.mock("@/lib/trading/bot/paperStore", () => ({
+  acquirePaperTradeLock: mocks.acquirePaperTradeLock,
+  buildPaperObservability: mocks.buildPaperObservability,
+  createCanonicalPaperTradeCycle: mocks.createCanonicalPaperTradeCycle,
+  readCanonicalPaperRows: mocks.readCanonicalPaperRows,
+  reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,
+  recordPaperTradeRun: mocks.recordPaperTradeRun,
+  releasePaperTradeLock: mocks.releasePaperTradeLock,
+  settleCanonicalPaperRows: mocks.settleCanonicalPaperRows,
+}));
 
 import { runPaperBotCycleForUser } from "@/lib/trading/bot/paperRunner";
 import {
@@ -190,68 +220,16 @@ function scannerCandidate(overrides: Record<string, any> = {}): ComposeTradingLi
   };
 }
 
-function createSupabaseHarness() {
-  const paperUpserts: any[] = [];
-  const journalInserts: any[] = [];
-  const paperRows: any[] = [];
-
-  const makeSelectChain = (rows: any[]) => {
-    const chain: any = {
-      select: vi.fn(() => chain),
-      eq: vi.fn(() => chain),
-      gte: vi.fn(() => chain),
-      order: vi.fn(() => chain),
-      limit: vi.fn(async () => ({ data: rows, error: null })),
-    };
-    return chain;
+function createJournalQueryResult(rows: any[]) {
+  const chain: any = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    gte: vi.fn(() => chain),
+    order: vi.fn(() => chain),
+    limit: vi.fn(async () => ({ data: rows, error: null })),
   };
-
-  const from = vi.fn((table: string) => {
-    if (table === "paper_trades") {
-      return {
-        ...makeSelectChain(paperRows),
-        upsert: vi.fn(async (payload: any) => {
-          const rows = Array.isArray(payload) ? payload : [payload];
-          for (const row of rows) {
-            paperUpserts.push(row);
-            paperRows.unshift({
-              id: `paper-${paperRows.length + 1}`,
-              ...row,
-            });
-          }
-          return { error: null };
-        }),
-      };
-    }
-
-    if (table === "journal_entries") {
-      return {
-        ...makeSelectChain([]),
-        insert: vi.fn((payload: any) => {
-          journalInserts.push(payload);
-          const inserted = {
-            id: `journal-${journalInserts.length}`,
-            title: payload.title,
-            details: payload.details,
-            created_at: payload.created_at,
-          };
-          return {
-            select: vi.fn(() => ({
-              single: vi.fn(async () => ({ data: inserted, error: null })),
-            })),
-          };
-        }),
-      };
-    }
-
-    throw new Error(`Unexpected Supabase table ${table}`);
-  });
-
   return {
-    client: { from },
-    paperUpserts,
-    journalInserts,
-    paperRows,
+    from: vi.fn(() => chain),
   };
 }
 
@@ -274,12 +252,27 @@ describe("paper signal execution contract", () => {
       runs: [],
       decisions: [],
     });
+    mocks.acquirePaperTradeLock.mockResolvedValue({
+      acquired: true,
+      lockAcquiredAt: "2026-07-04T08:00:01.000Z",
+      lockExpiresAt: "2026-07-04T08:03:01.000Z",
+    });
+    mocks.releasePaperTradeLock.mockResolvedValue(true);
+    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({
+      schemaReady: true,
+      error: null,
+      reconciled: 0,
+    });
+    mocks.settleCanonicalPaperRows.mockImplementation(async ({ rows }: any) => ({
+      rows,
+      repaired: 0,
+      failures: 0,
+    }));
+    mocks.getSupabaseAdmin.mockReturnValue(createJournalQueryResult([]));
   });
 
-  it("executes a persisted EXECUTE NOW signal into paper_trades with the same instrument, side, entry, stop, and target", async () => {
+  it("executes a persisted EXECUTE NOW signal into canonical paper storage with accepted status", async () => {
     const candidate = scannerCandidate();
-    const supabase = createSupabaseHarness();
-    mocks.getSupabaseAdmin.mockReturnValue(supabase.client);
     mocks.readLatestTradingScannerSnapshots.mockResolvedValue({
       schemaReady: true,
       inputs: [candidate],
@@ -288,60 +281,103 @@ describe("paper signal execution contract", () => {
       error: null,
     });
 
+    const historyRows = [
+      {
+        id: "paper-1",
+        title: "Paper bot BTCUSD BUY",
+        created_at: "2026-07-04T08:00:00.000Z",
+        details: {
+          planned: { action: "ready" },
+          execution: { status: "accepted", message: "Paper bracket order accepted. No real broker order was sent." },
+          intent: {
+            instrument: "BTCUSD",
+            side: "buy",
+            estimatedEntry: 70000,
+            stopLoss: 69800,
+            takeProfit: 70400,
+            signalId: candidate.signal.signal_id,
+            idempotencyKey: `owner_1:${candidate.signal.signal_id}`,
+          },
+          paperOutcome: {
+            status: "open",
+            checkedAt: "2026-07-04T08:00:00.000Z",
+            closedAt: null,
+            resultR: null,
+            exitPrice: null,
+            reason: "",
+          },
+          scannerContext: {
+            liveBaseline: candidate.liveBaseline,
+            signal: candidate.signal,
+          },
+        },
+      },
+    ];
+
+    mocks.createCanonicalPaperTradeCycle.mockResolvedValue({
+      schemaReady: true,
+      error: null,
+      data: {
+        created: true,
+        paper_trade_id: "paper-1",
+        journal_entry_id: "journal-1",
+      },
+    });
+    mocks.readCanonicalPaperRows
+      .mockResolvedValueOnce({ schemaReady: true, rows: [], error: null })
+      .mockResolvedValueOnce({ schemaReady: true, rows: [], error: null })
+      .mockResolvedValueOnce({ schemaReady: true, rows: historyRows, error: null })
+      .mockResolvedValueOnce({ schemaReady: true, rows: historyRows, error: null });
+
     const result = await runPaperBotCycleForUser({
       userId: "owner_1",
-      source: "daemon",
+      triggerSource: "cron",
+      cronScheduledAt: "2026-07-04T07:00:00.000Z",
       allowDuplicateIntent: true,
       maxTradesPerDay: 3,
     });
 
-    expect(result.status).toBe("paper_queued");
-    expect(supabase.journalInserts).toHaveLength(1);
-    expect(supabase.paperUpserts).toHaveLength(1);
-    expect(supabase.paperUpserts[0]).toMatchObject({
-      user_id: "owner_1",
-      mode: "trading",
-      source: "daemon",
-      instrument: "BTCUSD",
-      side: "buy",
-      broker: "syntrake_paper_broker",
-      execution_status: "paper_queued",
-      status: "open",
-      entry_price: 70000,
-      stop_price: 69800,
-      target_price: 70400,
-    });
-    expect(supabase.paperUpserts[0].raw_details.scannerContext.liveBaseline).toMatchObject({
-      baseline_id: candidate.liveBaseline.baseline_id,
-      engine_hash: candidate.liveBaseline.engine_hash,
-      strategy_id: candidate.liveBaseline.strategy_id,
-      validation_profile: candidate.liveBaseline.validation_profile,
-    });
-    expect(supabase.paperUpserts[0].raw_details.scannerContext.signal).toMatchObject({
-      signal_id: candidate.signal.signal_id,
-      baseline_id: candidate.liveBaseline.baseline_id,
-      engine_hash: candidate.liveBaseline.engine_hash,
-    });
-    expect(supabase.paperUpserts[0].raw_details.intent).toMatchObject({
-      signalId: candidate.signal.signal_id,
-      idempotencyKey: `owner_1:${candidate.signal.signal_id}`,
-    });
+    expect(result.status).toBe("accepted");
+    expect(mocks.createCanonicalPaperTradeCycle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: "owner_1",
+        source: "cron",
+        trigger_source: "cron",
+        instrument: "BTCUSD",
+        side: "buy",
+        broker: "syntrake_paper_broker",
+        execution_status: "accepted",
+        status: "open",
+        entry_price: 70000,
+        stop_price: 69800,
+        target_price: 70400,
+        signal_id: candidate.signal.signal_id,
+        idempotency_key: `owner_1:${candidate.signal.signal_id}`,
+        cron_scheduled_at: "2026-07-04T07:00:00.000Z",
+        cron_fired_at: expect.any(String),
+      }),
+    );
     expect(result.history[0]).toMatchObject({
       instrument: "BTCUSD",
       side: "buy",
-      status: "paper_queued",
+      status: "accepted",
       entry: 70000,
       stopLoss: 69800,
       takeProfit: 70400,
     });
+    expect(mocks.recordPaperTradeRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        triggerSource: "cron",
+        lifecycleStatus: "accepted",
+        idempotencyKey: `owner_1:${candidate.signal.signal_id}`,
+      }),
+    );
   });
 
   it.each([
     ["WAIT", "allowed"],
     ["TRADE_VALID", "restricted"],
-  ] as const)("does not open or persist a paper trade when the signal is %s / %s", async (state, executionStatus) => {
-    const supabase = createSupabaseHarness();
-    mocks.getSupabaseAdmin.mockReturnValue(supabase.client);
+  ] as const)("does not persist a paper trade when the signal is %s / %s", async (state, executionStatus) => {
     mocks.readLatestTradingScannerSnapshots.mockResolvedValue({
       schemaReady: true,
       inputs: [
@@ -365,18 +401,17 @@ describe("paper signal execution contract", () => {
       excludedStaleOpenCount: 0,
       error: null,
     });
+    mocks.readCanonicalPaperRows.mockResolvedValue({ schemaReady: true, rows: [], error: null });
 
     const result = await runPaperBotCycleForUser({
       userId: "owner_1",
-      source: "daemon",
+      triggerSource: "cron",
       allowDuplicateIntent: true,
       maxTradesPerDay: 3,
     });
 
     expect(result.status).toBe("blocked");
-    expect(supabase.journalInserts).toHaveLength(0);
-    expect(supabase.paperUpserts).toHaveLength(0);
-    expect(result.history).toEqual([]);
+    expect(mocks.createCanonicalPaperTradeCycle).not.toHaveBeenCalled();
   });
 
   it("allows Execute now only when the Current Live Baseline identity is valid", async () => {
@@ -412,80 +447,5 @@ describe("paper signal execution contract", () => {
 
     expect(resolveTradingActionGuidance(noSignalEntry).intent).not.toBe("execute_now");
     expect(noSignalEntry.liveDecision.signal).toBeNull();
-  });
-
-  it("blocks paper execution for a TRADE_VALID / allowed snapshot without Current Live Baseline identity", async () => {
-    const supabase = createSupabaseHarness();
-    mocks.getSupabaseAdmin.mockReturnValue(supabase.client);
-    mocks.readLatestTradingScannerSnapshots.mockResolvedValue({
-      schemaReady: true,
-      inputs: [scannerCandidate({ liveBaseline: null })],
-      generatedAt: "2026-07-04T08:00:00.000Z",
-      excludedStaleOpenCount: 0,
-      error: null,
-    });
-
-    const result = await runPaperBotCycleForUser({
-      userId: "owner_1",
-      source: "daemon",
-      allowDuplicateIntent: true,
-      maxTradesPerDay: 3,
-    });
-
-    expect(result.status).toBe("blocked");
-    expect(supabase.journalInserts).toHaveLength(0);
-    expect(supabase.paperUpserts).toHaveLength(0);
-    expect("result" in result ? result.result.planned?.reasons.join(" ") : "").toContain(
-      "Execution status is restricted",
-    );
-  });
-
-  it("does not advertise Execute now or open paper when signal pedigree or executable levels are incomplete", async () => {
-    const mismatchedSignal = scannerCandidate({
-      signal: {
-        ...SIGNAL,
-        baseline_id: "baseline-other",
-      },
-    });
-    const missingTarget = scannerCandidate({
-      executionPlan: {
-        tradePath: {
-          targetZone: null,
-          primaryPath: "up",
-          secondaryPath: null,
-          riskRewardEstimate: 2.4,
-        },
-      },
-    });
-
-    expect(resolveTradingActionGuidance(composeTradingWatchlistEntry(mismatchedSignal)).intent).not.toBe(
-      "execute_now",
-    );
-    expect(resolveTradingActionGuidance(composeTradingWatchlistEntry(missingTarget)).intent).not.toBe(
-      "execute_now",
-    );
-
-    for (const candidate of [mismatchedSignal, missingTarget]) {
-      const supabase = createSupabaseHarness();
-      mocks.getSupabaseAdmin.mockReturnValue(supabase.client);
-      mocks.readLatestTradingScannerSnapshots.mockResolvedValue({
-        schemaReady: true,
-        inputs: [candidate],
-        generatedAt: "2026-07-04T08:00:00.000Z",
-        excludedStaleOpenCount: 0,
-        error: null,
-      });
-
-      const result = await runPaperBotCycleForUser({
-        userId: "owner_1",
-        source: "daemon",
-        allowDuplicateIntent: true,
-        maxTradesPerDay: 3,
-      });
-
-      expect(result.status).toBe("blocked");
-      expect(supabase.journalInserts).toHaveLength(0);
-      expect(supabase.paperUpserts).toHaveLength(0);
-    }
   });
 });

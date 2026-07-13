@@ -67,6 +67,7 @@ describe("canonical paper trade metadata", () => {
 
     expect(query.chain.select).toHaveBeenCalledWith(expect.stringContaining("raw_details"));
     expect(result.schemaReady).toBe(true);
+    expect(result.rows[0]?.details.execution?.status).toBe("accepted");
     expect(result.rows[0]?.details.researchApproval?.matched_scope?.package_id).toBe("package-nas100");
     expect(result.rows[0]?.details.researchApproval?.matched_scope?.baseline_id).toBe(
       "baseline-live-current-xau-btc-breakout-risk-shaped",

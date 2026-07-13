@@ -124,7 +124,7 @@ describe("private autonomous trading bot policy", () => {
 
     expect(result.planned.action).toBe("ready");
     expect(result.execution?.ok).toBe(true);
-    expect(result.execution?.status).toBe("paper_queued");
+    expect(result.execution?.status).toBe("accepted");
   });
 
   it("routes only Alpaca-supported paper symbols to Alpaca", () => {
