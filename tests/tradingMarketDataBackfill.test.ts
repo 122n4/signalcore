@@ -52,6 +52,28 @@ describe("trading market data backfill", () => {
     expect(plan.summary.missingDownloadable).toBe(1);
   });
 
+  it("marks missing secondary crypto archives as downloadable in canonical backfill", async () => {
+    const baseDir = await createTempDir();
+    process.env.TRADING_BACKTEST_LOCAL_DATA_DIR = baseDir;
+
+    const plan = await buildTradingMarketDataBackfillPlan({
+      instruments: ["SOLUSD"],
+      from: { year: 2024, month: 1 },
+      to: { year: 2024, month: 2 },
+      includeStaged: false,
+    });
+
+    const entry = plan.entries[0];
+
+    expect(entry.instrument).toBe("SOLUSD");
+    expect(entry.autoDownload).toBe(true);
+    expect(entry.periods.map((period) => period.status)).toEqual([
+      "missing_downloadable",
+      "missing_downloadable",
+    ]);
+    expect(entry.periods[0]?.remoteUrl).toContain("data.binance.vision");
+  });
+
   it("keeps non-downloadable local archives visible as manual gaps", async () => {
     const baseDir = await createTempDir();
     process.env.TRADING_BACKTEST_LOCAL_DATA_DIR = baseDir;

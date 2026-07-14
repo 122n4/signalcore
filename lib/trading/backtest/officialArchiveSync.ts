@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 
 import { resolveTradingHistoricalInstrument } from "./datasets";
 
-export type TradingOfficialSyncInstrument = "BTCUSD" | "ETHUSD" | "US500";
+export type TradingOfficialSyncInstrument = "BTCUSD" | "ETHUSD" | "BNBUSD" | "SOLUSD" | "XRPUSD" | "US500";
 
 export type TradingOfficialSyncMonth = {
   year: number;
@@ -302,7 +302,7 @@ export async function inspectLocalYearlyArchive(args: {
 }
 
 export async function syncBinanceMonthlyArchive(args: {
-  instrument: Extract<TradingOfficialSyncInstrument, "BTCUSD" | "ETHUSD">;
+  instrument: Extract<TradingOfficialSyncInstrument, "BTCUSD" | "ETHUSD" | "BNBUSD" | "SOLUSD" | "XRPUSD">;
   from: TradingOfficialSyncMonth;
   to: TradingOfficialSyncMonth;
   force?: boolean;
@@ -370,7 +370,13 @@ export async function syncOfficialHistoricalArchives(args: {
   const entries: TradingOfficialSyncEntry[] = [];
 
   for (const instrument of args.instruments) {
-    if (instrument === "BTCUSD" || instrument === "ETHUSD") {
+    if (
+      instrument === "BTCUSD"
+      || instrument === "ETHUSD"
+      || instrument === "BNBUSD"
+      || instrument === "SOLUSD"
+      || instrument === "XRPUSD"
+    ) {
       entries.push(
         ...(await syncBinanceMonthlyArchive({
           instrument,

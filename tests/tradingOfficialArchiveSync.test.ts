@@ -79,4 +79,30 @@ describe("trading official archive sync", () => {
       unsupported: 0,
     });
   });
+
+  it("supports additional canonical crypto instruments on Binance monthly sync", async () => {
+    process.env.TRADING_BACKTEST_LOCAL_DATA_DIR = "tmp/syntrake-test-historical";
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      body: null,
+    })) as any;
+
+    const result = await syncBinanceMonthlyArchive({
+      instrument: "SOLUSD",
+      from: { year: 2026, month: 6 },
+      to: { year: 2026, month: 6 },
+      force: true,
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        instrument: "SOLUSD",
+        status: "missing_remote",
+        periodLabel: "2026-06",
+        remoteUrl: buildBinanceMonthlyKlineZipUrl("SOLUSDT", { year: 2026, month: 6 }),
+      }),
+    ]);
+  });
 });

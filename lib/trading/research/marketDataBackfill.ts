@@ -305,12 +305,16 @@ async function firstExistingPath(candidates: string[]): Promise<string | null> {
 }
 
 function isOfficialSyncInstrument(value: string): value is TradingOfficialSyncInstrument {
-  return value === "BTCUSD" || value === "ETHUSD";
+  return value === "BTCUSD"
+    || value === "ETHUSD"
+    || value === "BNBUSD"
+    || value === "SOLUSD"
+    || value === "XRPUSD";
 }
 
 function isAutoDownloadable(config: TradingHistoricalLocalDatasetConfig, instrument: string): boolean {
   if (config.format === "crypto_binance_monthly_m1") {
-    return instrument === "BTCUSD" || instrument === "ETHUSD";
+    return isOfficialSyncInstrument(instrument);
   }
 
   return (
