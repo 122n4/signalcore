@@ -55,4 +55,16 @@ describe("trading research local archive inventory", () => {
     expect((stagingRootSummary?.categories.unreferenced ?? 0) > 0).toBe(true);
     expect((stagingRootSummary?.categories.temporary ?? 0) > 0).toBe(true);
   });
+
+  it("can scope the inventory to canonical datasets only", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+
+    const report = await buildResearchLocalArchiveInventoryReport(config, "canonical");
+
+    expect(report.scope).toBe("canonical");
+    expect(report.datasets.every((entry) => entry.storage_tier === "canonical")).toBe(true);
+    expect(report.roots_summary).toHaveLength(2);
+    expect(report.roots_summary.find((entry) => entry.root === report.roots.staging)?.file_count).toBe(0);
+  });
 });

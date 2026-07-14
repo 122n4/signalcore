@@ -102,6 +102,7 @@ export type ResearchLocalArchiveInventoryReport = {
   report_id: string;
   generated_at: string;
   provenance: ResearchReportProvenance;
+  scope: "all" | "canonical" | "staging";
   roots: {
     canonical: string;
     staging: string;
@@ -120,6 +121,8 @@ export type ResearchLocalArchiveInventoryReport = {
   roots_summary: ResearchLocalArchiveInventoryRootSummary[];
   datasets: ResearchLocalArchiveInventoryDataset[];
 };
+
+export type ResearchLocalArchiveInventoryScope = "all" | "canonical" | "staging";
 
 type ParsedCandle = {
   timestamp: string;
@@ -698,36 +701,43 @@ function buildRootSummary(args: {
   };
 }
 
-export async function buildResearchLocalArchiveInventoryReport(config: ResearchConfig): Promise<ResearchLocalArchiveInventoryReport> {
+export async function buildResearchLocalArchiveInventoryReport(
+  config: ResearchConfig,
+  scope: ResearchLocalArchiveInventoryScope = "all",
+): Promise<ResearchLocalArchiveInventoryReport> {
   const canonicalRoot = resolveCanonicalRoot(config);
   const stagingRoot = resolveStagingRoot();
   const instruments = knownInstrumentConfigs();
-  const canonicalDatasets = await Promise.all(
-    instruments.map((instrument) =>
-      buildDatasetInventory({
-        config,
-        instrument,
-        root: canonicalRoot,
-        storageTier: "canonical",
-      }),
-    ),
-  );
-  const stagingDatasets = await Promise.all(
-    instruments.map((instrument) =>
-      buildDatasetInventory({
-        config,
-        instrument,
-        root: stagingRoot,
-        storageTier: "staging",
-      }),
-    ),
-  );
+  const canonicalDatasets = scope === "staging"
+    ? []
+    : await Promise.all(
+        instruments.map((instrument) =>
+          buildDatasetInventory({
+            config,
+            instrument,
+            root: canonicalRoot,
+            storageTier: "canonical",
+          }),
+        ),
+      );
+  const stagingDatasets = scope === "canonical"
+    ? []
+    : await Promise.all(
+        instruments.map((instrument) =>
+          buildDatasetInventory({
+            config,
+            instrument,
+            root: stagingRoot,
+            storageTier: "staging",
+          }),
+        ),
+      );
   const datasets = [...canonicalDatasets, ...stagingDatasets].sort(
     (left, right) => left.instrument.localeCompare(right.instrument) || left.storage_tier.localeCompare(right.storage_tier),
   );
 
-  const canonicalFiles = await listFilesRecursive(canonicalRoot);
-  const stagingFiles = await listFilesRecursive(stagingRoot);
+  const canonicalFiles = scope === "staging" ? [] : await listFilesRecursive(canonicalRoot);
+  const stagingFiles = scope === "canonical" ? [] : await listFilesRecursive(stagingRoot);
   const fileSizeMap = new Map<string, number>();
   for (const filePath of [...canonicalFiles, ...stagingFiles]) {
     try {
@@ -775,9 +785,10 @@ export async function buildResearchLocalArchiveInventoryReport(config: ResearchC
 
   return {
     schema_version: resolveResearchReportSchemaVersion("localArchiveInventory"),
-    report_id: `local-archive-inventory-${new Date().toISOString()}`,
+    report_id: `local-archive-inventory-${scope}-${new Date().toISOString()}`,
     generated_at: new Date().toISOString(),
     provenance: await buildLightweightInventoryProvenance(config),
+    scope,
     roots: {
       canonical: canonicalRoot,
       staging: stagingRoot,
@@ -812,8 +823,9 @@ export async function writeResearchLocalArchiveInventoryReport(args: {
 
   const jsonPath = path.join(datasetDir, `${args.report.report_id.replace(/[:.]/g, "-")}.json`);
   const markdownPath = path.join(datasetDir, `${args.report.report_id.replace(/[:.]/g, "-")}.md`);
-  const latestJsonPath = path.join(datasetDir, "local-archive-inventory-latest.json");
-  const latestMarkdownPath = path.join(datasetDir, "local-archive-inventory-latest.md");
+  const scopeSuffix = args.report.scope === "all" ? "latest" : `${args.report.scope}-latest`;
+  const latestJsonPath = path.join(datasetDir, `local-archive-inventory-${scopeSuffix}.json`);
+  const latestMarkdownPath = path.join(datasetDir, `local-archive-inventory-${scopeSuffix}.md`);
 
   await writeJsonAtomic(jsonPath, args.report);
   await writeJsonAtomic(latestJsonPath, args.report);
@@ -822,6 +834,7 @@ export async function writeResearchLocalArchiveInventoryReport(args: {
     "# Research Local Archive Inventory",
     "",
     `- Generated at: ${args.report.generated_at}`,
+    `- Scope: ${args.report.scope}`,
     `- Dataset refs: ${args.report.provenance.dataset_refs.length}`,
     `- Canonical root: ${args.report.roots.canonical}`,
     `- Staging root: ${args.report.roots.staging}`,
