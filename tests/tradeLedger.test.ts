@@ -91,6 +91,16 @@ describe("trade ledger helpers", () => {
     expect(summary.providerCount).toBe(2);
   });
 
+  it("counts accepted trades by execution status even after they close", () => {
+    const summary = computeTradeLedgerSummary([
+      { executionStatus: "accepted", displayStatus: "won", outcomeStatus: "won", side: "buy", pnlAmount: 20, resultR: 1, settledAt: "2026-07-13T23:00:00.000Z", holdingMs: 1000, settlementLatencyMs: 1000, acceptedLatencyMs: 1000, executionLatencyMs: 1000, marketSource: "provider" },
+      { executionStatus: "paper_queued", displayStatus: "lost", outcomeStatus: "lost", side: "sell", pnlAmount: -20, resultR: -1, settledAt: "2026-07-13T23:10:00.000Z", holdingMs: 1000, settlementLatencyMs: 1000, acceptedLatencyMs: 1000, executionLatencyMs: 1000, marketSource: "provider" },
+      { executionStatus: "rejected", displayStatus: "rejected", outcomeStatus: "rejected", side: "sell", pnlAmount: null, resultR: null, settledAt: null, holdingMs: null, settlementLatencyMs: null, acceptedLatencyMs: null, executionLatencyMs: null, marketSource: "provider" },
+    ] as any);
+
+    expect(summary.accepted).toBe(2);
+  });
+
   it("builds a chronological timeline from trade, journal and run evidence", () => {
     const timeline = buildTradeLedgerTimeline(
       {
@@ -136,5 +146,47 @@ describe("trade ledger helpers", () => {
     const last7 = resolveTradeLedgerWindow("last_7d", null, null, now);
     expect(last7.from).toBe("2026-07-07T00:00:00.000Z");
     expect(last7.to).toBe("2026-07-14T00:00:00.000Z");
+  });
+
+  it("derives fallback decision and accepted dates from canonical timestamps", () => {
+    const row = deriveTradeLedgerRow({
+      id: "paper-fallback",
+      user_id: "owner_1",
+      instrument: "ETHUSD",
+      side: "buy",
+      broker: "syntrake_paper_broker",
+      execution_status: "accepted",
+      status: "open",
+      idempotency_key: null,
+      signal_id: null,
+      trigger_source: "manual",
+      reason_code: null,
+      reason_detail: null,
+      entry_price: 100,
+      stop_price: 90,
+      target_price: 120,
+      risk_pct: 0.25,
+      risk_amount: 25,
+      result_r: null,
+      exit_price: null,
+      opened_at: null,
+      settled_at: null,
+      last_settlement_at: null,
+      settlement_error: null,
+      source_journal_entry_id: "journal-fallback",
+      created_at: "2026-07-01T10:00:00.000Z",
+      signal_loaded_at: null,
+      policy_evaluated_at: null,
+      lock_acquired_at: null,
+      lock_released_at: null,
+      persist_started_at: null,
+      persist_completed_at: null,
+      settlement_started_at: null,
+      settlement_completed_at: null,
+      raw_details: {},
+    } as any);
+
+    expect(row.decisionAt).toBe("2026-07-01T10:00:00.000Z");
+    expect(row.acceptedAt).toBe("2026-07-01T10:00:00.000Z");
   });
 });

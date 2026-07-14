@@ -317,6 +317,11 @@ function deriveDisplayStatus(row: TradeLedgerDbRow) {
   return outcome;
 }
 
+function isAcceptedExecutionStatus(value: string | null | undefined) {
+  const status = String(value || "").toLowerCase();
+  return status === "accepted" || status === "paper_queued" || status === "paper_filled";
+}
+
 export function resolveTradeLedgerWindow(
   preset: TradeLedgerPreset,
   from: string | null,
@@ -533,7 +538,7 @@ export function computeTradeLedgerSummary(rows: TradeLedgerRow[]): TradeLedgerSu
     total: rows.length,
     buy: rows.filter((row) => row.side === "buy").length,
     sell: rows.filter((row) => row.side === "sell").length,
-    accepted: rows.filter((row) => row.displayStatus === "accepted").length,
+    accepted: rows.filter((row) => isAcceptedExecutionStatus(row.executionStatus)).length,
     settled: rows.filter((row) => row.settledAt != null).length,
     retryable: rows.filter((row) => row.displayStatus === "unavailable_retryable").length,
     failed: rows.filter((row) => row.displayStatus === "unavailable").length,
@@ -559,7 +564,6 @@ export function computeTradeLedgerSummary(rows: TradeLedgerRow[]): TradeLedgerSu
 async function readAllPaperTradeRows(args: {
   ownerUserIds: string[];
   filters: TradeLedgerFilters;
-  range: { from: string | null; to: string | null };
 }) {
   const sb = getSupabaseAdmin();
   const output: TradeLedgerDbRow[] = [];
@@ -580,19 +584,6 @@ async function readAllPaperTradeRows(args: {
     if (args.filters.reasonCode) query = query.eq("reason_code", args.filters.reasonCode);
     if (args.filters.userId) query = query.eq("user_id", args.filters.userId);
 
-    const dateColumn =
-      args.filters.dateType === "accepted"
-        ? "persist_completed_at"
-        : args.filters.dateType === "execution"
-          ? "opened_at"
-          : args.filters.dateType === "settlement"
-            ? "last_settlement_at"
-            : args.filters.dateType === "close"
-              ? "settled_at"
-              : "policy_evaluated_at";
-    if (args.range.from) query = query.gte(dateColumn, args.range.from);
-    if (args.range.to) query = query.lte(dateColumn, args.range.to);
-
     const { data, error } = await query;
     if (error) throw new Error(error.message || "trade_ledger_read_failed");
     const rows = (data || []) as TradeLedgerDbRow[];
@@ -608,7 +599,7 @@ export async function readTradeLedgerPage(filters: TradeLedgerFilters): Promise<
   const ownerUserIds = getOwnerUserIds();
   if (ownerUserIds.length === 0) throw new Error("trade_ledger_owner_ids_missing");
   const range = resolveTradeLedgerWindow(filters.preset, filters.from, filters.to);
-  const allRows = await readAllPaperTradeRows({ ownerUserIds, filters, range });
+  const allRows = await readAllPaperTradeRows({ ownerUserIds, filters });
   const derived = allRows.map(deriveTradeLedgerRow).filter((row) => matchesFilters(row, filters, range));
   derived.sort((left, right) => {
     const leftTime = Date.parse(dateValue(left, filters.dateType) || left.createdAt || "") || 0;
