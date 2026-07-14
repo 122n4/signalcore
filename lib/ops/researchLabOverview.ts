@@ -9,6 +9,7 @@ import {
   type ResearchDataAcquisitionPlan,
   type ResearchDatasetRequirementsReport,
 } from "@/lib/trading/research/datasetRequirements";
+import type { MarketDataBackfillRunReport } from "@/lib/trading/research/marketDataBackfill";
 import { readJsonIfExists } from "@/lib/trading/research/fs";
 import {
   buildResearchIntelligenceReport,
@@ -110,6 +111,26 @@ export type ResearchLabOverview = {
   researchIntelligence: ResearchIntelligenceReport;
   datasetRequirements: ResearchDatasetRequirementsReport;
   dataAcquisitionPlan: ResearchDataAcquisitionPlan;
+  twelveDataTransfer: {
+    available: boolean;
+    generatedAt: string | null;
+    localArchiveFiles: number;
+    downloadedThisCycle: number;
+    restrictedAccess: number;
+    failed: number;
+    missingRemote: number;
+    instruments: Array<{
+      instrument: string;
+      providerSymbol: string | null;
+      localArchiveFiles: number;
+      downloadedThisCycle: number;
+      restrictedAccess: number;
+      failed: number;
+      missingRemote: number;
+      candleCount: number;
+      latestPeriodLabel: string | null;
+    }>;
+  };
   operatorActions: Array<{
     label: string;
     command: string;
@@ -324,6 +345,73 @@ function operatorActions(): ResearchLabOverview["operatorActions"] {
   ];
 }
 
+async function readTwelveDataTransferSummary(config: ResearchConfig): Promise<ResearchLabOverview["twelveDataTransfer"]> {
+  const reportPath = path.join(config.paths.reportsDir, "datasets", "market-data-backfill-latest.json");
+  const report = await readJsonIfExists<MarketDataBackfillRunReport>(reportPath);
+  const activeEntries = Array.isArray(report?.sync?.activeResult) ? report!.sync.activeResult : [];
+
+  if (!report || activeEntries.length === 0) {
+    return {
+      available: false,
+      generatedAt: report?.generatedAt ?? null,
+      localArchiveFiles: 0,
+      downloadedThisCycle: 0,
+      restrictedAccess: 0,
+      failed: 0,
+      missingRemote: 0,
+      instruments: [],
+    };
+  }
+
+  const grouped = new Map<string, ResearchLabOverview["twelveDataTransfer"]["instruments"][number]>();
+  for (const entry of activeEntries) {
+    const current = grouped.get(entry.instrument) ?? {
+      instrument: entry.instrument,
+      providerSymbol: entry.providerSymbol ?? null,
+      localArchiveFiles: 0,
+      downloadedThisCycle: 0,
+      restrictedAccess: 0,
+      failed: 0,
+      missingRemote: 0,
+      candleCount: 0,
+      latestPeriodLabel: null,
+    };
+
+    if (!current.providerSymbol && entry.providerSymbol) current.providerSymbol = entry.providerSymbol;
+    if (entry.status === "existing" || entry.status === "downloaded") current.localArchiveFiles += 1;
+    if (entry.status === "downloaded") current.downloadedThisCycle += 1;
+    if (entry.status === "restricted_remote_access") current.restrictedAccess += 1;
+    if (entry.status === "failed") current.failed += 1;
+    if (entry.status === "missing_remote") current.missingRemote += 1;
+    current.candleCount += Number(entry.candleCount ?? 0);
+    if (!current.latestPeriodLabel || String(entry.periodLabel).localeCompare(String(current.latestPeriodLabel)) > 0) {
+      current.latestPeriodLabel = entry.periodLabel;
+    }
+    grouped.set(entry.instrument, current);
+  }
+
+  const instruments = Array.from(grouped.values()).sort((left, right) => {
+    if (right.downloadedThisCycle !== left.downloadedThisCycle) {
+      return right.downloadedThisCycle - left.downloadedThisCycle;
+    }
+    if (right.localArchiveFiles !== left.localArchiveFiles) {
+      return right.localArchiveFiles - left.localArchiveFiles;
+    }
+    return left.instrument.localeCompare(right.instrument);
+  });
+
+  return {
+    available: true,
+    generatedAt: report.generatedAt ?? null,
+    localArchiveFiles: activeEntries.filter((entry) => entry.status === "existing" || entry.status === "downloaded").length,
+    downloadedThisCycle: activeEntries.filter((entry) => entry.status === "downloaded").length,
+    restrictedAccess: activeEntries.filter((entry) => entry.status === "restricted_remote_access").length,
+    failed: activeEntries.filter((entry) => entry.status === "failed").length,
+    missingRemote: activeEntries.filter((entry) => entry.status === "missing_remote").length,
+    instruments,
+  };
+}
+
 function queueFromRemote(value: any): ResearchLabOverview["queue"] {
   const counts = emptyTaskCounts();
   for (const [status, count] of Object.entries((value?.counts ?? {}) as Record<string, unknown>)) {
@@ -425,9 +513,10 @@ export async function buildResearchLabOverview(args: {
 } = {}): Promise<ResearchLabOverview> {
   const config = args.config ?? await loadResearchConfig();
   const generatedAt = (args.now ?? new Date()).toISOString();
-  const [datasetRequirements, dataAcquisitionPlan] = await Promise.all([
+  const [datasetRequirements, dataAcquisitionPlan, twelveDataTransfer] = await Promise.all([
     buildResearchDatasetRequirementsReport(config),
     buildResearchDataAcquisitionPlan(config),
+    readTwelveDataTransferSummary(config),
   ]);
 
   const baselinePath = path.join(
@@ -550,6 +639,7 @@ export async function buildResearchLabOverview(args: {
         researchIntelligence: remoteResearchIntelligence,
         datasetRequirements: remotePayload.datasetRequirements ?? datasetRequirements,
         dataAcquisitionPlan: remotePayload.dataAcquisitionPlan ?? dataAcquisitionPlan,
+        twelveDataTransfer: remotePayload.twelveDataTransfer ?? twelveDataTransfer,
         operatorActions: operatorActions(),
         storage: {
           localArtifactBacked: false,
@@ -593,6 +683,7 @@ export async function buildResearchLabOverview(args: {
     researchIntelligence,
     datasetRequirements,
     dataAcquisitionPlan,
+    twelveDataTransfer,
     operatorActions: operatorActions(),
     storage: {
       localArtifactBacked,

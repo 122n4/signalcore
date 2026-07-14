@@ -313,6 +313,75 @@ function DataAcquisitionAgentPanel({ lab }: { lab: Awaited<ReturnType<typeof bui
   );
 }
 
+function TwelveDataTransferPanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
+  const transfer = lab.twelveDataTransfer;
+
+  return (
+    <section className="mt-7 rounded-[30px] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/20">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200/60">Twelve Data transfer</p>
+          <h2 className="mt-2 text-2xl font-black text-white">What the Lab already pulled</h2>
+          <p className="mt-3 max-w-4xl text-sm text-slate-300">
+            This block reads the canonical market-data backfill report and shows which yearly local archives were already
+            materialized from Twelve Data for active Research Lab markets.
+          </p>
+        </div>
+        <div className="rounded-full border border-white/15 bg-slate-950/45 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-slate-100">
+          Report {time(transfer.generatedAt)}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-5">
+        <Metric label="Local archive files" value={transfer.localArchiveFiles} />
+        <Metric label="Downloaded this cycle" value={transfer.downloadedThisCycle} />
+        <Metric label="Restricted access" value={transfer.restrictedAccess} />
+        <Metric label="Missing remote" value={transfer.missingRemote} />
+        <Metric label="Failed" value={transfer.failed} />
+      </div>
+
+      {!transfer.available ? (
+        <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+          No canonical Twelve Data transfer report is available in this runtime yet.
+        </div>
+      ) : (
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
+          <table className="min-w-full text-left text-sm text-slate-200">
+            <thead className="bg-white/5 text-xs uppercase tracking-[0.18em] text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Instrument</th>
+                <th className="px-4 py-3">Provider</th>
+                <th className="px-4 py-3">Local files</th>
+                <th className="px-4 py-3">Downloaded now</th>
+                <th className="px-4 py-3">Candles</th>
+                <th className="px-4 py-3">Restricted</th>
+                <th className="px-4 py-3">Missing remote</th>
+                <th className="px-4 py-3">Failed</th>
+                <th className="px-4 py-3">Latest period</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transfer.instruments.map((entry) => (
+                <tr key={entry.instrument} className="border-t border-white/5 align-top">
+                  <td className="px-4 py-3 font-bold text-white">{entry.instrument}</td>
+                  <td className="px-4 py-3 text-slate-300">{entry.providerSymbol ?? "n/a"}</td>
+                  <td className="px-4 py-3">{entry.localArchiveFiles}</td>
+                  <td className="px-4 py-3">{entry.downloadedThisCycle}</td>
+                  <td className="px-4 py-3">{entry.candleCount}</td>
+                  <td className="px-4 py-3">{entry.restrictedAccess}</td>
+                  <td className="px-4 py-3">{entry.missingRemote}</td>
+                  <td className="px-4 py-3">{entry.failed}</td>
+                  <td className="px-4 py-3">{entry.latestPeriodLabel ?? "n/a"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PromotionReadinessPanel({ lab }: { lab: Awaited<ReturnType<typeof buildResearchLabOverview>> }) {
   const promotion = lab.promotionReadiness;
   const board = promotion.board;
@@ -557,6 +626,8 @@ export default async function ResearchLabPage({
         <DatasetRequirementsPanel lab={lab} />
 
         <DataAcquisitionAgentPanel lab={lab} />
+
+        <TwelveDataTransferPanel lab={lab} />
 
         <PromotionReadinessPanel lab={lab} />
 
