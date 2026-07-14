@@ -20,6 +20,8 @@ export * from "./quality";
 export * from "./campaign";
 export * from "./coverageAudit";
 export * from "./officialArchiveSync";
+export * from "./twelveDataArchiveSync";
+export * from "./twelveDataHistorical";
 export * from "./setupSegmentation";
 export * from "./marketSessionSegmentation";
 export * from "./marketSessionOverrides";

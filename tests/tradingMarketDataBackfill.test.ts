@@ -66,10 +66,11 @@ describe("trading market data backfill", () => {
     const entry = plan.entries[0];
 
     expect(entry.instrument).toBe("US500");
-    expect(entry.autoDownload).toBe(false);
+    expect(entry.autoDownload).toBe(true);
     expect(entry.periods).toHaveLength(1);
-    expect(entry.periods[0]?.status).toBe("missing_manual");
-    expect(plan.summary.missingManual).toBe(1);
+    expect(entry.periods[0]?.status).toBe("missing_downloadable");
+    expect(entry.periods[0]?.remoteUrl).toContain("api.twelvedata.com/time_series");
+    expect(plan.summary.missingDownloadable).toBe(1);
   });
 
   it("treats staged Binance crypto archives as downloadable without activating them", async () => {

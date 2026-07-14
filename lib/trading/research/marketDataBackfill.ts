@@ -20,6 +20,7 @@ import {
   type TradingOfficialSyncMonth,
   type TradingOfficialSyncResult,
 } from "@/lib/trading/backtest/officialArchiveSync";
+import { syncTwelveDataYearlyFile } from "@/lib/trading/backtest/twelveDataArchiveSync";
 
 import { loadResearchConfig } from "./config";
 import { ensureDirectory, readJsonIfExists, writeJsonAtomic } from "./fs";
@@ -101,6 +102,24 @@ export type StagedMarketDataSyncEntry = {
   error: string | null;
 };
 
+export type ActiveMarketDataSyncStatus =
+  | "downloaded"
+  | "existing"
+  | "failed"
+  | "missing_remote"
+  | "restricted_remote_access";
+
+export type ActiveMarketDataSyncEntry = {
+  instrument: string;
+  status: ActiveMarketDataSyncStatus;
+  targetPath: string;
+  remoteUrl: string | null;
+  providerSymbol: string | null;
+  periodLabel: string;
+  candleCount: number;
+  error: string | null;
+};
+
 export type MarketDataBackfillRunRequest = {
   instruments?: string[];
   from?: TradingOfficialSyncMonth;
@@ -136,6 +155,15 @@ export type MarketDataBackfillRunReport = {
     supportedInstruments: TradingOfficialSyncInstrument[];
     result: TradingOfficialSyncResult | null;
     summary: Awaited<ReturnType<typeof summarizeSyncResult>> | null;
+    activeAttempted: boolean;
+    activeResult: ActiveMarketDataSyncEntry[];
+    activeSummary: {
+      downloaded: number;
+      existing: number;
+      missingRemote: number;
+      restrictedAccess: number;
+      failed: number;
+    };
     stagedAttempted: boolean;
     stagedResult: StagedMarketDataSyncEntry[];
     stagedSummary: {
@@ -277,18 +305,33 @@ async function firstExistingPath(candidates: string[]): Promise<string | null> {
 }
 
 function isOfficialSyncInstrument(value: string): value is TradingOfficialSyncInstrument {
-  return value === "BTCUSD" || value === "ETHUSD" || value === "US500";
+  return value === "BTCUSD" || value === "ETHUSD";
 }
 
 function isAutoDownloadable(config: TradingHistoricalLocalDatasetConfig, instrument: string): boolean {
+  if (config.format === "crypto_binance_monthly_m1") {
+    return instrument === "BTCUSD" || instrument === "ETHUSD";
+  }
+
   return (
-    config.format === "crypto_binance_monthly_m1"
-    && (instrument === "BTCUSD" || instrument === "ETHUSD")
+    config.format === "forex_ascii_yearly_m1"
+    || config.format === "histdata_ascii_yearly_m1"
+    || config.format === "indices_csv_yearly_m1"
   );
+}
+
+function buildTwelveDataHintUrl(symbol: string): string {
+  const url = new URL("https://api.twelvedata.com/time_series");
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("interval", "1min");
+  url.searchParams.set("order", "ASC");
+  url.searchParams.set("timezone", "UTC");
+  return url.toString();
 }
 
 function buildLocalCandidates(args: {
   baseDir: string;
+  instrument: ReturnType<typeof resolveTradingHistoricalInstrument>;
   localDataset: TradingHistoricalLocalDatasetConfig;
   part: TradingOfficialSyncMonth;
 }): {
@@ -320,7 +363,7 @@ function buildLocalCandidates(args: {
         path.join(root, `DAT_ASCII_${args.localDataset.symbol}_M1_${args.part.year}.csv.csv`),
         canonical,
       ],
-      remoteUrl: null,
+      remoteUrl: buildTwelveDataHintUrl(args.instrument.dataSymbols[0]?.symbol ?? args.localDataset.symbol),
     };
   }
 
@@ -331,7 +374,7 @@ function buildLocalCandidates(args: {
       label,
       targetPath,
       candidates: [targetPath],
-      remoteUrl: null,
+      remoteUrl: buildTwelveDataHintUrl(args.instrument.dataSymbols[0]?.symbol ?? args.localDataset.symbol),
     };
   }
 
@@ -341,7 +384,7 @@ function buildLocalCandidates(args: {
     label,
     targetPath,
     candidates: [targetPath],
-    remoteUrl: null,
+    remoteUrl: buildTwelveDataHintUrl(args.instrument.dataSymbols[0]?.symbol ?? args.localDataset.symbol),
   };
 }
 
@@ -418,6 +461,7 @@ async function buildActiveEntry(args: {
   for (const part of parts) {
     const target = buildLocalCandidates({
       baseDir: args.localDataDir,
+      instrument,
       localDataset,
       part,
     });
@@ -436,7 +480,9 @@ async function buildActiveEntry(args: {
       note: existingPath
         ? null
         : autoDownload
-          ? "Can be downloaded from Binance public monthly kline archives."
+          ? localDataset.format === "crypto_binance_monthly_m1"
+            ? "Can be downloaded from Binance public monthly kline archives."
+            : "Can be downloaded from Twelve Data and persisted into the local yearly archive consumed by local-only research."
           : "Local file is required before this market can be trusted by local-only research.",
     });
   }
@@ -702,10 +748,71 @@ async function syncStagedDownloadableEntries(args: {
   return result;
 }
 
+async function syncActiveTwelveDataEntries(args: {
+  entries: MarketDataBackfillPlanEntry[];
+  force?: boolean;
+}): Promise<ActiveMarketDataSyncEntry[]> {
+  const result: ActiveMarketDataSyncEntry[] = [];
+
+  for (const entry of args.entries) {
+    if (entry.source !== "active_lab" || !entry.autoDownload || entry.localFormat === "crypto_binance_monthly_m1") {
+      continue;
+    }
+
+    for (const period of entry.periods) {
+      const year = Number(period.label);
+      if (!Number.isInteger(year)) {
+        continue;
+      }
+
+      try {
+        const synced = await syncTwelveDataYearlyFile({
+          instrument: entry.instrument,
+          year,
+          force: args.force,
+        });
+        result.push({
+          instrument: entry.instrument,
+          status: synced.status,
+          targetPath: synced.targetPath,
+          remoteUrl: period.remoteUrl,
+          providerSymbol: synced.providerSymbol,
+          periodLabel: synced.periodLabel,
+          candleCount: synced.candleCount,
+          error: null,
+        });
+      } catch (error) {
+        result.push({
+          instrument: entry.instrument,
+          status: "failed",
+          targetPath: period.targetPath,
+          remoteUrl: period.remoteUrl,
+          providerSymbol: null,
+          periodLabel: period.label,
+          candleCount: 0,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
 function summarizeStagedSync(entries: StagedMarketDataSyncEntry[]): MarketDataBackfillRunReport["sync"]["stagedSummary"] {
   return {
     downloaded: entries.filter((entry) => entry.status === "downloaded").length,
     existing: entries.filter((entry) => entry.status === "existing").length,
+    failed: entries.filter((entry) => entry.status === "failed").length,
+  };
+}
+
+function summarizeActiveSync(entries: ActiveMarketDataSyncEntry[]): MarketDataBackfillRunReport["sync"]["activeSummary"] {
+  return {
+    downloaded: entries.filter((entry) => entry.status === "downloaded").length,
+    existing: entries.filter((entry) => entry.status === "existing").length,
+    missingRemote: entries.filter((entry) => entry.status === "missing_remote").length,
+    restrictedAccess: entries.filter((entry) => entry.status === "restricted_remote_access").length,
     failed: entries.filter((entry) => entry.status === "failed").length,
   };
 }
@@ -723,6 +830,7 @@ async function writeBackfillMarkdown(report: MarketDataBackfillRunReport, target
     `- After: ${report.after.summary.existing}/${report.after.summary.periods} existing, ${report.after.summary.missingDownloadable} downloadable missing, ${report.after.summary.missingManual} manual missing`,
     `- Download attempted: ${report.sync.attempted ? "yes" : "no"}`,
     `- Downloaded: ${report.sync.summary?.downloaded ?? 0}`,
+    `- Twelve Data yearly sync: ${report.sync.activeSummary.downloaded} downloaded, ${report.sync.activeSummary.restrictedAccess} restricted access, ${report.sync.activeSummary.failed} failed, ${report.sync.activeSummary.missingRemote} missing remote`,
     `- Staged downloads: ${report.sync.stagedSummary.downloaded} downloaded, ${report.sync.stagedSummary.failed} failed`,
     `- Coverage audit: ${report.coverageAudit.outputPath ?? "not run"}`,
     "",
@@ -769,6 +877,7 @@ export async function runTradingMarketDataBackfill(
   const supportedInstruments = collectSupportedSyncInstruments(before.entries);
   let syncResult: TradingOfficialSyncResult | null = null;
   let syncSummary: Awaited<ReturnType<typeof summarizeSyncResult>> | null = null;
+  let activeResult: ActiveMarketDataSyncEntry[] = [];
   let stagedResult: StagedMarketDataSyncEntry[] = [];
 
   if (download && supportedInstruments.length > 0) {
@@ -779,6 +888,13 @@ export async function runTradingMarketDataBackfill(
       force: request.force,
     });
     syncSummary = await summarizeSyncResult(syncResult);
+  }
+
+  if (download) {
+    activeResult = await syncActiveTwelveDataEntries({
+      entries: before.entries,
+      force: request.force,
+    });
   }
 
   if (download) {
@@ -852,6 +968,9 @@ export async function runTradingMarketDataBackfill(
       supportedInstruments,
       result: syncResult,
       summary: syncSummary,
+      activeAttempted: download,
+      activeResult,
+      activeSummary: summarizeActiveSync(activeResult),
       stagedAttempted: download,
       stagedResult,
       stagedSummary: summarizeStagedSync(stagedResult),

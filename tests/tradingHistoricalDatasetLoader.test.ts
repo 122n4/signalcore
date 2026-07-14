@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadHistoricalTradingDataset } from "@/lib/trading/backtest";
+import { loadHistoricalTradingDataset, resetTwelveDataHistoricalState } from "@/lib/trading/backtest";
 
 const INTERVAL_MS: Record<string, number> = {
   "4h": 4 * 60 * 60_000,
@@ -47,9 +47,19 @@ describe("trading historical dataset loader", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    resetTwelveDataHistoricalState();
     process.env.TWELVEDATA_API_KEY = "test-key";
     fetchMock = vi.fn(async (input: string | URL) => {
         const url = new URL(String(input));
+        if (url.pathname.endsWith("/earliest_timestamp")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              datetime: "2020-01-01 00:00:00",
+            }),
+          } as Response;
+        }
         const interval = url.searchParams.get("interval");
         const startDate = url.searchParams.get("start_date") ?? "2026-03-01T00:00:00.000Z";
         const endDate = url.searchParams.get("end_date") ?? "2026-03-02T00:00:00.000Z";
@@ -71,6 +81,7 @@ describe("trading historical dataset loader", () => {
   });
 
   afterEach(() => {
+    resetTwelveDataHistoricalState();
     process.env.TWELVEDATA_API_KEY = originalKey;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -104,18 +115,16 @@ describe("trading historical dataset loader", () => {
     expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it("treats provider no-data chunk errors as empty history and keeps loading later chunks", async () => {
+  it("falls back to chunk probing when earliest_timestamp is unavailable", async () => {
     fetchMock.mockImplementation(async (input: string | URL) => {
       const url = new URL(String(input));
-      const startDate = url.searchParams.get("start_date") ?? "";
-
-      if (startDate.startsWith("2024-01")) {
+      if (url.pathname.endsWith("/earliest_timestamp")) {
         return {
           ok: true,
           status: 200,
           json: async () => ({
             status: "error",
-            message: "No data is available on the specified dates. Try setting different start/end dates.",
+            message: "Endpoint temporarily unavailable.",
           }),
         } as Response;
       }
@@ -126,8 +135,8 @@ describe("trading historical dataset loader", () => {
         json: async () =>
           buildResponse({
             interval: url.searchParams.get("interval") ?? "15min",
-            startDate,
-            endDate: url.searchParams.get("end_date") ?? startDate,
+            startDate: url.searchParams.get("start_date") ?? "2024-01-01 00:00:00",
+            endDate: url.searchParams.get("end_date") ?? "2024-04-01 00:00:00",
             outputsize: Number(url.searchParams.get("outputsize") ?? "500"),
           }),
       } as Response;
@@ -141,12 +150,26 @@ describe("trading historical dataset loader", () => {
       sourcePreference: "api_only",
     });
 
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/earliest_timestamp"))).toBe(true);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/time_series")).length).toBeGreaterThan(1);
     expect(historicalDataset.dataset.timeframes["15m"]?.length).toBeGreaterThan(0);
   });
 
   it("falls back to a proxy symbol when direct market coverage is unavailable", async () => {
     fetchMock.mockImplementation(async (input: string | URL) => {
       const url = new URL(String(input));
+      if (url.pathname.endsWith("/earliest_timestamp")) {
+        const symbol = url.searchParams.get("symbol");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: symbol === "NDX" ? "error" : undefined,
+            message: symbol === "NDX" ? "This symbol is available starting with the Grow or Venture plan." : undefined,
+            datetime: symbol === "NDX" ? undefined : "2020-01-01 00:00:00",
+          }),
+        } as Response;
+      }
       const symbol = url.searchParams.get("symbol");
       const startDate = url.searchParams.get("start_date") ?? "2026-03-01 00:00:00";
 
