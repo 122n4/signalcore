@@ -10,10 +10,10 @@ import {
   type TradingHistoricalLocalDatasetConfig,
 } from "@/lib/trading/backtest/datasets";
 
-import { buildResearchReportProvenance } from "./provenance";
-import { ensureDirectory, fileExists, sha256File, sha256Json, writeJsonAtomic } from "./fs";
+import { DEFAULT_RESEARCH_CONFIG_PATH } from "./config";
+import { ensureDirectory, fileExists, readJsonIfExists, sha256File, sha256Json, writeJsonAtomic } from "./fs";
 import { resolveResearchReportSchemaVersion } from "./schema";
-import type { ResearchConfig } from "./types";
+import type { ResearchBaselineManifest, ResearchConfig, ResearchReportProvenance } from "./types";
 
 export type ResearchLocalArchiveInventoryState =
   | "complete"
@@ -101,7 +101,7 @@ export type ResearchLocalArchiveInventoryReport = {
   schema_version: "research.local-archive-inventory-report.v1";
   report_id: string;
   generated_at: string;
-  provenance: Awaited<ReturnType<typeof buildResearchReportProvenance>>;
+  provenance: ResearchReportProvenance;
   roots: {
     canonical: string;
     staging: string;
@@ -151,6 +151,25 @@ const LOCAL_ARCHIVE_SCHEMA_VERSION = "local_archive.dataset_manifest.v1";
 const BASE_TIMEFRAME_MINUTES = 1;
 const GAP_SAMPLE_LIMIT = 5;
 const STALE_DATASET_DAYS = 180;
+
+async function buildLightweightInventoryProvenance(config: ResearchConfig): Promise<ResearchReportProvenance> {
+  const manifestPath = path.join(
+    config.paths.baselinesDir,
+    config.liveBaselineSource.baselineId,
+    "baseline-manifest.json",
+  );
+  const baselineManifest = await readJsonIfExists<ResearchBaselineManifest>(manifestPath);
+
+  return {
+    owner: "research_lab",
+    config_path: DEFAULT_RESEARCH_CONFIG_PATH,
+    live_baseline_id: config.liveBaselineSource.baselineId ?? null,
+    dataset_manifest_hash: baselineManifest?.dataset_manifest_hash ?? null,
+    engine_manifest_hash: baselineManifest?.engine_manifest_hash ?? null,
+    dataset_refs: [],
+    upstream_report_ids: [],
+  };
+}
 
 function resolveCanonicalRoot(config: ResearchConfig): string {
   return path.resolve(config.study.datasetLocalDataRoot ?? process.env.TRADING_BACKTEST_LOCAL_DATA_DIR ?? path.join(process.cwd(), "Data", "historical"));
@@ -758,7 +777,7 @@ export async function buildResearchLocalArchiveInventoryReport(config: ResearchC
     schema_version: resolveResearchReportSchemaVersion("localArchiveInventory"),
     report_id: `local-archive-inventory-${new Date().toISOString()}`,
     generated_at: new Date().toISOString(),
-    provenance: await buildResearchReportProvenance({ config }),
+    provenance: await buildLightweightInventoryProvenance(config),
     roots: {
       canonical: canonicalRoot,
       staging: stagingRoot,
