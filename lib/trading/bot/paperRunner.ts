@@ -21,6 +21,7 @@ import {
   createCanonicalPaperTradeCycle,
   recordPaperTradeRun,
   readCanonicalPaperRows,
+  reconcileCanonicalPaperTradeRuns,
   reconcileCanonicalPaperTrades,
   releasePaperTradeLock,
   settleCanonicalPaperRows,
@@ -214,6 +215,7 @@ async function readCanonicalPaperHistory(
 
   const { reconciliation } = await reconcileLegacyPaperWindow(userId, days);
   if (!reconciliation.schemaReady) {
+    await reconcileCanonicalPaperTradeRuns({ userId, rows: canonical.rows });
     const settlement = await settleCanonicalPaperRows({
       userId,
       rows: canonical.rows,
@@ -234,6 +236,10 @@ async function readCanonicalPaperHistory(
   }
 
   const refreshedCanonical = await readCanonicalPaperRows(userId, days);
+  await reconcileCanonicalPaperTradeRuns({
+    userId,
+    rows: refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows,
+  });
   const settlement = await settleCanonicalPaperRows({
     userId,
     rows: refreshedCanonical.schemaReady ? refreshedCanonical.rows : canonical.rows,

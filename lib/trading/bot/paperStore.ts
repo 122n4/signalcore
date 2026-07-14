@@ -36,6 +36,12 @@ export type PaperTradeRunStatus =
   | "settlement_failed"
   | "lock_busy";
 
+type PaperTradeRunReconciliationResult = {
+  schemaReady: boolean;
+  reconciled: number;
+  error: string | null;
+};
+
 export type PaperTradeLock = {
   acquired: boolean;
   lockAcquiredAt: string | null;
@@ -252,7 +258,78 @@ function legacyRowToCanonicalPayload(userId: string, row: PaperTradeHistoryRow) 
 
 function missingTable(error: any) {
   const message = String(error?.message || "");
-  return error?.code === "42P01" || message.includes("paper_trades") || message.includes("schema cache");
+  return (
+    error?.code === "42P01" ||
+    message.includes("paper_trades") ||
+    message.includes("paper_trade_runs") ||
+    message.includes("schema cache")
+  );
+}
+
+function normalizeLegacyTriggerSource(value: unknown): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "manual";
+  if (normalized === "daemon") return "cron";
+  return normalized;
+}
+
+function reconcileRunLifecycleStatus(row: PaperTradeHistoryRow): PaperTradeRunStatus {
+  const details = asObject(row.details);
+  const executionStatus = String(details.execution?.status || "").toLowerCase();
+  const reasonCode = String(details.reasonCode || "").toLowerCase();
+  if (executionStatus === "rejected") return "rejected";
+  if (executionStatus === "accepted" || executionStatus === "paper_queued" || executionStatus === "paper_filled") {
+    return "accepted";
+  }
+  if (reasonCode === "daily_limit_reached") return "daily_limit_reached";
+  if (reasonCode === "duplicate_intent") return "duplicate_skipped";
+  if (reasonCode === "no_signal") return "no_signal";
+  if (reasonCode === "lock_busy") return "lock_busy";
+  if (reasonCode === "execution_rejected") return "rejected";
+  return "failed";
+}
+
+function buildReconciledExecutionRunInsert(userId: string, row: PaperTradeHistoryRow) {
+  const details = asObject(row.details);
+  const intent = asObject(details.intent);
+  const timeline = asObject(details.timeline);
+  return {
+    user_id: userId,
+    run_kind: "execution",
+    trigger_source: normalizeLegacyTriggerSource(details.triggerSource ?? details.source),
+    lifecycle_status: reconcileRunLifecycleStatus(row),
+    reason_code: details.reasonCode ? String(details.reasonCode) : null,
+    reason_detail: details.reasonDetail ? String(details.reasonDetail) : null,
+    paper_trade_id: row.id,
+    journal_entry_id: details.sourceJournalEntryId ? String(details.sourceJournalEntryId) : null,
+    idempotency_key: intent.idempotencyKey ? String(intent.idempotencyKey) : null,
+    signal_id: intent.signalId ? String(intent.signalId) : null,
+    instrument: intent.instrument ? String(intent.instrument) : null,
+    side: intent.side === "buy" || intent.side === "sell" ? intent.side : null,
+    broker: details.broker ? String(details.broker) : null,
+    cron_scheduled_at: timeline.cronScheduledAt ?? null,
+    cron_fired_at: timeline.cronFiredAt ?? null,
+    request_started_at:
+      timeline.lockAcquiredAt ??
+      timeline.policyEvaluatedAt ??
+      timeline.signalLoadedAt ??
+      row.created_at ??
+      new Date().toISOString(),
+    signal_loaded_at: timeline.signalLoadedAt ?? null,
+    policy_evaluated_at: timeline.policyEvaluatedAt ?? null,
+    lock_acquired_at: timeline.lockAcquiredAt ?? null,
+    lock_released_at: timeline.lockReleasedAt ?? null,
+    persist_started_at: timeline.persistStartedAt ?? null,
+    persist_completed_at: timeline.persistCompletedAt ?? row.created_at ?? null,
+    settlement_started_at: timeline.settlementStartedAt ?? null,
+    settlement_completed_at: timeline.settlementCompletedAt ?? null,
+    raw_details: {
+      reconciledFrom: "paper_trades",
+      reconciledAt: new Date().toISOString(),
+      legacyTriggerSource: details.triggerSource ?? details.source ?? null,
+    },
+    created_at: row.created_at ?? undefined,
+  };
 }
 
 export async function upsertCanonicalPaperTradeFromJournal(userId: string, row: PaperTradeHistoryRow) {
@@ -353,6 +430,7 @@ export async function recordPaperTradeRun(args: {
   settlementStartedAt?: string | null;
   settlementCompletedAt?: string | null;
   rawDetails?: Record<string, any>;
+  createdAt?: string | null;
 }) {
   const sb = getSupabaseAdmin();
   const { error } = await sb.from("paper_trade_runs").insert({
@@ -381,11 +459,56 @@ export async function recordPaperTradeRun(args: {
     settlement_started_at: args.settlementStartedAt ?? null,
     settlement_completed_at: args.settlementCompletedAt ?? null,
     raw_details: args.rawDetails ?? {},
+    created_at: args.createdAt ?? undefined,
   });
 
   if (error && !missingTable(error)) {
     throw new Error(error.message || "paper_trade_run_write_failed");
   }
+}
+
+export async function reconcileCanonicalPaperTradeRuns(args: {
+  userId: string;
+  rows: PaperTradeHistoryRow[];
+}): Promise<PaperTradeRunReconciliationResult> {
+  if (args.rows.length === 0) {
+    return { schemaReady: true, reconciled: 0, error: null };
+  }
+
+  const sb = getSupabaseAdmin();
+  const paperTradeIds = args.rows.map((row) => row.id);
+  const { data, error } = await sb
+    .from("paper_trade_runs")
+    .select("paper_trade_id")
+    .eq("user_id", args.userId)
+    .eq("run_kind", "execution")
+    .in("paper_trade_id", paperTradeIds);
+
+  if (error) {
+    if (missingTable(error)) return { schemaReady: false, reconciled: 0, error: error.message || "paper_trade_runs_missing" };
+    throw new Error(error.message || "paper_trade_runs_read_failed");
+  }
+
+  const existingPaperTradeIds = new Set(
+    ((data || []) as Array<{ paper_trade_id: string | null }>).map((row) => row.paper_trade_id).filter(Boolean),
+  );
+  const inserts = args.rows
+    .filter((row) => !existingPaperTradeIds.has(row.id))
+    .map((row) => buildReconciledExecutionRunInsert(args.userId, row));
+
+  if (inserts.length === 0) {
+    return { schemaReady: true, reconciled: 0, error: null };
+  }
+
+  const { error: insertError } = await sb.from("paper_trade_runs").insert(inserts);
+  if (insertError) {
+    if (missingTable(insertError)) {
+      return { schemaReady: false, reconciled: 0, error: insertError.message || "paper_trade_runs_missing" };
+    }
+    throw new Error(insertError.message || "paper_trade_runs_reconcile_failed");
+  }
+
+  return { schemaReady: true, reconciled: inserts.length, error: null };
 }
 
 export async function reconcileCanonicalPaperTrades(args: {
