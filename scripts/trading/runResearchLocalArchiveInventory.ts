@@ -11,10 +11,25 @@ function parseScope(argv: string[]): ResearchLocalArchiveInventoryScope {
   return "all";
 }
 
+function parseInstruments(argv: string[]): string[] | null {
+  const raw = argv.find((arg) => arg.startsWith("--instruments="));
+  if (!raw) return null;
+  return raw
+    .slice("--instruments=".length)
+    .split(",")
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+}
+
 async function main() {
+  const argv = process.argv.slice(2);
   const config = await loadResearchConfig();
-  const scope = parseScope(process.argv.slice(2));
-  const report = await buildResearchLocalArchiveInventoryReport(config, scope);
+  const scope = parseScope(argv);
+  const instruments = parseInstruments(argv);
+  const report = await buildResearchLocalArchiveInventoryReport(config, {
+    scope,
+    instruments,
+  });
   const outputs = await writeResearchLocalArchiveInventoryReport({
     config,
     report,
@@ -25,6 +40,7 @@ async function main() {
       {
         reportId: report.report_id,
         scope: report.scope,
+        requestedInstruments: report.requested_instruments,
         summary: report.summary,
         jsonPath: outputs.latestJsonPath,
         markdownPath: outputs.latestMarkdownPath,

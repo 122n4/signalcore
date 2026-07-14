@@ -103,6 +103,7 @@ export type ResearchLocalArchiveInventoryReport = {
   generated_at: string;
   provenance: ResearchReportProvenance;
   scope: "all" | "canonical" | "staging";
+  requested_instruments: string[] | null;
   roots: {
     canonical: string;
     staging: string;
@@ -123,6 +124,10 @@ export type ResearchLocalArchiveInventoryReport = {
 };
 
 export type ResearchLocalArchiveInventoryScope = "all" | "canonical" | "staging";
+export type ResearchLocalArchiveInventoryRequest = {
+  scope?: ResearchLocalArchiveInventoryScope;
+  instruments?: string[] | null;
+};
 
 type ParsedCandle = {
   timestamp: string;
@@ -496,6 +501,18 @@ function knownInstrumentConfigs(): TradingHistoricalInstrumentConfig[] {
   return [...TRADING_BACKTEST_BASE_INSTRUMENTS, ...TRADING_BACKTEST_RESEARCH_EXPANSION_INSTRUMENTS];
 }
 
+function filterInstrumentConfigs(args: {
+  instruments: TradingHistoricalInstrumentConfig[];
+  requestedInstruments: string[] | null;
+}): TradingHistoricalInstrumentConfig[] {
+  if (!args.requestedInstruments || args.requestedInstruments.length === 0) {
+    return args.instruments;
+  }
+
+  const allowed = new Set(args.requestedInstruments.map((value) => value.trim().toUpperCase()).filter(Boolean));
+  return args.instruments.filter((instrument) => allowed.has(instrument.instrument));
+}
+
 async function matchPresentFiles(args: {
   root: string;
   expectedRelativePaths: string[];
@@ -703,11 +720,20 @@ function buildRootSummary(args: {
 
 export async function buildResearchLocalArchiveInventoryReport(
   config: ResearchConfig,
-  scope: ResearchLocalArchiveInventoryScope = "all",
+  request: ResearchLocalArchiveInventoryScope | ResearchLocalArchiveInventoryRequest = "all",
 ): Promise<ResearchLocalArchiveInventoryReport> {
+  const normalizedRequest: ResearchLocalArchiveInventoryRequest =
+    typeof request === "string"
+      ? { scope: request }
+      : request;
+  const scope = normalizedRequest.scope ?? "all";
   const canonicalRoot = resolveCanonicalRoot(config);
   const stagingRoot = resolveStagingRoot();
-  const instruments = knownInstrumentConfigs();
+  const requestedInstruments = normalizedRequest.instruments?.map((value) => value.trim().toUpperCase()).filter(Boolean) ?? null;
+  const instruments = filterInstrumentConfigs({
+    instruments: knownInstrumentConfigs(),
+    requestedInstruments,
+  });
   const canonicalDatasets = scope === "staging"
     ? []
     : await Promise.all(
@@ -789,6 +815,7 @@ export async function buildResearchLocalArchiveInventoryReport(
     generated_at: new Date().toISOString(),
     provenance: await buildLightweightInventoryProvenance(config),
     scope,
+    requested_instruments: requestedInstruments,
     roots: {
       canonical: canonicalRoot,
       staging: stagingRoot,
@@ -835,6 +862,7 @@ export async function writeResearchLocalArchiveInventoryReport(args: {
     "",
     `- Generated at: ${args.report.generated_at}`,
     `- Scope: ${args.report.scope}`,
+    `- Requested instruments: ${args.report.requested_instruments?.join(", ") ?? "all"}`,
     `- Dataset refs: ${args.report.provenance.dataset_refs.length}`,
     `- Canonical root: ${args.report.roots.canonical}`,
     `- Staging root: ${args.report.roots.staging}`,
