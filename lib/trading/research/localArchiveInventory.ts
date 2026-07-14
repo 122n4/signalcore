@@ -9,6 +9,7 @@ import {
   type TradingHistoricalInstrumentConfig,
   type TradingHistoricalLocalDatasetConfig,
 } from "@/lib/trading/backtest/datasets";
+import type { TradingMarketType } from "@/lib/trading/data";
 
 import { DEFAULT_RESEARCH_CONFIG_PATH } from "./config";
 import { ensureDirectory, fileExists, readJsonIfExists, sha256File, sha256Json, writeJsonAtomic } from "./fs";
@@ -103,6 +104,7 @@ export type ResearchLocalArchiveInventoryReport = {
   generated_at: string;
   provenance: ResearchReportProvenance;
   scope: "all" | "canonical" | "staging";
+  requested_markets: TradingMarketType[] | null;
   requested_instruments: string[] | null;
   roots: {
     canonical: string;
@@ -126,6 +128,7 @@ export type ResearchLocalArchiveInventoryReport = {
 export type ResearchLocalArchiveInventoryScope = "all" | "canonical" | "staging";
 export type ResearchLocalArchiveInventoryRequest = {
   scope?: ResearchLocalArchiveInventoryScope;
+  markets?: TradingMarketType[] | null;
   instruments?: string[] | null;
 };
 
@@ -503,14 +506,22 @@ function knownInstrumentConfigs(): TradingHistoricalInstrumentConfig[] {
 
 function filterInstrumentConfigs(args: {
   instruments: TradingHistoricalInstrumentConfig[];
+  requestedMarkets: TradingMarketType[] | null;
   requestedInstruments: string[] | null;
 }): TradingHistoricalInstrumentConfig[] {
+  let filtered = args.instruments;
+
+  if (args.requestedMarkets && args.requestedMarkets.length > 0) {
+    const allowedMarkets = new Set(args.requestedMarkets);
+    filtered = filtered.filter((instrument) => allowedMarkets.has(instrument.marketType));
+  }
+
   if (!args.requestedInstruments || args.requestedInstruments.length === 0) {
-    return args.instruments;
+    return filtered;
   }
 
   const allowed = new Set(args.requestedInstruments.map((value) => value.trim().toUpperCase()).filter(Boolean));
-  return args.instruments.filter((instrument) => allowed.has(instrument.instrument));
+  return filtered.filter((instrument) => allowed.has(instrument.instrument));
 }
 
 async function matchPresentFiles(args: {
@@ -729,9 +740,11 @@ export async function buildResearchLocalArchiveInventoryReport(
   const scope = normalizedRequest.scope ?? "all";
   const canonicalRoot = resolveCanonicalRoot(config);
   const stagingRoot = resolveStagingRoot();
+  const requestedMarkets = normalizedRequest.markets?.filter(Boolean) ?? null;
   const requestedInstruments = normalizedRequest.instruments?.map((value) => value.trim().toUpperCase()).filter(Boolean) ?? null;
   const instruments = filterInstrumentConfigs({
     instruments: knownInstrumentConfigs(),
+    requestedMarkets,
     requestedInstruments,
   });
   const canonicalDatasets = scope === "staging"
@@ -815,6 +828,7 @@ export async function buildResearchLocalArchiveInventoryReport(
     generated_at: new Date().toISOString(),
     provenance: await buildLightweightInventoryProvenance(config),
     scope,
+    requested_markets: requestedMarkets,
     requested_instruments: requestedInstruments,
     roots: {
       canonical: canonicalRoot,
@@ -862,6 +876,7 @@ export async function writeResearchLocalArchiveInventoryReport(args: {
     "",
     `- Generated at: ${args.report.generated_at}`,
     `- Scope: ${args.report.scope}`,
+    `- Requested markets: ${args.report.requested_markets?.join(", ") ?? "all"}`,
     `- Requested instruments: ${args.report.requested_instruments?.join(", ") ?? "all"}`,
     `- Dataset refs: ${args.report.provenance.dataset_refs.length}`,
     `- Canonical root: ${args.report.roots.canonical}`,

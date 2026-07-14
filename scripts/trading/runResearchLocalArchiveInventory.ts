@@ -4,6 +4,7 @@ import {
   type ResearchLocalArchiveInventoryScope,
   writeResearchLocalArchiveInventoryReport,
 } from "../../lib/trading/research/index";
+import type { TradingMarketType } from "../../lib/trading/data";
 
 function parseScope(argv: string[]): ResearchLocalArchiveInventoryScope {
   if (argv.includes("--canonical-only")) return "canonical";
@@ -21,13 +22,30 @@ function parseInstruments(argv: string[]): string[] | null {
     .filter(Boolean);
 }
 
+function parseMarkets(argv: string[]): TradingMarketType[] | null {
+  const raw = argv.find((arg) => arg.startsWith("--markets=") || arg.startsWith("--market="));
+  if (!raw) return null;
+
+  const normalized = raw.startsWith("--markets=")
+    ? raw.slice("--markets=".length)
+    : raw.slice("--market=".length);
+  const allowed = new Set<TradingMarketType>(["forex", "crypto", "equities"]);
+
+  return normalized
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter((value): value is TradingMarketType => allowed.has(value as TradingMarketType));
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const config = await loadResearchConfig();
   const scope = parseScope(argv);
+  const markets = parseMarkets(argv);
   const instruments = parseInstruments(argv);
   const report = await buildResearchLocalArchiveInventoryReport(config, {
     scope,
+    markets,
     instruments,
   });
   const outputs = await writeResearchLocalArchiveInventoryReport({
@@ -40,6 +58,7 @@ async function main() {
       {
         reportId: report.report_id,
         scope: report.scope,
+        requestedMarkets: report.requested_markets,
         requestedInstruments: report.requested_instruments,
         summary: report.summary,
         jsonPath: outputs.latestJsonPath,

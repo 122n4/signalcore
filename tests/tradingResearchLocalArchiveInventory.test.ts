@@ -80,4 +80,18 @@ describe("trading research local archive inventory", () => {
     expect(report.requested_instruments).toEqual(["EURUSD", "BTCUSD"]);
     expect(report.datasets.map((entry) => entry.instrument)).toEqual(["BTCUSD", "EURUSD"]);
   });
+
+  it("can restrict the inventory to a market subset", async () => {
+    const rootDir = await createResearchTempDir();
+    const config = await createResearchConfig(rootDir);
+
+    const report = await buildResearchLocalArchiveInventoryReport(config, {
+      scope: "canonical",
+      markets: ["forex"],
+    });
+
+    expect(report.requested_markets).toEqual(["forex"]);
+    expect(report.datasets.length).toBeGreaterThan(0);
+    expect(report.datasets.every((entry) => entry.instrument_type === "forex")).toBe(true);
+  });
 });
