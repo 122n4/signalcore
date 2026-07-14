@@ -38,6 +38,7 @@
     "research:sync": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/syncResearchLabToSupabase.ts",
     "research:sync:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/syncResearchLabToSupabase.ts --loop",
     "research:data-health": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchDatasetHealthReport.ts",
+    "research:data-inventory": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchLocalArchiveInventory.ts",
     "research:opportunity-review": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchOpportunityReview.ts",
     "research:max-daemon": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchMaxDaemon.ts --loop",
     "research:max-daemon:once": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchMaxDaemon.ts",

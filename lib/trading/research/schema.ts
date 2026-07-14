@@ -3,6 +3,7 @@ export const RESEARCH_REPORT_SCHEMA_VERSIONS = {
   window: "research.window-report.v1",
   cycle: "research.cycle-report.v1",
   datasetHealth: "research.dataset-health-report.v1",
+  localArchiveInventory: "research.local-archive-inventory-report.v1",
   bundleValidation: "research.bundle-validation-report.v1",
   promotionBoard: "research.promotion-board-report.v1",
   promotionPackages: "research.promotion-packages-report.v1",

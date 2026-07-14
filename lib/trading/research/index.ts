@@ -11,6 +11,7 @@ export * from "./artifactContract";
 export * from "./baseline";
 export * from "./dataQuality";
 export * from "./datasetHealth";
+export * from "./localArchiveInventory";
 export * from "./datasetSnapshots";
 export * from "./datasetRequirements";
 export * from "./sourceCatalog";
