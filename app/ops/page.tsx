@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 
 import { buildPremiumAuditReport } from "@/lib/billing/premiumAuditService";
+import { loadInvestingHistoricalAudit } from "@/lib/investing/opsAudit";
 import { getMarketProviderStatuses, summarizeMarketProviderStatuses } from "@/lib/market/providerStatus";
 import { buildResearchLabOverview } from "@/lib/ops/researchLabOverview";
 import { loadTradingScannerOperationalDiagnostics } from "@/lib/ops/tradingScannerStatus";
@@ -103,10 +104,11 @@ export default async function OpsPage() {
   }
 
   const asOf = new Date().toISOString();
-  const [research, billing, scanner] = await Promise.all([
+  const [research, billing, scanner, investing] = await Promise.all([
     settle(buildResearchLabOverview()),
     settle(buildPremiumAuditReport({ limit: 1000 })),
     settle(inspectTradingScannerForOps(asOf)),
+    settle(loadInvestingHistoricalAudit({ mode: "investing", days: 180 })),
   ]);
 
   const researchLab = research.ok ? research.value : null;
@@ -117,6 +119,10 @@ export default async function OpsPage() {
   const scannerDiagnostics = scanner.ok ? scanner.value : null;
   const scannerError = settledError(scanner);
   const scannerSummary = scannerDiagnostics ? summarizeTradingLightScannerDiagnostics(scannerDiagnostics) : null;
+  const investingValue = investing.ok
+    ? investing.value
+    : null;
+  const investingError = settledError(investing);
   const marketProviders = getMarketProviderStatuses();
   const providerSummary = summarizeMarketProviderStatuses(marketProviders);
   const readiness = buildProductReadinessReport({
@@ -165,6 +171,12 @@ export default async function OpsPage() {
               className="rounded-full border border-amber-200/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100 transition hover:bg-amber-300/15"
             >
               Trade Ledger
+            </a>
+            <a
+              href="/ops/investing"
+              className="rounded-full border border-blue-200/30 bg-blue-300/10 px-4 py-2 text-sm font-bold text-blue-100 transition hover:bg-blue-300/15"
+            >
+              Investing Ops
             </a>
             <a
               href="/ops/marketing"
@@ -266,6 +278,53 @@ export default async function OpsPage() {
                 ))}
               </div>
             ) : null}
+          </Card>
+
+          <Card eyebrow="Investing" title="Portfolio governance">
+            {investingValue ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Metric label="Stability" value={investingValue.audit.summary.stabilityStatus} />
+                  <Metric label="Latest validation" value={investingValue.audit.latest.researchStatus} />
+                  <Metric label="Pending approvals" value={investingValue.execution.pendingApprovals.length} />
+                  <Metric label="Overrides" value={investingValue.execution.overrideCount} />
+                  <Metric label="Benchmark" value={investingValue.audit.latest.benchmarkId ?? "n/a"} />
+                  <Metric
+                    label="Avg turnover"
+                    value={`${investingValue.audit.summary.averageTurnoverPct.toFixed(1)}%`}
+                  />
+                </div>
+
+                <div
+                  className={`mt-4 rounded-2xl border p-3 text-sm ${statusTone(
+                    investingValue.audit.summary.stabilityStatus === "unstable"
+                      ? "fail"
+                      : investingValue.audit.summary.stabilityStatus === "watch"
+                        ? "warn"
+                        : "ok",
+                  )}`}
+                >
+                  <p className="font-bold">
+                    Investing is `{investingValue.audit.summary.stabilityStatus}` over the last {investingValue.days} days.
+                  </p>
+                  <p className="mt-1 opacity-80">
+                    Latest research status: {investingValue.audit.latest.researchStatus}. Queue pending:{" "}
+                    {investingValue.execution.approvalStatusCounts.pending ?? 0}.
+                  </p>
+                </div>
+
+                <a
+                  href="/ops/investing"
+                  className="mt-4 inline-flex rounded-full border border-blue-200/30 bg-blue-300/10 px-4 py-2 text-sm font-bold text-blue-100 transition hover:bg-blue-300/15"
+                >
+                  Open investing cockpit
+                </a>
+              </>
+            ) : (
+              <p className="rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4 text-amber-100">
+                {investingError}
+              </p>
+            )}
           </Card>
 
           <Card eyebrow="Billing" title="Premium integrity">
