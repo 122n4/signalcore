@@ -8,6 +8,7 @@ import { buildDynamicStarterPack } from "@/lib/signalcore/dynamicStarterPack";
 import { getQuotes } from "@/lib/market/quotes";
 import { normSymbol } from "@/lib/market/symbols";
 import { computePortfolioValuation } from "@/lib/signalcore/valuation";
+import { buildInvestingRuntimeSnapshot } from "@/lib/investing";
 import { ACTIVE_PLAN_LOOKBACK_LIMIT, isPlanActiveRecord, pickActivePlan } from "@/lib/signalcore/planRepo";
 import {
   buildCashDeploymentPolicy,
@@ -5249,7 +5250,7 @@ export async function GET(req: Request) {
           riskProfile: userSettings?.risk_profile ? String(userSettings.risk_profile) : null,
         })
       : null;
-  const starterPack = !hasHoldings ? dynamicStarter?.items ?? getStarterPack(mode) : [];
+  const starterPackFallback = !hasHoldings ? dynamicStarter?.items ?? getStarterPack(mode) : [];
 
   // --- pricing
   const portfolioSymbols = portfolioItems.map((x: any) => normSymbol(x?.symbol)).filter(Boolean);
@@ -5260,10 +5261,35 @@ export async function GET(req: Request) {
   const liveCoveragePct = Number((valuation as any)?.liveCoveragePct ?? (valuation as any)?.coveragePct ?? 0);
   const missingLiveSymbols = Array.isArray((valuation as any)?.missingLiveSymbols)
     ? ((valuation as any).missingLiveSymbols as any[]).map((x) => String(x || "").toUpperCase()).filter(Boolean)
-    : Array.isArray((valuation as any)?.missingSymbols)
-      ? ((valuation as any).missingSymbols as any[]).map((x) => String(x || "").toUpperCase()).filter(Boolean)
-      : [];
+      : Array.isArray((valuation as any)?.missingSymbols)
+        ? ((valuation as any).missingSymbols as any[]).map((x) => String(x || "").toUpperCase()).filter(Boolean)
+        : [];
   const pricingAgeSeconds = Number((valuation as any)?.priceAgeSeconds ?? 0);
+  const investingRuntime =
+    mode === "investing"
+      ? buildInvestingRuntimeSnapshot({
+          budgetOverrideEur,
+          referenceTotalEur: Number((recentSnaps ?? [])[0]?.total_eur) || 0,
+          userSettings,
+          plan,
+          portfolioItems: portfolioItems as Array<Record<string, unknown>>,
+          valuation: valuation as Record<string, unknown>,
+          quotes: quotes as Record<string, any>,
+          starterPriceHints: (dynamicStarter?.items ?? []) as Array<{
+            symbol: string;
+            name?: string | null;
+            price?: number | null;
+            price_source?: string | null;
+            prev_close?: number | null;
+            volume?: number | null;
+            avg_volume?: number | null;
+          }>,
+        })
+      : null;
+  const starterPack = !hasHoldings ? investingRuntime?.starterPackItems ?? starterPackFallback : [];
+  const starterPackMeta = !hasHoldings
+    ? investingRuntime?.starterPackMeta ?? (dynamicStarter ? { source: dynamicStarter.source, budgetEur: dynamicStarter.budgetEur } : null)
+    : null;
   const decisionImpact = computeDecisionImpact({
     moneyConfirmed,
     performance,
@@ -6024,7 +6050,8 @@ export async function GET(req: Request) {
       executionEvidence,
       executionCoach,
       starterPack,
-      starterPackMeta: dynamicStarter ? { source: dynamicStarter.source, budgetEur: dynamicStarter.budgetEur } : null,
+      starterPackMeta,
+      investingEngine: investingRuntime,
       starterWarmup: {
         active: starterWarmupActive,
         appliedAt: starterAppliedAt,
@@ -6088,6 +6115,7 @@ export async function GET(req: Request) {
       planTrack,
       executionEvidence,
       executionCoach,
+      investingEngine: investingRuntime,
       topLeakKey: diagnostics?.riskLeaks?.[0]?.key ?? null,
       starterWarmup: {
         active: starterWarmupActive,

@@ -102,23 +102,34 @@ export async function POST(req: Request) {
     });
     const reconcileStatus =
       result.ok && typeof result.status === "string" ? String(result.status) : "missing_snapshot";
+    const intentStatus =
+      result.ok && typeof (result as any)?.investingIntent?.status === "string"
+        ? String((result as any).investingIntent.status)
+        : null;
+    const effectiveStatus =
+      intentStatus === "critical"
+        ? "critical"
+        : intentStatus === "warning" && reconcileStatus === "aligned"
+          ? "warning"
+          : reconcileStatus;
     const reconcileScoreRaw = Number((result as any).score);
     const reconcileScore =
       Number.isFinite(reconcileScoreRaw) ? Math.max(0, Math.min(100, Math.round(reconcileScoreRaw))) : null;
     const mismatchCount = Math.max(0, Math.round(Number((result as any).mismatchCount || 0)));
+    const intentMismatchCount = Math.max(0, Math.round(Number((result as any)?.investingIntent?.mismatchCount || 0)));
 
     const next = normalizeBrokerConnection(
       {
         ...current,
         lastReconcileAt: new Date().toISOString(),
-        lastReconcileStatus: reconcileStatus,
+        lastReconcileStatus: effectiveStatus as any,
         lastReconcileScore: reconcileScore,
-        lastReconcileMismatchCount: mismatchCount,
+        lastReconcileMismatchCount: mismatchCount + intentMismatchCount,
         lastError:
-          reconcileStatus === "critical"
-            ? `Reconcile critical (${mismatchCount} mismatches).`
-            : reconcileStatus === "warning"
-              ? `Reconcile warning (${mismatchCount} mismatches).`
+          effectiveStatus === "critical"
+            ? `Reconcile critical (${mismatchCount + intentMismatchCount} mismatches).`
+            : effectiveStatus === "warning"
+              ? `Reconcile warning (${mismatchCount + intentMismatchCount} mismatches).`
               : current.lastError,
       },
       userId,

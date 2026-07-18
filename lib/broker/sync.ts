@@ -3,6 +3,7 @@ import { normalizeMode } from "@/lib/signalcore/modes";
 import type { BrokerConnection, BrokerPosition, BrokerSnapshot } from "@/lib/broker/shared";
 import { normalizeSymbol } from "@/lib/broker/shared";
 import { getQuotes } from "@/lib/market/quotes";
+import { reconcileInvestingIntentWithBroker } from "@/lib/investing/reconciliation";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { enforceModeAccess } from "@/lib/signalcore/access";
 
@@ -455,11 +456,18 @@ export async function reconcileWithPortfolio(args: {
   const sb = getSupabaseAdmin();
   const mode = normalizeMode(args.mode);
   const snapshot = args.snapshot;
+  const checkedAt = new Date().toISOString();
   if (!snapshot) {
     return {
       ok: false,
+      mode,
       score: 0,
       status: "missing_snapshot",
+      checkedAt,
+      snapshotAsOf: null,
+      brokerCount: 0,
+      portfolioCount: 0,
+      mismatchCount: 0,
       mismatches: [],
       summary: "No broker snapshot found. Run sync first.",
     };
@@ -552,16 +560,55 @@ export async function reconcileWithPortfolio(args: {
   }
   score = Math.max(0, Math.min(100, score));
 
-  return {
+  const baseResult = {
     ok: true,
     mode,
     score,
     status: score >= 90 ? "aligned" : score >= 70 ? "warning" : "critical",
-    checkedAt: new Date().toISOString(),
+    checkedAt,
     snapshotAsOf: snapshot.asOf,
     brokerCount: brokerMap.size,
     portfolioCount: localMap.size,
     mismatchCount: mismatches.length,
     mismatches: mismatches.slice(0, 50),
   };
+
+  if (mode === "investing") {
+    try {
+      const intent = await reconcileInvestingIntentWithBroker({
+        userId: args.userId,
+        mode,
+        snapshot,
+      });
+      return {
+        ...baseResult,
+        investingIntent: intent,
+      };
+    } catch (error: any) {
+      return {
+        ...baseResult,
+        investingIntent: {
+          ok: false,
+          status: "critical",
+          score: 0,
+          checkedAt: new Date().toISOString(),
+          snapshotAsOf: snapshot.asOf,
+          intentAsOf: null,
+          brokerCount: brokerMap.size,
+          targetCount: 0,
+          mismatchCount: 1,
+          decisionFingerprint: null,
+          mismatches: [
+            {
+              type: "intent_reconcile_error",
+              symbol: "SYSTEM",
+              detail: String(error?.message || "investing_intent_reconcile_failed"),
+            },
+          ],
+        },
+      };
+    }
+  }
+
+  return baseResult;
 }
