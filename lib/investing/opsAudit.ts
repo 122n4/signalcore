@@ -14,6 +14,56 @@ export function normalizeInvestingAuditArgs(args: { mode?: string | null; days?:
   };
 }
 
+function readSupabaseErrorMessage(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const message = "message" in error ? (error as { message?: unknown }).message : null;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
+function readMissingRelation(error: unknown) {
+  if (!error || typeof error !== "object") return null;
+  const code = "code" in error ? (error as { code?: unknown }).code : null;
+  const message = readSupabaseErrorMessage(error);
+  if (code !== "PGRST205" && !message?.includes("Could not find the table")) {
+    return null;
+  }
+  const match = message?.match(/table 'public\.([^']+)'/i);
+  return match?.[1] ?? null;
+}
+
+function buildUnavailableInvestingHistoricalAudit(args: {
+  mode: string;
+  days: number;
+  since: string;
+  missingRelations: string[];
+}) {
+  return {
+    mode: args.mode,
+    days: args.days,
+    since: args.since,
+    schema: {
+      ready: false,
+      missingRelations: args.missingRelations,
+      status: "not_provisioned" as const,
+      message: "Investing audit schema is not provisioned in the active production database.",
+    },
+    audit: buildInvestingHistoricalAudit({
+      mandateSnapshots: [],
+      rebalanceLedger: [],
+      researchSnapshots: [],
+    }),
+    execution: {
+      coverage: 0,
+      approvalHistoryCoverage: 0,
+      approvalStatusCounts: {},
+      decisionCounts: {},
+      overrideCount: 0,
+      pendingApprovals: [],
+      recentApprovals: [],
+    },
+  };
+}
+
 export async function loadInvestingHistoricalAudit(args?: { mode?: string | null; days?: unknown }) {
   const normalized = normalizeInvestingAuditArgs(args ?? {});
   const since = new Date(Date.now() - normalized.days * 24 * 60 * 60 * 1000).toISOString();
@@ -57,20 +107,37 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
       .limit(5000),
   ]);
 
+  const missingRelations = [
+    readMissingRelation(mandateQuery.error),
+    readMissingRelation(rebalanceQuery.error),
+    readMissingRelation(researchQuery.error),
+    readMissingRelation(executionQuery.error),
+    readMissingRelation(approvalQuery.error),
+  ].filter((value): value is string => Boolean(value));
+
+  if (missingRelations.length > 0) {
+    return buildUnavailableInvestingHistoricalAudit({
+      mode: normalized.mode,
+      days: normalized.days,
+      since,
+      missingRelations: Array.from(new Set(missingRelations)).sort(),
+    });
+  }
+
   if (mandateQuery.error) {
-    throw new Error(`investing_mandate_audit_read_failed:${mandateQuery.error.message}`);
+    throw new Error(`investing_mandate_audit_read_failed:${readSupabaseErrorMessage(mandateQuery.error) ?? "unknown_error"}`);
   }
   if (rebalanceQuery.error) {
-    throw new Error(`investing_rebalance_audit_read_failed:${rebalanceQuery.error.message}`);
+    throw new Error(`investing_rebalance_audit_read_failed:${readSupabaseErrorMessage(rebalanceQuery.error) ?? "unknown_error"}`);
   }
   if (researchQuery.error) {
-    throw new Error(`investing_research_audit_read_failed:${researchQuery.error.message}`);
+    throw new Error(`investing_research_audit_read_failed:${readSupabaseErrorMessage(researchQuery.error) ?? "unknown_error"}`);
   }
   if (executionQuery.error) {
-    throw new Error(`investing_execution_audit_read_failed:${executionQuery.error.message}`);
+    throw new Error(`investing_execution_audit_read_failed:${readSupabaseErrorMessage(executionQuery.error) ?? "unknown_error"}`);
   }
   if (approvalQuery.error) {
-    throw new Error(`investing_execution_approvals_read_failed:${approvalQuery.error.message}`);
+    throw new Error(`investing_execution_approvals_read_failed:${readSupabaseErrorMessage(approvalQuery.error) ?? "unknown_error"}`);
   }
 
   const executionRows = Array.isArray(executionQuery.data) ? (executionQuery.data as Record<string, any>[]) : [];
@@ -92,6 +159,12 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
     mode: normalized.mode,
     days: normalized.days,
     since,
+    schema: {
+      ready: true,
+      missingRelations: [],
+      status: "ready" as const,
+      message: null,
+    },
     audit: buildInvestingHistoricalAudit({
       mandateSnapshots: Array.isArray(mandateQuery.data) ? (mandateQuery.data as Record<string, any>[]) : [],
       rebalanceLedger: Array.isArray(rebalanceQuery.data) ? (rebalanceQuery.data as Record<string, any>[]) : [],

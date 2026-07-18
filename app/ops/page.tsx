@@ -119,10 +119,9 @@ export default async function OpsPage() {
   const scannerDiagnostics = scanner.ok ? scanner.value : null;
   const scannerError = settledError(scanner);
   const scannerSummary = scannerDiagnostics ? summarizeTradingLightScannerDiagnostics(scannerDiagnostics) : null;
-  const investingValue = investing.ok
-    ? investing.value
-    : null;
+  const investingValue = investing.ok ? investing.value : null;
   const investingError = settledError(investing);
+  const investingSchemaReady = investingValue?.schema?.ready !== false;
   const marketProviders = getMarketProviderStatuses();
   const providerSummary = summarizeMarketProviderStatuses(marketProviders);
   const readiness = buildProductReadinessReport({
@@ -283,35 +282,52 @@ export default async function OpsPage() {
           <Card eyebrow="Investing" title="Portfolio governance">
             {investingValue ? (
               <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Metric label="Stability" value={investingValue.audit.summary.stabilityStatus} />
-                  <Metric label="Latest validation" value={investingValue.audit.latest.researchStatus} />
-                  <Metric label="Pending approvals" value={investingValue.execution.pendingApprovals.length} />
-                  <Metric label="Overrides" value={investingValue.execution.overrideCount} />
-                  <Metric label="Benchmark" value={investingValue.audit.latest.benchmarkId ?? "n/a"} />
-                  <Metric
-                    label="Avg turnover"
-                    value={`${investingValue.audit.summary.averageTurnoverPct.toFixed(1)}%`}
-                  />
-                </div>
+                {investingSchemaReady ? (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Metric label="Stability" value={investingValue.audit.summary.stabilityStatus} />
+                      <Metric label="Latest validation" value={investingValue.audit.latest.researchStatus} />
+                      <Metric label="Pending approvals" value={investingValue.execution.pendingApprovals.length} />
+                      <Metric label="Overrides" value={investingValue.execution.overrideCount} />
+                      <Metric label="Benchmark" value={investingValue.audit.latest.benchmarkId ?? "n/a"} />
+                      <Metric
+                        label="Avg turnover"
+                        value={`${investingValue.audit.summary.averageTurnoverPct.toFixed(1)}%`}
+                      />
+                    </div>
 
-                <div
-                  className={`mt-4 rounded-2xl border p-3 text-sm ${statusTone(
-                    investingValue.audit.summary.stabilityStatus === "unstable"
-                      ? "fail"
-                      : investingValue.audit.summary.stabilityStatus === "watch"
-                        ? "warn"
-                        : "ok",
-                  )}`}
-                >
-                  <p className="font-bold">
-                    Investing is `{investingValue.audit.summary.stabilityStatus}` over the last {investingValue.days} days.
-                  </p>
-                  <p className="mt-1 opacity-80">
-                    Latest research status: {investingValue.audit.latest.researchStatus}. Queue pending:{" "}
-                    {investingValue.execution.approvalStatusCounts.pending ?? 0}.
-                  </p>
-                </div>
+                    <div
+                      className={`mt-4 rounded-2xl border p-3 text-sm ${statusTone(
+                        investingValue.audit.summary.stabilityStatus === "unstable"
+                          ? "fail"
+                          : investingValue.audit.summary.stabilityStatus === "watch"
+                            ? "warn"
+                            : "ok",
+                      )}`}
+                    >
+                      <p className="font-bold">
+                        Investing is `{investingValue.audit.summary.stabilityStatus}` over the last {investingValue.days} days.
+                      </p>
+                      <p className="mt-1 opacity-80">
+                        Latest research status: {investingValue.audit.latest.researchStatus}. Queue pending:{" "}
+                        {investingValue.execution.approvalStatusCounts["pending"] ?? 0}.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Metric label="Schema" value={investingValue.schema?.status ?? "unknown"} />
+                      <Metric label="Window" value={`${investingValue.days} days`} />
+                    </div>
+                    <div className="rounded-2xl border border-amber-300/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+                      <p className="font-bold">Investing storage is not provisioned in production yet.</p>
+                      <p className="mt-1 opacity-80">
+                        The cockpit is live, but audit tables are still missing from the active database schema.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <a
                   href="/ops/investing"

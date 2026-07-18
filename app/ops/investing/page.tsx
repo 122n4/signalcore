@@ -70,6 +70,8 @@ export default async function InvestingOpsPage() {
     error = caught instanceof Error ? caught.message : String(caught);
   }
 
+  const schemaReady = data?.schema?.ready !== false;
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#163045_0,#07111f_35%,#030712_100%)] px-5 py-8 text-white md:px-10">
       <div className="mx-auto max-w-6xl">
@@ -94,6 +96,52 @@ export default async function InvestingOpsPage() {
         {error || !data ? (
           <div className="mt-6 rounded-[28px] border border-red-400/30 bg-red-500/10 p-6 text-red-100">
             {error ?? "investing audit unavailable"}
+          </div>
+        ) : !schemaReady ? (
+          <div className="mt-6 space-y-6">
+            <div className="rounded-[28px] border border-amber-300/30 bg-amber-400/10 p-6 text-amber-100">
+              <p className="text-lg font-semibold">Investing audit schema not provisioned</p>
+              <p className="mt-2 text-sm text-amber-50/90">
+                The production database does not yet expose the investing audit tables required by this cockpit.
+                The page is healthy, but the storage layer is not ready.
+              </p>
+              {data.schema?.missingRelations?.length ? (
+                <p className="mt-3 text-sm text-amber-50/80">
+                  Missing relations: {data.schema.missingRelations.join(", ")}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card eyebrow="Schema" title="Provisioning status">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                  <Metric label="Mode" value={data.mode} />
+                  <Metric label="Window" value={`${data.days} days`} />
+                  <Metric label="Schema" value={data.schema?.status ?? "unknown"} />
+                  <Metric label="Since" value={new Date(data.since).toLocaleDateString("pt-PT")} />
+                </div>
+              </Card>
+
+              <Card eyebrow="Storage" title="Blocked dependencies">
+                <div className="space-y-3">
+                  {(data.schema?.missingRelations ?? []).map((relation) => (
+                    <div
+                      key={relation}
+                      className="rounded-2xl border border-amber-300/25 bg-slate-950/40 px-4 py-3 text-sm text-amber-50"
+                    >
+                      {relation}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card eyebrow="Runtime" title="Cockpit state">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-sm text-slate-300">
+                  UI and route are live. Historical audit metrics will appear automatically once the production
+                  schema includes the investing audit tables.
+                </div>
+              </Card>
+            </div>
           </div>
         ) : (
           <>
@@ -139,10 +187,10 @@ export default async function InvestingOpsPage() {
               <Card eyebrow="Execution" title="Approval queue">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Metric label="Queue rows" value={data.execution.coverage} />
-                  <Metric label="Pending" value={data.execution.approvalStatusCounts.pending ?? 0} />
-                  <Metric label="Blocked" value={data.execution.decisionCounts.blocked ?? 0} />
+                  <Metric label="Pending" value={data.execution.approvalStatusCounts["pending"] ?? 0} />
+                  <Metric label="Blocked" value={data.execution.decisionCounts["blocked"] ?? 0} />
                   <Metric label="Approval history" value={data.execution.approvalHistoryCoverage} />
-                  <Metric label="Paper clear" value={data.execution.decisionCounts.paper_execute ?? 0} />
+                  <Metric label="Paper clear" value={data.execution.decisionCounts["paper_execute"] ?? 0} />
                   <Metric label="Overrides" value={data.execution.overrideCount} />
                 </div>
               </Card>

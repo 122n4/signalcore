@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authState = { userId: "owner_1" as string | null };
+const tableErrors: Partial<Record<keyof typeof tableData, { code?: string; message: string }>> = {};
 
 const tableData = {
   investing_mandate_snapshots: [
@@ -107,6 +108,10 @@ class SelectBuilder {
   }
 
   private async execute() {
+    const configuredError = tableErrors[this.table];
+    if (configuredError) {
+      return { data: null, error: configuredError };
+    }
     const data = tableData[this.table].filter((row) =>
       Object.entries(this.filters).every(([key, value]) => row?.[key as keyof typeof row] === value),
     );
@@ -149,6 +154,9 @@ const { GET } = await import("@/app/api/ops/investing/route");
 
 beforeEach(() => {
   authState.userId = "owner_1";
+  for (const key of Object.keys(tableErrors) as (keyof typeof tableData)[]) {
+    delete tableErrors[key];
+  }
 });
 
 describe("ops investing route", () => {
@@ -177,5 +185,22 @@ describe("ops investing route", () => {
     expect(response.status).toBe(403);
     expect(payload.ok).toBe(false);
     expect(payload.error).toBe("forbidden");
+  });
+
+  it("returns a provisioned=false payload when investing audit tables are missing", async () => {
+    tableErrors.investing_mandate_snapshots = {
+      code: "PGRST205",
+      message: "Could not find the table 'public.investing_mandate_snapshots' in the schema cache",
+    };
+
+    const response = await GET(new Request("http://localhost/api/ops/investing"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.schema.ready).toBe(false);
+    expect(payload.schema.status).toBe("not_provisioned");
+    expect(payload.schema.missingRelations).toContain("investing_mandate_snapshots");
+    expect(payload.execution.coverage).toBe(0);
   });
 });
