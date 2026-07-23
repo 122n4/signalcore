@@ -148,15 +148,20 @@ describe("FASE 4B load, integrity and replay", () => {
       ["root confidence", "persistence_root_confidence_mismatch", (x) => { x.run.confidence = { value: "0", basis: ["tampered"] }; }],
       ["root selected candidate", "persistence_root_selected_candidate_mismatch", (x) => { x.run.selectedCandidateId = "candidate:rejected"; }],
     ];
+    const baseline = pristine();
+    const verifier = new InvestingEnginePersistenceVerifierV1();
+    const baselineManifestHash = verifier.verifyLoaded(baseline).manifest.manifestHash;
     for (const [name, expectedCode, mutate] of cases) {
-      const damaged = structuredClone(pristine()); mutate(damaged);
+      const damaged = structuredClone(baseline); mutate(damaged);
       const repo = new FixedRepository(damaged);
       const reader = new InvestingEnginePersistenceReaderV1(repo);
       await expect(reader.loadByRunId(damaged.run.identity), name).rejects.toMatchObject({ code: expectedCode });
       const replay = await new InvestingEngineReplayServiceV1(reader, purePhase3FRunnerForPersistence).replay(damaged.run.identity);
       expect(replay.status, name).toBe("replay_blocked_by_integrity_error");
       expect(replay.errorCode, name).toBe(expectedCode);
+      expect(replay.writes, name).toBe("none");
     }
+    expect(verifier.verifyLoaded(baseline).manifest.manifestHash).toBe(baselineManifestHash);
   }, 30_000);
 
   it("is invariant to row order and ignores all mutable current-state objects", () => {

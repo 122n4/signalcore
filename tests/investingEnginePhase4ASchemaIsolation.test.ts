@@ -16,6 +16,10 @@ const MIGRATION = path.resolve(
   "supabase/migrations/20260720100000_investing_engine_v1_persistence.sql",
 );
 const PERSISTENCE_ROOT = path.resolve(process.cwd(), "lib/investing/engine/v1/persistence");
+const PHASE4C_QA_CONSUMERS = new Set([
+  path.resolve(process.cwd(), "scripts/qa/investingEnginePhase4CIntegrityScanner.ts"),
+  path.resolve(process.cwd(), "scripts/qa/runInvestingEnginePhase4CIntegrityScan.ts"),
+]);
 
 function sourceFiles(directory: string): string[] {
   if (!existsSync(directory)) return [];
@@ -97,6 +101,7 @@ describe("FASE 4A persistence schema isolation", () => {
       .filter(existsSync);
     const consumers = roots.flatMap(sourceFiles).filter((file) => {
       if (file.startsWith(PERSISTENCE_ROOT)) return false;
+      if (PHASE4C_QA_CONSUMERS.has(file)) return false;
       return readFileSync(file, "utf8").includes("investing/engine/v1/persistence");
     });
     expect(consumers).toEqual([]);

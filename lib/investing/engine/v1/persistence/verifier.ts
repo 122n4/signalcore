@@ -44,31 +44,45 @@ function array(value: unknown, label: string): readonly unknown[] {
 function same(left: unknown, right: unknown, code: "persistence_scope_mismatch" | "persistence_version_mismatch" | "persistence_snapshot_mismatch" | "persistence_manifest_mismatch" = "persistence_manifest_mismatch") {
   if (!canonicalEqualV1(left, right)) persistenceError(code);
 }
-function assertHash(value: CanonicalObjectV1, field: string) {
+function computeSelfHash(value: CanonicalObjectV1, field: string): string {
   const expected = text(value[field], field);
-  if (!SHA.test(expected) || hashWithoutPersistenceFieldV1(value, field) !== expected) {
+  const actual = hashWithoutPersistenceFieldV1(value, field);
+  if (!SHA.test(expected) || actual !== expected) {
     persistenceError("persistence_hash_mismatch", { field });
   }
+  return actual;
 }
 
-function assertArtifactHash(type: InvestingEngineArtifactTypeV1, payload: CanonicalObjectV1, expected: string) {
+function assertHash(value: CanonicalObjectV1, field: string) {
+  computeSelfHash(value, field);
+}
+
+export function computeInvestingEngineArtifactContentHashV1(
+  type: InvestingEngineArtifactTypeV1,
+  payload: CanonicalObjectV1,
+): string {
   let actual: string;
   switch (type) {
-    case "canonical_input": assertHash(payload, "inputHash"); actual = text(payload.inputHash, "inputHash"); break;
+    case "canonical_input": actual = computeSelfHash(payload, "inputHash"); break;
     case "portfolio_state_derivation": actual = hashSetSemanticPersistenceV1(payload); break;
-    case "risk_assessment": assertHash(payload, "assessmentHash"); actual = text(payload.assessmentHash, "assessmentHash"); break;
-    case "policy_evaluation": assertHash(payload, "policyHash"); actual = text(payload.policyHash, "policyHash"); break;
+    case "risk_assessment": actual = computeSelfHash(payload, "assessmentHash"); break;
+    case "policy_evaluation": actual = computeSelfHash(payload, "policyHash"); break;
     case "constraint_evaluation":
       if (payload.contractVersion !== INVESTING_ENGINE_CONSTRAINT_SET_VERSION) persistenceError("persistence_version_mismatch");
       actual = hashSetSemanticPersistenceV1(array(payload.items, "constraints.items")); break;
-    case "feasible_decision_envelope": assertHash(payload, "envelopeHash"); actual = text(payload.envelopeHash, "envelopeHash"); break;
-    case "construction_model": assertHash(payload, "snapshotHash"); actual = text(payload.snapshotHash, "snapshotHash"); break;
-    case "preliminary_proposal": assertHash(payload, "proposalHash"); actual = text(payload.proposalHash, "proposalHash"); break;
-    case "final_decision": assertHash(payload, "finalDecisionHash"); actual = text(payload.finalDecisionHash, "finalDecisionHash"); break;
-    case "audit_bundle": assertHash(payload, "auditBundleHash"); actual = text(payload.auditBundleHash, "auditBundleHash"); break;
-    case "shadow_package": assertHash(payload, "shadowPackageHash"); actual = text(payload.shadowPackageHash, "shadowPackageHash"); break;
-    case "final_result": assertHash(payload, "finalResultHash"); actual = text(payload.finalResultHash, "finalResultHash"); break;
+    case "feasible_decision_envelope": actual = computeSelfHash(payload, "envelopeHash"); break;
+    case "construction_model": actual = computeSelfHash(payload, "snapshotHash"); break;
+    case "preliminary_proposal": actual = computeSelfHash(payload, "proposalHash"); break;
+    case "final_decision": actual = computeSelfHash(payload, "finalDecisionHash"); break;
+    case "audit_bundle": actual = computeSelfHash(payload, "auditBundleHash"); break;
+    case "shadow_package": actual = computeSelfHash(payload, "shadowPackageHash"); break;
+    case "final_result": actual = computeSelfHash(payload, "finalResultHash"); break;
   }
+  return actual;
+}
+
+function assertArtifactHash(type: InvestingEngineArtifactTypeV1, payload: CanonicalObjectV1, expected: string) {
+  const actual = computeInvestingEngineArtifactContentHashV1(type, payload);
   if (actual !== expected) persistenceError("persistence_hash_mismatch", { artifactType: type });
 }
 
