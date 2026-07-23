@@ -1,5 +1,5 @@
 import { buildInvestingHistoricalAudit } from "@/lib/investing/historyAudit";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 
 function clampInt(v: unknown, min: number, max: number, fallback: number) {
   const n = Number(v);
@@ -60,6 +60,9 @@ function buildUnavailableInvestingHistoricalAudit(args: {
       overrideCount: 0,
       pendingApprovals: [],
       recentApprovals: [],
+      orderStateCounts: {},
+      recentOrders: [],
+      reconciliationStatusCounts: {},
     },
   };
 }
@@ -67,9 +70,9 @@ function buildUnavailableInvestingHistoricalAudit(args: {
 export async function loadInvestingHistoricalAudit(args?: { mode?: string | null; days?: unknown }) {
   const normalized = normalizeInvestingAuditArgs(args ?? {});
   const since = new Date(Date.now() - normalized.days * 24 * 60 * 60 * 1000).toISOString();
-  const sb = getSupabaseAdmin();
+  const sb = getInvestingSupabaseAdmin();
 
-  const [mandateQuery, rebalanceQuery, researchQuery, executionQuery, approvalQuery] = await Promise.all([
+  const [mandateQuery, rebalanceQuery, researchQuery, executionQuery, approvalQuery, ordersQuery, reconciliationQuery] = await Promise.all([
     sb
       .from("investing_mandate_snapshots")
       .select("user_id,mode,day_key,as_of,mandate_fingerprint,objective,inputs,policy,meta,created_at")
@@ -93,7 +96,7 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
       .limit(5000),
     sb
       .from("investing_execution_queue")
-      .select("user_id,mode,day_key,as_of,decision_fingerprint,approval_status,execution_decision,approval_required,kill_switch_active,deployable_capital_eur,blocking_reasons,notes,created_at")
+      .select("id,user_id,portfolio_id,account_id,mode,day_key,as_of,decision_fingerprint,approval_status,execution_decision,approval_required,operational_state,version,expires_at,kill_switch_active,deployable_capital_eur,blocking_reasons,notes,created_at")
       .eq("mode", normalized.mode)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
@@ -105,6 +108,20 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
       .gte("created_at", since)
       .order("decided_at", { ascending: false })
       .limit(5000),
+    sb
+      .from("investing_orders")
+      .select("id,user_id,portfolio_id,queue_id,symbol,side,quantity,notional,currency,status,environment,cumulative_filled_quantity,last_error_code,submitted_at,terminal_at,created_at,updated_at")
+      .eq("environment", "paper")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(5000),
+    sb
+      .from("investing_reconciliation_runs")
+      .select("id,user_id,portfolio_id,account_id,status,score,environment,started_at,completed_at,created_at")
+      .eq("environment", "paper")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(5000),
   ]);
 
   const missingRelations = [
@@ -113,6 +130,8 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
     readMissingRelation(researchQuery.error),
     readMissingRelation(executionQuery.error),
     readMissingRelation(approvalQuery.error),
+    readMissingRelation(ordersQuery.error),
+    readMissingRelation(reconciliationQuery.error),
   ].filter((value): value is string => Boolean(value));
 
   if (missingRelations.length > 0) {
@@ -139,6 +158,8 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
   if (approvalQuery.error) {
     throw new Error(`investing_execution_approvals_read_failed:${readSupabaseErrorMessage(approvalQuery.error) ?? "unknown_error"}`);
   }
+  if (ordersQuery.error) throw new Error(`investing_orders_audit_read_failed:${readSupabaseErrorMessage(ordersQuery.error) ?? "unknown_error"}`);
+  if (reconciliationQuery.error) throw new Error(`investing_reconciliation_audit_read_failed:${readSupabaseErrorMessage(reconciliationQuery.error) ?? "unknown_error"}`);
 
   const executionRows = Array.isArray(executionQuery.data) ? (executionQuery.data as Record<string, any>[]) : [];
   const approvalRows = Array.isArray(approvalQuery.data) ? (approvalQuery.data as Record<string, any>[]) : [];
@@ -154,6 +175,18 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
   }, {});
   const pendingApprovals = executionRows.filter((row) => row?.approval_status === "pending").slice(0, 12);
   const overrideCount = approvalRows.filter((row) => row?.override_applied).length;
+  const orderRows = Array.isArray(ordersQuery.data) ? (ordersQuery.data as Record<string, any>[]) : [];
+  const reconciliationRows = Array.isArray(reconciliationQuery.data) ? (reconciliationQuery.data as Record<string, any>[]) : [];
+  const orderStateCounts = orderRows.reduce<Record<string, number>>((acc, row) => {
+    const key = String(row?.status || "unknown");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const reconciliationStatusCounts = reconciliationRows.reduce<Record<string, number>>((acc, row) => {
+    const key = String(row?.status || "unknown");
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
 
   return {
     mode: normalized.mode,
@@ -178,6 +211,9 @@ export async function loadInvestingHistoricalAudit(args?: { mode?: string | null
       overrideCount,
       pendingApprovals,
       recentApprovals: approvalRows.slice(0, 12),
+      orderStateCounts,
+      recentOrders: orderRows.slice(0, 20),
+      reconciliationStatusCounts,
     },
   };
 }

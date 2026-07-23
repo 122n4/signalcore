@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 
+import InvestingApprovalControls from "@/components/investing/InvestingApprovalControls";
 import { loadInvestingHistoricalAudit } from "@/lib/investing/opsAudit";
-import { isOwnerUserId } from "@/lib/signalcore/owner";
+import { isInvestingOwnerUserId } from "@/lib/investing/repository/owner";
 
 export const metadata: Metadata = {
   title: "Investing Ops | Syntrake",
@@ -50,7 +51,7 @@ function Card({
 
 export default async function InvestingOpsPage() {
   const { userId } = await auth();
-  if (!userId || !isOwnerUserId(userId)) {
+  if (!userId || !isInvestingOwnerUserId(userId)) {
     return (
       <main className="min-h-screen bg-[#07111f] px-6 py-16 text-white">
         <div className="mx-auto max-w-2xl rounded-[28px] border border-white/10 bg-white/[0.04] p-8">
@@ -190,7 +191,7 @@ export default async function InvestingOpsPage() {
                   <Metric label="Pending" value={data.execution.approvalStatusCounts["pending"] ?? 0} />
                   <Metric label="Blocked" value={data.execution.decisionCounts["blocked"] ?? 0} />
                   <Metric label="Approval history" value={data.execution.approvalHistoryCoverage} />
-                  <Metric label="Paper clear" value={data.execution.decisionCounts["paper_execute"] ?? 0} />
+                  <Metric label="Paper-eligible recommendations" value={data.execution.decisionCounts["paper_execute"] ?? 0} />
                   <Metric label="Overrides" value={data.execution.overrideCount} />
                 </div>
               </Card>
@@ -206,11 +207,54 @@ export default async function InvestingOpsPage() {
                         <p className="mt-1 text-xs text-amber-100/80">
                           {(Array.isArray(entry.blocking_reasons) ? entry.blocking_reasons : []).join(", ") || "manual review"}
                         </p>
+                        <InvestingApprovalControls
+                          queueId={String(entry.id)}
+                          version={Number(entry.version)}
+                          disabled={!entry.id || !Number.isSafeInteger(Number(entry.version))}
+                        />
                       </div>
                     ))
                   ) : (
                     <p className="text-sm text-slate-400">No pending approvals in the selected window.</p>
                   )}
+                </div>
+              </Card>
+            </div>
+
+            <div className="mt-6 grid gap-6 lg:grid-cols-2">
+              <Card eyebrow="Persistent Paper" title="Real order lifecycle">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[
+                    "submitting",
+                    "submitted",
+                    "partially_filled",
+                    "filled",
+                    "reconciling",
+                    "reconciled",
+                    "submission_failed",
+                    "reconciliation_failed",
+                    "blocked",
+                    "cancelled",
+                  ].map((state) => (
+                    <Metric key={state} label={state.replaceAll("_", " ")} value={data.execution.orderStateCounts[state] ?? 0} />
+                  ))}
+                </div>
+              </Card>
+
+              <Card eyebrow="Reconciliation" title="Persisted outcomes">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Metric label="Passed" value={data.execution.reconciliationStatusCounts["passed"] ?? 0} />
+                  <Metric label="Warning" value={data.execution.reconciliationStatusCounts["warning"] ?? 0} />
+                  <Metric label="Failed" value={data.execution.reconciliationStatusCounts["failed"] ?? 0} />
+                </div>
+                <div className="mt-4 space-y-3">
+                  {data.execution.recentOrders.slice(0, 8).map((order) => (
+                    <div key={order.id} className={`rounded-2xl border px-4 py-3 text-sm ${tone(order.status)}`}>
+                      <p className="font-semibold">{order.symbol} · {order.side} · {order.status}</p>
+                      <p className="mt-1 text-xs opacity-80">Filled {order.cumulative_filled_quantity} / {order.quantity} {order.currency}</p>
+                    </div>
+                  ))}
+                  {!data.execution.recentOrders.length ? <p className="text-sm text-slate-400">No persistent Paper orders recorded.</p> : null}
                 </div>
               </Card>
             </div>

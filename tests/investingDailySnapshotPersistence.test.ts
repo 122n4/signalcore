@@ -80,6 +80,16 @@ class UpsertBuilder {
 
 function createSupabaseMock() {
   return {
+    async rpc(name: string, args: Record<string, any>) {
+      if (name !== "investing_record_daily_cycle") return { data: null, error: { message: "unknown_rpc" } };
+      dbState.daily_snapshots.push(clone(args.p_daily_snapshot));
+      dbState.investing_mandate_snapshots.push(clone({ ...args.p_mandate, correlation_id: args.p_correlation_id }));
+      dbState.investing_rebalance_ledger.push(clone({ ...args.p_rebalance, correlation_id: args.p_correlation_id }));
+      dbState.investing_research_snapshots.push(clone({ ...args.p_research, correlation_id: args.p_correlation_id }));
+      dbState.investing_execution_queue.push(clone(args.p_execution));
+      dbState.journal_entries.push(clone(args.p_journal_entry));
+      return { data: { ok: true, correlation_id: args.p_correlation_id }, error: null };
+    },
     from(table: TableName) {
       return {
         insert(value: DbRow | DbRow[]) {
@@ -195,8 +205,8 @@ beforeEach(() => {
   authState.userId = "user_investing";
 });
 
-describe("daily snapshot investing persistence", () => {
-  it("persists mandate snapshots and rebalance ledger for investing mode", async () => {
+describe("daily snapshot investing containment", () => {
+  it("rejects Investing financial snapshots supplied by the browser", async () => {
     const response = await POST(
       new Request("http://localhost/api/daily-snapshot", {
         method: "POST",
@@ -209,28 +219,9 @@ describe("daily snapshot investing persistence", () => {
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(payload.ok).toBe(true);
-    expect(dbState.daily_snapshots).toHaveLength(1);
-    expect(dbState.investing_mandate_snapshots).toHaveLength(1);
-    expect(dbState.investing_rebalance_ledger).toHaveLength(1);
-    expect(dbState.investing_research_snapshots).toHaveLength(1);
-    expect(dbState.investing_execution_queue).toHaveLength(1);
-    expect(dbState.journal_entries).toHaveLength(1);
-    expect(dbState.journal_entries[0]?.details).toMatchObject({
-      investing_engine_present: true,
-      investing_objective: "growth",
-      investing_benchmark_id: "growth_60_40",
-      investing_research_status: "review",
-      investing_rebalance_status: "proposed",
-      investing_execution_decision: "paper_execute",
-      investing_approval_status: "not_required",
-    });
-    expect(dbState.investing_mandate_snapshots[0]?.risk_profile).toBe("Balanced");
-    expect(dbState.investing_rebalance_ledger[0]?.status).toBe("proposed");
-    expect(dbState.investing_research_snapshots[0]?.status).toBe("review");
-    expect(dbState.investing_execution_queue[0]?.execution_decision).toBe("paper_execute");
-    expect(engineEvents.some((entry) => entry.event === "daily_receipt_created" && entry.status === "ok")).toBe(true);
+    expect(response.status).toBe(410);
+    expect(payload.error).toBe("investing_daily_snapshot_endpoint_retired");
+    expect(Object.values(dbState).every((rows) => rows.length === 0)).toBe(true);
   });
 
   it("keeps non-investing payloads out of investing audit tables", async () => {

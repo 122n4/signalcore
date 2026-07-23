@@ -4,6 +4,7 @@ const authState = { userId: "owner_1" as string | null };
 
 const queueRows: Array<Record<string, any>> = [];
 const approvalHistoryRows: Array<Record<string, any>> = [];
+const rpcCalls: Array<{ name: string; args: Record<string, any> }> = [];
 
 class SelectBuilder {
   constructor(private readonly table: string) {}
@@ -39,41 +40,6 @@ class SelectBuilder {
   }
 }
 
-class UpsertBuilder {
-  constructor(
-    private readonly table: string,
-    private readonly value: Record<string, any>,
-  ) {}
-
-  private async execute() {
-    const target = this.table === "investing_execution_queue" ? queueRows : approvalHistoryRows;
-    const index =
-      this.table === "investing_execution_queue"
-        ? target.findIndex(
-            (row) =>
-              row.user_id === this.value.user_id &&
-              row.mode === this.value.mode &&
-              row.day_key === this.value.day_key &&
-              row.decision_fingerprint === this.value.decision_fingerprint,
-          )
-        : -1;
-
-    if (index >= 0) {
-      target[index] = JSON.parse(JSON.stringify(this.value));
-    } else {
-      target.push(JSON.parse(JSON.stringify(this.value)));
-    }
-    return { data: null, error: null };
-  }
-
-  then<TResult1 = any, TResult2 = never>(
-    onfulfilled?: ((value: any) => TResult1 | PromiseLike<TResult1>) | null,
-    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
-  ) {
-    return this.execute().then(onfulfilled, onrejected);
-  }
-}
-
 vi.mock("@/lib/auth/requestUser", () => ({
   getRequestUserId: vi.fn(async () => authState.userId),
 }));
@@ -82,12 +48,36 @@ vi.mock("@/lib/auth/localQaAuth", () => ({
   isLocalQaUserId: vi.fn(() => false),
 }));
 
-vi.mock("@/lib/signalcore/owner", () => ({
-  isOwnerUserId: vi.fn((userId: string | null | undefined) => userId === "owner_1"),
+vi.mock("@/lib/investing/repository/owner", () => ({
+  isInvestingOwnerUserId: vi.fn((userId: string | null | undefined) => userId === "owner_1"),
 }));
 
-vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: vi.fn(() => ({
+vi.mock("@/lib/investing/repository/admin", () => ({
+  getInvestingSupabaseAdmin: vi.fn(() => ({
+    async rpc(name: string, args: Record<string, any>) {
+      rpcCalls.push({ name, args });
+      if (name !== "investing_record_approval_v2") return { data: null, error: { message: "unknown_rpc" } };
+      const row = queueRows.find((entry) => entry.id === args.p_queue_id && entry.user_id === args.p_actor_user_id);
+      if (!row) return { data: null, error: { message: "investing_approval_not_found_or_forbidden" } };
+      if (row.approval_status !== args.p_expected_status || row.version !== args.p_expected_version) {
+        return { data: null, error: { message: "investing_approval_state_conflict" } };
+      }
+      row.approval_status = args.p_decision;
+      row.version += 1;
+      approvalHistoryRows.push({
+        queue_id: row.id,
+        queue_version: row.version,
+        user_id: row.user_id,
+        mode: "investing",
+        decision_fingerprint: row.decision_fingerprint,
+        queue_day_key: row.day_key,
+        decided_by: args.p_actor_user_id,
+        approval_status: args.p_decision,
+        override_applied: false,
+        note: args.p_note,
+      });
+      return { data: { ok: true, version: row.version }, error: null };
+    },
     from(table: string) {
       if (table !== "investing_execution_queue" && table !== "investing_execution_approvals") {
         throw new Error(`unexpected table:${table}`);
@@ -95,9 +85,6 @@ vi.mock("@/lib/supabase/admin", () => ({
       return {
         select() {
           return new SelectBuilder(table);
-        },
-        upsert(value: Record<string, any>) {
-          return new UpsertBuilder(table, value);
         },
       };
     },
@@ -109,13 +96,16 @@ const { GET, POST } = await import("@/app/api/ops/investing/approvals/route");
 beforeEach(() => {
   authState.userId = "owner_1";
   approvalHistoryRows.splice(0, approvalHistoryRows.length);
+  rpcCalls.length = 0;
   queueRows.splice(0, queueRows.length, {
+    id: "11111111-1111-4111-8111-111111111111",
     user_id: "owner_1",
     mode: "investing",
     day_key: "2026-07-17",
     as_of: "2026-07-17T08:00:00.000Z",
     decision_fingerprint: "decision_a",
     approval_status: "pending",
+    version: 1,
     approval_required: true,
     execution_decision: "manual_execute",
     kill_switch_active: false,
@@ -129,7 +119,7 @@ beforeEach(() => {
 });
 
 describe("investing approvals route", () => {
-  it("lists pending approvals for owners", async () => {
+  it("lists only pending approvals owned by the authenticated user", async () => {
     const response = await GET(new Request("http://localhost/api/ops/investing/approvals?mode=investing"));
     const payload = await response.json();
 
@@ -140,16 +130,16 @@ describe("investing approvals route", () => {
     expect(payload.approvals[0]?.decision_fingerprint).toBe("decision_a");
   });
 
-  it("updates approval status canonically", async () => {
+  it("updates approval status by queue identity and optimistic version", async () => {
     const response = await POST(
       new Request("http://localhost/api/ops/investing/approvals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "investing",
-          decisionFingerprint: "decision_a",
-          approvalStatus: "approved",
-          overrideApplied: true,
+          queueId: "11111111-1111-4111-8111-111111111111",
+          expectedStatus: "pending",
+          expectedVersion: 1,
+          decision: "approved",
           note: "validated",
         }),
       }),
@@ -159,10 +149,24 @@ describe("investing approvals route", () => {
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
     expect(queueRows[0]?.approval_status).toBe("approved");
-    expect(queueRows[0]?.notes).toContain("owner:approved:override:validated");
-    expect(queueRows[0]?.meta?.lastApproval?.by).toBe("owner_1");
-    expect(queueRows[0]?.meta?.lastApproval?.overrideApplied).toBe(true);
+    expect(queueRows[0]?.version).toBe(2);
     expect(approvalHistoryRows).toHaveLength(1);
-    expect(approvalHistoryRows[0]?.override_applied).toBe(true);
+    expect(approvalHistoryRows[0]?.override_applied).toBe(false);
+    expect(rpcCalls[0]).toMatchObject({
+      name: "investing_record_approval_v2",
+      args: {
+        p_actor_user_id: "owner_1",
+        p_queue_id: "11111111-1111-4111-8111-111111111111",
+        p_expected_status: "pending",
+        p_expected_version: 1,
+        p_decision: "approved",
+      },
+    });
+  });
+
+  it("does not expose another user's queue", async () => {
+    authState.userId = "other_user";
+    const response = await GET(new Request("http://localhost/api/ops/investing/approvals?mode=investing"));
+    expect((await response.json()).approvals).toEqual([]);
   });
 });

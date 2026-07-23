@@ -16,6 +16,9 @@ export function buildInvestingGovernancePolicy(args: {
     args.instruments.map((instrument) => [instrument.symbol.toUpperCase(), instrument] as const),
   );
   const activeActions = args.rebalance.actions.filter((action) => action.action !== "hold");
+  const isInitialAllocation =
+    activeActions.length > 0 &&
+    activeActions.every((action) => action.action === "buy" && action.currentWeightPct === 0);
   const targetedSymbols = Array.from(new Set(activeActions.map((action) => action.symbol.toUpperCase())));
   const blockedSymbols = targetedSymbols.filter((symbol) => {
     const instrument = instrumentMap.get(symbol);
@@ -80,7 +83,9 @@ export function buildInvestingGovernancePolicy(args: {
       : autonomyStatus === "eligible" && manualReviewReasons.length === 0
         ? "cleared"
         : "review";
-  const killSwitchActive = suitabilityStatus === "blocked" || turnoverStatus === "outside_policy";
+  const killSwitchActive =
+    suitabilityStatus === "blocked" ||
+    (turnoverStatus === "outside_policy" && !isInitialAllocation);
   const approvalRequired = executionClearance !== "cleared";
   const overrideAllowed = suitabilityStatus !== "blocked";
   const maxDeployablePct =

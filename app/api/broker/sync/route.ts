@@ -3,12 +3,15 @@ import { auth } from "@clerk/nextjs/server";
 import {
   brokerLabel,
   hasConnectionEvidence,
+  INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+  isInvestingSharedBrokerBlocked,
   isConnectionMethodSupportedForBroker,
   isBrokerManualOnly,
   loadBrokerConnection,
   normalizeBrokerConnection,
   reconcileWithPortfolio,
   resolveActiveModeForUser,
+  resolveEffectiveSharedBrokerMode,
   sanitizeConnectionForClient,
   saveBrokerConnection,
   syncBrokerToPortfolio,
@@ -33,6 +36,23 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const requestedMode = getModeFromRequest(req, body);
+  const effectiveMode = await resolveEffectiveSharedBrokerMode({ userId, requestedMode });
+  let mode = effectiveMode.mode;
+  if (!isInvestingSharedBrokerBlocked(mode)) {
+    mode = await resolveActiveModeForUser(userId, mode);
+  }
+  if (isInvestingSharedBrokerBlocked(mode)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+        mode,
+        spoofed: effectiveMode.spoofed,
+        replacement: "/api/investing/paper/orders",
+      },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   const current = await loadBrokerConnection(userId);
   if (!isConnectionMethodSupportedForBroker(current.broker, current.connectionMethod)) {
@@ -59,7 +79,7 @@ export async function POST(req: Request) {
   if (!current.connected || !proofOk) {
     await writeEngineEvent({
       userId,
-      mode: requestedMode || "investing",
+      mode,
       event: "risk_blocked",
       status: "warn",
       source: "api.broker.sync",
@@ -94,8 +114,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const mode = await resolveActiveModeForUser(userId, requestedMode);
-
   try {
     await writeEngineEvent({
       userId,
@@ -125,9 +143,21 @@ export async function POST(req: Request) {
       reconcile.ok && typeof reconcile.status === "string"
         ? String(reconcile.status)
         : "missing_snapshot";
+    const intentStatus =
+      reconcile.ok && typeof (reconcile as any)?.investingIntent?.status === "string"
+        ? String((reconcile as any).investingIntent.status)
+        : null;
+    const effectiveReconcileStatus =
+      intentStatus === "critical"
+        ? "critical"
+        : intentStatus === "warning" && reconcileStatus === "aligned"
+          ? "warning"
+          : reconcileStatus;
     const reconcileScoreRaw = Number((reconcile as any).score);
     const reconcileScore = Number.isFinite(reconcileScoreRaw) ? Math.max(0, Math.min(100, Math.round(reconcileScoreRaw))) : null;
     const reconcileMismatchCount = Math.max(0, Math.round(Number((reconcile as any).mismatchCount || 0)));
+    const intentMismatchCount = Math.max(0, Math.round(Number((reconcile as any)?.investingIntent?.mismatchCount || 0)));
+    const totalMismatchCount = reconcileMismatchCount + intentMismatchCount;
 
     const synced = normalizeBrokerConnection(
       {
@@ -136,15 +166,15 @@ export async function POST(req: Request) {
         lastSyncAt: out.snapshot.asOf,
         lastSyncStatus: "ok",
         lastError:
-          reconcileStatus === "critical"
-            ? `Reconcile critical (${reconcileMismatchCount} mismatches).`
-            : reconcileStatus === "warning"
-              ? `Reconcile warning (${reconcileMismatchCount} mismatches).`
+          effectiveReconcileStatus === "critical"
+            ? `Reconcile critical (${totalMismatchCount} mismatches).`
+            : effectiveReconcileStatus === "warning"
+              ? `Reconcile warning (${totalMismatchCount} mismatches).`
               : null,
         lastReconcileAt: new Date().toISOString(),
-        lastReconcileStatus: reconcileStatus,
+        lastReconcileStatus: effectiveReconcileStatus as any,
         lastReconcileScore: reconcileScore,
-        lastReconcileMismatchCount: reconcileMismatchCount,
+        lastReconcileMismatchCount: totalMismatchCount,
         snapshot: out.snapshot,
         proofCheckedAt: new Date().toISOString(),
       },
@@ -162,38 +192,40 @@ export async function POST(req: Request) {
       status: "ok",
       source: "api.broker.sync",
       executionId,
-      details: {
-        inserted: out.changes.inserted,
-        updated: out.changes.updated,
-        deleted: out.changes.deleted,
-        positions: out.snapshot.positions.length,
-        totalEur: out.snapshot.totalEur,
-        asOf: out.snapshot.asOf,
-        reconcileStatus,
-        reconcileScore,
-        reconcileMismatchCount,
-        duration_ms: Date.now() - startedAtMs,
-      },
-    });
-    if (reconcileStatus === "critical" || reconcileStatus === "warning") {
+        details: {
+          inserted: out.changes.inserted,
+          updated: out.changes.updated,
+          deleted: out.changes.deleted,
+          positions: out.snapshot.positions.length,
+          totalEur: out.snapshot.totalEur,
+          asOf: out.snapshot.asOf,
+          reconcileStatus: effectiveReconcileStatus,
+          reconcileScore,
+          reconcileMismatchCount: totalMismatchCount,
+          investingIntentStatus: intentStatus,
+          duration_ms: Date.now() - startedAtMs,
+        },
+      });
+    if (effectiveReconcileStatus === "critical" || effectiveReconcileStatus === "warning") {
       await writeEngineEvent({
         userId,
         mode,
         event: "risk_blocked",
-        status: reconcileStatus === "critical" ? "error" : "warn",
+        status: effectiveReconcileStatus === "critical" ? "error" : "warn",
         source: "api.broker.sync.reconcile",
         executionId,
         details: {
-          reconcileStatus,
+          reconcileStatus: effectiveReconcileStatus,
           reconcileScore,
-          reconcileMismatchCount,
+          reconcileMismatchCount: totalMismatchCount,
+          investingIntentStatus: intentStatus,
           summary: (reconcile as any).summary || null,
         },
       });
     }
 
     const runtimeStatus =
-      reconcileStatus === "critical" ? "error" : safe.autoSync ? "active" : "connected";
+      effectiveReconcileStatus === "critical" ? "error" : safe.autoSync ? "active" : "connected";
 
     return NextResponse.json(
       {
@@ -214,10 +246,11 @@ export async function POST(req: Request) {
         },
         reconcile: {
           ok: Boolean((reconcile as any).ok),
-          status: reconcileStatus,
+          status: effectiveReconcileStatus,
           score: reconcileScore,
-          mismatchCount: reconcileMismatchCount,
+          mismatchCount: totalMismatchCount,
           checkedAt: (reconcile as any).checkedAt || new Date().toISOString(),
+          investingIntent: (reconcile as any).investingIntent || null,
         },
       },
       { status: 200 }

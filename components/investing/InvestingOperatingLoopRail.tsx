@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { InvestingOperatingLoopSummary } from "@/lib/signalcore/investingOperatingLoop";
+import type { InvestingOperatingLoopSummary } from "@/lib/investing/ui/operatingLoop";
 
 type LoopAction = {
   label: string;

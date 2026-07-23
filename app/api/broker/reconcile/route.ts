@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import {
   hasConnectionEvidence,
+  INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+  isInvestingSharedBrokerBlocked,
   loadBrokerConnection,
   normalizeBrokerConnection,
   reconcileWithPortfolio,
   resolveActiveModeForUser,
+  resolveEffectiveSharedBrokerMode,
   sanitizeConnectionForClient,
   saveBrokerConnection,
   syncBrokerToPortfolio,
@@ -26,7 +29,26 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const mode = await resolveActiveModeForUser(userId, parseBodyMode(req, body));
+  const effectiveMode = await resolveEffectiveSharedBrokerMode({
+    userId,
+    requestedMode: parseBodyMode(req, body),
+  });
+  let mode = effectiveMode.mode;
+  if (!isInvestingSharedBrokerBlocked(mode)) {
+    mode = await resolveActiveModeForUser(userId, mode);
+  }
+  if (isInvestingSharedBrokerBlocked(mode)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+        mode,
+        spoofed: effectiveMode.spoofed,
+        replacement: "/api/investing/dashboard",
+      },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   const connection = await loadBrokerConnection(userId);
   const proofOk = hasConnectionEvidence({

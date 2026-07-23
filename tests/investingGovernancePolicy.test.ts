@@ -95,4 +95,51 @@ describe("investing governance policy", () => {
     expect(out.maxDeployablePct).toBe(100);
     expect(out.manualReviewReasons).toHaveLength(0);
   });
+
+  it("routes an initial allocation above the turnover cap to supervised approval", () => {
+    const out = buildInvestingGovernancePolicy({
+      mandate: {
+        objective: "balanced",
+        riskProfile: "Balanced",
+        horizon: "Long",
+      },
+      rebalance: {
+        withinPolicy: false,
+        totalCapitalEur: 10_000,
+        grossTurnoverPct: 50,
+        actions: [
+          {
+            symbol: "VWCE",
+            action: "buy",
+            currentWeightPct: 0,
+            targetWeightPct: 50,
+            deltaWeightPct: 50,
+            deltaValueEur: 5_000,
+            rationale: "initial core allocation",
+          },
+        ],
+        notes: [],
+      },
+      instruments: [
+        {
+          symbol: "VWCE",
+          name: "Global Equity ETF",
+          assetClass: "equity",
+          market: "equities",
+          role: "core_growth",
+          qualityStatus: "approved",
+          enabled: true,
+          taxTreatment: "ucits_accumulating",
+        },
+      ],
+    });
+
+    expect(out.suitabilityStatus).toBe("review");
+    expect(out.autonomyStatus).toBe("supervised");
+    expect(out.executionClearance).toBe("review");
+    expect(out.approvalRequired).toBe(true);
+    expect(out.killSwitchActive).toBe(false);
+    expect(out.overrideAllowed).toBe(true);
+    expect(out.manualReviewReasons).toContain("turnover_outside_policy_cap");
+  });
 });

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getRequestUserId } from "@/lib/auth/requestUser";
 import { isLocalQaUserId } from "@/lib/auth/localQaAuth";
 import { loadInvestingHistoricalAudit } from "@/lib/investing/opsAudit";
-import { isOwnerUserId } from "@/lib/signalcore/owner";
+import { isInvestingOwnerUserId } from "@/lib/investing/repository/owner";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   if (!userId) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
   }
-  if (!isOwnerUserId(userId) && !isLocalQaUserId(userId)) {
+  if (!isInvestingOwnerUserId(userId) && !isLocalQaUserId(userId)) {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
 

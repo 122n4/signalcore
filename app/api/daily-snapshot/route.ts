@@ -1,14 +1,6 @@
 // app/api/daily-snapshot/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import {
-  buildInvestingExecutionPlan,
-  buildInvestingExecutionPlanRow,
-  buildInvestingMandateSnapshotRow,
-  buildInvestingResearchSnapshotRow,
-  buildInvestingRebalanceLedgerRow,
-  resolveInvestingEngine,
-} from "@/lib/investing";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createExecutionId, writeEngineEvent } from "@/lib/engine/events";
 import { resolveModeAccess } from "@/lib/signalcore/modeAccess";
@@ -40,6 +32,13 @@ export async function POST(req: Request) {
     if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
+    if (String(body?.mode || "").toLowerCase() === "investing") {
+      return NextResponse.json(
+        { ok: false, error: "investing_daily_snapshot_endpoint_retired", replacement: "/api/investing/daily-cycle" },
+        { status: 410, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     const supabase = getSupabaseAdmin();
     const access = await resolveModeAccess({
       supabase,
@@ -109,80 +108,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
-    const investingEngine = mode === "investing" ? resolveInvestingEngine(snapshot) : null;
-    if (investingEngine) {
-      const mandateSnapshotRow = buildInvestingMandateSnapshotRow({
-        userId,
-        mode,
-        dayKey: dk,
-        asOf: now,
-        engine: investingEngine,
-      });
-      const rebalanceLedgerRow = buildInvestingRebalanceLedgerRow({
-        userId,
-        mode,
-        dayKey: dk,
-        asOf: now,
-        engine: investingEngine,
-        mandateFingerprint: mandateSnapshotRow.mandate_fingerprint,
-        totalEur: total,
-        cashEur: cash,
-        holdingsCount: holdings?.length ?? 0,
-      });
-      const researchSnapshotRow = buildInvestingResearchSnapshotRow({
-        userId,
-        mode,
-        dayKey: dk,
-        asOf: now,
-        engine: investingEngine,
-        mandateFingerprint: mandateSnapshotRow.mandate_fingerprint,
-      });
-      const executionPlan = buildInvestingExecutionPlan({
-        engine: investingEngine,
-        totalEur: total,
-        cashEur: cash,
-        asOf: now,
-      });
-      const executionPlanRow = buildInvestingExecutionPlanRow({
-        userId,
-        mode,
-        dayKey: dk,
-        asOf: now,
-        engine: investingEngine,
-        mandateFingerprint: mandateSnapshotRow.mandate_fingerprint,
-        decisionFingerprint: rebalanceLedgerRow.decision_fingerprint,
-        executionPlan,
-      });
-
-      const mandateResult = await supabase.from("investing_mandate_snapshots").upsert(mandateSnapshotRow, {
-        onConflict: "user_id,mode,day_key,mandate_fingerprint",
-      } as any);
-      if (mandateResult.error) {
-        throw new Error(mandateResult.error.message);
-      }
-
-      const rebalanceResult = await supabase.from("investing_rebalance_ledger").upsert(rebalanceLedgerRow, {
-        onConflict: "user_id,mode,day_key,decision_fingerprint",
-      } as any);
-      if (rebalanceResult.error) {
-        throw new Error(rebalanceResult.error.message);
-      }
-
-      const researchResult = await supabase.from("investing_research_snapshots").upsert(researchSnapshotRow, {
-        onConflict: "user_id,mode,day_key,research_fingerprint",
-      } as any);
-      if (researchResult.error) {
-        throw new Error(researchResult.error.message);
-      }
-
-      const executionResult = await supabase.from("investing_execution_queue").upsert(executionPlanRow, {
-        onConflict: "user_id,mode,day_key,decision_fingerprint",
-      } as any);
-      if (executionResult.error) {
-        throw new Error(executionResult.error.message);
-      }
-    }
-
     // Decision receipt (server-side, retention booster)
     await supabase.from("journal_entries").insert({
       user_id: userId,
@@ -195,36 +120,6 @@ export async function POST(req: Request) {
         cash_eur: cash,
         holdingsCount: holdings?.length ?? 0,
         pricing: metaFromClient ?? null,
-        investing_engine_present: Boolean(investingEngine),
-        investing_objective: investingEngine?.objective ?? null,
-        investing_benchmark_id: investingEngine?.benchmark?.benchmarkId ?? null,
-        investing_research_status: investingEngine?.benchmarkValidation?.status ?? null,
-        investing_execution_decision: investingEngine
-          ? buildInvestingExecutionPlan({
-              engine: investingEngine,
-              totalEur: total,
-              cashEur: cash,
-              asOf: now,
-            }).decision
-          : null,
-        investing_approval_status: investingEngine
-          ? buildInvestingExecutionPlan({
-              engine: investingEngine,
-              totalEur: total,
-              cashEur: cash,
-              asOf: now,
-            }).approvalStatus
-          : null,
-        investing_kill_switch_active: Boolean(investingEngine?.governancePolicy?.killSwitchActive),
-        investing_rebalance_status:
-          investingEngine?.rebalance?.withinPolicy === false
-            ? "blocked"
-            : Array.isArray(investingEngine?.rebalance?.actions) &&
-              investingEngine.rebalance.actions.some((action: any) => action?.action === "buy" || action?.action === "sell")
-            ? "proposed"
-            : investingEngine
-            ? "no_action"
-            : null,
       },
       created_at: now.toISOString(),
     });

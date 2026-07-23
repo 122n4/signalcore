@@ -3,6 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { asMode } from "@/lib/signalcore/mode";
 import { resolveModeAccess } from "@/lib/signalcore/modeAccess";
+import {
+  INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+  isInvestingSharedBrokerBlocked,
+  resolveEffectiveSharedBrokerMode,
+} from "@/lib/broker/investingBoundary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,10 +52,21 @@ export async function POST(req: Request) {
     });
 
   const supabase = getSupabaseAdmin();
+  const effectiveMode = await resolveEffectiveSharedBrokerMode({
+    userId,
+    requestedMode: body?.mode,
+    supabase,
+  });
+  if (isInvestingSharedBrokerBlocked(effectiveMode.mode)) {
+    return NextResponse.json(
+      { ok: false, error: INVESTING_SHARED_BROKER_SYNC_BLOCKED, mode: "investing", spoofed: effectiveMode.spoofed },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const access = await resolveModeAccess({
     supabase,
     userId,
-    requestedMode: asMode(body?.mode),
+    requestedMode: asMode(effectiveMode.mode),
   });
   if (!access.ok) {
     return NextResponse.json(

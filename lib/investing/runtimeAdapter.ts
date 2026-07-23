@@ -15,7 +15,6 @@ import type {
   ExecutionCostPolicy,
   InvestingGovernancePolicy,
   InvestingHorizon,
-  InvestingInstrument,
   InvestingInstrumentScorecard,
   InvestingObjective,
   InvestingResearchValidation,

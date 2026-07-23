@@ -1,5 +1,19 @@
-import { computeDirective, type DirectiveMode } from "@/lib/signalcore/directives";
-import type { DecisionEnvelope } from "@/lib/decision/types";
+import { computeDirective, type DirectiveMode } from "@/lib/investing/ui/directives";
+
+type InvestingDecisionEnvelope = {
+  branch: "success" | "plan_load_fallback" | "holdings_load_fallback" | "fatal_fallback";
+  workflowDecision: Record<string, any> & { type: string; nextEvaluationAt?: string | null };
+  portfolioStance: Record<string, any> & { decision: string; confidencePct?: number | null };
+  executionInstruction: Record<string, any> & { category?: string; allowExecution?: boolean };
+  why: Record<string, any>;
+  scores: Record<string, any>;
+  support: Record<string, any> & {
+    precedence: Record<string, any> & { allowExecution?: boolean; override?: string | null };
+    snapshots: Record<string, any> & { nextEvaluationAt?: string | null; topLeakKey?: string | null };
+    branchReason?: string | null;
+  };
+  blockers: Array<Record<string, any> & { layer?: string; haltsExecution?: boolean }>;
+};
 
 type LeakSeverity = "high" | "med" | "low" | null;
 type DailyDecisionAction = "BUY" | "SELL" | "HOLD";
@@ -7,7 +21,7 @@ type DailyDecisionTempo = "defensive" | "normal" | "aggressive";
 
 export type DailyDecisionView = {
   source: "setup_override" | "starter_override" | "blocked_override" | "decision_envelope" | "legacy_fallback";
-  branch: DecisionEnvelope["branch"] | "unknown";
+  branch: InvestingDecisionEnvelope["branch"] | "unknown";
   action: DailyDecisionAction;
   headline: string;
   rationale: string;
@@ -16,8 +30,8 @@ export type DailyDecisionView = {
   allowExecution: boolean;
   stateReason: string;
   nextReviewAt: string | null;
-  workflowType: DecisionEnvelope["workflowDecision"]["type"] | null;
-  portfolioDecision: DecisionEnvelope["portfolioStance"]["decision"] | null;
+  workflowType: InvestingDecisionEnvelope["workflowDecision"]["type"] | null;
+  portfolioDecision: InvestingDecisionEnvelope["portfolioStance"]["decision"] | null;
   blockerState: "none" | "setup" | "warmup" | "fallback" | "risk_blocked";
   guardrails: {
     maxNewRiskPct: number;
@@ -142,7 +156,7 @@ export function normalizeDailyFixKey(value: unknown) {
   return "pricing_low";
 }
 
-function isDecisionEnvelope(value: unknown): value is DecisionEnvelope {
+function isDecisionEnvelope(value: unknown): value is InvestingDecisionEnvelope {
   const record = asRecord(value);
   if (!record) return false;
   const workflow = asRecord(record.workflowDecision);
@@ -157,7 +171,7 @@ function isDecisionEnvelope(value: unknown): value is DecisionEnvelope {
   return true;
 }
 
-function hasDataQualityBlocker(envelope: DecisionEnvelope) {
+function hasDataQualityBlocker(envelope: InvestingDecisionEnvelope) {
   return envelope.blockers.some((blocker) => blocker.layer === "data_quality" && blocker.haltsExecution);
 }
 
@@ -170,7 +184,7 @@ function normalizeAggression(value: unknown): DailyDecisionTempo | null {
   return null;
 }
 
-function mapCanonicalAction(envelope: DecisionEnvelope): DailyDecisionAction {
+function mapCanonicalAction(envelope: InvestingDecisionEnvelope): DailyDecisionAction {
   const workflowType = envelope.workflowDecision.type;
   const portfolioDecision = envelope.portfolioStance.decision;
   const allowExecution = envelope.support.precedence.allowExecution;
@@ -198,7 +212,7 @@ function mapCanonicalAction(envelope: DecisionEnvelope): DailyDecisionAction {
   return "HOLD";
 }
 
-function mapCanonicalTempo(envelope: DecisionEnvelope, action: DailyDecisionAction): DailyDecisionTempo {
+function mapCanonicalTempo(envelope: InvestingDecisionEnvelope, action: DailyDecisionAction): DailyDecisionTempo {
   if (!envelope.support.precedence.allowExecution) return "defensive";
 
   const fromAggression = normalizeAggression(envelope.workflowDecision.aggression);
@@ -210,7 +224,7 @@ function mapCanonicalTempo(envelope: DecisionEnvelope, action: DailyDecisionActi
 
 function buildSetupOverride(args: {
   mode: DirectiveMode;
-  branch: DecisionEnvelope["branch"] | "unknown";
+  branch: InvestingDecisionEnvelope["branch"] | "unknown";
   kind: "no_plan" | "no_holdings";
   nextReviewAt: string | null;
 }): DailyDecisionView {
@@ -255,7 +269,7 @@ function buildSetupOverride(args: {
 
 function buildFatalFallbackOverride(args: {
   mode: DirectiveMode;
-  envelope: DecisionEnvelope;
+  envelope: InvestingDecisionEnvelope;
 }): DailyDecisionView {
   const guardrails = getGuardrails(args.mode);
 
@@ -290,9 +304,9 @@ function buildFatalFallbackOverride(args: {
 
 function buildStarterWarmupOverride(args: {
   mode: DirectiveMode;
-  branch: DecisionEnvelope["branch"] | "unknown";
+  branch: InvestingDecisionEnvelope["branch"] | "unknown";
   nextReviewAt: string | null;
-  envelope: DecisionEnvelope | null;
+  envelope: InvestingDecisionEnvelope | null;
 }): DailyDecisionView {
   const guardrails = getGuardrails(args.mode);
 
@@ -322,9 +336,9 @@ function buildStarterWarmupOverride(args: {
 
 function buildLowDataQualityOverride(args: {
   mode: DirectiveMode;
-  branch: DecisionEnvelope["branch"] | "unknown";
+  branch: InvestingDecisionEnvelope["branch"] | "unknown";
   nextReviewAt: string | null;
-  envelope: DecisionEnvelope | null;
+  envelope: InvestingDecisionEnvelope | null;
 }): DailyDecisionView {
   const guardrails = getGuardrails(args.mode);
 
@@ -354,7 +368,7 @@ function buildLowDataQualityOverride(args: {
 
 function buildCanonicalView(args: {
   mode: DirectiveMode;
-  envelope: DecisionEnvelope;
+  envelope: InvestingDecisionEnvelope;
 }): DailyDecisionView {
   const guardrails = getGuardrails(args.mode);
   const action = mapCanonicalAction(args.envelope);

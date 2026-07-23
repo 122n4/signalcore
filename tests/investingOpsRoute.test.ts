@@ -53,12 +53,14 @@ const tableData = {
   ],
   investing_execution_queue: [
     {
+      id: "22222222-2222-4222-8222-222222222222",
       user_id: "owner_1",
       mode: "investing",
       day_key: "2026-07-17",
       as_of: "2026-07-17T08:00:00.000Z",
       decision_fingerprint: "decision_a",
       approval_status: "pending",
+      version: 1,
       execution_decision: "manual_execute",
       approval_required: true,
       kill_switch_active: false,
@@ -80,6 +82,34 @@ const tableData = {
       override_applied: false,
       note: "validated",
       meta: {},
+      created_at: "2026-07-17T08:30:01.000Z",
+    },
+  ],
+  investing_orders: [
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      user_id: "owner_1",
+      portfolio_id: "primary",
+      queue_id: "22222222-2222-4222-8222-222222222222",
+      symbol: "VWCE",
+      side: "buy",
+      quantity: "1.000000000000",
+      notional: "100.00000000",
+      currency: "EUR",
+      status: "submitted",
+      environment: "paper",
+      cumulative_filled_quantity: "0",
+      created_at: "2026-07-17T08:30:01.000Z",
+    },
+  ],
+  investing_reconciliation_runs: [
+    {
+      id: "33333333-3333-4333-8333-333333333333",
+      user_id: "owner_1",
+      portfolio_id: "primary",
+      status: "passed",
+      score: 100,
+      environment: "paper",
       created_at: "2026-07-17T08:30:01.000Z",
     },
   ],
@@ -134,12 +164,12 @@ vi.mock("@/lib/auth/localQaAuth", () => ({
   isLocalQaUserId: vi.fn(() => false),
 }));
 
-vi.mock("@/lib/signalcore/owner", () => ({
-  isOwnerUserId: vi.fn((userId: string | null | undefined) => userId === "owner_1"),
+vi.mock("@/lib/investing/repository/owner", () => ({
+  isInvestingOwnerUserId: vi.fn((userId: string | null | undefined) => userId === "owner_1"),
 }));
 
-vi.mock("@/lib/supabase/admin", () => ({
-  getSupabaseAdmin: vi.fn(() => ({
+vi.mock("@/lib/investing/repository/admin", () => ({
+  getInvestingSupabaseAdmin: vi.fn(() => ({
     from(table: keyof typeof tableData) {
       return {
         select() {
@@ -174,6 +204,8 @@ describe("ops investing route", () => {
     expect(payload.execution.decisionCounts.manual_execute).toBe(1);
     expect(payload.execution.approvalHistoryCoverage).toBe(1);
     expect(payload.execution.recentApprovals).toHaveLength(1);
+    expect(payload.execution.orderStateCounts.submitted).toBe(1);
+    expect(payload.execution.reconciliationStatusCounts.passed).toBe(1);
     expect(payload.days).toBe(90);
   });
 

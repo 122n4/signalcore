@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getRequestUserId } from "@/lib/auth/requestUser";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveModeAccess } from "@/lib/signalcore/modeAccess";
+import {
+  INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+  isInvestingSharedBrokerBlocked,
+  resolveEffectiveSharedBrokerMode,
+} from "@/lib/broker/investingBoundary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,10 +70,21 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const supabase = getSupabaseAdmin();
+  const effectiveMode = await resolveEffectiveSharedBrokerMode({
+    userId,
+    requestedMode: body?.mode,
+    supabase,
+  });
+  if (isInvestingSharedBrokerBlocked(effectiveMode.mode)) {
+    return NextResponse.json(
+      { ok: false, error: INVESTING_SHARED_BROKER_SYNC_BLOCKED, mode: "investing", spoofed: effectiveMode.spoofed },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const access = await resolveModeAccess({
     supabase,
     userId,
-    requestedMode: body?.mode,
+    requestedMode: effectiveMode.mode,
   });
   if (!access.ok) {
     return NextResponse.json(
@@ -181,8 +197,24 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
 
   const supabase = getSupabaseAdmin();
+  const effectiveMode = await resolveEffectiveSharedBrokerMode({
+    userId,
+    requestedMode: url.searchParams.get("mode"),
+    supabase,
+  });
+  if (isInvestingSharedBrokerBlocked(effectiveMode.mode)) {
+    return NextResponse.json(
+      { ok: false, error: INVESTING_SHARED_BROKER_SYNC_BLOCKED, mode: "investing", spoofed: effectiveMode.spoofed },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
-  const { error } = await supabase.from("portfolio_items").delete().eq("user_id", userId).eq("id", id);
+  const { error } = await supabase
+    .from("portfolio_items")
+    .delete()
+    .eq("user_id", userId)
+    .eq("mode", effectiveMode.mode)
+    .eq("id", id);
 
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 

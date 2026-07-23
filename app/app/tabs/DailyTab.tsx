@@ -7,16 +7,15 @@ import InvestingOperatingLoopRail from "@/components/investing/InvestingOperatin
 import { track } from "@/lib/analytics/client";
 import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
-import { serverReferencePlaceholder, type BrokerConnectionMethod } from "@/lib/broker/shared";
 import { sanitizeProductHref } from "@/lib/navigation/sanitizeProductHref";
-import { buildInvestingOperatingLoopSummary } from "@/lib/signalcore/investingOperatingLoop";
+import { buildInvestingOperatingLoopSummary } from "@/lib/investing/ui/operatingLoop";
 import {
   formatDecisionImpactActionLabel,
   getDecisionImpactTrackRecordSummary,
   getDecisionImpactSegmentDisplayPolicy,
   formatDecisionImpactStateLabel,
   pickTopDecisionImpactSegment,
-} from "@/lib/signalcore/decisionImpact";
+} from "@/lib/investing/ui/decisionImpact";
 import {
   buildDailyDecisionCtaOverride,
   buildDailyDecisionView,
@@ -197,33 +196,6 @@ type SimpleGuide = {
   tone: "good" | "warn" | "bad";
 };
 
-type BrokerPrefsLite = {
-  connected: boolean;
-  broker: string;
-  autoSync: boolean;
-  syncEveryMinutes: number;
-  readOnly: boolean;
-  lastSyncAt: string | null;
-};
-
-type BrokerStatusLite = {
-  connected?: boolean;
-  broker?: string;
-  provider?: string;
-  autoSync?: boolean;
-  syncEveryMinutes?: number;
-  readOnly?: boolean;
-  lastSyncAt?: string | null;
-  connectionMethod?: BrokerConnectionMethod;
-  status?: "disconnected" | "connected" | "active" | "error";
-  lastError?: string | null;
-  message?: string | null;
-  sync?: {
-    positions?: number;
-  };
-};
-
-const BROKER_PREFS_KEY = "sc_broker_connection_v1";
 const STARTER_BUDGET_KEY = "sc_starter_budget_v1";
 
 function clampStarterBudget(v: number) {
@@ -263,8 +235,10 @@ function writeStarterBudget(mode: Mode, budgetEur: number) {
 }
 
 function buildDailyBundleUrl(mode: Mode, starterBudget: number, budgetOverride?: number | null) {
-  const budget = clampStarterBudget(typeof budgetOverride === "number" ? budgetOverride : starterBudget);
-  return `/api/daily-bundle?mode=${mode}&budgetEur=${budget}`;
+  void mode;
+  void starterBudget;
+  void budgetOverride;
+  return "/api/investing/dashboard";
 }
 
 function applyOptimisticStarterWarmupToBundle(bundle: any, appliedAt: string) {
@@ -306,87 +280,6 @@ function withFixContextHref(href: string, args: { mode: Mode; leakKey: string | 
 function isAutoFixableLeakKey(key: string | null | undefined) {
   const leak = String(key || "").toLowerCase().trim();
   return leak === "no_holdings" || leak === "concentration_high" || leak === "concentration_med" || leak === "pricing_low" || leak === "valuation_zero";
-}
-
-function hasBrokerConnectionEvidenceLite(raw: Record<string, unknown>) {
-  const method = String(raw.connectionMethod || "none").toLowerCase().trim();
-  const ref = String(raw.connectionReference || "").trim();
-  const csvImported = Boolean(raw.csvImported);
-  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ref);
-  if (!ref || isEmail) return false;
-
-  if (method === "api") return /^api_[a-zA-Z0-9_-]{12,}$/.test(ref) || /^key_[a-zA-Z0-9_-]{12,}$/.test(ref);
-  if (method === "oauth") return /^oauth_[a-zA-Z0-9_-]{8,}$/.test(ref);
-  if (method === "csv") return csvImported && /\.(csv|tsv)$/i.test(ref);
-  return false;
-}
-
-function readBrokerPrefs(): BrokerPrefsLite | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(BROKER_PREFS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<BrokerPrefsLite> & Record<string, unknown>;
-    if (!parsed || typeof parsed !== "object") return null;
-    const connectionReady = hasBrokerConnectionEvidenceLite(parsed);
-    return {
-      connected: Boolean(parsed.connected) && connectionReady,
-      broker: String(parsed.broker || "unknown"),
-      autoSync: Boolean(parsed.autoSync),
-      syncEveryMinutes: Number(parsed.syncEveryMinutes || 15),
-      readOnly: parsed.readOnly !== false,
-      lastSyncAt: parsed.lastSyncAt ? String(parsed.lastSyncAt) : null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function applyServerBrokerStatus(local: BrokerPrefsLite | null, status: BrokerStatusLite | null): BrokerPrefsLite | null {
-  if (!status || typeof status !== "object") return local;
-  const next: BrokerPrefsLite = {
-    connected: Boolean(status.connected),
-    broker: String(status.broker || status.provider || local?.broker || "unknown"),
-    autoSync: typeof status.autoSync === "boolean" ? status.autoSync : Boolean(local?.autoSync),
-    syncEveryMinutes:
-      typeof status.syncEveryMinutes === "number"
-        ? Math.max(5, Number(status.syncEveryMinutes || 15))
-        : Math.max(5, Number(local?.syncEveryMinutes || 15)),
-    readOnly: typeof status.readOnly === "boolean" ? status.readOnly : local?.readOnly !== false,
-    lastSyncAt: status.lastSyncAt != null ? status.lastSyncAt : local?.lastSyncAt || null,
-  };
-  return next;
-}
-
-function mergeBrokerStatusIntoLocalStorage(status: BrokerStatusLite) {
-  if (typeof window === "undefined") return;
-  try {
-    const raw = window.localStorage.getItem(BROKER_PREFS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-    const method = String(status.connectionMethod || parsed.connectionMethod || "none").toLowerCase().trim() as BrokerConnectionMethod;
-    const next: Record<string, unknown> = {
-      ...parsed,
-      connected: Boolean(status.connected),
-      broker: String(status.broker || status.provider || parsed.broker || "interactive_brokers"),
-      autoSync: typeof status.autoSync === "boolean" ? status.autoSync : Boolean(parsed.autoSync),
-      syncEveryMinutes:
-        typeof status.syncEveryMinutes === "number"
-          ? Math.max(5, Number(status.syncEveryMinutes || 15))
-          : Math.max(5, Number(parsed.syncEveryMinutes || 15)),
-      readOnly: typeof status.readOnly === "boolean" ? status.readOnly : parsed.readOnly !== false,
-      lastSyncAt: status.lastSyncAt != null ? status.lastSyncAt : parsed.lastSyncAt || null,
-      connectionMethod: method,
-    };
-
-    const ref = String(next.connectionReference || "");
-    if (Boolean(status.connected) && !ref.trim()) {
-      next.connectionReference = serverReferencePlaceholder(method);
-      if (method === "csv") next.csvImported = true;
-    }
-    window.localStorage.setItem(BROKER_PREFS_KEY, JSON.stringify(next));
-  } catch {
-    // ignore
-  }
 }
 
 function ReceiptModal({ receipt, onClose }: { receipt: Receipt | null; onClose: () => void }) {
@@ -431,8 +324,8 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
 
   const [markingDone, setMarkingDone] = useState(false);
   const [applyingStarter, setApplyingStarter] = useState(false);
+  const [submittingPaper, setSubmittingPaper] = useState(false);
   const [starterBudget, setStarterBudget] = useState<number>(() => defaultStarterBudget(autopilotMode));
-  const [brokerPrefs, setBrokerPrefs] = useState<BrokerPrefsLite | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -448,33 +341,6 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     const t = setTimeout(() => setToast(null), 2500);
     return () => clearTimeout(t);
   }, [toast]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const syncLocal = async () => {
-      let next = readBrokerPrefs();
-      try {
-        const status = await fetchJSON("/api/broker/status", { method: "GET" });
-        if (status.ok) {
-          const data = (status.data || {}) as BrokerStatusLite;
-          mergeBrokerStatusIntoLocalStorage(data);
-          next = applyServerBrokerStatus(next, data);
-          if (data.status === "error" && (data.lastError || data.message)) {
-            setToast(String(data.lastError || data.message));
-          }
-        }
-      } catch {
-        // non-blocking
-      }
-      setBrokerPrefs(next);
-    };
-    void syncLocal();
-    const onFocus = () => {
-      void syncLocal();
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, []);
 
   useEffect(() => {
     setStarterBudget(readStarterBudget(autopilotMode));
@@ -536,41 +402,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     track("daily_view", { mode: autopilotMode, isPaid });
   }, [autopilotMode, isPaid]);
 
-  const brokerConnected = Boolean(brokerPrefs?.connected);
-  const brokerAutoSync = Boolean(brokerPrefs?.autoSync);
-  const brokerSyncEveryMinutes = Math.max(5, Number(brokerPrefs?.syncEveryMinutes || 15));
-  const brokerName = String(brokerPrefs?.broker || "unknown");
-
-  useEffect(() => {
-    if (!brokerConnected || !brokerAutoSync) return;
-    const mins = brokerSyncEveryMinutes;
-    const timer = setInterval(async () => {
-      try {
-        const sync = await fetchJSON("/api/broker/sync", {
-          method: "POST",
-          body: JSON.stringify({ mode: autopilotMode }),
-        });
-        if (sync.ok) {
-          const data = (sync.data || {}) as BrokerStatusLite;
-          mergeBrokerStatusIntoLocalStorage(data);
-          setBrokerPrefs((prev) => applyServerBrokerStatus(prev, data));
-          const r = await fetchJSON(dailyBundleUrl, { method: "GET" });
-          if (r.ok) {
-            setBundle(r.data);
-            setError(null);
-          }
-          track("daily_auto_sync_tick", {
-            mode: autopilotMode,
-            broker: brokerName,
-            syncEveryMinutes: mins,
-          });
-        }
-      } catch {
-        // keep silent during background sync
-      }
-    }, mins * 60 * 1000);
-    return () => clearInterval(timer);
-  }, [autopilotMode, brokerAutoSync, brokerConnected, brokerName, brokerSyncEveryMinutes, dailyBundleUrl]);
+  // Investing deliberately has no dependency on the shared Trading/Broker sync loop.
 
   const plan = useMemo(() => bundle?.plan ?? null, [bundle]);
   const portfolio = useMemo<Record<string, any>>(() => {
@@ -585,10 +417,23 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     const next = bundle?.daily;
     return next && typeof next === "object" ? next : {};
   }, [bundle]);
+  const executionQueue = daily?.execution?.queue && typeof daily.execution.queue === "object" ? daily.execution.queue : null;
+  const proposalRetryRequired = ["blocked", "submission_failed", "reconciliation_failed"].includes(
+    String(executionQueue?.operational_state || "").toLowerCase(),
+  );
+  const paperSubmissionReady =
+    String(executionQueue?.operational_state || "").toLowerCase() === "approved" &&
+    String(executionQueue?.approval_status || "").toLowerCase() === "approved";
+  const paperOrderSymbol = String(
+    (Array.isArray(daily?.investingEngine?.rebalance?.actions) ? daily.investingEngine.rebalance.actions : []).find(
+      (action: any) => (action?.action === "buy" || action?.action === "sell") && action?.symbol,
+    )?.symbol || "",
+  ).toUpperCase();
 
   const holdings = Array.isArray(portfolio?.items) ? portfolio.items : [];
   const hasPlan = typeof derived?.hasPlan === "boolean" ? Boolean(derived.hasPlan) : !!plan?.id || !!plan?.is_active || !!plan?.active;
   const hasHoldings = typeof derived?.hasHoldings === "boolean" ? Boolean(derived.hasHoldings) : holdings.length > 0;
+  const hasFundedPaperAccount = Boolean(portfolio?.accountId) && Number(portfolio?.cashEur || 0) > 0;
 
   const opportunities = useMemo(() => (Array.isArray(daily?.opportunities) ? daily.opportunities : []), [daily]);
   const starterPack = useMemo(() => (Array.isArray(daily?.starterPack) ? daily.starterPack : []), [daily]);
@@ -665,20 +510,20 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     try {
       setApplyingStarter(true);
 
-      const payloadItems = starterPack.map((x: any) => ({
-        symbol: String(x.symbol || "").toUpperCase(),
-        name: x.name ?? null,
-        qty: x.qty ?? null,
-        value_eur: x.value_eur ?? x.valueEur ?? null,
-      }));
-
-      const r = await fetchJSON("/api/portfolio-items/reset", {
+      const r = await fetchJSON("/api/investing/paper/accounts", {
         method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: payloadItems, source: "starter_pack" }),
+        body: JSON.stringify({
+          action: "open_paper_account",
+          portfolioId: "primary",
+          environment: "paper",
+          currency: "EUR",
+          initialDeposit: String(clampStarterBudget(starterBudget)),
+          clientRequestId: `paper-account-${new Date().toISOString().slice(0, 10)}`,
+        }),
       });
 
       if (!r.ok) {
-        setToast(r.data?.error || "Falhou a aplicar starter pack.");
+        setToast(r.data?.error || "Failed to open persistent Paper account.");
         return;
       }
 
@@ -687,7 +532,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         budgetEur: clampStarterBudget(starterBudget),
         source: starterPackMeta?.source || "unknown",
       });
-      setToast("Starter pack applied.");
+      setToast("Persistent Paper account funded. Submit proposals explicitly after review.");
       const appliedAt = new Date().toISOString();
       setOptimisticStarterWarmupAt(appliedAt);
       setBundle((prev: any) => applyOptimisticStarterWarmupToBundle(prev, appliedAt));
@@ -703,24 +548,14 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     try {
       setMarkingDone(true);
 
-      const snapshotPayload = {
-        ok: true,
-        asOf: new Date().toISOString(),
-        mode: autopilotMode,
-        daily: daily ?? {},
-        plan: plan ?? null,
-        portfolio: portfolio ?? {},
-        derived: derived ?? {},
-        decisionUi: {
-          stateReason: decisionView.stateReason,
-          action: decisionView.action,
-          stabilitySource: decisionView.stabilitySource,
-        },
-      };
-
-      const r1 = await fetchJSON("/api/daily-snapshot", {
+      const r1 = await fetchJSON("/api/investing/daily-cycle", {
         method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, snapshot: snapshotPayload }),
+        body: JSON.stringify({
+          action: "close_daily_loop",
+          portfolioId: "primary",
+          clientRequestId: `investing-close-${new Date().toISOString().slice(0, 10)}-${Number(executionQueue?.version || 0)}-${proposalRetryRequired ? "retry" : "initial"}`,
+          environment: "paper",
+        }),
       });
 
       if (!r1.ok) {
@@ -728,33 +563,12 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         return;
       }
 
-      const r2 = await fetchJSON("/api/journal/log", {
-        method: "POST",
-        body: JSON.stringify({
-          mode: autopilotMode,
-          type: "daily_done",
-          title: "Daily completed",
-          details: {
-            asOf: new Date().toISOString(),
-            mode: autopilotMode,
-            opportunitiesCount: opportunities.length,
-            hasPlan,
-            hasHoldings,
-            autopilotScore,
-            pressureScore,
-            topLeak: riskLeaks?.[0]?.title ?? null,
-            nba: nba?.title ?? null,
-          },
-        }),
-      });
-
       const receipt: Receipt = {
         id: tinyId(),
         at: new Date().toISOString(),
         mode: autopilotMode,
         items: [
-          { label: "Snapshot saved", status: "ok" },
-          { label: "Journal updated", status: r2.ok ? "ok" : "warn", detail: r2.ok ? undefined : "Journal failed (non-blocking)" },
+          { label: "Canonical cycle saved", status: "ok" },
           { label: "Discipline confirmed", status: "ok" },
           { label: "Safety Brain checked leaks", status: hasPlan && hasHoldings ? "ok" : "warn", detail: hasPlan && hasHoldings ? "OK" : "Setup incomplete" },
           { label: "Next best action executed", status: "ok", detail: nba?.title ? nba.title : "Closed day" },
@@ -767,6 +581,31 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       await loadBundle(false);
     } finally {
       setMarkingDone(false);
+    }
+  }
+
+  async function submitApprovedPaperOrder() {
+    if (submittingPaper || !paperSubmissionReady || !paperOrderSymbol || !executionQueue?.id) return;
+    try {
+      setSubmittingPaper(true);
+      const result = await fetchJSON("/api/investing/paper/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          queueId: String(executionQueue.id),
+          expectedQueueVersion: Number(executionQueue.version),
+          symbol: paperOrderSymbol,
+          clientRequestId: `paper-order-${String(executionQueue.id)}-${paperOrderSymbol}`,
+          environment: "paper",
+        }),
+      });
+      if (!result.ok) {
+        setToast(result.data?.error || "Paper order submission failed.");
+        return;
+      }
+      setToast(`${paperOrderSymbol} submitted to the persistent Paper worker.`);
+      await loadBundle(false);
+    } finally {
+      setSubmittingPaper(false);
     }
   }
 
@@ -796,6 +635,15 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       };
     }
     if (hasPlan && !hasHoldings) {
+      if (hasFundedPaperAccount) {
+        return {
+          title: "Create reviewed Paper proposal",
+          desc: "The persistent Paper account is funded. Persist the canonical cycle before any order is submitted.",
+          ctaLabel: "Create Paper proposal",
+          ctaHref: "",
+          kind: "primary" as const,
+        };
+      }
       return {
         title: "Add holdings to start compounding",
         desc: "Without holdings, the engine can't scan drift and risk leaks.",
@@ -805,6 +653,15 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       };
     }
     if (doneToday) {
+      if (proposalRetryRequired) {
+        return {
+          title: "Retry reviewed Paper proposal",
+          desc: "The previous proposal was blocked or failed before execution. Re-evaluate it under the current governance policy.",
+          ctaLabel: "Retry Paper proposal",
+          ctaHref: "",
+          kind: "primary" as const,
+        };
+      }
       return {
         title: "Done for today",
         desc: "Discipline confirmed. Come back tomorrow.",
@@ -820,9 +677,9 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       ctaHref: "",
       kind: "primary" as const,
     };
-  }, [nba, hasPlan, hasHoldings, doneToday, starterPack.length, autopilotMode]);
+  }, [nba, hasPlan, hasHoldings, hasFundedPaperAccount, doneToday, proposalRetryRequired, starterPack.length, autopilotMode]);
 
-  const canClose = !doneToday && hasPlan && hasHoldings;
+  const canClose = (!doneToday || proposalRetryRequired) && hasPlan && (hasHoldings || hasFundedPaperAccount);
 
   const topRiskLeak = riskLeaks?.[0] ?? null;
   const topLeakSeverity = (topRiskLeak?.severity as "high" | "med" | "low" | undefined) ?? null;
@@ -1121,58 +978,8 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     if (runningFixNow) return;
 
     setRunningFixNow(true);
-    try {
-      const r = await fetchJSON("/api/fix-now/run", {
-        method: "POST",
-        body: JSON.stringify({
-          mode: autopilotMode,
-          leakKey,
-          maxRounds: 4,
-          budgetEur: clampStarterBudget(starterBudget),
-        }),
-      });
-      if (!r.ok) {
-        setToast(String(r.data?.error || "Auto-fix failed."));
-        return;
-      }
-
-      const resolved = Boolean(r.data?.resolved);
-      const appliedRows = Number(r.data?.appliedRows || 0);
-      const rounds = Number(r.data?.rounds || 0);
-      const finalLeakKey = r.data?.finalLeakKey ? String(r.data.finalLeakKey) : null;
-      const nonAutoFixable = Boolean(r.data?.nonAutoFixable);
-
-      track("daily_fix_auto_run", {
-        mode: autopilotMode,
-        leakKey,
-        resolved,
-        appliedRows,
-        rounds,
-        finalLeakKey,
-        nonAutoFixable,
-      });
-
-      await loadBundle(false);
-
-      if (resolved) {
-        setShowFixRisk(false);
-        setToast(
-          rounds > 0
-            ? `FixNow resolved in ${rounds} round${rounds === 1 ? "" : "s"} (${appliedRows} updates).`
-            : "FixNow resolved."
-        );
-        return;
-      }
-
-      if (nonAutoFixable) {
-        setToast(`Auto-fix stopped: manual action required (${finalLeakKey || "unknown"}).`);
-        return;
-      }
-
-      setToast(`Auto-fix applied ${appliedRows} updates. Remaining leak: ${finalLeakKey || leakKey}.`);
-    } finally {
-      setRunningFixNow(false);
-    }
+    setToast("Automatic shared-portfolio writes are disabled. Review and submit a persistent Paper proposal explicitly.");
+    setRunningFixNow(false);
   }
 
   useEffect(() => {
@@ -1345,22 +1152,35 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
           href: decisionCtaOverride.href,
           variant: "primary" as const,
         }
-      : primary.ctaHref
-      ? {
-          label: primary.ctaLabel,
-          href: primary.ctaHref,
-          variant: primary.kind === "ghost" ? "secondary" : "primary",
-        }
-      : starterPack.length > 0 && hasPlan && !hasHoldings
+      : paperSubmissionReady && paperOrderSymbol
+        ? {
+            label: submittingPaper ? "Submitting to Paper..." : `Submit ${paperOrderSymbol} to Paper`,
+            onClick: submitApprovedPaperOrder,
+            disabled: submittingPaper,
+            variant: "primary" as const,
+          }
+      : starterPack.length > 0 && hasPlan && !hasHoldings && !hasFundedPaperAccount
         ? {
             label: applyingStarter ? "Applying..." : "Apply Starter Pack",
             onClick: handleApplyStarterPack,
             disabled: applyingStarter,
             variant: "primary" as const,
           }
+        : primary.ctaHref
+          ? {
+              label: primary.ctaLabel,
+              href: primary.ctaHref,
+              variant: primary.kind === "ghost" ? "secondary" : "primary",
+            }
         : canClose
           ? {
-              label: markingDone ? "Closing..." : "Close the day",
+              label: markingDone
+                ? "Saving..."
+                : proposalRetryRequired
+                  ? "Retry Paper proposal"
+                  : hasFundedPaperAccount && !hasHoldings
+                    ? "Create Paper proposal"
+                    : "Close the day",
               onClick: closeTheDay,
               disabled: markingDone,
               variant: "primary" as const,

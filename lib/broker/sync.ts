@@ -3,9 +3,9 @@ import { normalizeMode } from "@/lib/signalcore/modes";
 import type { BrokerConnection, BrokerPosition, BrokerSnapshot } from "@/lib/broker/shared";
 import { normalizeSymbol } from "@/lib/broker/shared";
 import { getQuotes } from "@/lib/market/quotes";
-import { reconcileInvestingIntentWithBroker } from "@/lib/investing/reconciliation";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { enforceModeAccess } from "@/lib/signalcore/access";
+import { assertSharedBrokerSyncAllowed } from "@/lib/broker/investingBoundary";
 
 type SyncLivePayload = {
   positions: BrokerPosition[];
@@ -399,6 +399,7 @@ export async function syncBrokerToPortfolio(args: {
   connection: BrokerConnection;
 }): Promise<{ snapshot: BrokerSnapshot; changes: { inserted: number; updated: number; deleted: number } }> {
   const mode = normalizeMode(args.mode);
+  assertSharedBrokerSyncAllowed(mode);
   const conn = args.connection;
 
   let live: SyncLivePayload;
@@ -453,8 +454,9 @@ export async function reconcileWithPortfolio(args: {
   mode: AutopilotMode;
   snapshot: BrokerSnapshot | null;
 }) {
-  const sb = getSupabaseAdmin();
   const mode = normalizeMode(args.mode);
+  assertSharedBrokerSyncAllowed(mode);
+  const sb = getSupabaseAdmin();
   const snapshot = args.snapshot;
   const checkedAt = new Date().toISOString();
   if (!snapshot) {
@@ -572,43 +574,6 @@ export async function reconcileWithPortfolio(args: {
     mismatchCount: mismatches.length,
     mismatches: mismatches.slice(0, 50),
   };
-
-  if (mode === "investing") {
-    try {
-      const intent = await reconcileInvestingIntentWithBroker({
-        userId: args.userId,
-        mode,
-        snapshot,
-      });
-      return {
-        ...baseResult,
-        investingIntent: intent,
-      };
-    } catch (error: any) {
-      return {
-        ...baseResult,
-        investingIntent: {
-          ok: false,
-          status: "critical",
-          score: 0,
-          checkedAt: new Date().toISOString(),
-          snapshotAsOf: snapshot.asOf,
-          intentAsOf: null,
-          brokerCount: brokerMap.size,
-          targetCount: 0,
-          mismatchCount: 1,
-          decisionFingerprint: null,
-          mismatches: [
-            {
-              type: "intent_reconcile_error",
-              symbol: "SYSTEM",
-              detail: String(error?.message || "investing_intent_reconcile_failed"),
-            },
-          ],
-        },
-      };
-    }
-  }
 
   return baseResult;
 }

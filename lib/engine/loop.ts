@@ -4,11 +4,16 @@ import { loadBrokerConnection, saveBrokerConnection } from "@/lib/broker/store";
 import { hasConnectionEvidence, normalizeBrokerConnection, type BrokerConnection } from "@/lib/broker/shared";
 import { reconcileWithPortfolio, resolveActiveModeForUser, syncBrokerToPortfolio } from "@/lib/broker/sync";
 import { createExecutionId, writeEngineEvent } from "@/lib/engine/events";
+import {
+  INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+  isInvestingSharedBrokerBlocked,
+  resolveEffectiveSharedBrokerMode,
+} from "@/lib/broker/investingBoundary";
 
 type EngineTarget = {
   userId: string;
   mode: AutopilotMode;
-  connection: BrokerConnection;
+  connection: BrokerConnection | null;
   due: boolean;
 };
 
@@ -157,7 +162,13 @@ async function listTargetsFromJournal(args: { limit: number; now: Date; force: b
     if (!connRaw || typeof connRaw !== "object") continue;
 
     const conn = normalizeBrokerConnection(connRaw, userId, "journal");
-    const mode = normalizeMode(row.mode || conn.snapshot?.mode || "investing");
+    const journalMode = normalizeMode(row.mode || conn.snapshot?.mode || "investing");
+    const effectiveMode = await resolveEffectiveSharedBrokerMode({
+      userId,
+      requestedMode: journalMode,
+      supabase: sb,
+    });
+    const mode = effectiveMode.mode;
     const due = isConnectionDue(conn, args.now, args.force);
     out.push({ userId, mode, connection: conn, due });
     seen.add(userId);
@@ -170,8 +181,18 @@ async function listTargetsFromJournal(args: { limit: number; now: Date; force: b
 async function listTargets(args: { limit: number; now: Date; force: boolean; userId?: string | null; mode?: string | null }) {
   if (args.userId) {
     const userId = String(args.userId).trim();
+    const effectiveMode = await resolveEffectiveSharedBrokerMode({
+      userId,
+      requestedMode: args.mode || null,
+    });
+    let mode = effectiveMode.mode;
+    if (!isInvestingSharedBrokerBlocked(mode)) {
+      mode = await resolveActiveModeForUser(userId, mode);
+    }
+    if (isInvestingSharedBrokerBlocked(mode)) {
+      return [{ userId, mode, connection: null, due: false }] as EngineTarget[];
+    }
     const conn = await loadBrokerConnection(userId);
-    const mode = await resolveActiveModeForUser(userId, args.mode || null);
     return [
       {
         userId,
@@ -232,6 +253,28 @@ export async function runEngineLoop(options?: EngineLoopOptions): Promise<Engine
   let skipped = 0;
 
   for (const t of targets) {
+    if (isInvestingSharedBrokerBlocked(t.mode)) {
+      skipped += 1;
+      rows.push({
+        userId: t.userId,
+        mode: t.mode,
+        status: "skipped",
+        reason: INVESTING_SHARED_BROKER_SYNC_BLOCKED,
+      });
+      continue;
+    }
+
+    if (!t.connection) {
+      skipped += 1;
+      rows.push({
+        userId: t.userId,
+        mode: t.mode,
+        status: "skipped",
+        reason: "broker_connection_missing",
+      });
+      continue;
+    }
+
     const executionId = createExecutionId("loop");
     const targetStartedAtMs = Date.now();
     if (!t.due) {

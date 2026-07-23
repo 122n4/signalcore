@@ -1,7 +1,26 @@
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { BrokerSnapshot } from "@/lib/broker/shared";
-import { normalizeSymbol } from "@/lib/broker/shared";
+import { normalizeInvestingSymbol } from "@/lib/investing/broker/symbols";
 import { createInvestingFingerprint } from "@/lib/investing/persistence";
+import type {
+  InvestingBrokerReconciliationState,
+  InvestingInternalReconciliationState,
+  InvestingReconciliationItem,
+  InvestingReconciliationResult,
+} from "@/lib/investing/reconciliation/types";
+
+export type InvestingBrokerPositionLike = {
+  symbol: string;
+  qty?: number | string | null;
+  valueEur?: number | string | null;
+};
+
+export type InvestingBrokerSnapshotLike = {
+  positions: InvestingBrokerPositionLike[];
+  cashEur?: number | string | null;
+  totalEur?: number | string | null;
+  asOf: string;
+  mode?: string | null;
+  source?: string | null;
+};
 
 type IntentTarget = {
   symbol: string;
@@ -39,7 +58,7 @@ function normalizeTargets(value: unknown): IntentTarget[] {
   return Array.isArray(value)
     ? value
         .map((entry) => {
-          const symbol = normalizeSymbol((entry as Record<string, unknown>)?.symbol);
+          const symbol = normalizeInvestingSymbol((entry as Record<string, unknown>)?.symbol);
           if (!symbol) return null;
           return {
             symbol,
@@ -56,7 +75,7 @@ function normalizeActions(value: unknown): IntentAction[] {
   return Array.isArray(value)
     ? value
         .map((entry) => {
-          const symbol = normalizeSymbol((entry as Record<string, unknown>)?.symbol);
+          const symbol = normalizeInvestingSymbol((entry as Record<string, unknown>)?.symbol);
           if (!symbol) return null;
           return {
             symbol,
@@ -67,8 +86,13 @@ function normalizeActions(value: unknown): IntentAction[] {
     : [];
 }
 
+function safeNumber(value: number | string | null | undefined, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export function reconcileBrokerSnapshotAgainstInvestingIntent(args: {
-  snapshot: BrokerSnapshot | null;
+  snapshot: InvestingBrokerSnapshotLike | null;
   targetPortfolio: unknown;
   rebalanceActions: unknown;
   decisionFingerprint?: string | null;
@@ -110,17 +134,18 @@ export function reconcileBrokerSnapshotAgainstInvestingIntent(args: {
 
   const actions = normalizeActions(args.rebalanceActions);
   const actionMap = new Map(actions.map((action) => [action.symbol, action.action] as const));
-  const brokerTotal = Math.max(args.snapshot.totalEur || 0, 1);
+  const brokerTotal = Math.max(safeNumber(args.snapshot.totalEur), 1);
   const brokerMap = new Map(
     (args.snapshot.positions || [])
       .map((position) => {
-        const symbol = normalizeSymbol(position.symbol);
+        const symbol = normalizeInvestingSymbol(position.symbol);
         if (!symbol) return null;
+        const valueEur = safeNumber(position.valueEur);
         return [
           symbol,
           {
-            weightPct: (((position.valueEur || 0) / brokerTotal) * 100),
-            valueEur: position.valueEur || 0,
+            weightPct: (valueEur / brokerTotal) * 100,
+            valueEur,
           },
         ] as const;
       })
@@ -217,9 +242,10 @@ export function buildInvestingReconciliationLedgerRow(args: {
 export async function reconcileInvestingIntentWithBroker(args: {
   userId: string;
   mode: string;
-  snapshot: BrokerSnapshot | null;
+  snapshot: InvestingBrokerSnapshotLike | null;
 }) {
-  const sb = getSupabaseAdmin();
+  const { getInvestingSupabaseAdmin } = await import("@/lib/investing/repository/admin");
+  const sb = getInvestingSupabaseAdmin();
   const { data, error } = await sb
     .from("investing_rebalance_ledger")
     .select("as_of,decision_fingerprint,target_portfolio,rebalance_actions")
@@ -232,13 +258,19 @@ export async function reconcileInvestingIntentWithBroker(args: {
   if (error) {
     throw new Error(error.message || "investing_rebalance_ledger_read_failed");
   }
+  const latest = (data ?? null) as {
+    as_of?: string | null;
+    decision_fingerprint?: string | null;
+    target_portfolio?: unknown;
+    rebalance_actions?: unknown;
+  } | null;
 
   const result = reconcileBrokerSnapshotAgainstInvestingIntent({
     snapshot: args.snapshot,
-    targetPortfolio: data?.target_portfolio ?? [],
-    rebalanceActions: data?.rebalance_actions ?? [],
-    decisionFingerprint: data?.decision_fingerprint ?? null,
-    intentAsOf: data?.as_of ?? null,
+    targetPortfolio: latest?.target_portfolio ?? [],
+    rebalanceActions: latest?.rebalance_actions ?? [],
+    decisionFingerprint: latest?.decision_fingerprint ?? null,
+    intentAsOf: latest?.as_of ?? null,
   });
 
   const row = buildInvestingReconciliationLedgerRow({
@@ -249,11 +281,146 @@ export async function reconcileInvestingIntentWithBroker(args: {
 
   const { error: upsertError } = await sb
     .from("investing_reconciliation_ledger")
-    .upsert(row, { onConflict: "user_id,mode,decision_fingerprint" } as any);
+    .upsert(row as any, { onConflict: "user_id,mode,decision_fingerprint" } as any);
 
   if (upsertError) {
     throw new Error(upsertError.message || "investing_reconciliation_ledger_upsert_failed");
   }
 
   return result;
+}
+
+function addReconciliationItem(
+  items: InvestingReconciliationItem[],
+  item: Omit<InvestingReconciliationItem, "detectedAt" | "resolutionStatus">,
+  checkedAt: string,
+) {
+  items.push({
+    ...item,
+    detectedAt: checkedAt,
+    resolutionStatus: "open",
+  });
+}
+
+function bySymbol<T extends { symbol: string }>(rows: T[]) {
+  return new Map(rows.map((row) => [normalizeInvestingSymbol(row.symbol), row] as const));
+}
+
+export function reconcileInvestingAccountingState(args: {
+  internal: InvestingInternalReconciliationState;
+  broker: InvestingBrokerReconciliationState;
+  decisionFingerprint?: string | null;
+}): InvestingReconciliationResult {
+  const checkedAt = new Date().toISOString();
+  const items: InvestingReconciliationItem[] = [];
+
+  const brokerCash = new Map(args.broker.cash.map((row) => [row.currency, row]));
+  for (const cash of args.internal.cash) {
+    const observed = brokerCash.get(cash.currency);
+    if (!observed || observed.settledAmount !== cash.settledAmount || observed.availableAmount !== cash.availableAmount) {
+      addReconciliationItem(
+        items,
+        {
+          type: "cash_mismatch",
+          severity: "material",
+          expected: cash,
+          observed: observed ?? null,
+          difference: { currency: cash.currency },
+        },
+        checkedAt,
+      );
+    }
+  }
+
+  const brokerPositions = bySymbol(args.broker.positions);
+  for (const position of args.internal.positions) {
+    const observed = brokerPositions.get(normalizeInvestingSymbol(position.symbol));
+    if (!observed || observed.quantity !== position.quantity || observed.marketValue !== position.marketValue) {
+      addReconciliationItem(
+        items,
+        {
+          type: "position_mismatch",
+          symbol: position.symbol,
+          severity: "material",
+          expected: position,
+          observed: observed ?? null,
+          difference: { quantity: position.quantity, marketValue: position.marketValue },
+        },
+        checkedAt,
+      );
+    }
+  }
+  for (const [symbol, observed] of brokerPositions) {
+    if (!args.internal.positions.some((position) => normalizeInvestingSymbol(position.symbol) === symbol)) {
+      addReconciliationItem(
+        items,
+        {
+          type: "orphan_position",
+          symbol,
+          severity: "warning",
+          expected: null,
+          observed,
+          difference: { symbol },
+        },
+        checkedAt,
+      );
+    }
+  }
+
+  const brokerFillKeys = new Set(args.broker.fills.map((fill) => `${fill.orderId}:${fill.fillId}`));
+  const internalFillKeys = new Set<string>();
+  for (const fill of args.internal.fills) {
+    const key = `${fill.orderId}:${fill.fillId}`;
+    if (internalFillKeys.has(key)) {
+      addReconciliationItem(
+        items,
+        { type: "duplicate_internal_fill", severity: "critical", expected: null, observed: fill, difference: key },
+        checkedAt,
+      );
+    }
+    internalFillKeys.add(key);
+    if (!brokerFillKeys.has(key)) {
+      addReconciliationItem(
+        items,
+        { type: "missing_broker_fill", severity: "material", expected: fill, observed: null, difference: key },
+        checkedAt,
+      );
+    }
+  }
+  for (const fill of args.broker.fills) {
+    const key = `${fill.orderId}:${fill.fillId}`;
+    if (!internalFillKeys.has(key)) {
+      addReconciliationItem(
+        items,
+        { type: "orphan_broker_fill", severity: "material", expected: null, observed: fill, difference: key },
+        checkedAt,
+      );
+    }
+  }
+
+  if (!args.internal.ledgerBalanced) {
+    addReconciliationItem(
+      items,
+      { type: "ledger_not_balanced", severity: "critical", expected: true, observed: false, difference: "ledger" },
+      checkedAt,
+    );
+  }
+
+  const counts = {
+    informational: items.filter((item) => item.severity === "informational").length,
+    warning: items.filter((item) => item.severity === "warning").length,
+    material: items.filter((item) => item.severity === "material").length,
+    critical: items.filter((item) => item.severity === "critical").length,
+  };
+  const status = counts.critical > 0 || counts.material > 0 ? "failed" : counts.warning > 0 ? "warning" : "passed";
+  const score = Math.max(0, 100 - counts.warning * 5 - counts.material * 20 - counts.critical * 40);
+  return {
+    ok: status === "passed",
+    status,
+    score,
+    checkedAt,
+    decisionFingerprint: args.decisionFingerprint ?? null,
+    items,
+    counts,
+  };
 }
