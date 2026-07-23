@@ -7,9 +7,16 @@
 - Decisão independente R5: `accepted`.
 - Branch de origem: `fix/canonical-paper-lifecycle`.
 - HEAD de origem: `bcc72bc6aed514565b83f6b49b50aec98c316f46` (`fix: degrade investing ops when audit schema is missing`).
-- Futuro commit do checkpoint: `<PENDENTE — preencher apenas depois de autorização explícita e criação do commit>`.
+- Checkpoint completo: `0728878c6f4b2e2b44977ee390b84bef5fab0707`.
+- Checkpoint curto: `0728878`.
+- Commit corretivo de reprodutibilidade: `<PENDENTE>`.
+- Commit base efetivo da FASE 4C: `<PENDENTE>`.
 - A FASE 4C não foi iniciada.
 - Este documento não autoriza staging, commit, push, merge, rebase, deploy ou qualquer operação Live.
+
+## Nota de reprodutibilidade do checkpoint
+
+Uma validação do checkpoint aceite num worktree limpo revelou uma dependência não hermética do teste `tradingMarketDataBackfill` em `Data/historical` local e untracked, além de cinco diagnósticos ESLint em código já coberto pelo checkpoint. A correção de reprodutibilidade isola os dados do teste com fixtures temporários e aplica apenas os ajustes ESLint diagnosticados, sem alterar a lógica funcional do backfill. Estes problemas de validação não invalidam a decisão independente `accepted` da FASE 4B.
 
 ## Invariantes aprovadas
 
