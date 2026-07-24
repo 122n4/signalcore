@@ -7,6 +7,11 @@ const PHASE4C_QA_CONSUMERS = new Set([
   path.resolve(process.cwd(), "scripts/qa/investingEnginePhase4CIntegrityScanner.ts"),
   path.resolve(process.cwd(), "scripts/qa/runInvestingEnginePhase4CIntegrityScan.ts"),
 ]);
+const PHASE5A_INTERNAL_CONSUMERS = new Set([
+  path.resolve(process.cwd(), "lib/investing/application/boundary.ts"),
+  path.resolve(process.cwd(), "lib/investing/application/factory.server.ts"),
+  path.resolve(process.cwd(), "lib/investing/application/ports.ts"),
+]);
 function files(directory: string): string[] { return readdirSync(directory).flatMap((name) => { const target = path.join(directory, name); return statSync(target).isDirectory() ? files(target) : target.endsWith(".ts") ? [target] : []; }); }
 
 describe("FASE 4B architectural isolation", () => {
@@ -24,6 +29,7 @@ describe("FASE 4B architectural isolation", () => {
     const consumers = roots.flatMap(files).filter((file) =>
       !file.startsWith(ROOT)
       && !PHASE4C_QA_CONSUMERS.has(file)
+      && !PHASE5A_INTERNAL_CONSUMERS.has(file)
       && readFileSync(file, "utf8").includes("investing/engine/v1/persistence"));
     expect(consumers).toEqual([]);
   });

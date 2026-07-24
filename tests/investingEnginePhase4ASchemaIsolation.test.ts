@@ -20,6 +20,11 @@ const PHASE4C_QA_CONSUMERS = new Set([
   path.resolve(process.cwd(), "scripts/qa/investingEnginePhase4CIntegrityScanner.ts"),
   path.resolve(process.cwd(), "scripts/qa/runInvestingEnginePhase4CIntegrityScan.ts"),
 ]);
+const PHASE5A_INTERNAL_CONSUMERS = new Set([
+  path.resolve(process.cwd(), "lib/investing/application/boundary.ts"),
+  path.resolve(process.cwd(), "lib/investing/application/factory.server.ts"),
+  path.resolve(process.cwd(), "lib/investing/application/ports.ts"),
+]);
 
 function sourceFiles(directory: string): string[] {
   if (!existsSync(directory)) return [];
@@ -102,6 +107,7 @@ describe("FASE 4A persistence schema isolation", () => {
     const consumers = roots.flatMap(sourceFiles).filter((file) => {
       if (file.startsWith(PERSISTENCE_ROOT)) return false;
       if (PHASE4C_QA_CONSUMERS.has(file)) return false;
+      if (PHASE5A_INTERNAL_CONSUMERS.has(file)) return false;
       return readFileSync(file, "utf8").includes("investing/engine/v1/persistence");
     });
     expect(consumers).toEqual([]);

@@ -136,6 +136,7 @@ function instrumentModel(symbol: string, overrides: Partial<ConstructionInstrume
 export type Phase3FFixtureArgs = {
   userId?: string;
   accountId?: string;
+  portfolioId?: string;
   runId?: string;
   cash?: string;
   positions?: readonly InvestingPositionSourceV1[];
@@ -177,6 +178,7 @@ export function resealPhase3FRequest(
 export function buildPhase3FSources(args: Phase3FFixtureArgs = {}): InvestingEnginePhase3FSourcesV1 {
   const userId = args.userId ?? "user_phase3f_1";
   const accountId = args.accountId ?? "account_phase3f_1";
+  const portfolioId = args.portfolioId ?? "primary";
   const runId = args.runId ?? "run_phase3f_1";
   const snapshot = market(args.omitMarket);
   const cash = args.cash ?? "1000";
@@ -190,7 +192,7 @@ export function buildPhase3FSources(args: Phase3FFixtureArgs = {}): InvestingEng
     accounts: [{
       accountId,
       userId,
-      portfolioId: "primary",
+      portfolioId,
       environment: "paper",
       status: "active",
       baseCurrency: "EUR",
