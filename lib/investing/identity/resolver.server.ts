@@ -1,0 +1,127 @@
+import "server-only";
+
+import {
+  INVESTING_IDENTITY_CONTEXT_VERSION,
+  INVESTING_IDENTITY_PERMISSIONS,
+  type InvestingIdentityOperationV1,
+  type InvestingIdentityPermissionV1,
+  type ResolvedInvestingIdentityContextV1,
+} from "@/lib/investing/identity/contracts";
+import { identityResolutionError } from "@/lib/investing/identity/errors";
+import type {
+  InvestingAuthenticatedSessionPortV1,
+  InvestingScopeDirectoryPortV1,
+  InvestingTenantMembershipV1,
+} from "@/lib/investing/identity/ports";
+
+const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,191}$/u;
+
+const REQUIRED_PERMISSION: Readonly<
+  Record<InvestingIdentityOperationV1, InvestingIdentityPermissionV1>
+> = {
+  create_canonical_run: "investing:create",
+  get_run: "investing:read",
+  get_latest_run: "investing:read",
+  verify_run: "investing:verify",
+  replay_run: "investing:replay",
+};
+
+function identifier(value: unknown): value is string {
+  return typeof value === "string" && IDENTIFIER.test(value);
+}
+
+function validMembership(
+  membership: InvestingTenantMembershipV1,
+  authenticatedUserId: string,
+  permission: InvestingIdentityPermissionV1,
+) {
+  return Boolean(
+    membership
+    && membership.status === "active"
+    && membership.authenticatedUserId === authenticatedUserId
+    && identifier(membership.membershipId)
+    && identifier(membership.ownerId)
+    && identifier(membership.tenantId)
+    && identifier(membership.role)
+    && Array.isArray(membership.permissions)
+    && membership.permissions.every((entry) =>
+      INVESTING_IDENTITY_PERMISSIONS.includes(entry))
+    && (
+      membership.permissions.includes(permission)
+      || membership.permissions.includes("investing:*")
+    )
+  );
+}
+
+export class InvestingIdentityScopeResolverV1 {
+  constructor(
+    private readonly session: InvestingAuthenticatedSessionPortV1,
+    private readonly directory: InvestingScopeDirectoryPortV1,
+  ) {}
+
+  async resolve(
+    operation: InvestingIdentityOperationV1,
+  ): Promise<ResolvedInvestingIdentityContextV1> {
+    const permission = REQUIRED_PERMISSION[operation];
+    if (!permission) identityResolutionError();
+
+    let session;
+    let memberships;
+    try {
+      session = await this.session.resolve();
+      if (
+        !session
+        || !identifier(session.authenticatedUserId)
+        || !identifier(session.requestId)
+      ) {
+        identityResolutionError();
+      }
+      memberships = await this.directory.findMemberships(
+        session.authenticatedUserId,
+      );
+    } catch (error) {
+      identityResolutionError(error);
+    }
+    if (!Array.isArray(memberships)) identityResolutionError();
+
+    const authorizedMemberships = memberships.filter((membership) =>
+      validMembership(membership, session.authenticatedUserId, permission));
+    if (authorizedMemberships.length !== 1) identityResolutionError();
+    const membership = authorizedMemberships[0];
+
+    let portfolios;
+    try {
+      portfolios = await this.directory.findPortfolios({
+        authenticatedUserId: session.authenticatedUserId,
+        ownerId: membership.ownerId,
+        tenantId: membership.tenantId,
+      });
+    } catch (error) {
+      identityResolutionError(error);
+    }
+    if (!Array.isArray(portfolios)) identityResolutionError();
+
+    const allowed = portfolios.filter((portfolio) =>
+      portfolio
+      && portfolio.status === "active"
+      && portfolio.investingEnabled === true
+      && portfolio.ownerId === membership.ownerId
+      && portfolio.tenantId === membership.tenantId
+      && identifier(portfolio.portfolioId)
+      && identifier(portfolio.accountId));
+    if (allowed.length !== 1) identityResolutionError();
+    const portfolio = allowed[0];
+
+    return {
+      contractVersion: INVESTING_IDENTITY_CONTEXT_VERSION,
+      authenticatedUserId: session.authenticatedUserId,
+      ownerId: membership.ownerId,
+      tenantId: membership.tenantId,
+      portfolioId: portfolio.portfolioId,
+      accountId: portfolio.accountId,
+      role: membership.role,
+      permissions: [...membership.permissions],
+      requestId: session.requestId,
+    };
+  }
+}

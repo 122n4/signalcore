@@ -13,6 +13,11 @@ function files(root: string): string[] {
 const repositoryRoot = process.cwd();
 const applicationRoot = path.join(repositoryRoot, "lib", "investing", "application");
 const applicationFiles = files(applicationRoot);
+const phase5BInternalConsumers = new Set([
+  path.join(repositoryRoot, "lib", "investing", "identity", "contracts.ts"),
+  path.join(repositoryRoot, "lib", "investing", "identity", "gateway.server.ts"),
+  path.join(repositoryRoot, "lib", "investing", "identity", "ports.ts"),
+]);
 const applicationSource = applicationFiles
   .map((file) => readFileSync(file, "utf8"))
   .join("\n");
@@ -163,6 +168,7 @@ describe("FASE 5A application boundary isolation", () => {
     const callers = roots
       .flatMap(files)
       .filter((file) => !file.startsWith(applicationRoot))
+      .filter((file) => !phase5BInternalConsumers.has(file))
       .filter((file) => /\.(?:ts|tsx|js|mjs|cjs)$/u.test(file))
       .filter((file) => {
         const source = readFileSync(file, "utf8");
