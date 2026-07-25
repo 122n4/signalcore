@@ -61,19 +61,22 @@ describe("Investing FASE 5B server-only isolation", () => {
     }
   });
 
-  it("has zero operational callers and no Phase 5C surface", () => {
-    const allowed = new Set(files(identityRoot).map((file) => path.resolve(file)));
+  it("allows only the controlled internal Phase 5C Paper caller", () => {
+    const paperCallerRoot = path.join(root, "lib", "investing", "paper-caller");
+    const identityFiles = new Set(files(identityRoot).map((file) => path.resolve(file)));
+    const allowed = new Set(files(paperCallerRoot).map((file) => path.resolve(file)));
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))
       .flatMap(files)
       .filter((file) => /\.[cm]?[jt]sx?$/u.test(file))
-      .filter((file) => !allowed.has(path.resolve(file)));
+      .filter((file) => !identityFiles.has(path.resolve(file)));
     const callers = candidates.filter((file) => {
       const source = readFileSync(file, "utf8");
       return source.includes("investing/identity")
         || source.includes("createInvestingIdentityGatewayV1");
     });
-    expect(callers).toEqual([]);
+    expect(callers.length).toBeGreaterThan(0);
+    callers.forEach((file) => expect(allowed.has(path.resolve(file))).toBe(true));
   });
 
   it("contains no SQL, environment access or alternate engine service", () => {

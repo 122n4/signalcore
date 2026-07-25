@@ -17,6 +17,8 @@ const phase5BInternalConsumers = new Set([
   path.join(repositoryRoot, "lib", "investing", "identity", "contracts.ts"),
   path.join(repositoryRoot, "lib", "investing", "identity", "gateway.server.ts"),
   path.join(repositoryRoot, "lib", "investing", "identity", "ports.ts"),
+  path.join(repositoryRoot, "lib", "investing", "paper-caller", "caller.server.ts"),
+  path.join(repositoryRoot, "lib", "investing", "paper-caller", "contracts.ts"),
 ]);
 const applicationSource = applicationFiles
   .map((file) => readFileSync(file, "utf8"))
@@ -155,7 +157,7 @@ describe("FASE 5A application boundary isolation", () => {
     expect(applicationSource).toContain("InvestingEngineReplayServiceV1");
   });
 
-  it("has no product, API, UI, cron, queue, worker, broker or provider caller", () => {
+  it("has only the approved 5B and controlled 5C internal callers", () => {
     const roots = ["app", "components", "lib", "scripts"]
       .map((root) => path.join(repositoryRoot, root))
       .filter((root) => {
