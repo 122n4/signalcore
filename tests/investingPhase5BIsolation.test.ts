@@ -61,10 +61,19 @@ describe("Investing FASE 5B server-only isolation", () => {
     }
   });
 
-  it("allows only the controlled internal Phase 5C Paper caller", () => {
+  it("allows only the controlled internal Phase 5C and 5D consumers", () => {
     const paperCallerRoot = path.join(root, "lib", "investing", "paper-caller");
     const identityFiles = new Set(files(identityRoot).map((file) => path.resolve(file)));
-    const allowed = new Set(files(paperCallerRoot).map((file) => path.resolve(file)));
+    const allowed = new Set([
+      ...files(paperCallerRoot).map((file) => path.resolve(file)),
+      ...[
+        "adapter.server.ts",
+        "contracts.ts",
+        "factory.server.ts",
+        "ports.ts",
+        "service.server.ts",
+      ].map((name) => path.resolve(root, "lib", "investing", "ops", name)),
+    ]);
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))
       .flatMap(files)
