@@ -14,6 +14,19 @@ function files(directory: string): string[] {
 }
 
 describe("Investing FASE 5B server-only isolation", () => {
+  const infrastructureRoot = path.join(identityRoot, "infrastructure");
+  const approvedInfrastructure = new Set([
+    "clerkSession.server.ts",
+    "factory.server.ts",
+    "postgresDirectory.server.ts",
+    "server.ts",
+  ].map((name) => path.resolve(infrastructureRoot, name)));
+  const approvedInfrastructureWithSqlOrEnvironment = new Set([
+    "factory.server.ts",
+    "postgresDirectory.server.ts",
+    "server.ts",
+  ].map((name) => path.resolve(infrastructureRoot, name)));
+
   it("keeps the neutral entrypoint limited to contracts and errors", () => {
     const index = readFileSync(path.join(identityRoot, "index.ts"), "utf8");
     expect(index).toContain("identity/contracts");
@@ -52,6 +65,7 @@ describe("Investing FASE 5B server-only isolation", () => {
       "investing/identity/factory.server",
       "investing/identity/resolver.server",
       "investing/identity/gateway.server",
+      "investing/identity/infrastructure",
       "investing/application/server",
       "investing/engine/v1/persistence",
     ];
@@ -89,7 +103,13 @@ describe("Investing FASE 5B server-only isolation", () => {
   });
 
   it("contains no SQL, environment access or alternate engine service", () => {
+    const infrastructureFiles = files(infrastructureRoot)
+      .map((file) => path.resolve(file));
+    expect(new Set(infrastructureFiles)).toEqual(approvedInfrastructure);
+
     const implementation = files(identityRoot)
+      .filter((file) =>
+        !approvedInfrastructureWithSqlOrEnvironment.has(path.resolve(file)))
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
     expect(implementation).not.toMatch(
@@ -98,5 +118,10 @@ describe("Investing FASE 5B server-only isolation", () => {
     expect(implementation).not.toMatch(
       /new InvestingEngine|PostgresInvesting|canonicalize|VerifierV1|ReplayServiceV1/u,
     );
+
+    for (const file of infrastructureFiles) {
+      expect(readFileSync(file, "utf8").startsWith('import "server-only";'))
+        .toBe(true);
+    }
   });
 });
