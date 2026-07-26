@@ -62,20 +62,25 @@ describe("Investing FASE 5D OPS isolation", () => {
     );
   });
 
-  it("has zero public, UI, cron, queue, worker, PM2, broker or provider callers", () => {
-    const allowed = new Set(files(opsRoot).map((file) => path.resolve(file)));
+  it("allows only the literal 5E-R UI consumers outside OPS", () => {
+    const opsFiles = new Set(files(opsRoot).map((file) => path.resolve(file)));
+    const allowed = new Set([
+      path.resolve(root, "lib/investing/ui/presenter.ts"),
+      path.resolve(root, "lib/investing/ui/server/loader.server.ts"),
+      path.resolve(root, "lib/investing/ui/server/runtime.server.ts"),
+    ]);
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))
       .flatMap(files)
       .filter((file) => /\.[cm]?[jt]sx?$/u.test(file))
-      .filter((file) => !allowed.has(path.resolve(file)));
+      .filter((file) => !opsFiles.has(path.resolve(file)));
     const callers = candidates.filter((file) => {
       const source = readFileSync(file, "utf8");
       return source.includes("investing/ops/")
         || source.includes('from "@/lib/investing/ops"')
         || source.includes("createInvestingOpsServiceV1");
     });
-    expect(callers).toEqual([]);
+    expect(new Set(callers.map((file) => path.resolve(file)))).toEqual(allowed);
   });
 
   it("has no Client Component path and no Trading Paper mixture", () => {
