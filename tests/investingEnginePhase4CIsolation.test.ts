@@ -10,6 +10,10 @@ const cliPath = path.resolve(
   process.cwd(),
   "scripts/qa/runInvestingEnginePhase4CIntegrityScan.ts",
 );
+const runtimeScannerPath = path.resolve(
+  process.cwd(),
+  "lib/investing/engine/v1/integrity/scanner.server.ts",
+);
 
 describe("FASE 4C QA isolation", () => {
   it("keeps the scanner outside product exports and operational callers", () => {
@@ -32,11 +36,13 @@ describe("FASE 4C QA isolation", () => {
   });
 
   it("contains no mutation statements in scanner SQL", () => {
-    const scanner = readFileSync(scannerPath, "utf8").toLowerCase();
+    const scanner = readFileSync(runtimeScannerPath, "utf8").toLowerCase();
     for (const statement of ["insert into", "update public.", "delete from", "truncate ", "alter table"]) {
       expect(scanner).not.toContain(statement);
     }
     expect(scanner).toContain("repeatable read read only");
     expect(scanner).toContain("transaction_read_only");
+    expect(readFileSync(scannerPath, "utf8"))
+      .toContain("@/lib/investing/engine/v1/integrity/scanner.server");
   });
 });

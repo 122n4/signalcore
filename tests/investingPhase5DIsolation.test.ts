@@ -4,6 +4,15 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 const opsRoot = path.join(root, "lib", "investing", "ops");
+const infrastructureRoot = path.join(opsRoot, "infrastructure");
+const phase5drInfrastructure = new Set([
+  "factory.server.ts",
+  "postgresReadModel.server.ts",
+  "projections.server.ts",
+  "scopedPersistence.server.ts",
+  "server.ts",
+  "softBudget.server.ts",
+].map((name) => path.resolve(infrastructureRoot, name)));
 
 function files(directory: string): string[] {
   if (!existsSync(directory)) return [];
@@ -39,7 +48,12 @@ describe("Investing FASE 5D OPS isolation", () => {
   });
 
   it("contains no SQL, mutation, alternate engine machinery or Paper caller", () => {
-    const source = files(opsRoot).map((file) => readFileSync(file, "utf8")).join("\n");
+    expect(new Set(files(infrastructureRoot).map((file) => path.resolve(file))))
+      .toEqual(phase5drInfrastructure);
+    const source = files(opsRoot)
+      .filter((file) => !phase5drInfrastructure.has(path.resolve(file)))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     expect(source).not.toMatch(
       /\b(select|insert|update|delete|upsert|truncate)\b|process\.env|new Pool|createClient/u,
     );

@@ -87,6 +87,9 @@ describe("Investing FASE 5B server-only isolation", () => {
         "ports.ts",
         "service.server.ts",
       ].map((name) => path.resolve(root, "lib", "investing", "ops", name)),
+      path.resolve(root, "lib", "investing", "ops", "infrastructure", "factory.server.ts"),
+      path.resolve(root, "lib", "investing", "ops", "infrastructure", "postgresReadModel.server.ts"),
+      path.resolve(root, "lib", "investing", "ops", "infrastructure", "projections.server.ts"),
     ]);
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))

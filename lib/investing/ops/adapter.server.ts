@@ -21,6 +21,16 @@ export type InvestingOpsOfficialServicesAdapterDependenciesV1 = Readonly<{
   replay: InvestingOpsReplayProjectionPortV1;
 }>;
 
+export type InvestingOpsOperationBudgetV1 = Readonly<{
+  remainingMs(): number;
+  expired(): boolean;
+}>;
+
+const unboundedBudget: InvestingOpsOperationBudgetV1 = {
+  remainingMs: () => Number.MAX_SAFE_INTEGER,
+  expired: () => false,
+};
+
 export type InvestingOpsInspectedDatasetV1 = Readonly<{
   source: InvestingOpsReadDatasetV1;
   runs: readonly InvestingOpsRunV1[];
@@ -51,29 +61,52 @@ function assertScope(
 export class InvestingOpsOfficialServicesAdapterV1 {
   constructor(
     private readonly dependencies: InvestingOpsOfficialServicesAdapterDependenciesV1,
+    private readonly budget: InvestingOpsOperationBudgetV1 = unboundedBudget,
   ) {}
+
+  private assertBudget(): void {
+    if (this.budget.expired()) throw new Error("investing_ops_budget_expired");
+  }
 
   async inspect(
     scope: ResolvedInvestingIdentityContextV1,
   ): Promise<InvestingOpsInspectedDatasetV1> {
+    this.assertBudget();
     const source = await this.dependencies.readModel.readScope(scope);
+    this.assertBudget();
     assertScope(scope, source);
     const ordered = [...source.runs].sort((left, right) =>
       right.asOf.localeCompare(left.asOf) || left.runId.localeCompare(right.runId));
+    this.assertBudget();
     const integrity = await this.dependencies.integrity.inspectScope(scope);
-    const runs = await Promise.all(ordered.map(async (run): Promise<InvestingOpsRunV1> => ({
-      runId: run.runId,
-      asOf: run.asOf,
-      state: run.state,
-      quality: run.quality,
-      requestOutcome: run.requestOutcome,
-      reasonCode: run.reasonCode,
-      integrity,
-      verifier: await this.dependencies.verifier.inspectRun({ scope, runId: run.runId }),
-      replay: await this.dependencies.replay.inspectRun({ scope, runId: run.runId }),
-      idempotencyConflict: run.idempotencyConflict,
-      ambiguousCommitRecovery: run.ambiguousCommitRecovery,
-    })));
+    this.assertBudget();
+    const runs: InvestingOpsRunV1[] = [];
+    for (const run of ordered) {
+      this.assertBudget();
+      const verifier = await this.dependencies.verifier.inspectRun({
+        scope,
+        runId: run.runId,
+      });
+      this.assertBudget();
+      const replay = await this.dependencies.replay.inspectRun({
+        scope,
+        runId: run.runId,
+      });
+      this.assertBudget();
+      runs.push({
+        runId: run.runId,
+        asOf: run.asOf,
+        state: run.state,
+        quality: run.quality,
+        requestOutcome: run.requestOutcome,
+        reasonCode: run.reasonCode,
+        integrity,
+        verifier,
+        replay,
+        idempotencyConflict: run.idempotencyConflict,
+        ambiguousCommitRecovery: run.ambiguousCommitRecovery,
+      });
+    }
     return {
       source,
       runs,

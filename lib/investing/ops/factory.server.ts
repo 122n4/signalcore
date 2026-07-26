@@ -49,8 +49,13 @@ export function createInvestingOpsServiceV1(
     throw new Error("ops_dependency_unavailable");
   }
   return new InvestingOpsServiceV1(
-    new InvestingIdentityScopeResolverV1(dependencies.session, dependencies.directory),
-    new InvestingOpsOfficialServicesAdapterV1(dependencies),
+    () => ({
+      resolver: new InvestingIdentityScopeResolverV1(
+        dependencies.session,
+        dependencies.directory,
+      ),
+      adapter: new InvestingOpsOfficialServicesAdapterV1(dependencies),
+    }),
     dependencies.clock,
     dependencies.logger,
   );

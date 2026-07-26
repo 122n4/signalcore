@@ -8,6 +8,10 @@ const PHASE4C_QA_REPLAY = path.resolve(
   process.cwd(),
   "scripts/qa/runInvestingEnginePhase4CIntegrityScan.ts",
 );
+const PHASE5DR_PRODUCTION_RUNNER = path.resolve(
+  process.cwd(),
+  "lib/investing/ops/infrastructure/factory.server.ts",
+);
 
 function files(directory: string): string[] {
   return readdirSync(directory).flatMap((name) => {
@@ -60,6 +64,7 @@ describe("FASE 3F architectural isolation", () => {
     const consumers = roots.flatMap(files).filter((file) => {
       if (file.startsWith(ROOT)) return false;
       if (file === PHASE4C_QA_REPLAY) return false;
+      if (file === PHASE5DR_PRODUCTION_RUNNER) return false;
       return readFileSync(file, "utf8").includes("investing/engine/v1/phase3f");
     });
     expect(consumers).toEqual([]);

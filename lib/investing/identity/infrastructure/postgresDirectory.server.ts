@@ -9,20 +9,32 @@ import type {
 } from "@/lib/investing/identity/ports";
 
 type QueryablePool = Pick<Pool, "connect">;
+type OptionalOperationBudget = Readonly<{ remainingMs(): number }>;
 
 async function authenticatedRead<T>(
   pool: QueryablePool,
   authenticatedUserId: string,
+  budget: OptionalOperationBudget | undefined,
   read: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query("begin read only");
+    const remainingMs = budget?.remainingMs();
+    if (remainingMs !== undefined && remainingMs <= 0) {
+      throw new Error("investing_ops_budget_expired");
+    }
     await client.query("set local role authenticated");
     await client.query(
       "select set_config('request.jwt.claims', $1, true)",
       [JSON.stringify({ sub: authenticatedUserId })],
     );
+    if (remainingMs !== undefined) {
+      await client.query(
+        "select set_config('statement_timeout', $1, true)",
+        [`${remainingMs}ms`],
+      );
+    }
     const result = await read(client);
     await client.query("commit");
     return result;
@@ -36,12 +48,15 @@ async function authenticatedRead<T>(
 
 export class PostgresInvestingScopeDirectoryAdapterV1
 implements InvestingScopeDirectoryPortV1 {
-  constructor(private readonly pool: QueryablePool) {}
+  constructor(
+    private readonly pool: QueryablePool,
+    private readonly budget?: OptionalOperationBudget,
+  ) {}
 
   async findMemberships(
     authenticatedUserId: string,
   ): Promise<readonly InvestingTenantMembershipV1[]> {
-    return authenticatedRead(this.pool, authenticatedUserId, async (client) => {
+    return authenticatedRead(this.pool, authenticatedUserId, this.budget, async (client) => {
       const result = await client.query<{
         membership_id: string;
         user_id: string;
@@ -79,6 +94,7 @@ implements InvestingScopeDirectoryPortV1 {
     return authenticatedRead(
       this.pool,
       args.authenticatedUserId,
+      this.budget,
       async (client) => {
         const result = await client.query<{
           portfolio_id: string;

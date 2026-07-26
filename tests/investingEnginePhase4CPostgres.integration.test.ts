@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
 
 import {
   InvestingEnginePersistenceReaderV1,

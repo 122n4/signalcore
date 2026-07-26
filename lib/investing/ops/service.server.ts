@@ -22,6 +22,7 @@ import type {
 } from "@/lib/investing/ops/ports";
 import type {
   InvestingOpsInspectedDatasetV1,
+  InvestingOpsOperationBudgetV1,
 } from "@/lib/investing/ops/adapter.server";
 import { InvestingOpsOfficialServicesAdapterV1 } from "@/lib/investing/ops/adapter.server";
 
@@ -49,8 +50,11 @@ function safeScope(scope: ResolvedInvestingIdentityContextV1) {
 
 export class InvestingOpsServiceV1 {
   constructor(
-    private readonly resolver: InvestingIdentityScopeResolverPortV1,
-    private readonly adapter: InvestingOpsOfficialServicesAdapterV1,
+    private readonly operationFactory: () => Readonly<{
+      resolver: InvestingIdentityScopeResolverPortV1;
+      adapter: InvestingOpsOfficialServicesAdapterV1;
+      budget?: InvestingOpsOperationBudgetV1;
+    }>,
     private readonly clock: InvestingOpsClockPortV1,
     private readonly logger: InvestingOpsLogPortV1,
   ) {}
@@ -159,9 +163,15 @@ export class InvestingOpsServiceV1 {
       durationMs: number,
     ) => T,
   ): Promise<InvestingOpsResultV1<T>> {
+    const operation = this.operationFactory();
+    const assertBudget = () => {
+      if (operation.budget?.expired()) throw new Error("investing_ops_budget_expired");
+    };
     let scope: ResolvedInvestingIdentityContextV1;
     try {
-      scope = await this.resolver.resolve(identityOperation);
+      assertBudget();
+      scope = await operation.resolver.resolve(identityOperation);
+      assertBudget();
     } catch {
       return identityFailure();
     }
@@ -171,9 +181,12 @@ export class InvestingOpsServiceV1 {
       return opsFailure("ops_invalid_request", scope.requestId);
     }
     try {
-      const inspected = await this.adapter.inspect(scope);
+      assertBudget();
+      const inspected = await operation.adapter.inspect(scope);
+      assertBudget();
       const generated = this.clock.now();
       const value = build(scope, inspected, generated, generated.monotonicMs - start.monotonicMs);
+      assertBudget();
       const reasonCode = value
         && typeof value === "object"
         && "reasonCode" in value
