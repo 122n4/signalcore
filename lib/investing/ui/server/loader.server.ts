@@ -17,6 +17,10 @@ import {
   type InvestingUiRuntimeOptionsV1,
   withInvestingUiRuntimeV1,
 } from "@/lib/investing/ui/server/runtime.server";
+import {
+  evaluateInvestingRolloutGateV1,
+  type InvestingRolloutGateOverridesV1,
+} from "@/lib/investing/rollout/gate.server";
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,191}$/u;
 
@@ -57,59 +61,122 @@ function fromOpsFailure(result: InvestingOpsResultV1<unknown>): InvestingUiFailu
   return publicFailure("unavailable");
 }
 
-export async function loadInvestingDashboardV1(
-  options: InvestingUiRuntimeOptionsV1 = {},
+export type InvestingUiLoaderOptionsV1 = InvestingUiRuntimeOptionsV1 & Readonly<{
+  rollout?: InvestingRolloutGateOverridesV1;
+}>;
+
+function splitLoaderOptions(options: InvestingUiLoaderOptionsV1): Readonly<{
+  rollout: InvestingRolloutGateOverridesV1;
+  runtime: InvestingUiRuntimeOptionsV1;
+}> {
+  const { rollout = {}, ...runtime } = options;
+  return {
+    rollout: {
+      ...rollout,
+      readUser: rollout.readUser ?? runtime.readUser,
+    },
+    runtime,
+  };
+}
+
+async function withInvestingRolloutV1<T>(
+  options: InvestingUiLoaderOptionsV1,
+  load: (runtime: InvestingUiRuntimeOptionsV1) => Promise<T>,
+): Promise<T | InvestingUiFailureV1> {
+  const split = splitLoaderOptions(options);
+  const gate = await evaluateInvestingRolloutGateV1(split.rollout);
+  return gate.allowed
+    ? load(split.runtime)
+    : publicFailure("unauthorized");
+}
+
+async function loadInvestingDashboardWithOptionsV1(
+  options: InvestingUiLoaderOptionsV1 = {},
 ): Promise<InvestingUiResultV1<InvestingUiDashboardV1>> {
   try {
-    return await withInvestingUiRuntimeV1(async ({ service }) => {
-      const result = await service.snapshot({});
-      return result.ok ? presentInvestingDashboard(result.value) : fromOpsFailure(result);
-    }, options);
+    return await withInvestingRolloutV1(options, (runtime) =>
+      withInvestingUiRuntimeV1(async ({ service }) => {
+        const result = await service.snapshot({});
+        return result.ok ? presentInvestingDashboard(result.value) : fromOpsFailure(result);
+      }, runtime));
   } catch {
     return publicFailure("unavailable");
   }
 }
 
-export async function loadInvestingRunsV1(
-  options: InvestingUiRuntimeOptionsV1 = {},
+async function loadInvestingRunsWithOptionsV1(
+  options: InvestingUiLoaderOptionsV1 = {},
 ): Promise<InvestingUiResultV1<InvestingUiRunsV1>> {
   try {
-    return await withInvestingUiRuntimeV1(async ({ service }) => {
-      const result = await service.listRuns({ limit: 50 });
-      return result.ok
-        ? {
-            kind: "ready",
-            generatedAt: investingGeneratedAt(result.value.generatedAt),
-            runs: result.value.runs.map(presentInvestingRun),
-          }
-        : fromOpsFailure(result);
-    }, options);
+    return await withInvestingRolloutV1(options, (runtime) =>
+      withInvestingUiRuntimeV1(async ({ service }) => {
+        const result = await service.listRuns({ limit: 50 });
+        return result.ok
+          ? {
+              kind: "ready" as const,
+              generatedAt: investingGeneratedAt(result.value.generatedAt),
+              runs: result.value.runs.map(presentInvestingRun),
+            }
+          : fromOpsFailure(result);
+      }, runtime));
   } catch {
     return publicFailure("unavailable");
   }
 }
 
-export async function loadInvestingRunV1(
+async function loadInvestingRunWithOptionsV1(
   runId: unknown,
-  options: InvestingUiRuntimeOptionsV1 = {},
+  options: InvestingUiLoaderOptionsV1 = {},
 ): Promise<InvestingUiResultV1<InvestingUiRunDetailV1>> {
-  if (typeof runId !== "string" || !RUN_ID.test(runId)) {
-    return publicFailure("invalid");
-  }
   try {
-    return await withInvestingUiRuntimeV1(async ({ service }) => {
-      const result = await service.getRun({ runId });
-      return result.ok
-        ? {
-            kind: "ready",
-            generatedAt: investingGeneratedAt(result.value.generatedAt),
-            run: presentInvestingRun(result.value.run),
-          }
-        : fromOpsFailure(result);
-    }, options);
+    return await withInvestingRolloutV1(options, (runtime) => {
+      if (typeof runId !== "string" || !RUN_ID.test(runId)) {
+        return Promise.resolve(publicFailure("invalid"));
+      }
+      return withInvestingUiRuntimeV1(async ({ service }) => {
+        const result = await service.getRun({ runId });
+        return result.ok
+          ? {
+              kind: "ready" as const,
+              generatedAt: investingGeneratedAt(result.value.generatedAt),
+              run: presentInvestingRun(result.value.run),
+            }
+          : fromOpsFailure(result);
+      }, runtime);
+    });
   } catch {
     return publicFailure("unavailable");
   }
+}
+
+export type InvestingUiServerLoadersV1 = Readonly<{
+  loadDashboard(): Promise<InvestingUiResultV1<InvestingUiDashboardV1>>;
+  loadRuns(): Promise<InvestingUiResultV1<InvestingUiRunsV1>>;
+  loadRun(runId: unknown): Promise<InvestingUiResultV1<InvestingUiRunDetailV1>>;
+}>;
+
+export function createInvestingUiServerLoadersV1(
+  options: InvestingUiLoaderOptionsV1 = {},
+): InvestingUiServerLoadersV1 {
+  return {
+    loadDashboard: () => loadInvestingDashboardWithOptionsV1(options),
+    loadRuns: () => loadInvestingRunsWithOptionsV1(options),
+    loadRun: (runId) => loadInvestingRunWithOptionsV1(runId, options),
+  };
+}
+
+const productionLoaders = createInvestingUiServerLoadersV1();
+
+export function loadInvestingDashboardV1() {
+  return productionLoaders.loadDashboard();
+}
+
+export function loadInvestingRunsV1() {
+  return productionLoaders.loadRuns();
+}
+
+export function loadInvestingRunV1(runId: unknown) {
+  return productionLoaders.loadRun(runId);
 }
 
 function investingGeneratedAt(value: string): string {

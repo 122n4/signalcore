@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/auth/requestUser", () => ({
+  getRequestUserId: vi.fn(async () => "user_phase5er_loader"),
+}));
 
 const {
   close,
@@ -30,9 +33,7 @@ vi.mock("@/lib/investing/ops/infrastructure/factory.server", () => ({
 }));
 
 import {
-  loadInvestingDashboardV1,
-  loadInvestingRunV1,
-  loadInvestingRunsV1,
+  createInvestingUiServerLoadersV1,
 } from "@/lib/investing/ui/server/loader.server";
 
 const run = {
@@ -73,14 +74,23 @@ const notFound = {
 
 describe("FASE 5E-R official runtime loader", () => {
   beforeEach(() => {
+    process.env.INVESTING_ROLLOUT_MODE = "on";
+    delete process.env.INVESTING_ROLLOUT_ALLOWED_USER_IDS;
     vi.clearAllMocks();
     snapshot.mockResolvedValue(denied);
     listRuns.mockResolvedValue(denied);
     getRun.mockResolvedValue(notFound);
   });
 
+  afterAll(() => {
+    delete process.env.INVESTING_ROLLOUT_MODE;
+    delete process.env.INVESTING_ROLLOUT_ALLOWED_USER_IDS;
+  });
+
   it("creates the official runtime and always closes it after dashboard", async () => {
-    const result = await loadInvestingDashboardV1({ connectionString: "qa" });
+    const result = await createInvestingUiServerLoadersV1({
+      connectionString: "qa",
+    }).loadDashboard();
     expect(result.kind).toBe("unauthorized");
     expect(createRuntime).toHaveBeenCalledOnce();
     expect(createRuntime).toHaveBeenCalledWith({ connectionString: "qa" });
@@ -90,7 +100,7 @@ describe("FASE 5E-R official runtime loader", () => {
 
   it("closes the runtime when an OPS call throws", async () => {
     snapshot.mockRejectedValueOnce(new Error("secret stack"));
-    await expect(loadInvestingDashboardV1()).resolves.toMatchObject({
+    await expect(createInvestingUiServerLoadersV1().loadDashboard()).resolves.toMatchObject({
       kind: "unavailable",
     });
     expect(close).toHaveBeenCalledOnce();
@@ -102,14 +112,15 @@ describe("FASE 5E-R official runtime loader", () => {
       scope,
       runs: [run],
     }));
-    const result = await loadInvestingRunsV1();
+    const result = await createInvestingUiServerLoadersV1().loadRuns();
     expect(listRuns).toHaveBeenCalledWith({ limit: 50 });
     expect(result.kind === "ready" && result.runs).toHaveLength(1);
     expect(close).toHaveBeenCalledOnce();
   });
 
   it("rejects malformed route identifiers before creating a runtime", async () => {
-    await expect(loadInvestingRunV1("../bad?tenantId=other")).resolves.toMatchObject({
+    await expect(createInvestingUiServerLoadersV1()
+      .loadRun("../bad?tenantId=other")).resolves.toMatchObject({
       kind: "invalid",
     });
     expect(createRuntime).not.toHaveBeenCalled();
@@ -117,8 +128,9 @@ describe("FASE 5E-R official runtime loader", () => {
 
   it("maps missing and cross-scope detail to the same public result", async () => {
     getRun.mockResolvedValue(notFound);
-    const missing = await loadInvestingRunV1("missing");
-    const crossScope = await loadInvestingRunV1("cross-scope");
+    const loaders = createInvestingUiServerLoadersV1();
+    const missing = await loaders.loadRun("missing");
+    const crossScope = await loaders.loadRun("cross-scope");
     expect(missing).toEqual(crossScope);
     expect(missing).toEqual({
       kind: "not_found",
@@ -134,7 +146,7 @@ describe("FASE 5E-R official runtime loader", () => {
       scope,
       run: { ...run, canonicalPayload: "secret" },
     }));
-    const result = await loadInvestingRunV1("run-a");
+    const result = await createInvestingUiServerLoadersV1().loadRun("run-a");
     expect(result.kind === "ready" && JSON.stringify(result)).not.toContain("canonicalPayload");
     expect(result.kind === "ready" && JSON.stringify(result)).not.toContain("owner-a");
     expect(close).toHaveBeenCalledOnce();

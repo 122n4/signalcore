@@ -1,13 +1,8 @@
 import pg from "pg";
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import {
-  InvestingDashboard,
-  InvestingRunCard,
-} from "@/components/investing/InvestingRuntimeUi";
 import { canonicalDecimalFromString } from "@/lib/investing/engine/v1";
 import {
   InvestingEnginePersistenceServiceV1,
@@ -21,12 +16,11 @@ import {
   assertDestructiveInvestingQaDatabase,
   assertEffectiveDestructiveInvestingQaDatabase,
 } from "@/scripts/qa/investingDestructiveQaGuard";
-import {
-  buildPhase4BInput,
-} from "@/tests/fixtures/investingEnginePhase4BFixture";
+import { buildPhase4BInput } from
+  "@/tests/fixtures/investingEnginePhase4BFixture";
 
-const databaseUrl = process.env.INVESTING_5ER_TEST_DATABASE_URL;
-const configuredDatabaseUrl = databaseUrl ?? "postgresql://invalid/phase5er_not_configured";
+const databaseUrl = process.env.INVESTING_5F_TEST_DATABASE_URL;
+const configuredDatabaseUrl = databaseUrl ?? "postgresql://invalid/phase5f_not_configured";
 const pgDescribe = databaseUrl ? describe : describe.skip;
 const destructiveQaTarget = databaseUrl
   ? assertDestructiveInvestingQaDatabase(
@@ -35,17 +29,17 @@ const destructiveQaTarget = databaseUrl
     )
   : null;
 
-const tenantA = "61000000-0000-4000-8000-000000000001";
-const tenantB = "62000000-0000-4000-8000-000000000002";
-const membershipA = "63000000-0000-4000-8000-000000000001";
-const membershipB = "64000000-0000-4000-8000-000000000002";
-const ownerA = "user_phase5er_owner_a";
-const ownerB = "user_phase5er_owner_b";
-const ownerC = "user_phase5er_owner_c";
-const accountA = "65000000-0000-4000-8000-000000000001";
-const accountB = "66000000-0000-4000-8000-000000000002";
-const portfolioA = "phase5er_portfolio_a";
-const portfolioB = "phase5er_portfolio_b";
+const tenantA = "71000000-0000-4000-8000-000000000001";
+const tenantB = "72000000-0000-4000-8000-000000000002";
+const membershipA = "73000000-0000-4000-8000-000000000001";
+const membershipB = "74000000-0000-4000-8000-000000000002";
+const ownerA = "user_phase5f_owner_A";
+const ownerB = "user_phase5f_owner_B";
+const ownerC = "user_phase5f_owner_C";
+const accountA = "75000000-0000-4000-8000-000000000001";
+const accountB = "76000000-0000-4000-8000-000000000002";
+const portfolioA = "phase5f_portfolio_a";
+const portfolioB = "phase5f_portfolio_b";
 const permissions = [
   "investing:read",
   "investing:create",
@@ -53,27 +47,19 @@ const permissions = [
   "investing:replay",
 ] as const;
 
-const inputA1 = buildPhase4BInput({
+const inputA = buildPhase4BInput({
   userId: ownerA,
   accountId: accountA,
   portfolioId: portfolioA,
-  runId: "phase5er_run_a_1",
-  idempotencyKey: "phase5er-key-a-1",
-}).input;
-const inputA2 = buildPhase4BInput({
-  userId: ownerA,
-  accountId: accountA,
-  portfolioId: portfolioA,
-  runId: "phase5er_run_a_2",
-  idempotencyKey: "phase5er-key-a-2",
-  cash: "25000.00",
+  runId: "phase5f_run_a",
+  idempotencyKey: "phase5f-key-a",
 }).input;
 const inputB = buildPhase4BInput({
   userId: ownerB,
   accountId: accountB,
   portfolioId: portfolioB,
-  runId: "phase5er_run_b_1",
-  idempotencyKey: "phase5er-key-b-1",
+  runId: "phase5f_run_b",
+  idempotencyKey: "phase5f-key-b",
   cash: "37000.00",
   modelOverrides: {
     SPY: { commissionBps: canonicalDecimalFromString("7") },
@@ -81,7 +67,7 @@ const inputB = buildPhase4BInput({
   },
 }).input;
 
-pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
+pgDescribe("FASE 5F PostgreSQL rollout A/B", () => {
   const admin = new pg.Pool({ connectionString: configuredDatabaseUrl, max: 8 });
   const adapter = new PostgresInvestingEnginePersistenceAdapterV1({
     connectionString: configuredDatabaseUrl,
@@ -89,14 +75,19 @@ pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
   });
   const persistence = new InvestingEnginePersistenceServiceV1(adapter);
   const clock = {
-    now: () => ({ iso: "2026-07-26T12:00:00.000Z", monotonicMs: 1 }),
+    now: () => ({ iso: "2026-07-27T12:00:00.000Z", monotonicMs: 1 }),
   };
-  const loaders = (user: string) => createInvestingUiServerLoadersV1({
-    connectionString: configuredDatabaseUrl,
+  const loaders = (
+    user: string,
+    mode: unknown,
+    allowedUserIds: unknown,
+    connectionString = configuredDatabaseUrl,
+  ) => createInvestingUiServerLoadersV1({
+    connectionString,
     readUser: async () => user,
     clock,
     rollout: {
-      readEnvironment: () => ({ mode: "on", allowedUserIds: "" }),
+      readEnvironment: () => ({ mode, allowedUserIds }),
     },
   });
 
@@ -112,7 +103,7 @@ pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
       "investing_engine_shadow_packages",
       "investing_engine_idempotency_keys",
     ] as const;
-    return Object.fromEntries(await Promise.all(tables.map(async (table) => {
+    const tableFingerprints = await Promise.all(tables.map(async (table) => {
       const result = await admin.query<{ count: string; hash: string }>(
         `select count(*)::text count,
                 md5(coalesce(string_agg(
@@ -121,8 +112,21 @@ pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
                 ), '')) hash
            from public.${table} row_data`,
       );
-      return [table, result.rows[0]];
-    })));
+      return [table, result.rows[0]] as const;
+    }));
+    const sequences = await admin.query<{ hash: string }>(
+      `select md5(coalesce(string_agg(
+                sequencename || ':' || coalesce(last_value::text, 'null'),
+                '|' order by sequencename
+              ), '')) hash
+         from pg_sequences
+        where schemaname='public'
+          and sequencename like 'investing_engine_%'`,
+    );
+    return Object.fromEntries([
+      ...tableFingerprints,
+      ["investing_engine_sequences", sequences.rows[0]],
+    ]);
   }
 
   beforeAll(async () => {
@@ -172,8 +176,7 @@ pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
          ($5,$6,$6,$7,$8,'EUR','paper','active')`,
       [accountA, ownerA, tenantA, portfolioA, accountB, ownerB, tenantB, portfolioB],
     );
-    await persistence.persist(inputA1);
-    await persistence.persist(inputA2);
+    await persistence.persist(inputA);
     await persistence.persist(inputB);
   }, 60_000);
 
@@ -182,69 +185,77 @@ pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
     await admin.end();
   });
 
-  it("renders owner A dashboard and history from the real runtime without scope leaks", async () => {
+  it("allows A through the real runtime and blocks B before an unreachable DB", async () => {
     const before = await fingerprint();
-    const dashboard = await loaders(ownerA).loadDashboard();
-    const runs = await loaders(ownerA).loadRuns();
-    expect(dashboard.kind).toBe("ready");
-    expect(runs.kind).toBe("ready");
-    if (dashboard.kind !== "ready" || runs.kind !== "ready") return;
-    expect(dashboard.metrics.find((metric) => metric.key === "totalRuns")?.displayValue).toBe("2");
-    expect(runs.runs.map((run) => run.runId)).toEqual([
-      "phase5er_run_a_1",
-      "phase5er_run_a_2",
-    ]);
-    const html = renderToStaticMarkup(<InvestingDashboard data={dashboard} />);
-    expect(html).not.toMatch(/phase5er_owner_|61000000|65000000|phase5er_portfolio/u);
-    expect(html).not.toMatch(/password|token|cookie|postgresql:\/\/|select\s|ops_|identity_/iu);
+    const allowed = `${ownerA}`;
+    const allowedA = loaders(ownerA, "allowlist", allowed);
+    const dashboardA = await allowedA.loadDashboard();
+    const runsA = await allowedA.loadRuns();
+    const detailA = await allowedA.loadRun("phase5f_run_a");
+    const blockedB = await loaders(
+      ownerB,
+      "allowlist",
+      allowed,
+      "postgresql://127.0.0.1:1/phase5f_unreachable_qa",
+    ).loadDashboard();
+    expect(dashboardA.kind === "ready"
+      && dashboardA.metrics.find((metric) => metric.key === "totalRuns")?.displayValue)
+      .toBe("1");
+    expect(runsA.kind === "ready" && runsA.runs.map((run) => run.runId))
+      .toEqual(["phase5f_run_a"]);
+    expect(detailA).toMatchObject({ kind: "ready" });
+    expect(blockedB).toMatchObject({ kind: "unauthorized" });
     expect(await fingerprint()).toEqual(before);
   }, 60_000);
 
-  it("returns real authorized detail and indistinguishable missing/cross-scope states", async () => {
+  it("allows B after configuration change without mixing A and B", async () => {
     const before = await fingerprint();
-    const ownerLoaders = loaders(ownerA);
-    const own = await ownerLoaders.loadRun("phase5er_run_a_1");
-    const missing = await ownerLoaders.loadRun("phase5er_missing");
-    const crossScope = await ownerLoaders.loadRun("phase5er_run_b_1");
-    expect(own.kind).toBe("ready");
-    expect(missing).toEqual(crossScope);
-    expect(missing).toEqual({
-      kind: "not_found",
-      title: "Run não disponível",
-      description: "O run não existe ou não está acessível.",
-    });
-    if (own.kind === "ready") {
-      const html = renderToStaticMarkup(<InvestingRunCard run={own.run} />);
-      expect(html).not.toMatch(/owner|tenant|account|portfolio|canonicalPayload/iu);
-    }
+    const allowed = `${ownerA}, ${ownerB}`;
+    const runsA = await loaders(ownerA, "allowlist", allowed).loadRuns();
+    const runsB = await loaders(ownerB, "allowlist", allowed).loadRuns();
+    expect(runsA.kind === "ready" && runsA.runs.map((run) => run.runId))
+      .toEqual(["phase5f_run_a"]);
+    expect(runsB.kind === "ready" && runsB.runs.map((run) => run.runId))
+      .toEqual(["phase5f_run_b"]);
     expect(await fingerprint()).toEqual(before);
   }, 60_000);
 
-  it("isolates owner B from owner A", async () => {
+  it("keeps cross-scope and missing detail indistinguishable", async () => {
     const before = await fingerprint();
-    const ownerLoaders = loaders(ownerB);
-    const dashboard = await ownerLoaders.loadDashboard();
-    const runs = await ownerLoaders.loadRuns();
-    expect(dashboard.kind === "ready"
-      && dashboard.metrics.find((metric) => metric.key === "totalRuns")?.displayValue).toBe("1");
-    expect(runs.kind === "ready" && runs.runs.map((run) => run.runId))
-      .toEqual(["phase5er_run_b_1"]);
-    expect(await ownerLoaders.loadRun("phase5er_run_a_1"))
-      .toEqual(await ownerLoaders.loadRun("phase5er_missing"));
+    const allowed = `${ownerA},${ownerB}`;
+    const ownerLoaders = loaders(ownerA, "allowlist", allowed);
+    const cross = await ownerLoaders.loadRun("phase5f_run_b");
+    const missing = await ownerLoaders.loadRun("phase5f_missing");
+    expect(cross).toEqual(missing);
+    expect(cross).toMatchObject({ kind: "not_found" });
     expect(await fingerprint()).toEqual(before);
   }, 60_000);
 
-  it("denies a session without membership without enumerating data", async () => {
+  it("keeps allowlisted C subject to official identity and RLS", async () => {
     const before = await fingerprint();
-    const dashboard = await loaders(ownerC).loadDashboard();
-    const runs = await loaders(ownerC).loadRuns();
+    const dashboard = await loaders(
+      ownerC,
+      "allowlist",
+      `${ownerA},${ownerB},${ownerC}`,
+    ).loadDashboard();
     expect(dashboard).toMatchObject({ kind: "unauthorized" });
-    expect(runs).toMatchObject({ kind: "unauthorized" });
-    expect(JSON.stringify([dashboard, runs])).not.toMatch(/ownerA|ownerB|phase5er_run/u);
     expect(await fingerprint()).toEqual(before);
   }, 60_000);
 
-  it("cuts access immediately after membership revocation and performs zero writes", async () => {
+  it("implements off and on while preserving revocation and zero writes", async () => {
+    const offBefore = await fingerprint();
+    const unreachable = "postgresql://127.0.0.1:1/phase5f_unreachable_qa";
+    await expect(loaders(ownerA, "off", ownerA, unreachable).loadDashboard())
+      .resolves.toMatchObject({ kind: "unauthorized" });
+    await expect(loaders(ownerB, "off", ownerB, unreachable).loadDashboard())
+      .resolves.toMatchObject({ kind: "unauthorized" });
+    expect(await fingerprint()).toEqual(offBefore);
+
+    const onBefore = await fingerprint();
+    await expect(loaders(ownerB, "on", "").loadDashboard())
+      .resolves.toMatchObject({ kind: "ready" });
+    expect(await fingerprint()).toEqual(onBefore);
+
     await admin.query(
       `update public.investing_tenant_memberships
           set status='revoked',
@@ -253,12 +264,9 @@ pgDescribe("FASE 5E-R PostgreSQL UI runtime A/B", () => {
         where id=$1`,
       [membershipA],
     );
-    const before = await fingerprint();
-    const ownerLoaders = loaders(ownerA);
-    const dashboard = await ownerLoaders.loadDashboard();
-    const detail = await ownerLoaders.loadRun("phase5er_run_a_1");
-    expect(dashboard).toMatchObject({ kind: "unauthorized" });
-    expect(detail).toMatchObject({ kind: "unauthorized" });
-    expect(await fingerprint()).toEqual(before);
+    const revokedBefore = await fingerprint();
+    await expect(loaders(ownerA, "on", "").loadDashboard())
+      .resolves.toMatchObject({ kind: "unauthorized" });
+    expect(await fingerprint()).toEqual(revokedBefore);
   }, 60_000);
 });
