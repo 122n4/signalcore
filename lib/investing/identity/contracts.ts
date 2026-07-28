@@ -32,7 +32,10 @@ export type InvestingIdentityOperationV1 =
   | "transition_dataset_acquisition"
   | "publish_dataset_version"
   | "list_datasets"
-  | "get_dataset_version";
+  | "get_dataset_version"
+  | "evaluate_dataset_quality"
+  | "get_dataset_quality_report"
+  | "list_dataset_quality_reports";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;

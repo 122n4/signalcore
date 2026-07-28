@@ -30,6 +30,9 @@ const REQUIRED_PERMISSION: Readonly<
   cancel_dataset_acquisition: "investing:create",
   transition_dataset_acquisition: "investing:create",
   publish_dataset_version: "investing:create",
+  evaluate_dataset_quality: "investing:create",
+  get_dataset_quality_report: "investing:read",
+  list_dataset_quality_reports: "investing:read",
   list_datasets: "investing:read",
   get_dataset_version: "investing:read",
 };
