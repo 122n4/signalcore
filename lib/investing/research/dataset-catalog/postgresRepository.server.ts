@@ -107,14 +107,23 @@ export class PostgresDatasetCatalogRepository implements DatasetCatalogRepositor
   }
 
   async compareAndSetAttempt(input: Parameters<DatasetCatalogRepository["compareAndSetAttempt"]>[0]) {
+    if (input.nextState !== "cancelled") {
+      await this.transaction((client) => client.query(
+        `select acquisition_job_id from public.investing_research_acquisition_jobs
+         where tenant_id=$1 and owner_id=$2 and portfolio_id=$3 and account_id=$4
+           and acquisition_job_id=$5 and state=$6
+           and $7::text is null and $8::text is null and state_version=$9
+         for share`,
+        [...scopeValues(input.scope), input.acquisitionJobId, input.expectedState,
+          null, null, input.expectedStateVersion],
+      ));
+      return null;
+    }
     const result = await this.transaction((client) => client.query(
-      `update public.investing_research_acquisition_jobs
-       set state=$6, state_version=state_version+1, outcome=$7::jsonb,
-           started_at=case when $6='acquiring' then statement_timestamp() else started_at end,
-           completed_at=case when $6 in ('awaiting_quality','confirmed_no_data','provider_unavailable','acquisition_failed','cancelled') then statement_timestamp() else null end
-       where tenant_id=$1 and owner_id=$2 and portfolio_id=$3 and account_id=$4
-         and acquisition_job_id=$5 and state=$8 and state_version=$9 returning *`,
-      [...scopeValues(input.scope), input.acquisitionJobId, input.nextState, input.outcome === null ? null : JSON.stringify(input.outcome), input.expectedState, input.expectedStateVersion],
+      `select * from public.investing_research_acquisition_cancel_v1(
+        $1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+      [...scopeValues(input.scope), input.acquisitionJobId,input.expectedState,
+        input.expectedStateVersion,input.outcome === null ? null : JSON.stringify(input.outcome)],
     ));
     return result.rows.length === 1 ? attemptFromRow(result.rows[0]) : null;
   }
