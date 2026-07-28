@@ -24,6 +24,14 @@ const REQUIRED_PERMISSION: Readonly<
   get_latest_run: "investing:read",
   verify_run: "investing:verify",
   replay_run: "investing:replay",
+  create_dataset_requirement: "investing:create",
+  request_dataset_acquisition: "investing:create",
+  get_dataset_acquisition: "investing:read",
+  cancel_dataset_acquisition: "investing:create",
+  transition_dataset_acquisition: "investing:create",
+  publish_dataset_version: "investing:create",
+  list_datasets: "investing:read",
+  get_dataset_version: "investing:read",
 };
 
 function identifier(value: unknown): value is string {

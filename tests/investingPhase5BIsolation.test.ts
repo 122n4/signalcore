@@ -1,6 +1,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  datasetCompositionConsumerPath,
+  datasetCompositionIdentityImportsAccepted,
+} from "./support/investingIdentityImportPolicy";
 
 const root = process.cwd();
 const identityRoot = path.join(root, "lib", "investing", "identity");
@@ -90,6 +94,7 @@ describe("Investing FASE 5B server-only isolation", () => {
       path.resolve(root, "lib", "investing", "ops", "infrastructure", "factory.server.ts"),
       path.resolve(root, "lib", "investing", "ops", "infrastructure", "postgresReadModel.server.ts"),
       path.resolve(root, "lib", "investing", "ops", "infrastructure", "projections.server.ts"),
+      datasetCompositionConsumerPath(root),
     ]);
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))
@@ -102,7 +107,25 @@ describe("Investing FASE 5B server-only isolation", () => {
         || source.includes("createInvestingIdentityGatewayV1");
     });
     expect(callers.length).toBeGreaterThan(0);
-    callers.forEach((file) => expect(allowed.has(path.resolve(file))).toBe(true));
+    callers.forEach((file) => {
+      const resolved = path.resolve(file);
+      expect(allowed.has(resolved)).toBe(true);
+      if (resolved === datasetCompositionConsumerPath(root)) {
+        expect(datasetCompositionIdentityImportsAccepted({
+          root,
+          consumerPath: resolved,
+          source: readFileSync(file, "utf8"),
+        })).toBe(true);
+      }
+    });
+    const datasetComposition = datasetCompositionConsumerPath(root);
+    if (existsSync(datasetComposition)) {
+      expect(datasetCompositionIdentityImportsAccepted({
+        root,
+        consumerPath: datasetComposition,
+        source: readFileSync(datasetComposition, "utf8"),
+      })).toBe(true);
+    }
   });
 
   it("contains no SQL, environment access or alternate engine service", () => {

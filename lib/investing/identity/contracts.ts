@@ -24,7 +24,15 @@ export type InvestingIdentityOperationV1 =
   | "get_run"
   | "get_latest_run"
   | "verify_run"
-  | "replay_run";
+  | "replay_run"
+  | "create_dataset_requirement"
+  | "request_dataset_acquisition"
+  | "get_dataset_acquisition"
+  | "cancel_dataset_acquisition"
+  | "transition_dataset_acquisition"
+  | "publish_dataset_version"
+  | "list_datasets"
+  | "get_dataset_version";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;
