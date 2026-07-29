@@ -43,6 +43,12 @@ const REQUIRED_PERMISSION: Readonly<
   transition_strategy_candidate: "investing:create",
   get_strategy_candidate: "investing:read",
   list_strategy_candidates: "investing:read",
+  create_research_experiment: "investing:create",
+  queue_research_backtest: "investing:create",
+  cancel_research_backtest: "investing:create",
+  get_research_experiment: "investing:read",
+  get_research_experiment_run: "investing:read",
+  list_research_experiments: "investing:read",
 };
 
 function identifier(value: unknown): value is string {
@@ -134,6 +140,7 @@ export class InvestingIdentityScopeResolverV1 {
     return {
       contractVersion: INVESTING_IDENTITY_CONTEXT_VERSION,
       authenticatedUserId: session.authenticatedUserId,
+      membershipId: membership.membershipId,
       ownerId: membership.ownerId,
       tenantId: membership.tenantId,
       portfolioId: portfolio.portfolioId,

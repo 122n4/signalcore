@@ -43,11 +43,18 @@ export type InvestingIdentityOperationV1 =
   | "create_strategy_candidate"
   | "transition_strategy_candidate"
   | "get_strategy_candidate"
-  | "list_strategy_candidates";
+  | "list_strategy_candidates"
+  | "create_research_experiment"
+  | "queue_research_backtest"
+  | "cancel_research_backtest"
+  | "get_research_experiment"
+  | "get_research_experiment_run"
+  | "list_research_experiments";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;
   authenticatedUserId: string;
+  membershipId?: string;
   ownerId: string;
   tenantId: string;
   portfolioId: string;
