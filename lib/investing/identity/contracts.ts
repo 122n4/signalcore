@@ -49,7 +49,13 @@ export type InvestingIdentityOperationV1 =
   | "cancel_research_backtest"
   | "get_research_experiment"
   | "get_research_experiment_run"
-  | "list_research_experiments";
+  | "list_research_experiments"
+  | "create_research_validation_report"
+  | "get_research_validation_report"
+  | "list_research_validation_reports"
+  | "create_research_scientific_decision"
+  | "get_research_scientific_decision"
+  | "list_research_scientific_decisions";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;

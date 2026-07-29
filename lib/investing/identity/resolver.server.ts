@@ -49,6 +49,12 @@ const REQUIRED_PERMISSION: Readonly<
   get_research_experiment: "investing:read",
   get_research_experiment_run: "investing:read",
   list_research_experiments: "investing:read",
+  create_research_validation_report: "investing:create",
+  get_research_validation_report: "investing:read",
+  list_research_validation_reports: "investing:read",
+  create_research_scientific_decision: "investing:create",
+  get_research_scientific_decision: "investing:read",
+  list_research_scientific_decisions: "investing:read",
 };
 
 function identifier(value: unknown): value is string {
