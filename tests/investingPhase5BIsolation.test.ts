@@ -96,6 +96,7 @@ describe("Investing FASE 5B server-only isolation", () => {
       path.resolve(root, "lib", "investing", "ops", "infrastructure", "projections.server.ts"),
       datasetCompositionConsumerPath(root),
       path.resolve(root, "lib", "investing", "research", "dataset-quality", "composition.server.ts"),
+      path.resolve(root, "lib", "investing", "research", "hypotheses", "composition.server.ts"),
     ]);
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))

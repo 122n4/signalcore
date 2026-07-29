@@ -35,6 +35,14 @@ const REQUIRED_PERMISSION: Readonly<
   list_dataset_quality_reports: "investing:read",
   list_datasets: "investing:read",
   get_dataset_version: "investing:read",
+  create_research_hypothesis: "investing:create",
+  transition_research_hypothesis: "investing:create",
+  get_research_hypothesis: "investing:read",
+  list_research_hypotheses: "investing:read",
+  create_strategy_candidate: "investing:create",
+  transition_strategy_candidate: "investing:create",
+  get_strategy_candidate: "investing:read",
+  list_strategy_candidates: "investing:read",
 };
 
 function identifier(value: unknown): value is string {

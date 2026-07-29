@@ -35,7 +35,15 @@ export type InvestingIdentityOperationV1 =
   | "get_dataset_version"
   | "evaluate_dataset_quality"
   | "get_dataset_quality_report"
-  | "list_dataset_quality_reports";
+  | "list_dataset_quality_reports"
+  | "create_research_hypothesis"
+  | "transition_research_hypothesis"
+  | "get_research_hypothesis"
+  | "list_research_hypotheses"
+  | "create_strategy_candidate"
+  | "transition_strategy_candidate"
+  | "get_strategy_candidate"
+  | "list_strategy_candidates";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;
