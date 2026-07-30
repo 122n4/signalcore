@@ -62,7 +62,12 @@ export type InvestingIdentityOperationV1 =
   | "create_research_scientific_memory_event"
   | "get_research_scientific_memory_event"
   | "list_research_scientific_memory_events"
-  | "check_research_scientific_memory_repetition";
+  | "check_research_scientific_memory_repetition"
+  | "evaluate_research_promotion_eligibility"
+  | "prepare_research_promotion_request"
+  | "revoke_research_promotion"
+  | "get_research_promotion_request"
+  | "list_research_promotion_requests";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;

@@ -62,6 +62,11 @@ const REQUIRED_PERMISSION: Readonly<
   get_research_scientific_memory_event: "investing:read",
   list_research_scientific_memory_events: "investing:read",
   check_research_scientific_memory_repetition: "investing:read",
+  evaluate_research_promotion_eligibility: "investing:create",
+  prepare_research_promotion_request: "investing:create",
+  revoke_research_promotion: "investing:create",
+  get_research_promotion_request: "investing:read",
+  list_research_promotion_requests: "investing:read",
 };
 
 function identifier(value: unknown): value is string {
