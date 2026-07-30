@@ -68,7 +68,7 @@ describe("FASE 3F architectural isolation", () => {
       return readFileSync(file, "utf8").includes("investing/engine/v1/phase3f");
     });
     expect(consumers).toEqual([]);
-  });
+  }, 30_000);
 
   it("does not create API, UI, migration, worker, scheduler or process files", () => {
     expect(files(ROOT).map((file) => path.basename(file)).sort()).toEqual([

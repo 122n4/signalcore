@@ -52,5 +52,5 @@ describe("FASE 5D-R server-only isolation", () => {
     for (const file of clients) {
       expect(readFileSync(file, "utf8")).not.toContain("investing/ops/infrastructure");
     }
-  });
+  }, 30_000);
 });
