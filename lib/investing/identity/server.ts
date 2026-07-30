@@ -6,6 +6,10 @@ export {
   type InvestingIdentityResolverDependenciesV1,
   type InvestingIdentityServerDependenciesV1,
 } from "@/lib/investing/identity/factory.server";
+export {
+  createProductionInvestingIdentityScopeResolverV1,
+  type ProductionInvestingIdentityResolverOptionsV1,
+} from "@/lib/investing/identity/infrastructure/factory.server";
 export type {
   InvestingAuthenticatedSessionPortV1,
   InvestingAuthorizedPortfolioV1,

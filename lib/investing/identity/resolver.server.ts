@@ -67,6 +67,7 @@ const REQUIRED_PERMISSION: Readonly<
   revoke_research_promotion: "investing:create",
   get_research_promotion_request: "investing:read",
   list_research_promotion_requests: "investing:read",
+  view_research_lab_ops: "investing:read",
 };
 
 function identifier(value: unknown): value is string {
