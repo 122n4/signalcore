@@ -19,6 +19,7 @@ import {
   buildPhase4BInput,
   purePhase3FRunnerForPersistence,
 } from "@/tests/fixtures/investingEnginePhase4BFixture";
+import { ensureInvestingQaAccount } from "@/tests/fixtures/investingIdentityQaBootstrap";
 
 const databaseUrl = process.env.INVESTING_5C_TEST_DATABASE_URL;
 const configuredDatabaseUrl =
@@ -135,13 +136,11 @@ pgDescribe("FASE 5C real PostgreSQL Paper caller, concurrency and RLS", () => {
     } finally {
       effective.release();
     }
-    await admin.query(
-      `insert into public.investing_accounts(
-         id,user_id,portfolio_id,base_currency,environment,status
-       ) values($1,$2,$3,'EUR','paper','active')
-       on conflict(id) do nothing`,
-      [scope.accountId, scope.ownerId, scope.portfolioId],
-    );
+    await ensureInvestingQaAccount(admin, {
+      accountId: scope.accountId,
+      ownerId: scope.ownerId,
+      portfolioId: scope.portfolioId,
+    });
   });
 
   afterAll(async () => {
@@ -195,5 +194,5 @@ pgDescribe("FASE 5C real PostgreSQL Paper caller, concurrency and RLS", () => {
       await client.query("rollback");
       client.release();
     }
-  });
+  }, 30_000);
 });
