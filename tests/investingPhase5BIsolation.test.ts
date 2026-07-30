@@ -100,6 +100,7 @@ describe("Investing FASE 5B server-only isolation", () => {
       path.resolve(root, "lib", "investing", "research", "backtesting", "composition.server.ts"),
       path.resolve(root, "lib", "investing", "research", "scientific-validation", "composition.server.ts"),
       path.resolve(root, "lib", "investing", "research", "portfolio-risk", "composition.server.ts"),
+      path.resolve(root, "lib", "investing", "research", "scientific-memory", "composition.server.ts"),
     ]);
     const candidates = ["app", "components", "lib", "scripts"]
       .map((entry) => path.join(root, entry))

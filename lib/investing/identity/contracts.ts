@@ -58,7 +58,11 @@ export type InvestingIdentityOperationV1 =
   | "list_research_scientific_decisions"
   | "create_research_portfolio_risk_capacity_assessment"
   | "get_research_portfolio_risk_capacity_assessment"
-  | "list_research_portfolio_risk_capacity_assessments";
+  | "list_research_portfolio_risk_capacity_assessments"
+  | "create_research_scientific_memory_event"
+  | "get_research_scientific_memory_event"
+  | "list_research_scientific_memory_events"
+  | "check_research_scientific_memory_repetition";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;
