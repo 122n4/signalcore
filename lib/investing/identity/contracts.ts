@@ -55,7 +55,10 @@ export type InvestingIdentityOperationV1 =
   | "list_research_validation_reports"
   | "create_research_scientific_decision"
   | "get_research_scientific_decision"
-  | "list_research_scientific_decisions";
+  | "list_research_scientific_decisions"
+  | "create_research_portfolio_risk_capacity_assessment"
+  | "get_research_portfolio_risk_capacity_assessment"
+  | "list_research_portfolio_risk_capacity_assessments";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;

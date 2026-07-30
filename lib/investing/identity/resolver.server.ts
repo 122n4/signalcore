@@ -55,6 +55,9 @@ const REQUIRED_PERMISSION: Readonly<
   create_research_scientific_decision: "investing:create",
   get_research_scientific_decision: "investing:read",
   list_research_scientific_decisions: "investing:read",
+  create_research_portfolio_risk_capacity_assessment: "investing:create",
+  get_research_portfolio_risk_capacity_assessment: "investing:read",
+  list_research_portfolio_risk_capacity_assessments: "investing:read",
 };
 
 function identifier(value: unknown): value is string {
