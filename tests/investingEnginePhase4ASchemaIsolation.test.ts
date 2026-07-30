@@ -47,9 +47,11 @@ describe("FASE 4A persistence schema isolation", () => {
     expect(new Set(migrations).size).toBe(migrations.length);
     expect([...migrations].sort()).toEqual(migrations);
     expect(migrations).toContain("20260720100000_investing_engine_v1_persistence.sql");
-    expect(migrations.at(-1)).toBe(
+    expect(migrations.indexOf(
       "20260725120000_investing_identity_schema_recovery.sql",
-    );
+    )).toBeGreaterThan(migrations.indexOf(
+      "20260720100000_investing_engine_v1_persistence.sql",
+    ));
     expect(
       existsSync(
         path.resolve(

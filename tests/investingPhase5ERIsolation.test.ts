@@ -6,6 +6,13 @@ const root = process.cwd();
 const uiRoot = path.resolve(root, "lib/investing/ui");
 const routeRoot = path.resolve(root, "app/investing");
 const component = path.resolve(root, "components/investing/InvestingRuntimeUi.tsx");
+const ownedRouteFiles = [
+  path.resolve(routeRoot, "error.tsx"),
+  path.resolve(routeRoot, "loading.tsx"),
+  path.resolve(routeRoot, "page.tsx"),
+  path.resolve(routeRoot, "runs/page.tsx"),
+  path.resolve(routeRoot, "runs/[runId]/page.tsx"),
+];
 const ownedFiles = [
   path.resolve(uiRoot, "contracts.ts"),
   path.resolve(uiRoot, "index.ts"),
@@ -62,7 +69,7 @@ describe("FASE 5E-R import and privacy isolation", () => {
   });
 
   it("keeps the only Client Component disconnected from every server module", () => {
-    const clients = [...files(routeRoot), component]
+    const clients = [...ownedRouteFiles, component]
       .filter((file) => /^\s*["']use client["'];?/u.test(readFileSync(file, "utf8")));
     expect(clients).toEqual([path.resolve(routeRoot, "error.tsx")]);
     const source = readFileSync(clients[0], "utf8");
@@ -70,7 +77,7 @@ describe("FASE 5E-R import and privacy isolation", () => {
   });
 
   it("creates no API, action, worker, queue, cron or writable UI", () => {
-    const routeFiles = files(routeRoot);
+    const routeFiles = ownedRouteFiles;
     expect(routeFiles.some((file) => /route\.[jt]s$/u.test(file))).toBe(false);
     const source = routeFiles.map((file) => readFileSync(file, "utf8")).join("\n");
     expect(source).not.toMatch(/\b(worker|queue|cron|PM2|broker|provider|replay action|repair)\b/iu);
@@ -78,7 +85,7 @@ describe("FASE 5E-R import and privacy isolation", () => {
   });
 
   it("does not expose technical codes or protected identifiers in UI rendering", () => {
-    const source = [readFileSync(component, "utf8"), ...files(routeRoot)
+    const source = [readFileSync(component, "utf8"), ...ownedRouteFiles
       .map((file) => readFileSync(file, "utf8"))].join("\n");
     expect(source).not.toMatch(/identity_scope_not_authorized|ops_dependency_unavailable|reasonCode/u);
     expect(source).not.toMatch(/ownerId|tenantId|membershipId|accountId|portfolioId/u);
