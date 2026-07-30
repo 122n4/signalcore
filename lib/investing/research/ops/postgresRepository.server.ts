@@ -7,7 +7,7 @@ const scope=(s:InvestingResearchScientificScope)=>[s.tenantId,s.ownerId,s.portfo
 const SOURCES=Object.freeze([
  ["datasets","investing_research_dataset_versions","dataset_version_id","quality_state","null::timestamptz","null"],
  ["acquisition_jobs","investing_research_acquisition_jobs","acquisition_job_id","state","updated_at","reason_code"],
- ["scientific_jobs","investing_research_jobs","job_id","state","updated_at","failure_reason"],
+ ["scientific_jobs","investing_research_jobs","job_id","state","updated_at","null"],
  ["experiments","investing_research_experiment_runs","run_id","state","created_at","failure_reason"],
  ["validation_reports","investing_research_validation_reports","report_id","'published'","evaluated_at","null"],
  ["scientific_decisions","investing_research_scientific_decisions","decision_id","outcome","created_at","null"],
@@ -31,12 +31,12 @@ export class PostgresResearchOpsRepository implements ResearchOpsRepository{
      throw new Error("research_ops_projection_invalid");
     const grouped=await client.query(`select ${state} as state,count(*)::int as count
      from public.${table} where tenant_id=$1 and owner_id=$2 and portfolio_id=$3
-     and account_id=$4 group by ${state} order by ${state}`,scope(s));
+     and account_id=$4 group by state order by state`,scope(s));
     for(const row of grouped.rows)counts.push({category,state:String(row.state),
      count:count(row.count)});
     const rows=await client.query(`select ${id} as id,${state} as state,${at} as occurred_at,
      ${reason} as reason_code from public.${table} where tenant_id=$1 and owner_id=$2
-     and portfolio_id=$3 and account_id=$4 order by ${at} desc,${id} limit 20`,scope(s));
+     and portfolio_id=$3 and account_id=$4 order by occurred_at desc,id limit 20`,scope(s));
     for(const row of rows.rows)recent.push({category,id:String(row.id),state:String(row.state),
      occurredAt:row.occurred_at instanceof Date?row.occurred_at.toISOString():
       typeof row.occurred_at==="string"?new Date(row.occurred_at).toISOString():null,

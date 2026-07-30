@@ -2,8 +2,10 @@ import "server-only";
 import type {ScopedSqlPool} from "../dataset-catalog/postgresRepository.server";
 import {ContentAddressedDatasetStorage} from "../data-agent/storage.server";
 import {
+  DATASET_VERSION_MATERIAL_VERSION,
   validateDatasetVersionMaterial,
 } from "../datasets";
+import {RESEARCH_READY_DATASET_VERSION} from "../dataset-quality/versions";
 import type {
   DatasetVersionRef,
   InvestingResearchScientificScope,
@@ -31,8 +33,25 @@ implements ScientificDatasetBarsPort{
         ||String(result.rows[0].content_hash)!==dataset.aggregateContentHash){
         throw new Error("scientific_validation_dataset_reference_mismatch");
       }
-      const material=validateDatasetVersionMaterial(result.rows[0].canonical_payload);
-      if(!material.ok
+      const payload=result.rows[0].canonical_payload;
+      if(typeof payload!=="object"||payload===null||Array.isArray(payload)
+        ||Object.getPrototypeOf(payload)!==Object.prototype){
+        throw new Error("scientific_validation_dataset_integrity_failed");
+      }
+      const {
+        contractVersion,state,sourceDatasetVersionId,qualityReportId,qualifiedAt,
+        ...sourceMaterial
+      }=payload as Record<string,unknown>;
+      const material=validateDatasetVersionMaterial({
+        ...sourceMaterial,contractVersion:DATASET_VERSION_MATERIAL_VERSION,
+        state:"awaiting_quality",
+      });
+      if(contractVersion!==RESEARCH_READY_DATASET_VERSION||state!=="research_ready"
+        ||typeof sourceDatasetVersionId!=="string"||sourceDatasetVersionId.length===0
+        ||typeof qualityReportId!=="string"||qualityReportId.length===0
+        ||typeof qualifiedAt!=="string"||!Number.isFinite(Date.parse(qualifiedAt))
+        ||new Date(qualifiedAt).toISOString()!==qualifiedAt
+        ||!material.ok
         ||material.value.storage.normalizedContentHash!==dataset.aggregateContentHash){
         throw new Error("scientific_validation_dataset_integrity_failed");
       }

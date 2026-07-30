@@ -134,7 +134,14 @@ export function verifyPromotionCandidateForPreparation(
     );
   }
   const linked = report.experimentId === scientific.value.identity.experimentId
-    && report.runId === execution.value.identity.executionId
+    && report.result.artifacts.length > 0
+    && report.result.artifacts.every((artifact) =>
+      manifest.value.core.artifacts.some((manifestArtifact) =>
+        artifact.contentHash === manifestArtifact.contentHash
+        && artifact.kind === manifestArtifact.kind
+        && artifact.mediaType === manifestArtifact.mediaType
+        && artifact.schemaVersion === manifestArtifact.schemaVersion
+        && artifact.logicalRole === manifestArtifact.logicalRole))
     && same(report.scope, value.scope)
     && same(report.dataset, manifest.value.core.dataset)
     && report.candidateId === identity.candidateId

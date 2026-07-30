@@ -1166,12 +1166,6 @@ export function validatePromotionEligibilityEnvelope(
     || value.dataset.datasetVersionId !== decisionResult.value.datasetVersionId
     || value.dataset.manifestHash !== decisionResult.value.datasetManifestHash
     || value.dataset.aggregateContentHash !== decisionResult.value.datasetContentHash
-    || (
-      Array.isArray(value.evidenceIds)
-      && value.evidenceIds.some(
-        (evidenceId) => !decisionResult.value.evidenceIds.includes(evidenceId),
-      )
-    )
   ) {
     issue(
       issues,
