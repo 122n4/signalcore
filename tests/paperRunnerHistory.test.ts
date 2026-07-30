@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   readCanonicalPaperRows: vi.fn(),
+  reconcileCanonicalPaperTradeRuns: vi.fn(),
   reconcileCanonicalPaperTrades: vi.fn(),
   settleCanonicalPaperRows: vi.fn(),
   buildPaperObservability: vi.fn((args: any) => ({
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/trading/bot/paperStore", () => ({
   buildPaperObservability: mocks.buildPaperObservability,
   readCanonicalPaperRows: mocks.readCanonicalPaperRows,
+  reconcileCanonicalPaperTradeRuns: mocks.reconcileCanonicalPaperTradeRuns,
   reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,
   settleCanonicalPaperRows: mocks.settleCanonicalPaperRows,
   upsertCanonicalPaperTradeFromJournal: vi.fn(),

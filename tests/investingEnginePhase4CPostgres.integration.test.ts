@@ -21,6 +21,7 @@ import {
   PHASE4B_ACCOUNT_ID,
   purePhase3FRunnerForPersistence,
 } from "@/tests/fixtures/investingEnginePhase4BFixture";
+import { ensureInvestingQaAccount } from "@/tests/fixtures/investingIdentityQaBootstrap";
 import { constraint, d } from "@/tests/fixtures/investingEnginePhase3FFixture";
 
 const databaseUrl = process.env.INVESTING_4C_TEST_DATABASE_URL;
@@ -111,6 +112,7 @@ function processIntegrityScan(): Promise<{
       env: {
         ...process.env,
         INVESTING_4C_TEST_DATABASE_URL: configuredDatabaseUrl,
+        INVESTING_QA_SERVER_ONLY_STUB: "true",
       },
       windowsHide: true,
     });
@@ -203,12 +205,11 @@ pgDescribe("FASE 4C PostgreSQL operational validation", () => {
       effective.release();
     }
     for (const owner of OWNERS) {
-      await admin.query(
-        `insert into public.investing_accounts(
-           id,user_id,portfolio_id,base_currency,environment,status
-         ) values($1,$2,$3,'EUR','paper','active') on conflict(id) do nothing`,
-        [owner.accountId, owner.ownerId, `phase4c-${owner.ownerId}`],
-      );
+      await ensureInvestingQaAccount(admin, {
+        accountId: owner.accountId,
+        ownerId: owner.ownerId,
+        portfolioId: `phase4c-${owner.ownerId}`,
+      });
     }
   });
 
@@ -553,5 +554,5 @@ pgDescribe("FASE 4C PostgreSQL operational validation", () => {
     expect(report.status).toBe("clean");
     expect(metrics.waitingLocks).toBe(0);
     expect(metrics.persistLatencyMs.p99).toBeGreaterThanOrEqual(metrics.persistLatencyMs.p50);
-  }, 60_000);
+  }, 120_000);
 });

@@ -30,6 +30,7 @@ import {
   buildPhase4BInput,
   purePhase3FRunnerForPersistence,
 } from "@/tests/fixtures/investingEnginePhase4BFixture";
+import { ensureInvestingQaAccount } from "@/tests/fixtures/investingIdentityQaBootstrap";
 import { constraint, d } from "@/tests/fixtures/investingEnginePhase3FFixture";
 
 const databaseUrl = process.env.INVESTING_5A_TEST_DATABASE_URL;
@@ -228,13 +229,11 @@ pgDescribe("FASE 5A real PostgreSQL application boundary", () => {
       effective.release();
     }
     for (const scope of Object.values(scopes)) {
-      await admin.query(
-        `insert into public.investing_accounts(
-         id,user_id,portfolio_id,base_currency,environment,status
-         ) values($1,$2,$3,'EUR','paper','active')
-         on conflict(id) do nothing`,
-        [scope.accountId, scope.ownerId, scope.portfolioId],
-      );
+      await ensureInvestingQaAccount(admin, {
+        accountId: scope.accountId,
+        ownerId: scope.ownerId,
+        portfolioId: scope.portfolioId,
+      });
     }
   });
 

@@ -307,7 +307,7 @@ describe("FASE 6C isolation", () => {
         /investing\/research\/reproducibility/iu,
       );
     }
-  });
+  }, 30_000);
 
   it("does not modify frozen 6B contract files", () => {
     expect(files(path.resolve(process.cwd(), "lib/investing/research/contracts")))

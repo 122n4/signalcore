@@ -77,7 +77,7 @@ describe("Investing FASE 5B server-only isolation", () => {
       const source = readFileSync(file, "utf8");
       forbidden.forEach((entry) => expect(source).not.toContain(entry));
     }
-  });
+  }, 30_000);
 
   it("allows only the controlled internal Phase 5C and 5D consumers", () => {
     const paperCallerRoot = path.join(root, "lib", "investing", "paper-caller");

@@ -66,7 +66,7 @@ describe("FASE 5D-R official projections", () => {
         "lib/investing/ops/infrastructure/factory.server.ts",
       ),
       "utf8",
-    );
+    ).replace(/\r\n/gu, "\n");
     expect(source.match(/createInvestingOpsSoftBudgetV1\(/gu)).toHaveLength(1);
     for (const fragment of [
       "PostgresInvestingScopeDirectoryAdapterV1(pool, budget)",

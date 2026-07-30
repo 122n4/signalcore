@@ -14,6 +14,7 @@ import {
 } from "@/scripts/qa/investingDestructiveQaGuard";
 import { buildPhase4BInput, PHASE4B_ACCOUNT_ID, purePhase3FRunnerForPersistence } from "@/tests/fixtures/investingEnginePhase4BFixture";
 import { constraint, d } from "@/tests/fixtures/investingEnginePhase3FFixture";
+import { ensureInvestingQaAccount } from "@/tests/fixtures/investingIdentityQaBootstrap";
 
 const databaseUrl = process.env.INVESTING_4B_TEST_DATABASE_URL;
 const configuredDatabaseUrl = databaseUrl ?? "postgresql://invalid/phase4b_not_configured";
@@ -74,10 +75,16 @@ pgDescribe("FASE 4B real PostgreSQL persistence", () => {
     } finally {
       effective.release();
     }
-    await admin.query(`insert into public.investing_accounts(id,user_id,portfolio_id,base_currency,environment,status)
-      values($1,$2,'phase4b','EUR','paper','active') on conflict(id) do nothing`, [PHASE4B_ACCOUNT_ID, OWNER]);
-    await admin.query(`insert into public.investing_accounts(id,user_id,portfolio_id,base_currency,environment,status)
-      values($1,$2,'phase4b-cross-tenant','EUR','paper','active') on conflict(id) do nothing`, [OTHER_ACCOUNT, OTHER_OWNER]);
+    await ensureInvestingQaAccount(admin, {
+      accountId: PHASE4B_ACCOUNT_ID,
+      ownerId: OWNER,
+      portfolioId: "phase4b",
+    });
+    await ensureInvestingQaAccount(admin, {
+      accountId: OTHER_ACCOUNT,
+      ownerId: OTHER_OWNER,
+      portfolioId: "phase4b-cross-tenant",
+    });
   });
   afterAll(async () => { await adapter.close(); await admin.end(); });
 
@@ -260,7 +267,25 @@ pgDescribe("FASE 4B real PostgreSQL persistence", () => {
       expect((await own.query("select count(*)::int count from public.investing_engine_runs")).rows[0].count).toBe(0);
       await own.query("rollback");
       await own.query("begin"); await own.query("set local role anon");
-      expect((await own.query("select count(*)::int count from public.investing_engine_runs")).rows[0].count).toBe(0);
+      const anonSelectGrant = await admin.query(
+        `select exists(
+           select 1
+           from information_schema.role_table_grants
+           where grantee = 'anon'
+             and table_schema = 'public'
+             and table_name = 'investing_engine_runs'
+             and privilege_type = 'SELECT'
+         ) allowed`,
+      );
+      if (anonSelectGrant.rows[0].allowed) {
+        expect((await own.query(
+          "select count(*)::int count from public.investing_engine_runs",
+        )).rows[0].count).toBe(0);
+      } else {
+        await expect(own.query(
+          "select count(*)::int count from public.investing_engine_runs",
+        )).rejects.toMatchObject({ code: "42501" });
+      }
       await own.query("rollback");
     } finally { own.release(); }
 
