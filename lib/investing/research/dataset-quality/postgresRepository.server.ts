@@ -1,12 +1,18 @@
 import "server-only";
 
 import type { InvestingResearchScientificScope } from "../contracts";
+import { canonicalizeResearchContract } from "../contracts/runtimeValidation";
 import type { ScopedSqlClient, ScopedSqlPool } from "../dataset-catalog/postgresRepository.server";
 import type { DatasetQualityReport } from "./types";
 import type { DatasetQualityRepository, QualityPublication } from "./repository.server";
 
 const scopeValues = (scope: InvestingResearchScientificScope) =>
   [scope.tenantId, scope.ownerId, scope.portfolioId, scope.accountId] as const;
+const sameCanonicalValue = (left: unknown, right: unknown): boolean => {
+  const a = canonicalizeResearchContract(left);
+  const b = canonicalizeResearchContract(right);
+  return a.ok && b.ok && a.value === b.value;
+};
 
 export class PostgresDatasetQualityRepository implements DatasetQualityRepository {
   constructor(private readonly pool: ScopedSqlPool) {}
@@ -60,7 +66,7 @@ export class PostgresDatasetQualityRepository implements DatasetQualityRepositor
           [...scope, report.material.sourceDatasetVersionId, report.material.policyVersion, report.reportHash],
         );
         if (existing.rows.length !== 1 || existing.rows[0].quality_report_id !== report.qualityReportId
-          || JSON.stringify(existing.rows[0].canonical_payload) !== JSON.stringify(report.material)) {
+          || !sameCanonicalValue(existing.rows[0].canonical_payload, report.material)) {
           throw new Error("quality_evidence_mismatch");
         }
       }
@@ -119,7 +125,7 @@ export class PostgresDatasetQualityRepository implements DatasetQualityRepositor
         if (existingVersion.rows.length !== 1 || existingLineage.rows.length !== 1
           || existingVersion.rows[0].quality_report_id !== report.qualityReportId
           || existingVersion.rows[0].source_dataset_version_id !== report.material.sourceDatasetVersionId
-          || JSON.stringify(existingVersion.rows[0].canonical_payload) !== JSON.stringify(input.derived)) {
+          || !sameCanonicalValue(existingVersion.rows[0].canonical_payload, input.derived)) {
           throw new Error("quality_atomic_publication_mismatch");
         }
       }

@@ -1,6 +1,7 @@
 import "server-only";
 import type { ScopedSqlClient, ScopedSqlPool } from "../dataset-catalog/postgresRepository.server";
 import type { InvestingResearchScientificScope } from "../contracts";
+import { canonicalizeResearchContract } from "../contracts/runtimeValidation";
 import { deriveVersionMaterialHash } from "./identity.server";
 import type { HypothesisCandidateRepository } from "./repository.server";
 import type { CandidateRecord, HypothesisRecord } from "./types";
@@ -21,6 +22,11 @@ const candidateFrom = (row: Record<string, unknown>): CandidateRecord => ({
   materialHash: String(row.material_hash), createdAt: new Date(String(row.created_at)).toISOString(),
 });
 const nextVersion = (version: string) => `v${Number(version.slice(1)) + 1}`;
+const sameCanonicalValue = (left: unknown, right: unknown): boolean => {
+  const a = canonicalizeResearchContract(left);
+  const b = canonicalizeResearchContract(right);
+  return a.ok && b.ok && a.value === b.value;
+};
 
 export class PostgresHypothesisCandidateRepository implements HypothesisCandidateRepository {
   constructor(private readonly pool: ScopedSqlPool) {}
@@ -56,7 +62,7 @@ export class PostgresHypothesisCandidateRepository implements HypothesisCandidat
         [...scope,record.materialHash],
       );
       if (result.rows.length !== 1
-        || JSON.stringify(result.rows[0].canonical_payload) !== JSON.stringify(record.value)) {
+        || !sameCanonicalValue(result.rows[0].canonical_payload, record.value)) {
         throw new Error("research_hypothesis_integrity_mismatch");
       }
       return { value: hypothesisFrom(result.rows[0]), reused: !inserted.rowCount };

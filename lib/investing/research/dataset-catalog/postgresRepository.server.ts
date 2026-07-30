@@ -1,5 +1,6 @@
 import "server-only";
 import type { InvestingResearchScientificScope } from "../contracts";
+import { canonicalizeResearchContract } from "../contracts/runtimeValidation";
 import type { DatasetRequirementEnvelope, DatasetVersionMaterial } from "../datasets";
 import type { AcquisitionAttemptCreate, AcquisitionAttemptRecord, DatasetCatalogRepository } from "./repository.server";
 
@@ -14,6 +15,11 @@ export interface ScopedSqlPool {
 
 const scopeValues = (scope: InvestingResearchScientificScope) =>
   [scope.tenantId, scope.ownerId, scope.portfolioId, scope.accountId] as const;
+const sameCanonicalValue = (left: unknown, right: unknown): boolean => {
+  const a = canonicalizeResearchContract(left);
+  const b = canonicalizeResearchContract(right);
+  return a.ok && b.ok && a.value === b.value;
+};
 const attemptFromRow = (row: Record<string, unknown>): AcquisitionAttemptRecord => ({
   acquisitionJobId: String(row.acquisition_job_id),
   requirementId: String(row.request_id),
@@ -54,7 +60,10 @@ export class PostgresDatasetCatalogRepository implements DatasetCatalogRepositor
            where tenant_id=$1 and owner_id=$2 and portfolio_id=$3 and account_id=$4 and request_hash=$5`,
           [...scope, digest],
         );
-      if (result.rows.length !== 1 || JSON.stringify(result.rows[0].canonical_payload) !== JSON.stringify(value)) throw new Error("dataset_requirement_integrity_mismatch");
+      if (result.rows.length !== 1
+        || !sameCanonicalValue(result.rows[0].canonical_payload, value)) {
+        throw new Error("dataset_requirement_integrity_mismatch");
+      }
       return { value, reused: !inserted.rowCount };
     });
   }
@@ -157,7 +166,9 @@ export class PostgresDatasetCatalogRepository implements DatasetCatalogRepositor
           [...scope, datasetId, input.manifestHash, value.storage.normalizedContentHash],
         );
         if (existing.rows.length !== 1 || existing.rows[0].dataset_version_id !== input.datasetVersionId
-          || JSON.stringify(existing.rows[0].canonical_payload) !== JSON.stringify(value)) throw new Error("dataset_content_mismatch");
+          || !sameCanonicalValue(existing.rows[0].canonical_payload, value)) {
+          throw new Error("dataset_content_mismatch");
+        }
       }
       return { datasetVersionId: input.datasetVersionId, reused: !inserted.rowCount };
     });

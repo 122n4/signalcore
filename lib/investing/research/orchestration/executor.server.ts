@@ -107,17 +107,17 @@ export class OneShotAcquisitionWorker {
       input.signal.removeEventListener("abort", abortWork);
     }
     if (stale) throw new Error("orchestration_stale_worker");
-    const command = {
+    const command = () => ({
       scope: lease.scope, acquisitionJobId: lease.acquisitionJobId,
       leaseToken: lease.leaseToken, leaseOwner: lease.leaseOwner,
       fencingToken: lease.fencingToken, expectedStateVersion: lease.stateVersion,
-    };
+    });
     const retryable = (result.state === "acquisition_failed"
       || result.state === "provider_unavailable") && result.outcome?.kind !== "unsupported"
       && result.outcome?.kind !== "cancelled" && result.outcome?.kind !== "confirmed_no_data"
       && result.outcome?.kind !== "acquired" && result.outcome?.retryable === true;
     if (retryable && result.outcome !== null) {
-      const retry = await this.repository.scheduleRetry(command, {
+      const retry = await this.repository.scheduleRetry(command(), {
         terminalState: result.state as "provider_unavailable" | "acquisition_failed",
         outcome: result.outcome,
         nextAcquisitionJobId: `iracq_retry_${randomUUID()}`,
@@ -132,8 +132,24 @@ export class OneShotAcquisitionWorker {
         attempt: retry.attempt, notBefore: retry.notBefore });
       return { claimed: true as const, finalized: true as const, retryScheduled: retry.scheduled };
     }
-    const finalized = await this.repository.finalize(command,
-      { nextState: result.state, outcome: result.outcome });
+    let finalized;
+    if (result.state === "acquired_raw" && result.outcome?.kind === "acquired") {
+      finalized = await this.repository.finalize(command(),
+        { nextState: "acquired_raw", outcome: null });
+      if (finalized) {
+        lease = finalized;
+        finalized = await this.repository.finalize(command(),
+          { nextState: "normalized", outcome: null });
+      }
+      if (finalized) {
+        lease = finalized;
+        finalized = await this.repository.finalize(command(),
+          { nextState: "awaiting_quality", outcome: result.outcome });
+      }
+    } else {
+      finalized = await this.repository.finalize(command(),
+        { nextState: result.state, outcome: result.outcome });
+    }
     if (!finalized) {
       this.emit({ type: "orchestration_stale_worker_rejected",
         acquisitionJobId: lease.acquisitionJobId, fencingToken: lease.fencingToken });
