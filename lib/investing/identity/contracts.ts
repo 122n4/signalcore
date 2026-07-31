@@ -69,7 +69,8 @@ export type InvestingIdentityOperationV1 =
   | "get_research_promotion_request"
   | "list_research_promotion_requests"
   | "view_research_lab_ops"
-  | "operate_research_beta";
+  | "operate_research_beta"
+  | "operate_investing_shadow_parity";
 
 export type ResolvedInvestingIdentityContextV1 = Readonly<{
   contractVersion: typeof INVESTING_IDENTITY_CONTEXT_VERSION;
