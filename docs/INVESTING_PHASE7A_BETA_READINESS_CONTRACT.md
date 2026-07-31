@@ -67,3 +67,15 @@ pode inserir e ler. Um conflito só converge quando o payload canónico é idên
 O rollback é recusado quando já existe evidência.
 
 A 7B continua sem API, UI, scheduler, promoção ou ativação beta.
+
+## FASE 7C — Boundary autenticada e projeção OPS
+
+A 7C autoriza a leitura através da operação existente `view_research_lab_ops` e
+exige membership resolvida server-side. O scope não é aceite do browser. Como o
+readiness pertence ao checkpoint da plataforma, e não a uma carteira, o scope
+serve apenas para autorizar o operador autenticado.
+
+A projeção lista no máximo 20 relatórios e contém apenas hash, checkpoint, estado,
+instante e perfil. Não seleciona nem devolve `canonical_payload`, evidências,
+secrets ou dados financeiros. Não possui mutations, API pública, UI, promoção ou
+ativação beta.
