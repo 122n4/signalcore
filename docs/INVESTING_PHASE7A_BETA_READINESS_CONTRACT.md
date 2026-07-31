@@ -136,3 +136,22 @@ com readiness/rollback válidos, permite uma futura reativação.
 
 As decisões têm hash canónico, idempotência material, supersession explícita,
 RLS forçado, grants mínimos, trigger de imutabilidade e rollback fail-closed.
+
+## FASE 7H — Validação integrada e gate final
+
+O coordinator server-only fecha o fluxo trusted runtime → relatório imutável →
+release candidate → effective readiness numa única transação PostgreSQL por
+ambiente. O relatório, candidate e assessment são persistidos atomicamente e
+idempotentemente; falha ou estado stale causa rollback integral.
+
+Cada fonte trusted recebe o `candidateId` content-addressed e inclui-o na
+referência assinada. Assim, commit, lockfile, migrations, build artifact, runtime,
+configuração e ambiente não podem reutilizar evidência emitida para outro release.
+
+Operar o gate exige simultaneamente identidade/membership e uma allowlist de
+operadores beta server-only, fechada, sem wildcard e distinta da allowlist de
+utilizadores beta. O coordinator nunca importa nem chama a activation boundary.
+
+Classificação da implementação: `phase7_integrated_accepted`. Esta classificação
+não autoriza nem afirma ativação real: atestações externas, release candidate real
+e decisão humana real continuam obrigatórios em cada ambiente.

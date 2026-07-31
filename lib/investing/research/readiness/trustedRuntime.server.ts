@@ -9,7 +9,7 @@ export const BETA_READINESS_ATTESTATION_VERSION="investing-beta-readiness-attest
 export type BetaReadinessAttestation=Readonly<{contractVersion:typeof BETA_READINESS_ATTESTATION_VERSION;
  issuerId:string;evidence:BetaReadinessEvidence;signature:string}>;
 export interface TrustedAttestationSource{load(input:Readonly<{gateId:BetaReadinessGateId;
- checkpoint:string;evaluatedAt:string}>):Promise<unknown>}
+ checkpoint:string;evaluatedAt:string;releaseCandidateId?:string}>):Promise<unknown>}
 export type TrustedIssuer=Readonly<{gateId:BetaReadinessGateId;issuerId:string;publicKey:string}>;
 const id=(v:unknown)=>typeof v==="string"&&/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u.test(v);
 const signature=(v:unknown)=>typeof v==="string"&&/^[A-Za-z0-9_-]{32,1024}$/u.test(v);

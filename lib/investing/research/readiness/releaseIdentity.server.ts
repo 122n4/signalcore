@@ -21,10 +21,18 @@ export function createReleaseCandidate(value:ReleaseCandidateMaterial):ReleaseRe
     candidateHash,material}}
  }catch{return {ok:false,reason:"release_candidate_invalid"}}
 }
-const candidateValid=(v:ReleaseCandidate)=>{const recreated=createReleaseCandidate(v.material);
+export const releaseCandidateValid=(v:ReleaseCandidate)=>{const recreated=createReleaseCandidate(v.material);
  return recreated.ok&&recreated.value.candidateId===v.candidateId&&recreated.value.candidateHash===v.candidateHash};
+export const effectiveReadinessValid=(v:EffectiveReadiness)=>{const material={contractVersion:v.contractVersion,
+ candidateId:v.candidateId,reportHash:v.reportHash,targetEnvironment:v.targetEnvironment,state:v.state,reason:v.reason,
+ supersedesAssessmentId:v.supersedesAssessmentId,evaluatedAt:v.evaluatedAt};const calculated=hash("investing-effective-beta-readiness/v1",material);
+ return calculated===v.assessmentHash&&v.assessmentId===`ireff_v1_${calculated}`};
+export const effectiveReadinessRevocationValid=(v:EffectiveReadinessRevocation)=>{const material={contractVersion:v.contractVersion,
+ assessmentId:v.assessmentId,candidateId:v.candidateId,reason:v.reason,revokedAt:v.revokedAt,revokedBy:v.revokedBy};
+ const calculated=hash("investing-effective-readiness-revocation/v1",material);return calculated===v.revocationHash
+  &&v.revocationId===`irev_v1_${calculated}`};
 export function evaluateEffectiveReadiness(input:EffectiveReadinessInput):ReleaseResult<EffectiveReadiness>{
- try{if(!candidateValid(input.candidate)||!time(input.evaluatedAt))return {ok:false,reason:"effective_readiness_input_invalid"};
+ try{if(!releaseCandidateValid(input.candidate)||!time(input.evaluatedAt))return {ok:false,reason:"effective_readiness_input_invalid"};
   const calculated=evaluateBetaReadiness(input.manifest);const supplied=canonicalizeResearchContract(input.report);
   const expected=calculated.ok?canonicalizeResearchContract(calculated.value):null;if(!calculated.ok
    ||!supplied.ok||!expected?.ok||supplied.value!==expected.value)
