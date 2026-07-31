@@ -7,7 +7,7 @@ const root = path.join(process.cwd(), "lib/investing/research/readiness");
 describe("Phase 7A isolation", () => {
   it("has no browser, broker, execution, trading, database or mutation dependency", () => {
     const source = fs.readdirSync(root)
-      .filter((name) => name.endsWith(".ts"))
+      .filter((name) => ["types.ts", "evaluator.server.ts", "index.ts"].includes(name))
       .map((name) => fs.readFileSync(path.join(root, name), "utf8"))
       .join("\n");
     expect(source).not.toMatch(/from\s+["'][^"']*(?:broker|trading|execution|postgres|supabase)/u);

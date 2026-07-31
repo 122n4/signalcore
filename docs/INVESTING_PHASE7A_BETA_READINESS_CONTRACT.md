@@ -53,3 +53,17 @@ indisponível, expirada ou pertencente a outro checkpoint bloqueia o gate.
 Persistência do relatório, recolha automática de evidências, API/UI, beta rollout,
 promoção e qualquer ativação operacional pertencem a subfases posteriores e
 exigem gates próprios.
+
+## FASE 7B — Recolha e persistência
+
+A 7B acrescenta ports fechados, exatamente um por gate, recolhidos em paralelo e
+reordenados canonicamente antes da avaliação. Ausência, duplicação ou exceção de
+um collector falha antes de existir relatório utilizável.
+
+O par manifesto/relatório é reavaliado antes de qualquer IO e persistido numa
+tabela content-addressed pelo `reportHash`. A tabela é append-only, tem RLS
+forçado e não concede acesso a `authenticated`; apenas o boundary `service_role`
+pode inserir e ler. Um conflito só converge quando o payload canónico é idêntico.
+O rollback é recusado quando já existe evidência.
+
+A 7B continua sem API, UI, scheduler, promoção ou ativação beta.
