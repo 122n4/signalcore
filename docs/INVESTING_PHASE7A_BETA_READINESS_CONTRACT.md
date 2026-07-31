@@ -93,3 +93,18 @@ avaliação contraditória para o mesmo checkpoint é recusada.
 
 A composição de produção usa HTTPS, token server-side e chaves públicas por gate.
 Não existe fallback para mocks, prova autoatestada ou evidência vinda do browser.
+
+## FASE 7E — Release identity e effective readiness
+
+O release candidate é content-addressed sobre commit completo, hashes do lockfile,
+migrations, artefacto de build e configuração operacional, `buildId`, perfil de
+runtime e ambiente alvo. Alterar qualquer dimensão cria outro candidato.
+
+O estado efetivo revalida o relatório canónico, exige binding exato ao commit e
+reavalia a validade temporal das nove evidências. Um candidato novo no mesmo
+ambiente supersede explicitamente o assessment anterior sem o alterar. Revogações
+são append-only e tornam a reutilização do mesmo assessment bloqueada.
+
+Candidate, assessment e revogação são persistidos em tabelas imutáveis com RLS
+forçado, acesso exclusivo `service_role`, FKs de integridade e rollback fail-closed.
+Ainda não existe ativação beta.

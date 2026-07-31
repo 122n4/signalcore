@@ -7,8 +7,8 @@
 | 7A | Contrato determinístico e fail-closed de readiness | Concluída |
 | 7B | Recolha por ports e persistência imutável | Concluída |
 | 7C | Boundary autenticada e projeção OPS read-only | Concluída |
-| 7D | Runtime de trusted sources, timeouts e concorrência | Em execução |
-| 7E | Release candidate identity e effective readiness | Planeada |
+| 7D | Runtime de trusted sources, timeouts e concorrência | Concluída |
+| 7E | Release candidate identity e effective readiness | Concluída |
 | 7F | UI OPS read-only | Planeada |
 | 7G | Beta activation boundary, allowlist, kill switch e rollback | Planeada |
 | 7H | Validação integrada, auditoria e beta gate final | Planeada |
