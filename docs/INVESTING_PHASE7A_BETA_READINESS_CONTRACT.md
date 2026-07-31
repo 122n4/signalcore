@@ -79,3 +79,17 @@ A projeção lista no máximo 20 relatórios e contém apenas hash, checkpoint, 
 instante e perfil. Não seleciona nem devolve `canonical_payload`, evidências,
 secrets ou dados financeiros. Não possui mutations, API pública, UI, promoção ou
 ativação beta.
+
+## FASE 7D — Trusted collection runtime
+
+Cada gate fica vinculado a um `issuerId` e chave pública Ed25519 próprios. O
+runtime só aceita attestations closed-schema cuja assinatura, gate e checkpoint
+coincidam com esse vínculo. A chave privada nunca pertence à aplicação.
+
+Timeout e indisponibilidade tornam-se evidência explícita `unavailable` e
+bloqueiam readiness. Assinatura, issuer ou checkpoint inválidos invalidam a
+coleção inteira. Avaliações concorrentes idênticas usam single-flight; uma
+avaliação contraditória para o mesmo checkpoint é recusada.
+
+A composição de produção usa HTTPS, token server-side e chaves públicas por gate.
+Não existe fallback para mocks, prova autoatestada ou evidência vinda do browser.

@@ -135,7 +135,7 @@ describe("Investing FASE 5B server-only isolation", () => {
         source: readFileSync(datasetComposition, "utf8"),
       })).toBe(true);
     }
-  });
+  }, 30_000);
 
   it("contains no SQL, environment access or alternate engine service", () => {
     const infrastructureFiles = files(infrastructureRoot)

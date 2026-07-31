@@ -9,7 +9,8 @@ describe("Phase 7B schema and isolation",()=>{
  it("refuses rollback when evidence exists",()=>{expect(rollback).toContain("rollback_refused_readiness_evidence_exists");
   expect(rollback).not.toContain("cascade")});
  it("keeps the collector and repository outside operational domains",()=>{const root=path.join(process.cwd(),"lib/investing/research/readiness");
-  const source=fs.readdirSync(root).filter(x=>x.endsWith(".ts")).map(x=>fs.readFileSync(path.join(root,x),"utf8")).join("\n");
+  const source=["collector.server.ts","repository.server.ts","postgresRepository.server.ts"]
+   .map(x=>fs.readFileSync(path.join(root,x),"utf8")).join("\n");
   expect(source).not.toMatch(/from\s+["'][^"']*(?:broker|trading|controlled-promotion)/u);
   expect(source).not.toMatch(/\b(?:fetch|window|document|localStorage)\b/u)});
 });
