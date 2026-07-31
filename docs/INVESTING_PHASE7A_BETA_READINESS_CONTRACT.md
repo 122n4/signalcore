@@ -108,3 +108,12 @@ são append-only e tornam a reutilização do mesmo assessment bloqueada.
 Candidate, assessment e revogação são persistidos em tabelas imutáveis com RLS
 forçado, acesso exclusivo `service_role`, FKs de integridade e rollback fail-closed.
 Ainda não existe ativação beta.
+
+## FASE 7F — UI OPS read-only
+
+A página `/ops/investing/readiness` apresenta o candidato efetivo, ambiente,
+build, commit, estado, causa, supersession e histórico de revogações. A projeção
+SQL seleciona apenas colunas seguras e nunca lê `canonical_payload`.
+
+A página é Server Component, exige `view_research_lab_ops` e não contém forms,
+botões, server actions, mutations, activation boundary ou kill switch.
