@@ -1,0 +1,18 @@
+import type {EffectiveReadiness,EffectiveReadinessRevocation,ReleaseCandidate,ReleaseEnvironment} from "./releaseTypes";
+export const BETA_ACTIVATION_DECISION_VERSION="investing-beta-activation-decision/v1" as const;
+export type BetaActivationAction="activate"|"deactivate"|"engage_kill_switch"|"reset_kill_switch";
+export type BetaActivationRequest=Readonly<{candidateId:string;assessmentId:string;buildId:string;
+ targetEnvironment:ReleaseEnvironment;action:BetaActivationAction;allowlistedUserIds:readonly string[];
+ rollbackReference:string;rollbackVerifiedAt:string;rollbackValidUntil:string;decisionReason:string;
+ changeTicket:string;requestedAt:string}>;
+export type BetaActivationAuthority=Readonly<{authenticatedUserId:string;membershipId:string;
+ tenantId:string;requestId:string}>;
+export type BetaActivationState=Readonly<{candidate:ReleaseCandidate;assessment:EffectiveReadiness;
+ revocation:EffectiveReadinessRevocation|null;latestDecision:BetaActivationDecision|null}>;
+export type BetaActivationDecision=Readonly<{contractVersion:typeof BETA_ACTIVATION_DECISION_VERSION;
+ decisionId:string;decisionHash:string;candidateId:string;assessmentId:string;buildId:string;
+ targetEnvironment:ReleaseEnvironment;action:BetaActivationAction;effectiveState:"active"|"inactive"|"killed";
+ allowlistedUserIds:readonly string[];rollbackReference:string;rollbackVerifiedAt:string;
+ rollbackValidUntil:string;decisionReason:string;changeTicket:string;decidedAt:string;
+ decidedBy:BetaActivationAuthority;supersedesDecisionId:string|null}>;
+export type BetaActivationResult<T>=Readonly<{ok:true;value:T}>|Readonly<{ok:false;reason:string}>;

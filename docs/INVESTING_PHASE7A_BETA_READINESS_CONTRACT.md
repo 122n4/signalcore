@@ -117,3 +117,22 @@ SQL seleciona apenas colunas seguras e nunca lê `canonical_payload`.
 
 A página é Server Component, exige `view_research_lab_ops` e não contém forms,
 botões, server actions, mutations, activation boundary ou kill switch.
+
+## FASE 7G — Activation boundary e contenção
+
+A decisão humana de beta é uma boundary server-only separada, autorizada por
+`operate_research_beta` (`investing:create`). Ela não executa deploy, promoção,
+broker, Trading ou Live. Apenas regista uma decisão operacional append-only.
+
+Uma ativação exige candidate, assessment, build e environment exatos; assessment
+efetivo mais recente e não revogado; rollback verificado e não expirado; allowlist
+fechada e não vazia; kill switch desligado; motivo, change ticket, operador,
+membership e request auditáveis. O PostgreSQL serializa decisões por ambiente.
+
+`deactivate` e `engage_kill_switch` permanecem disponíveis como contenção mesmo
+quando o readiness deixou de ser o mais recente. O kill switch é sticky: uma
+desativação não o limpa. Só `reset_kill_switch`, numa decisão humana distinta e
+com readiness/rollback válidos, permite uma futura reativação.
+
+As decisões têm hash canónico, idempotência material, supersession explícita,
+RLS forçado, grants mínimos, trigger de imutabilidade e rollback fail-closed.

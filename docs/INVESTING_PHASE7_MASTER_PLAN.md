@@ -10,7 +10,7 @@
 | 7D | Runtime de trusted sources, timeouts e concorrência | Concluída |
 | 7E | Release candidate identity e effective readiness | Concluída |
 | 7F | UI OPS read-only | Concluída |
-| 7G | Beta activation boundary, allowlist, kill switch e rollback | Planeada |
+| 7G | Beta activation boundary, allowlist, kill switch e rollback | Concluída |
 | 7H | Validação integrada, auditoria e beta gate final | Planeada |
 
 ## Separação obrigatória
