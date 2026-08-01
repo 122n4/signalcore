@@ -437,7 +437,8 @@ export default function AdvisorTab({
       else setRefreshing(true);
       setError(null);
 
-      const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}`, { method: "GET" });
+      const dashboardUrl = autopilotMode === "investing" ? "/api/investing/dashboard" : `/api/daily-bundle?mode=${autopilotMode}`;
+      const r = await fetchJSON(dashboardUrl, { method: "GET" });
       if (!r.ok) {
         setError(r.data?.error || `Failed (${r.status})`);
         setBundle(null);
