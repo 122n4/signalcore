@@ -2,6 +2,7 @@ import { getQuotes } from "@/lib/market/quotes";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
+import { buildInvestingAccountingPerformance } from "@/lib/investing/performance/accounting";
 
 function number(value: unknown) {
   const parsed = Number(value);
@@ -31,14 +32,24 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
   assert(orders.error, "investing_dashboard_orders_failed");
 
   const accountId = account.data?.id ? String(account.data.id) : null;
-  const [cash, positions] = accountId
+  const [cash, positions, movements, accountingOrders] = accountId
     ? await Promise.all([
         database.from("investing_cash_balances").select("currency,available_amount,settled_amount,reserved_amount,as_of").eq("account_id", accountId),
         database.from("investing_positions").select("symbol,quantity,reserved_quantity,cost_basis,currency,updated_at").eq("account_id", accountId).gt("quantity", 0),
+        database.from("investing_cash_movements").select("id,movement_type,amount,currency,reversal_of,created_at").eq("account_id", accountId).order("created_at", { ascending: true }),
+        database.from("investing_orders").select("id").eq("account_id", accountId),
       ])
-    : [{ data: [], error: null }, { data: [], error: null }];
+    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
   assert(cash.error, "investing_dashboard_cash_failed");
   assert(positions.error, "investing_dashboard_positions_failed");
+  assert(movements.error, "investing_dashboard_movements_failed");
+  assert(accountingOrders.error, "investing_dashboard_accounting_orders_failed");
+
+  const accountingOrderIds = (accountingOrders.data || []).map((row: any) => String(row.id || "")).filter(Boolean);
+  const fills = accountingOrderIds.length
+    ? await database.from("investing_fills").select("fee_amount,tax_amount,currency,executed_at").in("order_id", accountingOrderIds)
+    : { data: [], error: null };
+  assert(fills.error, "investing_dashboard_fills_failed");
 
   const universe = getCanonicalInvestingInstrumentMaster();
   const positionRows = Array.isArray(positions.data) ? positions.data : [];
@@ -53,6 +64,11 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
     return { symbol, name: universe.find((item) => item.symbol === symbol)?.name || symbol, qty, valueEur, value_eur: valueEur, price, currency: position.currency };
   });
   const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
+  const accountingPerformance = buildInvestingAccountingPerformance({
+    currentTotalEur: totalEur,
+    movements: movements.data || [],
+    fills: fills.data || [],
+  });
   const runtime = buildInvestingRuntimeSnapshot({
     referenceTotalEur: totalEur,
     userSettings: settings.data,
@@ -102,6 +118,7 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
       diagnostics: { pricing: { coveragePct: items.length ? Math.round((items.filter((item: any) => item.price > 0).length / items.length) * 100) : 100 }, riskLeaks: [] },
       executionState: latestOrder?.status ?? latestQueue?.operational_state ?? "recommendation",
+      accountingPerformance,
     },
   };
 }
