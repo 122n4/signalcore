@@ -1134,6 +1134,18 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     weeklyMissionPct,
     Math.round((loopTimeline.filter((step) => step.state === "done").length / loopTimeline.length) * 100)
   );
+  const homeNextAction = buildHomeNextAction({
+    hasPlan,
+    hasHoldings,
+    doneToday,
+    coveragePct,
+    holdings,
+    portfolioTotalEur,
+    riskFixPlan,
+    topLeak: displayTopRiskLeak,
+    maxSinglePositionPct: decisionView.guardrails.maxSinglePositionPct,
+    mode: autopilotMode,
+  });
   const decisionStats: Array<{ label: string; value: string; note: string; tone?: "default" | "green" | "amber" }> = [
     { label: "Confidence", value: `${decisionView.confidencePct}%`, note: "Decision certainty" },
     { label: "Recommended Exposure", value: recommendedExposureLabel, note: "Preferred stance", tone: recommendedExposureLabel === "Low" ? "amber" : recommendedExposureLabel === "High" ? "green" : "default" },
@@ -1531,15 +1543,15 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
               totalEur={portfolioTotalEur}
               hasPlan={hasPlan}
               hasHoldings={hasHoldings}
-              action={directiveDisplay}
-              rationale={operatorNote}
               lastEvaluation={lastEvaluationLabel}
               blocked={Boolean(riskFixPlan) || decisionView.blockerState !== "none"}
               completed={doneToday}
               holdingsCount={holdings.length}
               pricingCoveragePct={coveragePct}
+              nextAction={homeNextAction}
+              loop={loopTimeline}
             />
-            <details className="mb-5 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
+            <details id="daily-controls" className="mb-5 scroll-mt-24 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
               <summary className="cursor-pointer text-sm font-semibold text-slate-200">View analysis, controls and evidence</summary>
               <div className="mt-5">
             <div className="mb-5">
@@ -1799,6 +1811,114 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       ) : null}
     </div>
   );
+}
+
+function buildHomeNextAction(args: {
+  hasPlan: boolean;
+  hasHoldings: boolean;
+  doneToday: boolean;
+  coveragePct: number;
+  holdings: any[];
+  portfolioTotalEur: number;
+  riskFixPlan: RiskFixPlan | null;
+  topLeak: any;
+  maxSinglePositionPct: number;
+  mode: Mode;
+}) {
+  if (!args.hasPlan) {
+    return {
+      label: "What to do now · step 1 of 4",
+      title: "Create your investment plan",
+      reason: "Without a goal, horizon and risk limit, Syntrake cannot judge whether a position is suitable for you.",
+      impact: "Activating the plan unlocks portfolio checks and personalised limits.",
+      ctaLabel: "Create plan (about 2 min)",
+      ctaHref: `/app?tab=planning&mode=${args.mode}`,
+    };
+  }
+  if (!args.hasHoldings) {
+    return {
+      label: "What to do now · step 2 of 4",
+      title: "Add the investments you already own",
+      reason: "There are no holdings to analyse, so concentration, pricing and drift cannot yet be measured.",
+      impact: "Add at least 3 holdings, then return here for the first portfolio diagnosis.",
+      ctaLabel: "Add holdings",
+      ctaHref: withFixContextHref(`/app?tab=portfolio&mode=${args.mode}`, { mode: args.mode, leakKey: "no_holdings", source: "daily" }),
+    };
+  }
+
+  const leakKey = String(args.topLeak?.key || args.riskFixPlan?.leakKey || "").toLowerCase();
+  const valued = args.holdings
+    .map((holding) => ({
+      symbol: String(holding?.symbol || "Holding").toUpperCase(),
+      value: Math.max(0, Number(holding?.valueEur ?? holding?.value_eur ?? 0) || 0),
+    }))
+    .sort((a, b) => b.value - a.value);
+  const largest = valued[0] || null;
+  const investedTotal = valued.reduce((sum, holding) => sum + holding.value, 0);
+  const largestPct = largest && investedTotal > 0 ? (largest.value / investedTotal) * 100 : null;
+  const concentration = leakKey === "concentration_high" || leakKey === "concentration_med";
+
+  if (concentration && largest && largestPct != null) {
+    const limitPct = Math.max(1, args.maxSinglePositionPct || 33);
+    const targetValue = (investedTotal * limitPct) / 100;
+    const reduction = Math.max(0, largest.value - targetValue);
+    return {
+      label: "What to do now · risk correction",
+      title: `Reduce ${largest.symbol} from ${Math.round(largestPct)}% toward ${Math.round(limitPct)}%`,
+      reason: `${largest.symbol} represents ${eurosForAction(largest.value)} of ${eurosForAction(investedTotal)} invested. One position this large can dominate the result of the whole portfolio.`,
+      impact: reduction > 0
+        ? `Review a gradual reduction of about ${eurosForAction(reduction)}. Syntrake will re-check the limit after you update the holding.`
+        : "Review the holding values and re-check concentration before adding risk.",
+      ctaLabel: `Review ${largest.symbol} correction`,
+      ctaHref: args.riskFixPlan?.primaryCtaHref || withFixContextHref(`/app?tab=portfolio&mode=${args.mode}`, { mode: args.mode, leakKey, source: "daily" }),
+    };
+  }
+
+  if (leakKey === "pricing_low" || leakKey === "valuation_zero" || leakKey.startsWith("pricing_stale")) {
+    return {
+      label: "What to do now · data correction",
+      title: `Repair portfolio data (${Math.round(args.coveragePct)}% verified)`,
+      reason: "Some holdings do not have reliable current values. Acting now could use an incomplete portfolio picture.",
+      impact: "Correct the highlighted rows and re-check until pricing coverage reaches at least 80%.",
+      ctaLabel: "Show the rows to correct",
+      ctaHref: args.riskFixPlan?.primaryCtaHref || withFixContextHref(`/app?tab=portfolio&mode=${args.mode}`, { mode: args.mode, leakKey, source: "daily" }),
+    };
+  }
+
+  if (args.riskFixPlan) {
+    return {
+      label: "What to do now · risk correction",
+      title: String(args.topLeak?.title || args.riskFixPlan.title).replace(/^Fix now:\s*/i, ""),
+      reason: String(args.topLeak?.detail || args.riskFixPlan.summary),
+      impact: args.riskFixPlan.steps[0] || "Resolve this blocker and return to Daily to verify it.",
+      ctaLabel: args.riskFixPlan.primaryCtaLabel || "Open correction",
+      ctaHref: args.riskFixPlan.primaryCtaHref,
+    };
+  }
+
+  if (args.doneToday) {
+    return {
+      label: "Today’s loop is complete",
+      title: "No further action is required today",
+      reason: "Today’s review and evidence have been recorded. Avoid unnecessary portfolio changes.",
+      impact: "Return at the next evaluation for a fresh, evidence-based decision.",
+      ctaLabel: "View today’s evidence",
+      ctaHref: "#daily-controls",
+    };
+  }
+
+  return {
+    label: "What to do now · final step",
+    title: "Review the evidence and close today’s loop",
+    reason: "No material blocker is active. Closing the loop records that you reviewed the portfolio without making an unnecessary move.",
+    impact: "A decision receipt is created and today’s discipline is added to your track record.",
+    ctaLabel: "Review and complete the loop",
+    ctaHref: "#daily-controls",
+  };
+}
+
+function eurosForAction(value: number) {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value);
 }
 
 function buildRiskFixPlan(args: {
