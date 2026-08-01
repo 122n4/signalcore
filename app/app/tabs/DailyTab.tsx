@@ -1541,6 +1541,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         <>
             <InvestingHomeHero
               totalEur={portfolioTotalEur}
+              cashEur={Math.max(0, Number(portfolio?.cashEur ?? portfolio?.cash_eur ?? 0) || 0)}
               hasPlan={hasPlan}
               hasHoldings={hasHoldings}
               lastEvaluation={lastEvaluationLabel}

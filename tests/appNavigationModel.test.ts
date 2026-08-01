@@ -13,7 +13,7 @@ describe("app navigation model", () => {
     expect(buildModeAwareNavItems({ mode: "investing", lang: "en" })).toEqual([
       { key: "daily", label: "Overview" },
       { key: "portfolio", label: "Portfolio" },
-      { key: "advisor", label: "Advisor" },
+      { key: "advisor", label: "Recommendations" },
       { key: "planning", label: "Plan" },
       { key: "autonomy", label: "Settings" },
     ]);

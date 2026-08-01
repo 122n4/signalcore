@@ -1935,20 +1935,10 @@ export default function PortfolioTab({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => {
-              if (showFixGuide && autoFixActionableRows.length > 0) {
-                void autoFixAllAndReturnDaily({ alwaysReturnToDaily: true });
-                return;
-              }
-              goDaily();
-            }}
+            onClick={() => goDaily()}
             className="rounded-xl px-4 py-2 text-sm font-semibold border border-zinc-200 bg-white text-zinc-900"
           >
-            {busy && showFixGuide && autoFixActionableRows.length > 0
-              ? "Applying fixes..."
-              : showFixGuide && autoFixActionableRows.length > 0
-                ? "Fix all + back to Daily"
-                : "Back to Daily"}
+            Back to Daily
           </button>
           <button
             onClick={async () => {
@@ -2080,16 +2070,10 @@ export default function PortfolioTab({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (showFixGuide && autoFixActionableRows.length > 0) {
-                      void autoFixAllAndReturnDaily({ alwaysReturnToDaily: true });
-                      return;
-                    }
-                    goDaily();
-                  }}
+                  onClick={() => goDaily()}
                   className="rounded-xl border border-[#31415f] bg-[#0d182d] px-4 py-2 text-sm font-semibold text-[#eef5ff]"
                 >
-                  {showFixGuide && autoFixActionableRows.length > 0 ? "Fix all + back to Daily" : "Back to Daily"}
+                  Back to Daily
                 </button>
               </div>
             </div>
