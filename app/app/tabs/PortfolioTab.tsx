@@ -1097,12 +1097,16 @@ export default function PortfolioTab({
 
   const showFixGuide = fixNow && !dismissFixGuide;
   const leakAutoFixable = isAutoFixableLeakKey(fixKey);
+  // Investing holdings are a user-owned record. The Investing boundary deliberately
+  // rejects silent shared-portfolio writes; corrections must be reviewed in Paper or
+  // reflected manually after the user changes the real holding.
+  const canAutoApplyFix = false;
   const manualLeakCta = useMemo(() => manualFixCtaForLeak(fixKey, autopilotMode), [fixKey, autopilotMode]);
   const fixGuideDone = useMemo(() => {
     if (!showFixGuide) return false;
-    const cov = typeof coveragePct === "number" ? coveragePct : 0;
-    return missingForPricing.length === 0 && cov >= fixGuide.targetCoverage;
-  }, [showFixGuide, coveragePct, missingForPricing.length, fixGuide.targetCoverage]);
+    if (!fixKey || !bundle) return false;
+    return isLeakResolved({ targetLeakKey: fixKey, currentLeakKey: topLeakKeyFromBundle(bundle) });
+  }, [showFixGuide, fixKey, bundle]);
 
   useEffect(() => {
     if (!showFixGuide) return;
@@ -1145,7 +1149,7 @@ export default function PortfolioTab({
 
   useEffect(() => {
     if (!showFixGuide) return;
-    if (!handsFreeFixNow) return;
+    if (!handsFreeFixNow || !canAutoApplyFix) return;
     if (busy) return;
     if (autoFixActionableRows.length === 0) return;
     if (lastHandsFreeRunRef.current === handsFreeRunKey) return;
@@ -1153,7 +1157,7 @@ export default function PortfolioTab({
     lastHandsFreeRunRef.current = handsFreeRunKey;
     void autoApplyFixNow("handsfree");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showFixGuide, handsFreeFixNow, busy, autoFixActionableRows.length, handsFreeRunKey]);
+  }, [showFixGuide, handsFreeFixNow, canAutoApplyFix, busy, autoFixActionableRows.length, handsFreeRunKey]);
 
   const simpleGuide = useMemo<PortfolioSimpleGuide>(() => {
     if (!hasHoldings) {
@@ -2187,7 +2191,7 @@ export default function PortfolioTab({
                 <span className="font-semibold text-zinc-900">{typeof coveragePct === "number" ? `${coveragePct}%` : "-"}</span>
               </div>
 
-              {isProUX ? (
+              {isProUX && canAutoApplyFix ? (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -2209,6 +2213,13 @@ export default function PortfolioTab({
                   </div>
                 </div>
               ) : null}
+
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
+                <div className="text-sm font-semibold text-cyan-950">Review first — holdings are not changed automatically</div>
+                <div className="mt-1 text-xs leading-5 text-cyan-900/90">
+                  These rows are a correction plan, not executed trades. Syntrake will not rewrite your holdings to make a warning disappear. Review the correction in Paper, or update the holding after you make the change outside Syntrake; Advisor will clear it only after the portfolio state really changes.
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {fixGuide.steps.map((s, i) => (
@@ -2308,7 +2319,7 @@ export default function PortfolioTab({
               ) : null}
 
               <div className="flex flex-wrap gap-2">
-                {leakAutoFixable ? (
+                {leakAutoFixable && canAutoApplyFix ? (
                   <button
                     onClick={() => void autoApplyFixNow("manual")}
                     disabled={busy || autoFixActionableRows.length === 0}
@@ -2317,7 +2328,7 @@ export default function PortfolioTab({
                     {busy ? "Applying..." : `Auto-fix now (${autoFixActionableRows.length})`}
                   </button>
                 ) : null}
-                {leakAutoFixable && !isBeginnerUX ? (
+                {leakAutoFixable && canAutoApplyFix && !isBeginnerUX ? (
                   <button
                     type="button"
                     onClick={() => void autoFixAllAndReturnDaily({ alwaysReturnToDaily: true })}
@@ -2327,7 +2338,7 @@ export default function PortfolioTab({
                     {busy ? "Applying..." : "Fix all + back to Daily"}
                   </button>
                 ) : null}
-                {leakAutoFixable ? (
+                {leakAutoFixable && canAutoApplyFix ? (
                   <button
                     onClick={scrollToFix}
                     className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white"
@@ -2341,11 +2352,26 @@ export default function PortfolioTab({
                   >
                     {manualLeakCta.label}
                   </a>
-                ) : null}
+                ) : fixKey === "concentration_high" || fixKey === "concentration_med" ? (
+                  <a
+                    href={`/app?tab=daily&mode=${autopilotMode}#daily-controls`}
+                    className="rounded-xl bg-cyan-700 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-800"
+                  >
+                    Review Paper correction
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={scrollToFix}
+                    className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Open holdings to update
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     await loadBundle();
-                    setToast("Fix guide re-checked OK");
+                    setToast("Portfolio re-checked. The issue clears only after the holdings or data really change.");
                   }}
                   className="rounded-xl px-4 py-2 text-sm font-semibold border border-zinc-200 bg-white text-zinc-900"
                 >
