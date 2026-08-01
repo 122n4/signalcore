@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 begin;
-set local role service_role;
+-- Direct material-break rows are administrator-owned QA fixtures.
+reset role;
 
 select public.investing_open_paper_account_v2(
   'reconciliation_validation_user','reconciliation_portfolio','EUR',2000,

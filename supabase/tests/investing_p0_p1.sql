@@ -74,7 +74,9 @@ begin
 end $$;
 reset role;
 
-set local role service_role;
+-- Direct ledger/queue rows below are QA fixtures, not an application write path.
+-- Keep service_role table privileges closed; function EXECUTE grants are asserted above.
+reset role;
 do $$
 declare account_a uuid; queue_a uuid; order_a uuid; queue_sell uuid; order_sell uuid; queue_approval uuid; queue_expired uuid; result jsonb;
 begin

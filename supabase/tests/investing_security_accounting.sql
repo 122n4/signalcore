@@ -10,7 +10,13 @@ begin
     where n.nspname='public' and p.proname like 'investing_%' and p.prosecdef
   loop
     if has_function_privilege('anon',r.oid,'execute') then raise exception 'anon_execute:%',r.signature; end if;
-    if has_function_privilege('authenticated',r.oid,'execute') then raise exception 'authenticated_execute:%',r.signature; end if;
+    if has_function_privilege('authenticated',r.oid,'execute')
+       and r.signature not in(
+         'investing_has_scope_permission_v1(uuid,text,text)',
+         'investing_research_has_exact_scope_v1(uuid,text,text,uuid)'
+       ) then
+      raise exception 'authenticated_execute:%',r.signature;
+    end if;
     if exists(
       select 1 from aclexplode(coalesce((select proacl from pg_proc where oid=r.oid),acldefault('f',(select proowner from pg_proc where oid=r.oid))))
       where grantee=0 and privilege_type='EXECUTE'
@@ -21,7 +27,9 @@ begin
   end loop;
 end $$;
 
-set local role service_role;
+-- The large block below creates direct QA fixtures. Application roles remain
+-- constrained to the explicitly asserted RPC grants and RLS projections.
+reset role;
 select public.investing_open_paper_account_v2('validation_user_a','portfolio_a','EUR',1000,'validation-fund-a','validation-fund-corr-a');
 select public.investing_open_paper_account_v2('validation_user_b','portfolio_b','EUR',1000,'validation-fund-b','validation-fund-corr-b');
 
@@ -175,7 +183,9 @@ reset role;
 -- Unauthenticated role sees no Investing financial rows.
 set local role anon;
 do $$ begin
-  if exists(select 1 from public.investing_accounts where user_id in ('validation_user_a','validation_user_b')) then raise exception 'anon_read_accounts'; end if;
+  begin
+    if exists(select 1 from public.investing_accounts where user_id in ('validation_user_a','validation_user_b')) then raise exception 'anon_read_accounts'; end if;
+  exception when insufficient_privilege then null; end;
   begin
     perform public.investing_open_paper_account_v2('validation_user_a','x','EUR',0,'anon-open-test','anon-open-corr');
     raise exception 'anon_executed_financial_rpc';

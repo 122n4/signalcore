@@ -39,9 +39,8 @@ function material(seed, overrides = {}) {
 
 async function account(client, owner, portfolio) {
   await client.query(
-    `insert into public.investing_accounts(user_id,portfolio_id,base_currency,environment,status)
-     values($1,$2,'EUR','paper','active') on conflict(user_id,portfolio_id,environment) do nothing`,
-    [owner, portfolio],
+    "select public.investing_open_paper_account_v2($1,$2,'EUR',0,$3,$4)",
+    [owner, portfolio, `engine4a-open-${owner}`, `engine4a-open-corr-${owner}`],
   );
   const result = await client.query(
     "select id from public.investing_accounts where user_id=$1 and portfolio_id=$2 and environment='paper'",
