@@ -451,6 +451,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const receiptsTimeline = Array.isArray(derived?.receiptsTimeline) ? derived.receiptsTimeline : [];
   const decisionImpact = derived?.decisionImpact ?? null;
   const performance = derived?.performance ?? null;
+  const accountingPerformance = derived?.accountingPerformance ?? null;
   const doneToday = !!derived?.doneToday;
   const streak = typeof derived?.streak === "number" ? derived.streak : 0;
 
@@ -1542,6 +1543,23 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
             <InvestingHomeHero
               totalEur={portfolioTotalEur}
               cashEur={Math.max(0, Number(portfolio?.cashEur ?? portfolio?.cash_eur ?? 0) || 0)}
+              performanceValue={
+                accountingPerformance?.status === "ready" && Number.isFinite(Number(accountingPerformance?.totalResultEur))
+                  ? `${Number(accountingPerformance.totalResultEur) > 0 ? "+" : ""}${fmtEUR(Number(accountingPerformance.totalResultEur))}`
+                  : "Building history"
+              }
+              performanceNote={
+                accountingPerformance?.status === "ready"
+                  ? `${Number(accountingPerformance?.totalResultPct || 0) > 0 ? "+" : ""}${Number(accountingPerformance?.totalResultPct || 0).toFixed(2)}% · net deposits ${fmtEUR(Number(accountingPerformance?.netContributionsEur || 0))} · income ${fmtEUR(Number(accountingPerformance?.incomeEur || 0))} · costs ${fmtEUR(Number(accountingPerformance?.feesEur || 0) + Number(accountingPerformance?.taxesEur || 0))}`
+                  : "Cash-flow-adjusted result pending"
+              }
+              performanceTone={
+                accountingPerformance?.status !== "ready"
+                  ? "neutral"
+                  : Number(accountingPerformance?.totalResultEur || 0) >= 0
+                    ? "good"
+                    : "warn"
+              }
               hasPlan={hasPlan}
               hasHoldings={hasHoldings}
               lastEvaluation={lastEvaluationLabel}

@@ -9,6 +9,9 @@ function euros(value: number) {
 export default function InvestingHomeHero(props: {
   totalEur: number;
   cashEur: number;
+  performanceValue: string;
+  performanceNote: string;
+  performanceTone: "neutral" | "good" | "warn";
   hasPlan: boolean;
   hasHoldings: boolean;
   lastEvaluation: string;
@@ -47,7 +50,7 @@ export default function InvestingHomeHero(props: {
           <h1 className="mt-1 text-4xl font-black tracking-[-.05em] text-white sm:text-5xl">{euros(props.totalEur)}</h1>
 
           <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <AnswerMetric label="Performance" value="Building history" note="Cash-flow-adjusted result pending" tone="neutral" />
+            <AnswerMetric label="Investment result" value={props.performanceValue} note={props.performanceNote} tone={props.performanceTone} />
             <AnswerMetric label="Available cash" value={euros(props.cashEur)} note="Persistent Paper balance" tone="neutral" />
             <AnswerMetric
               label="Plan fit"
