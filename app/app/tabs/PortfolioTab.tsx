@@ -760,7 +760,6 @@ export default function PortfolioTab({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [applyingStarter, setApplyingStarter] = useState(false);
-  const [clearingStarterFreshStart, setClearingStarterFreshStart] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [dismissFixGuide, setDismissFixGuide] = useState(false);
   const [handsFreeFixNow, setHandsFreeFixNow] = useState(false);
@@ -768,7 +767,6 @@ export default function PortfolioTab({
   const [goalQuiz, setGoalQuiz] = useState<ReturnType<typeof readGoalQuiz>>(null);
   const lastHandsFreeRunRef = useRef<string>("");
   const onboardingHintShownRef = useRef(false);
-  const onboardingAutoFreshStartRef = useRef(false);
   const onboardingDailyRedirectedRef = useRef(false);
 
   // data quality (from daily-bundle)
@@ -794,7 +792,7 @@ export default function PortfolioTab({
   // editing state
   const [draftQty, setDraftQty] = useState<Record<string, string>>({});
   const [draftVal, setDraftVal] = useState<Record<string, string>>({});
-  const [rowSaving, setRowSaving] = useState<Record<string, boolean>>({});
+  const [rowSaving] = useState<Record<string, boolean>>({});
 
   const starterPack = useMemo(() => {
     const raw = Array.isArray(bundle?.daily?.starterPack) ? bundle.daily.starterPack : [];
@@ -814,17 +812,10 @@ export default function PortfolioTab({
   const starterUsesLiveQuotes = starterSource === "market_quotes";
 
   const normalizedSymbol = useMemo(() => normSymbol(q), [q]);
-  const qtyNumber = useMemo(() => {
-    const n = safeNum(qty, null);
-    return n == null ? null : n;
-  }, [qty]);
-
   const hasHoldings = items.length > 0;
   const hasStarterCandidate = !hasHoldings && starterPack.length > 0;
   const setupHasExistingHoldings =
     typeof goalQuiz?.hasExistingHoldings === "boolean" ? Boolean(goalQuiz.hasExistingHoldings) : null;
-  const onboardingFreshStartConflict =
-    onboardingFromSetupRef.current && starterReady && setupHasExistingHoldings === false && hasHoldings;
   const starterRationale = useMemo(() => {
     const reasons = starterPack
       .map((x: any) => String(x?.rationale || "").trim())
@@ -927,10 +918,12 @@ export default function PortfolioTab({
   async function loadServerItems() {
     setLoading(true);
     try {
-      const r = await fetchJSON(`/api/portfolio-items?mode=${encodeURIComponent(String(autopilotMode))}`, { method: "GET" });
+      const budgetEur = readStarterBudget(autopilotMode);
+      const budgetParam = budgetEur != null ? `&budgetEur=${budgetEur}` : "";
+      const r = await fetchJSON(`/api/daily-bundle?mode=${encodeURIComponent(String(autopilotMode))}${budgetParam}&_=${Date.now()}`, { method: "GET" });
       if (!r.ok) return [] as HoldingRow[];
 
-      const list = Array.isArray(r.data?.items) ? r.data.items : [];
+      const list = Array.isArray(r.data?.portfolio?.items) ? r.data.portfolio.items : [];
       setItems(list);
 
       // hydrate drafts from server (only if empty)
@@ -970,6 +963,7 @@ export default function PortfolioTab({
     );
     if (r.ok) {
       setBundle(r.data);
+      setItems(Array.isArray(r.data?.portfolio?.items) ? r.data.portfolio.items : []);
       return r.data;
     }
     return null;
@@ -1012,15 +1006,6 @@ export default function PortfolioTab({
     onboardingHintShownRef.current = true;
     setToast("Starter ready. Apply it in Portfolio and continue to Daily.");
   }, [loading, hasHoldings, addHoldingsNow, starterReady]);
-
-  useEffect(() => {
-    if (!onboardingFreshStartConflict) return;
-    if (onboardingAutoFreshStartRef.current) return;
-    onboardingAutoFreshStartRef.current = true;
-    setToast("Previous holdings detected. Starting with a clean portfolio...");
-    void clearForStarterFreshStart();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onboardingFreshStartConflict]);
 
   // close dropdown on outside click
   useEffect(() => {
@@ -1355,57 +1340,30 @@ export default function PortfolioTab({
     setApplyingStarter(true);
     setBusy(true);
     try {
-      const payloadItems = starterPack.map((x: any) => ({
-        symbol: String(x.symbol || "").toUpperCase(),
-        name: x.name ?? null,
-        qty: x.qty == null ? null : Number(x.qty),
-        value_eur: Number(x.valueEur || 0),
-      }));
-
-      const r = await fetchJSON("/api/portfolio-items/reset", {
+      const initialDeposit = Math.max(100, Math.round(Number(starterPackMeta?.budgetEur) || starterPack.reduce((sum: number, item: any) => sum + Number(item.valueEur || 0), 0)));
+      const r = await fetchJSON("/api/investing/paper/accounts", {
         method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: payloadItems, source: "starter_pack" }),
+        body: JSON.stringify({
+          action: "open_paper_account",
+          portfolioId: "primary",
+          environment: "paper",
+          currency: "EUR",
+          initialDeposit: String(initialDeposit),
+          clientRequestId: `onboarding-paper-${initialDeposit}`,
+        }),
       });
       if (!r.ok) {
-        setToast(String(r.data?.error || "Failed to apply starter pack."));
+        setToast(String(r.data?.error || "Failed to fund the Paper portfolio."));
         return;
       }
 
       writeStarterWarmup(autopilotMode);
-      const inserted = Number(r.data?.inserted || payloadItems.length || 0);
-      setToast(
-        starterUsesLiveQuotes
-          ? `Starter pack applied (${inserted} holdings). Redirecting to Daily...`
-          : `Starter pack applied (${inserted} holdings, provisional allocation). Redirecting to Daily...`
-      );
-      await loadServerItems();
+      setToast(`Paper account funded with ${fmtEUR(initialDeposit)}. Redirecting to proposal review...`);
       await loadBundle();
       onboardingDailyRedirectedRef.current = true;
       setTimeout(() => goDaily("starter_pack"), 500);
     } finally {
       setApplyingStarter(false);
-      setBusy(false);
-    }
-  }
-
-  async function clearForStarterFreshStart() {
-    if (busy || clearingStarterFreshStart) return;
-    setClearingStarterFreshStart(true);
-    setBusy(true);
-    try {
-      const r = await fetchJSON("/api/portfolio-items/reset", {
-        method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: [] }),
-      });
-      if (!r.ok) {
-        setToast(String(r.data?.error || "Failed to clear existing holdings."));
-        return;
-      }
-      await loadServerItems();
-      await loadBundle();
-      setToast("Old holdings cleared. You can now apply Starter Pack.");
-    } finally {
-      setClearingStarterFreshStart(false);
       setBusy(false);
     }
   }
@@ -1416,75 +1374,15 @@ export default function PortfolioTab({
     leakKey: string;
     itemSnapshot: HoldingRow[];
   }) {
-    const planMap = new Map<string, FixNowExecutionRow>();
-    for (const row of args.rows) {
-      planMap.set(String(row.symbol || "").toUpperCase(), row);
-    }
-
-    const itemMap = new Map<string, HoldingRow>();
-    for (const it of args.itemSnapshot) {
-      const sym = String(it?.symbol || "").toUpperCase();
-      if (!sym) continue;
-      itemMap.set(sym, it);
-    }
-
-    const payloadItems = args.rows
-      .map((row) => {
-        const sym = String(row.symbol || "").toUpperCase();
-        const target = row.targetValueEur;
-        if (!sym || target == null || !Number.isFinite(target)) return null;
-
-        const current = itemMap.get(sym);
-        const currentValue = safeNum(current?.valueEur ?? current?.value_eur, null);
-        const currentQty = safeNum(current?.qty, null);
-        const nextValue = Math.max(0, Number(target));
-
-        const nextQty =
-          currentQty != null && currentValue != null && currentValue > 0
-            ? Math.max(0, (nextValue / currentValue) * currentQty)
-            : null;
-
-        return {
-          symbol: sym,
-          name: current?.name ?? null,
-          qty: nextQty,
-          value_eur: nextValue,
-        };
-      })
-      .filter(Boolean) as Array<{ symbol: string; name: string | null; qty: number | null; value_eur: number }>;
-
-    if (!payloadItems.length) {
+    if (!args.rows.length) {
       return { ok: false as const, count: 0, error: "Nothing to apply." };
     }
-
-    const r = await fetchJSON("/api/portfolio-items", {
-      method: "POST",
-      body: JSON.stringify({ mode: autopilotMode, items: payloadItems }),
-    });
-    if (!r.ok) {
-      return { ok: false as const, count: 0, error: String(r.data?.error || "Auto-fix failed.") };
-    }
-
-    const receiptRows = payloadItems.map((x) => {
-      const plan = planMap.get(String(x.symbol || "").toUpperCase());
-      return {
-        symbol: String(x.symbol || "").toUpperCase(),
-        action: plan?.action ?? "FIX_DATA",
-        targetValueEur: x.value_eur ?? null,
-        qty: x.qty ?? null,
-        reason: plan?.reason ?? "Applied by FixNow auto execution.",
-      };
-    });
-
-    setLastAutoFixReceipt({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      at: new Date().toISOString(),
-      source: args.source,
-      fixKey: args.leakKey,
-      rows: receiptRows,
-    });
-
-    return { ok: true as const, count: payloadItems.length };
+    void args.source;
+    void args.leakKey;
+    void args.itemSnapshot;
+    setToast("Position changes require a reviewed Paper proposal. Opening Daily.");
+    goDaily();
+    return { ok: false as const, count: 0, error: "Review the proposed position changes in Daily." };
   }
 
   async function autoApplyFixNow(source: "manual" | "handsfree" = "manual") {
@@ -1683,39 +1581,8 @@ export default function PortfolioTab({
       return;
     }
 
-    setBusy(true);
-    try {
-      const payload = {
-        mode: autopilotMode,
-        items: [
-          {
-            symbol,
-            name: hit?.name ? String(hit.name).trim() : null,
-            qty: qtyNumber,
-          },
-        ],
-      };
-
-      const r = await fetchJSON("/api/portfolio-items", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to add holding.");
-        return;
-      }
-
-      setToast(`Added ${symbol} OK`);
-      setQ("");
-      setQty("");
-      setHits([]);
-      setOpen(false);
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setBusy(false);
-    }
+    setToast(`${symbol} must be added through a reviewed Paper proposal. Opening Daily.`);
+    goDaily();
   }
 
   async function addFromPaste() {
@@ -1727,58 +1594,15 @@ export default function PortfolioTab({
       return;
     }
 
-    setBusy(true);
-    try {
-      const payload = {
-        mode: autopilotMode,
-        items: symbols.map((s) => ({ symbol: s, name: null, qty: null })),
-      };
-
-      const r = await fetchJSON("/api/portfolio-items", { method: "POST", body: JSON.stringify(payload) });
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to add list.");
-        return;
-      }
-
-      setToast(`Added ${symbols.length} OK`);
-      setPaste("");
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setBusy(false);
-    }
+    setToast(`${symbols.length} symbols require a reviewed Paper proposal. Opening Daily.`);
+    goDaily();
   }
 
   async function remove(id: string, symbol?: string) {
     if (busy) return;
-    setBusy(true);
-    try {
-      const r = await fetchJSON(`/api/portfolio-items?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to remove.");
-        return;
-      }
-
-      const sym = symbol ? String(symbol).toUpperCase() : "";
-      if (sym) {
-        setDraftQty((prev) => {
-          const next = { ...(prev || {}) };
-          delete next[sym];
-          return next;
-        });
-        setDraftVal((prev) => {
-          const next = { ...(prev || {}) };
-          delete next[sym];
-          return next;
-        });
-      }
-
-      setToast("Removed OK");
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setBusy(false);
-    }
+    void id;
+    setToast(`${symbol || "This position"} can only be changed through a reviewed Paper proposal. Opening Daily.`);
+    goDaily();
   }
 
   async function saveRow(symbol: string, name?: string | null) {
@@ -1793,32 +1617,11 @@ export default function PortfolioTab({
     // value can be explicitly cleared by empty string -> null
     const valueN = vv === "" ? null : safeNum(vv, null);
 
-    setRowSaving((p) => ({ ...(p || {}), [sym]: true }));
-    try {
-      const payload = {
-        mode: autopilotMode,
-        items: [
-          {
-            symbol: sym,
-            name: name ?? null,
-            qty: qtyN,
-            value_eur: valueN, // allow null to clear
-          },
-        ],
-      };
-
-      const r = await fetchJSON("/api/portfolio-items", { method: "POST", body: JSON.stringify(payload) });
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to save.");
-        return;
-      }
-
-      setToast(`Saved ${sym} OK`);
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setRowSaving((p) => ({ ...(p || {}), [sym]: false }));
-    }
+    void name;
+    void qtyN;
+    void valueN;
+    setToast(`${sym} can only be changed through a reviewed Paper proposal. Opening Daily.`);
+    goDaily();
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -2036,21 +1839,21 @@ export default function PortfolioTab({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={runSimpleGuideAction}
-                  className={clsx(
-                    "rounded-xl px-4 py-2 text-sm font-semibold text-white",
-                    simpleGuide.tone === "bad"
-                      ? "bg-rose-600 hover:bg-rose-700"
-                      : simpleGuide.tone === "good"
-                        ? "bg-emerald-600 hover:bg-emerald-700"
-                        : "bg-zinc-900 hover:bg-black"
-                  )}
-                >
-                  {simpleGuide.actionLabel}
-                </button>
-                <button
+                {!showStarterApplyTopCard ? <button
+                    type="button"
+                    onClick={runSimpleGuideAction}
+                    className={clsx(
+                      "rounded-xl px-4 py-2 text-sm font-semibold text-white",
+                      simpleGuide.tone === "bad"
+                        ? "bg-rose-600 hover:bg-rose-700"
+                        : simpleGuide.tone === "good"
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : "bg-zinc-900 hover:bg-black"
+                    )}
+                  >
+                    {simpleGuide.actionLabel}
+                  </button> : null}
+                {hasHoldings ? <button
                   type="button"
                   onClick={async () => {
                     await loadServerItems();
@@ -2058,23 +1861,23 @@ export default function PortfolioTab({
                   }}
                   disabled={loading || busy}
                   className="rounded-xl border border-[#31415f] bg-[#0d182d] px-4 py-2 text-sm font-semibold text-[#eef5ff] disabled:opacity-50"
-                >
+                  >
                   Sync portfolio
-                </button>
-                <button
+                </button> : null}
+                {hasHoldings ? <button
                   type="button"
                   onClick={scrollToFix}
                   className="rounded-xl border border-[#31415f] bg-[#0d182d] px-4 py-2 text-sm font-semibold text-[#eef5ff]"
-                >
+                  >
                   Repair pricing
-                </button>
-                <button
+                </button> : null}
+                {hasHoldings ? <button
                   type="button"
                   onClick={() => goDaily()}
                   className="rounded-xl border border-[#31415f] bg-[#0d182d] px-4 py-2 text-sm font-semibold text-[#eef5ff]"
-                >
+                  >
                   Back to Daily
-                </button>
+                </button> : null}
               </div>
             </div>
           </div>
@@ -2141,7 +1944,7 @@ export default function PortfolioTab({
                           disabled={!hasStarterCandidate || busy || applyingStarter}
                           className="rounded-xl bg-[#3b63ff] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                         >
-                          {applyingStarter ? "Applying starter..." : "Apply Starter Allocation"}
+                          {applyingStarter ? "Funding Paper account..." : "Fund Paper portfolio"}
                         </button>
                       ) : null}
                       {(missingForPricing.length > 0 || (typeof coveragePct === "number" && coveragePct < 80)) ? (
@@ -2399,15 +2202,15 @@ export default function PortfolioTab({
         <div className={showStarterWhyPanel ? "grid grid-cols-1 xl:grid-cols-2 gap-5 items-start" : "space-y-5"}>
         {showStarterApplyTopCard ? (
           <div className="xl:order-1">
-            <Card title="Nao tenho holdings" subtitle="Starter pronto" right={<Badge tone={hasStarterCandidate ? "good" : "warn"}>{hasStarterCandidate ? "Ready" : "Preparing"}</Badge>}>
+            <Card title="Start with a Paper portfolio" subtitle="No real money" right={<Badge tone={hasStarterCandidate ? "good" : "warn"}>{hasStarterCandidate ? "Ready" : "Preparing"}</Badge>}>
               <div className="space-y-3">
-                <div className="text-sm text-zinc-700">Aplicar starter agora com base no setup.</div>
+                <div className="text-sm text-zinc-700">Fund the simulated account with your setup capital. Syntrake will then create a governed proposal for you to review.</div>
                 <div className="text-xs text-zinc-600">
                   Budget:{" "}
                   <span className="font-semibold text-zinc-900">
                     {Number.isFinite(Number(starterPackMeta?.budgetEur)) ? fmtEUR(Number(starterPackMeta?.budgetEur)) : "n/a"}
                   </span>
-                  {goalQuiz?.targetCapital ? ` | Objetivo: ${fmtEUR(Number(goalQuiz.targetCapital || 0))}` : ""}
+                  {goalQuiz?.targetCapital ? ` | Target: ${fmtEUR(Number(goalQuiz.targetCapital || 0))}` : ""}
                 </div>
                 {starterFallbackInfoTable}
                 <div className="flex flex-wrap gap-2">
@@ -2416,7 +2219,7 @@ export default function PortfolioTab({
                     disabled={!hasStarterCandidate || busy || applyingStarter}
                     className="rounded-xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50"
                   >
-                    {applyingStarter ? "A preparar..." : "Aplicar starter agora"}
+                    {applyingStarter ? "Funding Paper account..." : "Fund Paper portfolio"}
                   </button>
                   <button
                     onClick={() => goDaily()}
@@ -2460,15 +2263,15 @@ export default function PortfolioTab({
         ) : null}
 
         <div className={showStarterWhyPanel ? "xl:order-3 xl:col-span-2" : ""}>
-        {/* Add holding */}
-        <Card title="Add holding" subtitle="Search or paste. Keep symbols clean.">
+        {/* Governed position request */}
+        <Card title="Request a position change" subtitle="Position changes are reviewed and executed through the governed Paper cycle in Daily.">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div ref={boxRef} className="relative md:col-span-2">
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={onKeyDown}
-                placeholder="Search: AAPL, MSFT, BTC, EURUSD..."
+                placeholder="Symbol to review: AAPL, MSFT, BTC..."
                 className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-zinc-900/10"
               />
               {open && hits.length > 0 ? (
@@ -2502,7 +2305,7 @@ export default function PortfolioTab({
                 disabled={busy || !normalizedSymbol}
                 className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white disabled:opacity-50"
               >
-                Add
+                Review in Daily
               </button>
             </div>
           </div>
@@ -2511,7 +2314,7 @@ export default function PortfolioTab({
             <textarea
               value={paste}
               onChange={(e) => setPaste(e.target.value)}
-              placeholder="Paste list: AAPL MSFT TSLA BTC ETH..."
+              placeholder="Symbols to review: AAPL MSFT TSLA BTC ETH..."
               className="md:col-span-3 min-h-[88px] w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-zinc-900/10"
             />
             <button
@@ -2519,7 +2322,7 @@ export default function PortfolioTab({
               disabled={busy}
               className="rounded-xl px-4 py-2 text-sm font-semibold border border-zinc-200 bg-white text-zinc-900 disabled:opacity-50"
             >
-              Add list
+              Review in Daily
             </button>
           </div>
         </Card>
@@ -2555,12 +2358,12 @@ export default function PortfolioTab({
             <Badge tone={hasHoldings ? "neutral" : "warn"}>
               {hasHoldings
                 ? pickByLang(lang, {
-                    en: "Editable",
-                    pt: "Editavel",
-                    es: "Editable",
-                    fr: "Editable",
-                    de: "Bearbeitbar",
-                    it: "Modificabile",
+                    en: "Paper governed",
+                    pt: "Paper governado",
+                    es: "Paper gobernado",
+                    fr: "Paper gouverne",
+                    de: "Paper-gesteuert",
+                    it: "Paper governato",
                   })
                 : pickByLang(lang, {
                     en: "Empty",
@@ -2573,30 +2376,6 @@ export default function PortfolioTab({
             </Badge>
           }
         >
-          {onboardingFreshStartConflict ? (
-            <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-              <div className="text-sm font-semibold text-amber-900">Existing holdings detected from previous session.</div>
-              <div className="mt-1 text-xs text-amber-900/90">
-                You selected "No holdings" in setup. Start fresh to clear old rows, then apply Starter Pack.
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  onClick={() => void clearForStarterFreshStart()}
-                  disabled={busy || clearingStarterFreshStart}
-                  className="rounded-xl px-3 py-2 text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
-                >
-                  {clearingStarterFreshStart ? "Clearing..." : "Start fresh (clear old holdings)"}
-                </button>
-                <button
-                  onClick={() => void applyStarterPack()}
-                  disabled={!starterPack.length || busy || applyingStarter}
-                  className="rounded-xl px-3 py-2 text-xs font-semibold border border-amber-300 bg-white text-amber-900 disabled:opacity-50"
-                >
-                  Apply starter now
-                </button>
-              </div>
-            </div>
-          ) : null}
           {loading ? (
             <div className="text-sm text-zinc-600">
               {pickByLang(lang, {

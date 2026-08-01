@@ -90,7 +90,7 @@ function tinyId() {
 
 type GoalKey = "growth" | "balanced" | "income" | "preservation";
 type RiskKey = "low" | "medium" | "high";
-type HorizonKey = "3m" | "12m" | "3y" | "5y";
+type HorizonKey = "3m" | "12m" | "3y" | "5y" | "10y";
 
 const GOALS: Array<{ key: GoalKey; title: string; desc: string }> = [
   { key: "growth", title: "Growth", desc: "Maximize compounding (controlled risk)." },
@@ -109,7 +109,8 @@ const HORIZONS: Array<{ key: HorizonKey; title: string; desc: string }> = [
   { key: "3m", title: "3 months", desc: "Short-term. Safety dominates." },
   { key: "12m", title: "12 months", desc: "Tactical but still disciplined." },
   { key: "3y", title: "3 years", desc: "Classic compounding horizon." },
-  { key: "5y", title: "5+ years", desc: "Best for long-term growth." },
+  { key: "5y", title: "5 years", desc: "Long-term compounding." },
+  { key: "10y", title: "10 years", desc: "Extended compounding horizon." },
 ];
 
 const HORIZON_MONTHS: Record<HorizonKey, number> = {
@@ -117,6 +118,7 @@ const HORIZON_MONTHS: Record<HorizonKey, number> = {
   "12m": 12,
   "3y": 36,
   "5y": 60,
+  "10y": 120,
 };
 
 const WEALTH_PLAN_KEY = "sc_wealth_plan_v1";
@@ -250,7 +252,9 @@ function goalStringFromPreset(args: { goal: GoalKey; risk: RiskKey; horizon: Hor
         ? "over the next 12 months"
         : args.horizon === "3y"
           ? "over 3 years"
-          : "over 5+ years";
+          : args.horizon === "5y"
+            ? "over 5 years"
+            : "over 10 years";
 
   const modeText =
     "in investing mode";
@@ -1011,22 +1015,20 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         starterBudgetDesired,
         starterBudgetGenerated,
       });
-      const payloadItems = starterPackScaled
-        .map((x: any) => ({
-          symbol: String(x?.symbol || "").trim().toUpperCase(),
-          name: x?.name ? String(x.name).trim() : null,
-          qty: x?.qty ?? null,
-          value_eur: x?.value_eur ?? x?.valueEur ?? null,
-        }))
-        .filter((x: any) => x.symbol.length >= 1);
-
-      const r = await fetchJSON("/api/portfolio-items/reset", {
+      const r = await fetchJSON("/api/investing/paper/accounts", {
         method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: payloadItems, source: "starter_pack" }),
+        body: JSON.stringify({
+          action: "open_paper_account",
+          portfolioId: "primary",
+          environment: "paper",
+          currency: "EUR",
+          initialDeposit: String(starterBudgetDesired),
+          clientRequestId: `planning-paper-${starterBudgetDesired}`,
+        }),
       });
 
       if (!r.ok) {
-        setToast(r.data?.error || "Failed to add starter pack.");
+        setToast(r.data?.error || "Failed to fund the Paper portfolio.");
         track("starter_pack_apply_error", { mode: autopilotMode, status: r.status });
         return;
       }
@@ -1035,10 +1037,10 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         id: tinyId(),
         at: new Date().toISOString(),
         mode: autopilotMode,
-        title: "Starter Pack applied",
+        title: "Paper portfolio funded",
         items: [
-          { label: "Holdings added", status: "ok", detail: `${payloadItems.length} items` },
-          { label: "Next step", status: "ok", detail: "Go to Daily to get your Next Best Action." },
+          { label: "Simulated cash funded", status: "ok", detail: `${starterBudgetDesired} EUR` },
+          { label: "Next step", status: "ok", detail: "Review the first governed proposal in Daily." },
         ],
       };
       setLastReceipt(receipt);
@@ -1046,10 +1048,10 @@ export default function PlanningTab({ mode }: { mode?: string }) {
 
       setToast(
         starterBudgetAdjusted
-          ? `Starter Pack applied with ${fmtEUR(starterBudgetDesired)} budget.`
-          : "Starter Pack applied"
+          ? `Paper portfolio funded with ${fmtEUR(starterBudgetDesired)}.`
+          : "Paper portfolio funded"
       );
-      track("starter_pack_apply_success", { mode: autopilotMode, items: payloadItems.length });
+      track("starter_pack_apply_success", { mode: autopilotMode, items: starterPackScaled.length, fundedEur: starterBudgetDesired });
       await load();
     } finally {
       setBusy(false);
@@ -1703,13 +1705,13 @@ export default function PlanningTab({ mode }: { mode?: string }) {
                   disabled={busy}
                   className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white disabled:opacity-50"
                 >
-                  {busy ? "Applying..." : "Apply Starter Pack"}
+                  {busy ? "Funding Paper account..." : "Fund Paper portfolio"}
                 </button>
                 <button
                   onClick={goPortfolio}
                   className="rounded-xl px-4 py-2 text-sm font-semibold border border-zinc-200 bg-white text-zinc-900"
                 >
-                  Edit holdings manually
+                  Review positions in Daily
                 </button>
               </div>
 

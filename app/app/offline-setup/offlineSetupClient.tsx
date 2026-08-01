@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { buildScenarios, requiredMonthlyContribution } from "@/lib/signalcore/wealthMath";
 import { usePaid } from "@/lib/signalcore/usePaid";
+import { deriveOnboardingRiskProfile } from "@/lib/investing/onboarding/riskProfile";
 
 type GoalType = "Investing";
 type RiskProfile = "Conservative" | "Balanced" | "Aggressive";
@@ -271,9 +272,8 @@ export default function OfflineSetupClient() {
   ]);
 
   useEffect(() => {
-    const score = (lossReaction === "buy" ? 3 : lossReaction === "hold" ? 2 : 0) + (incomeStable ? 2 : 0) + (needsCapitalSoon ? 0 : 2);
-    setRiskProfile(score >= 6 ? "Aggressive" : score <= 2 ? "Conservative" : "Balanced");
-  }, [incomeStable, lossReaction, needsCapitalSoon]);
+    setRiskProfile(deriveOnboardingRiskProfile({ lossReaction, incomeStable, needsCapitalSoon, experienceLevel }));
+  }, [experienceLevel, incomeStable, lossReaction, needsCapitalSoon]);
   useEffect(() => {
     const nextGoalType = goalTypeFromMode(requestedMode);
     setGoalType((current) => (current === nextGoalType ? current : nextGoalType));

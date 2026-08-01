@@ -14,6 +14,7 @@ export default function InvestingHomeHero(props: {
   performanceTone: "neutral" | "good" | "warn";
   hasPlan: boolean;
   hasHoldings: boolean;
+  hasFundedPaperAccount: boolean;
   lastEvaluation: string;
   blocked: boolean;
   completed: boolean;
@@ -32,7 +33,7 @@ export default function InvestingHomeHero(props: {
   const state = !props.hasPlan
     ? "Plan required"
     : !props.hasHoldings
-      ? "Portfolio required"
+      ? props.hasFundedPaperAccount ? "Proposal required" : "Paper funding required"
       : props.blocked
         ? "Review required"
         : props.completed
@@ -60,9 +61,9 @@ export default function InvestingHomeHero(props: {
             />
             <AnswerMetric
               label="Account integrity"
-              value={`${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}% verified`}
-              note={props.lastEvaluation}
-              tone={props.pricingCoveragePct >= 80 ? "good" : "warn"}
+              value={props.hasHoldings ? `${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}% verified` : "Awaiting portfolio"}
+              note={props.hasHoldings ? props.lastEvaluation : "No positions to verify yet"}
+              tone={props.hasHoldings && props.pricingCoveragePct >= 80 ? "good" : "warn"}
             />
           </div>
 
@@ -88,17 +89,17 @@ export default function InvestingHomeHero(props: {
           <div className="grid grid-cols-3 gap-2">
             <Metric label="Plan" value={props.hasPlan ? "Active" : "Missing"} />
             <Metric label="Assets" value={String(props.holdingsCount)} />
-            <Metric label="Data" value={`${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}%`} />
+            <Metric label="Data" value={props.hasHoldings ? `${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}%` : "Pending"} />
           </div>
           <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
             <div className="text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Last evaluation</div>
             <div className="mt-1 text-sm font-semibold text-slate-100">{props.lastEvaluation}</div>
             <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-              <Link href={props.hasPlan ? props.hasHoldings ? "/app?mode=investing&tab=advisor" : "/app?mode=investing&tab=portfolio" : "/app?mode=investing&tab=planning"} className="rounded-xl bg-cyan-200 px-3 py-2.5 text-center text-xs font-black text-slate-950">
-                {props.hasPlan ? props.hasHoldings ? "Review advice" : "Build portfolio" : "Complete plan"}
+              <Link href={props.hasPlan ? props.hasHoldings ? "/app?mode=investing&tab=advisor" : props.hasFundedPaperAccount ? "#daily-controls" : "/app?mode=investing&tab=portfolio" : "/app?mode=investing&tab=planning"} className="rounded-xl bg-cyan-200 px-3 py-2.5 text-center text-xs font-black text-slate-950">
+                {props.hasPlan ? props.hasHoldings ? "Review advice" : props.hasFundedPaperAccount ? "Review proposal" : "Fund Paper portfolio" : "Complete plan"}
               </Link>
               <Link href="/app?mode=investing&tab=portfolio" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Portfolio</Link>
-              <Link href="/investing/research" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Research</Link>
+              <Link href="/app?mode=investing&tab=planning" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Plan</Link>
             </div>
           </div>
           <div className="rounded-2xl border border-white/10 bg-black/15 p-4">

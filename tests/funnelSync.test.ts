@@ -65,6 +65,7 @@ describe("funnelSync", () => {
     expect(horizonPresetFromMonths(12)).toBe("12m");
     expect(horizonPresetFromMonths(36)).toBe("3y");
     expect(horizonPresetFromMonths(60)).toBe("5y");
+    expect(horizonPresetFromMonths(120)).toBe("10y");
     expect(horizonPresetFromMonths(null)).toBe(null);
   });
 
