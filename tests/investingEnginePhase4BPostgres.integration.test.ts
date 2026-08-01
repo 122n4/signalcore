@@ -70,7 +70,10 @@ pgDescribe("FASE 4B real PostgreSQL persistence", () => {
         database: connectionParameters.database,
       });
       const server = await effective.query("select current_database() database, inet_server_port() port, host(inet_server_addr()) address");
-      expect(server.rows[0]).toMatchObject({ database: destructiveQaTarget!.database, port: destructiveQaTarget!.port });
+      // The connection parameters above validate the external target port. A
+      // container may expose that target through NAT while PostgreSQL reports
+      // its internal port, so the server-side proof binds database + loopback.
+      expect(server.rows[0]).toMatchObject({ database: destructiveQaTarget!.database });
       expect(["127.0.0.1", "::1"]).toContain(server.rows[0].address);
     } finally {
       effective.release();
