@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import TrackedLink from "@/components/TrackedLink";
 import DailyHtmlDashboard from "@/components/daily/DailyHtmlDashboard";
 import InvestingOperatingLoopRail from "@/components/investing/InvestingOperatingLoopRail";
+import InvestingHomeHero from "@/components/investing/InvestingHomeHero";
 import { track } from "@/lib/analytics/client";
 import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
@@ -431,6 +432,10 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   ).toUpperCase();
 
   const holdings = Array.isArray(portfolio?.items) ? portfolio.items : [];
+  const portfolioTotalEur = holdings.reduce(
+    (sum: number, item: any) => sum + Math.max(0, Number(item?.valueEur ?? item?.value_eur ?? 0) || 0),
+    Math.max(0, Number(portfolio?.cashEur ?? portfolio?.cash_eur ?? 0) || 0),
+  );
   const hasPlan = typeof derived?.hasPlan === "boolean" ? Boolean(derived.hasPlan) : !!plan?.id || !!plan?.is_active || !!plan?.active;
   const hasHoldings = typeof derived?.hasHoldings === "boolean" ? Boolean(derived.hasHoldings) : holdings.length > 0;
   const hasFundedPaperAccount = Boolean(portfolio?.accountId) && Number(portfolio?.cashEur || 0) > 0;
@@ -1522,6 +1527,16 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
 
       {!loading && !error ? (
         <>
+            <InvestingHomeHero
+              totalEur={portfolioTotalEur}
+              hasPlan={hasPlan}
+              hasHoldings={hasHoldings}
+              action={directiveDisplay}
+              rationale={operatorNote}
+              lastEvaluation={lastEvaluationLabel}
+              blocked={Boolean(riskFixPlan) || decisionView.blockerState !== "none"}
+              completed={doneToday}
+            />
             <div className="mb-5">
               <InvestingOperatingLoopRail
                 summary={investingLoopSummary}

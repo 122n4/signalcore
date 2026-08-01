@@ -1942,7 +1942,7 @@ export default function AdvisorTab({
 
           <div className="text-sm text-zinc-600">
             {pickByLang(lang, {
-              en: "This tab explains why the autopilot is acting, with institutional drivers.",
+              en: "One clear strategic posture: what to do, why it matters, and what would change it.",
               pt: "Este tab explica porque o autopilot esta a agir, com drivers institucionais.",
               es: "Esta pestana explica por que el autopilot esta actuando, con drivers institucionales.",
               fr: "Cet onglet explique pourquoi l'autopilot agit, avec des facteurs institutionnels.",
@@ -2000,7 +2000,9 @@ export default function AdvisorTab({
       ) : null}
 
       {!loading ? (
-        <div className="mb-5">
+        <details className="mb-5 rounded-2xl border border-[#23314c] bg-[#0d1627] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[#d7e4f8]">Advanced strategy evidence</summary>
+          <div className="mt-4">
           <ProofRail
             theme="dark"
             eyebrow={pickByLang(lang, {
@@ -2038,7 +2040,8 @@ export default function AdvisorTab({
               pt: "O valor do Advisor fica mais forte à medida que se acumulam recibos, holdings e prova semanal.",
             })}
           />
-        </div>
+          </div>
+        </details>
       ) : null}
 
       {loading ? (
