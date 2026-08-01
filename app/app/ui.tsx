@@ -31,6 +31,7 @@ import AlertsTab from "@/app/app/tabs/AlertsTab";
 import BrokerPageClient from "@/app/app/broker/BrokerPageClient";
 import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
 import WorkspaceIdentityRail from "@/app/app/WorkspaceIdentityRail";
+import InvestingEvidenceNav from "@/components/investing/InvestingEvidenceNav";
 import {
   buildModeAwareNavItems,
   buildShellCopy,
@@ -1014,6 +1015,8 @@ export default function AppUI() {
             variant={workspaceMode === "trading" ? "compact" : "default"}
             onChange={handleModeChange}
           />
+
+          {workspaceMode === "investing" ? <InvestingEvidenceNav /> : null}
 
           {workspaceMode === "trading" ? (
             <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-300/[0.08] p-4 text-cyan-50 shadow-[0_18px_50px_rgba(8,145,178,0.08)]">

@@ -2844,11 +2844,12 @@ export default function PortfolioTab({
                           <div className="rounded-[18px] border border-[#23314c] bg-[#0d182d]/86 px-4 py-3">
                             <div className="flex items-center gap-2 text-sm font-semibold text-[#eef5ff]">
                               <span className={clsx("inline-flex h-2.5 w-2.5 rounded-full", quoteTone === "good" ? "bg-emerald-400" : quoteTone === "bad" ? "bg-rose-400" : "bg-amber-300")} />
-                              {livePrice != null ? "Live pricing ready" : "Manual valuation only"}
+                              {livePrice != null ? "Market quote available" : "Manual valuation only"}
                             </div>
                             <div className="mt-2 space-y-1 text-[12px] text-[#a6b7cf]">
                               <div>Qty {qtyValue != null ? fmtQty(qtyValue) : "pending"}</div>
-                              <div>{manualValue != null ? `Manual ${fmtEUR(manualValue)}` : "Awaiting manual value"}</div>
+                              <div>{manualValue != null ? `Recorded value ${fmtEUR(manualValue)}` : "Awaiting recorded value"}</div>
+                              {livePrice != null ? <div>Portfolio coverage is measured separately across every holding.</div> : null}
                             </div>
                           </div>
                         </div>
