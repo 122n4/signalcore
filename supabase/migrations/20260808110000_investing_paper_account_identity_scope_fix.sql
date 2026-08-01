@@ -32,7 +32,7 @@ grant update on table public.investing_orders to service_role;
 create or replace function public.investing_open_paper_account_v2(
   p_actor_user_id text,p_portfolio_id text,p_base_currency text,p_initial_deposit numeric,
   p_client_request_id text,p_correlation_id text
-) returns jsonb language plpgsql security definer set search_path=pg_catalog,public as $$
+) returns jsonb language plpgsql security definer set search_path=pg_catalog,extensions,public as $$
 declare
   v_tenant_id uuid;
   v_membership_id uuid;
