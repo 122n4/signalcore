@@ -68,7 +68,22 @@ export default async function ResearchPage() {
 
         <details className="mt-4 rounded-[28px] border border-white/10 bg-slate-950/55 p-5 md:p-6">
           <summary className="cursor-pointer text-lg font-bold">Recent research activity</summary>
-          <div className="mt-4 overflow-x-auto">
+          <div className="mt-4 grid gap-3 md:hidden">
+            {snapshot.recent.map((row, index) => (
+              <article key={`mobile:${row.category}:${row.id}:${index}`} className="min-w-0 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{label(row.category)}</p>
+                  <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-100">{label(row.state)}</span>
+                </div>
+                <p className="mt-3 break-all font-mono text-xs text-slate-300">{row.id}</p>
+                <dl className="mt-3 grid gap-2 text-xs text-slate-400">
+                  <div><dt className="inline font-semibold text-slate-500">Observed: </dt><dd className="inline">{row.occurredAt ? new Date(row.occurredAt).toLocaleString("pt-PT") : "—"}</dd></div>
+                  <div><dt className="inline font-semibold text-slate-500">Reason: </dt><dd className="inline break-words">{row.reasonCode ?? "—"}</dd></div>
+                </dl>
+              </article>
+            ))}
+          </div>
+          <div className="mt-4 hidden overflow-x-auto md:block">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="text-xs uppercase tracking-wider text-slate-500"><tr><th className="py-3">Area</th><th>Identifier</th><th>State</th><th>Observed</th><th>Reason</th></tr></thead>
               <tbody>{snapshot.recent.map((row, index) => (

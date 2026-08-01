@@ -1056,7 +1056,11 @@ export default function AppUI() {
 
           {workspaceMode === "investing" ? (
             <>
-              {view === "daily" && <DailyTab mode={workspaceMode} isPaid={Boolean(hasProAccess)} />}
+              {view === "daily" && (
+                <div className="order-first min-w-0 md:order-none">
+                  <DailyTab mode={workspaceMode} isPaid={Boolean(hasProAccess)} />
+                </div>
+              )}
               {view === "planning" &&
                 (welcomeSetupRequested || offlineSetupRequested ? (
                   <OfflineSetupClient />
