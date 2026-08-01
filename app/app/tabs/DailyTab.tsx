@@ -990,7 +990,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       stabilitySource: decisionView.stabilitySource,
     });
   }, [autopilotMode, decisionView.action, decisionView.stateReason, decisionView.stabilitySource]);
-  const lastEvaluationLabel = lastSnapshotAt ? `LAST EVALUATION ${fmtClockTime(lastSnapshotAt)}` : "LIVE DAILY OS";
+  const lastEvaluationLabel = lastSnapshotAt ? `LAST EVALUATION ${fmtClockTime(lastSnapshotAt)}` : "EVALUATION PENDING";
   const operatorNote = riskFixPlan?.summary || proof?.meaning || reasonsShort[0] || decisionView.rationale || primary.desc;
   const dailyTrendsNode = daily?.trends ?? null;
   const riskPressureDelta = Number((dailyTrendsNode as any)?.riskPressure?.delta1);
@@ -1503,7 +1503,12 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       {/* Loading */}
       {loading && (
         <div className="rounded-[22px] border border-slate-800/80 bg-[linear-gradient(180deg,rgba(17,28,49,0.88)_0%,rgba(13,23,41,0.94)_100%)] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
-          <div className="text-sm text-zinc-600">Loading daily bundle...</div>
+          <div className="animate-pulse space-y-3" role="status" aria-live="polite">
+            <div className="h-3 w-28 rounded bg-slate-700/70" />
+            <div className="h-8 w-2/3 rounded-lg bg-slate-700/50" />
+            <div className="h-3 w-full rounded bg-slate-800" />
+            <div className="text-xs text-slate-400">Loading your verified plan and portfolio state...</div>
+          </div>
         </div>
       )}
 

@@ -1896,7 +1896,7 @@ export default function AdvisorTab({
             </Badge>
 
             <Pill>
-              Score: <span className="ml-1 font-semibold">{Math.round(autopilotScore || 0)}</span>
+              Autopilot: <span className="ml-1 font-semibold">{Math.round(autopilotScore || 0)}</span>
             </Pill>
 
             {!isBeginnerUX && typeof safetyScore === "number" ? (
@@ -2004,20 +2004,20 @@ export default function AdvisorTab({
           <ProofRail
             theme="dark"
             eyebrow={pickByLang(lang, {
-              en: "Advisor value proof",
+              en: "Strategy evidence",
               es: "Prueba de valor de Advisor",
               fr: "Preuve de valeur d Advisor",
               de: "Advisor-Wertnachweis",
               it: "Prova di valore di Advisor",
-              pt: "Prova de valor do Advisor",
+              pt: "Evidencia da estrategia",
             })}
             title={pickByLang(lang, {
-              en: "Advisor keeps the strategic layer valuable between market moves.",
+              en: "One strategy posture, backed by the current plan and portfolio evidence.",
               es: "Advisor mantiene valiosa la capa estrategica entre movimientos de mercado.",
               fr: "Advisor garde la couche strategique utile entre les mouvements de marche.",
               de: "Advisor haelt die Strategieebene zwischen Marktbewegungen wertvoll.",
               it: "Advisor mantiene prezioso il livello strategico tra i movimenti di mercato.",
-              pt: "O Advisor mantem a camada estrategica valiosa entre movimentos de mercado.",
+              pt: "Uma postura estrategica, sustentada pelo plano e pela evidencia atual do portfolio.",
             })}
             body={pickByLang(lang, {
               en: "This is where Syntrake turns leaks, pressure, and plan coherence into one posture the user can actually follow.",
