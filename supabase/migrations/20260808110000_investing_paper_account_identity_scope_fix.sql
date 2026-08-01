@@ -32,7 +32,7 @@ grant update on table public.investing_orders to service_role;
 create or replace function public.investing_open_paper_account_v2(
   p_actor_user_id text,p_portfolio_id text,p_base_currency text,p_initial_deposit numeric,
   p_client_request_id text,p_correlation_id text
-) returns jsonb language plpgsql security definer set search_path=pg_catalog,extensions,public as $$
+) returns jsonb language plpgsql security definer set search_path=pg_catalog,public as $$
 declare
   v_tenant_id uuid;
   v_membership_id uuid;
@@ -40,6 +40,7 @@ declare
   v_movement_id uuid;
   v_transaction_id uuid;
   v_existing public.investing_cash_movements%rowtype;
+  v_hash_bytes bytea;
   v_hash text;
 begin
   if coalesce(btrim(p_actor_user_id),'')='' or coalesce(btrim(p_portfolio_id),'')=''
@@ -96,7 +97,16 @@ begin
   values(v_account_id,p_base_currency,0,0,0) on conflict(account_id,currency) do nothing;
   if p_initial_deposit=0 then return jsonb_build_object('ok',true,'account_id',v_account_id,'initial_deposit',0); end if;
 
-  v_hash:=encode(digest(convert_to(jsonb_build_object('account',v_account_id,'amount',p_initial_deposit,'currency',p_base_currency,'type','deposit')::text,'UTF8'),'sha256'),'hex');
+  if to_regprocedure('extensions.digest(bytea,text)') is not null then
+    execute 'select extensions.digest(convert_to($1,''UTF8''),''sha256'')' into v_hash_bytes
+      using jsonb_build_object('account',v_account_id,'amount',p_initial_deposit,'currency',p_base_currency,'type','deposit')::text;
+  elsif to_regprocedure('public.digest(bytea,text)') is not null then
+    execute 'select public.digest(convert_to($1,''UTF8''),''sha256'')' into v_hash_bytes
+      using jsonb_build_object('account',v_account_id,'amount',p_initial_deposit,'currency',p_base_currency,'type','deposit')::text;
+  else
+    raise exception 'investing_paper_funding_digest_unavailable';
+  end if;
+  v_hash:=encode(v_hash_bytes,'hex');
   select * into v_existing from public.investing_cash_movements
   where account_id=v_account_id and correlation_id=p_client_request_id and source_type='paper_funding' and source_id=p_client_request_id for update;
   if found then
