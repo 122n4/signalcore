@@ -1536,7 +1536,12 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
               lastEvaluation={lastEvaluationLabel}
               blocked={Boolean(riskFixPlan) || decisionView.blockerState !== "none"}
               completed={doneToday}
+              holdingsCount={holdings.length}
+              pricingCoveragePct={coveragePct}
             />
+            <details className="mb-5 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-200">View analysis, controls and evidence</summary>
+              <div className="mt-5">
             <div className="mb-5">
               <InvestingOperatingLoopRail
                 summary={investingLoopSummary}
@@ -1661,6 +1666,8 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
                     },
               }}
             />
+              </div>
+            </details>
           {decisionImpact ? (
             <div className="mt-5">
               <Card
