@@ -76,7 +76,7 @@ export default function CockpitShell({
         : "border-slate-700 bg-[#101b2f] text-slate-300";
 
   return (
-    <div className="syn-app min-h-screen bg-[radial-gradient(circle_at_top_left,_#13203a_0%,_#0f172a_30%,_#0b1220_100%)] text-slate-100">
+    <div className="syn-app min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_#13203a_0%,_#0f172a_30%,_#0b1220_100%)] text-slate-100">
       <div
         className={classNames(
           "syn-topbar sticky top-0 z-30 border-b bg-[linear-gradient(180deg,#101a2e_0%,#0c1424_100%)]",

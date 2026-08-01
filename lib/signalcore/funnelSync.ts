@@ -1,6 +1,6 @@
 export type PlanningMode = "investing";
 export type PlanningRiskPreset = "low" | "medium" | "high";
-export type PlanningHorizonPreset = "3m" | "12m" | "3y" | "5y";
+export type PlanningHorizonPreset = "3m" | "12m" | "3y" | "5y" | "10y";
 
 export type StoredWealthPlan = {
   startingCapital?: number;
@@ -57,7 +57,8 @@ export function horizonPresetFromMonths(v: unknown): PlanningHorizonPreset | nul
   if (months <= 3) return "3m";
   if (months <= 12) return "12m";
   if (months <= 36) return "3y";
-  return "5y";
+  if (months <= 60) return "5y";
+  return "10y";
 }
 
 export function horizonFromMonthsForSettings(months: number): "Short" | "Medium" | "Long" {

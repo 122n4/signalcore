@@ -501,19 +501,9 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     setStarterBudget((prev) => (prev === next ? prev : next));
   }, [starterBudgetServer]);
 
-  function openPaywall(reason: "starter_pack" | "receipts") {
-    setPaywallReason(reason);
-    track("paywall_context_open", { page: "daily", reason, mode: autopilotMode });
-  }
-
   async function handleApplyStarterPack() {
     if (applyingStarter) return;
     if (!starterPack.length) return;
-    if (!isPaid) {
-      openPaywall("starter_pack");
-      return;
-    }
-
     try {
       setApplyingStarter(true);
 
@@ -539,7 +529,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         budgetEur: clampStarterBudget(starterBudget),
         source: starterPackMeta?.source || "unknown",
       });
-      setToast("Persistent Paper account funded. Submit proposals explicitly after review.");
+      setToast("Paper account funded. Review the first proposal before any Paper order is submitted.");
       const appliedAt = new Date().toISOString();
       setOptimisticStarterWarmupAt(appliedAt);
       setBundle((prev: any) => applyOptimisticStarterWarmupToBundle(prev, appliedAt));
@@ -1150,6 +1140,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const homeNextAction = buildHomeNextAction({
     hasPlan,
     hasHoldings,
+    hasFundedPaperAccount,
     doneToday,
     coveragePct,
     holdings,
@@ -1574,6 +1565,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
               }
               hasPlan={hasPlan}
               hasHoldings={hasHoldings}
+              hasFundedPaperAccount={hasFundedPaperAccount}
               lastEvaluation={lastEvaluationLabel}
               blocked={Boolean(riskFixPlan) || decisionView.blockerState !== "none"}
               completed={doneToday}
@@ -1847,6 +1839,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
 function buildHomeNextAction(args: {
   hasPlan: boolean;
   hasHoldings: boolean;
+  hasFundedPaperAccount: boolean;
   doneToday: boolean;
   coveragePct: number;
   holdings: any[];
@@ -1867,12 +1860,22 @@ function buildHomeNextAction(args: {
     };
   }
   if (!args.hasHoldings) {
+    if (args.hasFundedPaperAccount) {
+      return {
+        label: "What to do now · step 2 of 4",
+        title: "Review your first Paper proposal",
+        reason: "Your Paper account is funded, but no position is created without a reviewed proposal and explicit submission.",
+        impact: "Create the proposal below, review its evidence, and submit only if it matches your plan.",
+        ctaLabel: "Create Paper proposal",
+        ctaHref: "#daily-controls",
+      };
+    }
     return {
       label: "What to do now · step 2 of 4",
-      title: "Add the investments you already own",
-      reason: "There are no holdings to analyse, so concentration, pricing and drift cannot yet be measured.",
-      impact: "Add at least 3 holdings, then return here for the first portfolio diagnosis.",
-      ctaLabel: "Add holdings",
+      title: "Fund your Paper portfolio",
+      reason: "There is no Paper capital yet, so Syntrake cannot create a governed starter proposal.",
+      impact: "Fund the simulated account, then review the proposed allocation before any Paper order is submitted.",
+      ctaLabel: "Set up Paper portfolio",
       ctaHref: withFixContextHref(`/app?tab=portfolio&mode=${args.mode}`, { mode: args.mode, leakKey: "no_holdings", source: "daily" }),
     };
   }

@@ -31,7 +31,6 @@ import AlertsTab from "@/app/app/tabs/AlertsTab";
 import BrokerPageClient from "@/app/app/broker/BrokerPageClient";
 import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
 import WorkspaceIdentityRail from "@/app/app/WorkspaceIdentityRail";
-import InvestingEvidenceNav from "@/components/investing/InvestingEvidenceNav";
 import {
   buildModeAwareNavItems,
   buildShellCopy,
@@ -315,7 +314,7 @@ function FirstValueRail(props: {
           <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-right">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               {pickByLang(props.lang, {
-                en: "Setup progress",
+                en: "Profile fields",
                 pt: "Progresso do setup",
                 es: "Progreso del setup",
                 fr: "Progression du setup",
@@ -341,8 +340,8 @@ function FirstValueRail(props: {
         </div>
 
         {props.mode === "investing" ? (
-          <div className="mt-5 grid gap-2 md:grid-cols-5">
-            {missionSteps.map((step, index) => (
+          <div className="mt-5 grid gap-2 md:grid-cols-2">
+            {missionSteps.slice(0, 2).map((step, index) => (
               <div key={step.key} className={`rounded-2xl border p-3 ${guidedMissionToneClasses(step.status)}`}>
                 <div className="text-[10px] font-bold uppercase tracking-[0.14em] opacity-70">
                   {String(index + 1).padStart(2, "0")}
@@ -361,7 +360,7 @@ function FirstValueRail(props: {
             className="inline-flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#4a88ff,#6ba8ff)] px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_36px_rgba(49,115,255,0.22)]"
           >
             {pickByLang(props.lang, {
-              en: "Finish setup",
+              en: "Create my plan",
               pt: "Terminar setup",
               es: "Terminar setup",
               fr: "Terminer le setup",
@@ -369,7 +368,7 @@ function FirstValueRail(props: {
               it: "Completa setup",
             })}
           </button>
-          <button
+          {props.mode === "trading" ? <button
             type="button"
             onClick={() => props.onNavigate(props.primaryHref)}
             className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/[0.07]"
@@ -391,7 +390,7 @@ function FirstValueRail(props: {
                   de: "Daily oeffnen",
                   it: "Apri Daily",
                 })}
-          </button>
+          </button> : null}
         </div>
       </div>
     );
@@ -1015,8 +1014,6 @@ export default function AppUI() {
             variant={workspaceMode === "trading" ? "compact" : "default"}
             onChange={handleModeChange}
           />
-
-          {workspaceMode === "investing" ? <InvestingEvidenceNav /> : null}
 
           {workspaceMode === "trading" ? (
             <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-300/[0.08] p-4 text-cyan-50 shadow-[0_18px_50px_rgba(8,145,178,0.08)]">

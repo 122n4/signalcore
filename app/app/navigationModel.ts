@@ -201,12 +201,12 @@ export function buildModeAwareNavItems(args: {
     asNavItem(
       "autonomy",
       pickByLang(args.lang, {
-        en: "Settings",
-        pt: "Definicoes",
-        es: "Ajustes",
-        fr: "Parametres",
-        de: "Einstellungen",
-        it: "Impostazioni",
+        en: "Autonomy",
+        pt: "Autonomia",
+        es: "Autonomia",
+        fr: "Autonomie",
+        de: "Autonomie",
+        it: "Autonomia",
       }),
       locked.has("autonomy"),
     ),
