@@ -11,11 +11,11 @@ import {
 describe("app navigation model", () => {
   it("keeps investing and trading as separate workspaces", () => {
     expect(buildModeAwareNavItems({ mode: "investing", lang: "en" })).toEqual([
-      { key: "daily", label: "Today" },
-      { key: "planning", label: "Plan" },
+      { key: "daily", label: "Overview" },
       { key: "portfolio", label: "Portfolio" },
       { key: "advisor", label: "Advisor" },
-      { key: "autonomy", label: "Autonomy" },
+      { key: "planning", label: "Plan" },
+      { key: "autonomy", label: "Settings" },
     ]);
 
     expect(buildModeAwareNavItems({ mode: "trading", lang: "en" })).toEqual([

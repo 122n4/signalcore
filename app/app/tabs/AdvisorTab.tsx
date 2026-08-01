@@ -2,11 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import InvestingOperatingLoopRail from "@/components/investing/InvestingOperatingLoopRail";
 import ProofRail from "@/components/ProofRail";
 import { track } from "@/lib/analytics/client";
 import { sanitizeProductHref } from "@/lib/navigation/sanitizeProductHref";
-import { buildInvestingOperatingLoopSummary } from "@/lib/signalcore/investingOperatingLoop";
 import { buildDailyDecisionCtaOverride, buildDailyDecisionView } from "./dailyDecisionViewModel";
 import { buildAdvisorDecisionView } from "./advisorDecisionViewModel";
 import { useDecisionStability } from "./decisionStability";
@@ -339,7 +337,10 @@ export default function AdvisorTab({
 
   useEffect(() => {
     if (loading || Boolean(error)) return;
-    setShowFirstAdvisorIntro(!readFirstAdvisorIntroSeen(autopilotMode, storageUserId));
+    if (!readFirstAdvisorIntroSeen(autopilotMode, storageUserId)) {
+      writeFirstAdvisorIntroSeen(autopilotMode, true, storageUserId);
+    }
+    setShowFirstAdvisorIntro(false);
   }, [loading, error, autopilotMode, storageUserId]);
 
   const plan = useMemo(() => bundle?.plan ?? null, [bundle]);
@@ -485,19 +486,6 @@ export default function AdvisorTab({
     daily?.activation?.decisionPreviewState?.nextEvaluationAt ||
     daily?.decisionPreviewState?.nextEvaluationAt ||
     null;
-  const investingLoopSummary = useMemo(
-    () =>
-      buildInvestingOperatingLoopSummary({
-        hasPlan,
-        hasHoldings,
-        doneToday,
-        receiptsCount: Number(derived?.receiptsCount || 0),
-        streak,
-        weeklyConfirmedEur,
-        nextReviewAt,
-      }),
-    [derived?.receiptsCount, doneToday, hasHoldings, hasPlan, nextReviewAt, streak, weeklyConfirmedEur],
-  );
   const actionGateStatus = String(((daily?.actionGate ?? derived?.actionGate) as any)?.status || "").toLowerCase().trim() || "unknown";
   const coveragePct = Math.max(0, Math.round(Number(derived?.pricing?.coveragePct ?? diagnostics?.pricing?.coveragePct ?? 0)));
   const planGoalLabel =
@@ -1978,28 +1966,6 @@ export default function AdvisorTab({
       </div>
 
       {!loading ? (
-        <div className="mb-5">
-          <InvestingOperatingLoopRail
-            summary={investingLoopSummary}
-            theme="dark"
-            rightBadge={<Badge tone={doneToday ? "good" : hasPlan && hasHoldings ? "warn" : "neutral"}>{doneToday ? "Loop closed" : "Strategy open"}</Badge>}
-            primaryAction={
-              !hasPlan
-                ? { label: "Open Planning", onClick: goPlanning }
-                : !hasHoldings
-                  ? { label: "Open Portfolio", onClick: goPortfolio }
-                  : { label: "Open Daily loop", onClick: goDaily }
-            }
-            secondaryAction={
-              topLeakFixHref
-                ? { label: "Fix top leak", href: topLeakFixHref }
-                : { label: "Refresh Advisor", onClick: () => void load(false) }
-            }
-          />
-        </div>
-      ) : null}
-
-      {!loading ? (
         <details className="mb-5 rounded-2xl border border-[#23314c] bg-[#0d1627] p-4">
           <summary className="cursor-pointer text-sm font-semibold text-[#d7e4f8]">Advanced strategy evidence</summary>
           <div className="mt-4">
@@ -2236,6 +2202,10 @@ export default function AdvisorTab({
 
           {advisorStartHereCard}
 
+          <details className="rounded-2xl border border-[#23314c] bg-[#0d1627] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[#d7e4f8]">Explore scenarios and strategic context</summary>
+            <div className="mt-5 space-y-5">
+
           <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
             {capitalStrategyCard}
             {capitalProtectionCard}
@@ -2288,6 +2258,9 @@ export default function AdvisorTab({
               </div>
             )}
           </Card>
+
+            </div>
+          </details>
 
           <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
             Syntrake continuously evaluates your capital strategy and adapts as conditions evolve.
