@@ -180,10 +180,12 @@ begin
 end;
 $$;
 
-insert into public.investing_accounts(user_id, portfolio_id, base_currency, environment, status)
-values
-  ('engine4a_user_a', 'engine4a_portfolio_a', 'EUR', 'paper', 'active'),
-  ('engine4a_user_b', 'engine4a_portfolio_b', 'EUR', 'paper', 'active');
+select public.investing_open_paper_account_v2(
+  'engine4a_user_a','engine4a_portfolio_a','EUR',0,'engine4a-open-a','engine4a-open-corr-a'
+);
+select public.investing_open_paper_account_v2(
+  'engine4a_user_b','engine4a_portfolio_b','EUR',0,'engine4a-open-b','engine4a-open-corr-b'
+);
 
 set local role service_role;
 select pg_temp.persist_engine_run(
@@ -260,12 +262,10 @@ reset role;
 set local role anon;
 do $$
 begin
-  if exists (select 1 from public.investing_engine_runs) then
-    raise exception 'anon can enumerate runs';
-  end if;
-  if exists (select 1 from public.investing_engine_artifacts) then
-    raise exception 'anon can enumerate hashes';
-  end if;
+  begin
+    if exists (select 1 from public.investing_engine_runs) then raise exception 'anon can enumerate runs'; end if;
+    if exists (select 1 from public.investing_engine_artifacts) then raise exception 'anon can enumerate hashes'; end if;
+  exception when insufficient_privilege then null; end;
 end;
 $$;
 reset role;

@@ -28,7 +28,8 @@ for each row execute function public.investing_validation_failpoint('before_reco
 -- Test-only clock manipulation: the transaction rollback restores this trigger.
 alter table public.investing_orders disable trigger investing_orders_touch_updated_at;
 
-set local role service_role;
+-- Direct rows and failpoint triggers are administrator-owned QA fixtures.
+reset role;
 select public.investing_open_paper_account_v2('rollback_user','rollback_portfolio','EUR',1000,'rollback-funding','rollback-funding-corr');
 
 do $$

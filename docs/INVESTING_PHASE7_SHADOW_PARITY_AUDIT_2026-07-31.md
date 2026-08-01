@@ -55,3 +55,11 @@ This classification accepts the local mechanism and its reproducibility evidence
 ## Required next authorized operation
 
 After a separately reviewed migration/configuration deployment, configure the exact operator allowlist and schedule one trusted daily POST for the resolved scope. Observe the five dimensions for 30 consecutive days. Any blocked/unavailable day or date gap resets the effective consecutive sequence. Read cutover remains a separate future decision and must not be inferred from this mechanism checkpoint.
+
+## Post-publication PostgreSQL CI remediation (2026-08-01)
+
+The first PR database run exposed a pre-existing incompatibility between mandatory tenant identity and `investing_open_paper_account_v2`. Migration `20260808110000` now provisions or resolves the deterministic personal tenant and owner membership before creating a scoped Paper account. It fails closed for inactive or inconsistent identity material and refuses rollback of the repaired contract.
+
+The same audit also aligned old PostgreSQL QA fixtures with the hardened architecture: direct fixture rows run as the database administrator, application-role RPC privileges remain explicitly asserted, authenticated read-model grants remain protected by RLS, and the Paper worker receives only the table privileges required for proposal insertion, observation and row claiming. No browser write permission, Live path or beta activation was introduced.
+
+Post-remediation evidence: all migrations from zero passed; P0/P1, security/RLS/Live/accounting, rollback/recovery, reconciliation, Phase 4A/4B, multi-session concurrency and real worker crash recovery passed on PostgreSQL 17; global Vitest passed 325 files and 1799 tests; TypeScript, scoped ESLint and the production build passed.

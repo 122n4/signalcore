@@ -1,0 +1,7 @@
+import fs from "node:fs";import path from "node:path";import {describe,expect,it} from "vitest";
+const root=process.cwd(),migration=fs.readFileSync(path.join(root,"supabase/migrations/20260808110000_investing_paper_account_identity_scope_fix.sql"),"utf8"),rollback=fs.readFileSync(path.join(root,"supabase/rollbacks/20260808110000_investing_paper_account_identity_scope_fix.down.sql"),"utf8");
+describe("paper account tenant identity recovery",()=>{
+ it("provisions the canonical tenant and membership before the scoped account",()=>{expect(migration).toContain("investing-personal-tenant:");expect(migration).toContain("investing-owner-membership:");expect(migration).toMatch(/investing_accounts\(user_id,owner_user_id,tenant_id,portfolio_id/u);expect(migration.indexOf("investing_tenant_memberships")).toBeLessThan(migration.indexOf("investing_accounts(user_id"))});
+ it("fails closed for inactive identity material and scope collisions",()=>{expect(migration).toContain("investing_account_tenant_inactive_or_invalid");expect(migration).toContain("investing_account_membership_inactive_or_invalid");expect(migration).toContain("investing_account_scope_mismatch")});
+ it("keeps browser roles denied and refuses an unsafe rollback",()=>{expect(migration).toContain("from public,anon,authenticated");expect(migration).toContain("to service_role");expect(rollback).toContain("paper_account_identity_scope_fix_rollback_refused")});
+});
