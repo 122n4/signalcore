@@ -32,6 +32,8 @@ export default function InvestingHomeHero(props: {
 }) {
   const state = !props.hasPlan
     ? "Plan required"
+    : props.completed
+      ? "Cycle recorded"
     : !props.hasHoldings
       ? props.hasFundedPaperAccount ? "Proposal required" : "Paper funding required"
       : props.blocked

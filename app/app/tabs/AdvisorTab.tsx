@@ -286,6 +286,7 @@ function buildAdvisorHumanAction(args: {
   holdings: any[];
   coveragePct: number;
   maxSinglePositionPct: number;
+  hasFundedPaperAccount: boolean;
 }) {
   const base = {
     title: args.advisorDecision.title,
@@ -308,6 +309,18 @@ function buildAdvisorHumanAction(args: {
     };
   }
   if (args.advisorDecision.kind === "no_holdings") {
+    if (args.hasFundedPaperAccount) {
+      return {
+        ...base,
+        title: "Review your first Paper allocation",
+        summary: "Your simulated account is funded. Daily can now create the governed initial allocation for your review.",
+        reason: "No position is created until the Paper proposal is reviewed and explicitly submitted.",
+        impact: "After the first Paper fill, Advisor can measure concentration, valuation and plan fit.",
+        actionLabel: "Review proposal in Daily",
+        contextLabel: "Setup · step 2 of 4",
+        statusLabel: "Paper proposal required",
+      };
+    }
     return {
       ...base,
       title: "Add the investments you already own",
@@ -536,6 +549,8 @@ export default function AdvisorTab({
   const hasPlan = typeof derived?.hasPlan === "boolean" ? Boolean(derived.hasPlan) : !!plan?.id || !!plan?.is_active || !!plan?.active;
   const holdingsCount = Array.isArray(bundle?.portfolio?.items) ? bundle.portfolio.items.length : 0;
   const hasHoldings = typeof derived?.hasHoldings === "boolean" ? Boolean(derived.hasHoldings) : holdingsCount > 0;
+  const hasFundedPaperAccount =
+    Boolean(bundle?.portfolio?.accountId) && Number(bundle?.portfolio?.cashEur ?? bundle?.portfolio?.cash_eur ?? 0) > 0;
 
   const autopilot = derived?.autopilot ?? null; // {total,safety,growth,reasonsShort}
   const pressureV2 = derived?.pressureV2 ?? null; // {score,drivers[]}
@@ -1503,6 +1518,7 @@ export default function AdvisorTab({
     holdings: Array.isArray(bundle?.portfolio?.items) ? bundle.portfolio.items : [],
     coveragePct,
     maxSinglePositionPct: decisionView.guardrails.maxSinglePositionPct,
+    hasFundedPaperAccount,
   });
 
   useEffect(() => {
@@ -1540,6 +1556,10 @@ export default function AdvisorTab({
       stabilitySource: advisorDecision.stabilitySource,
     });
 
+    if (!hasHoldings && hasFundedPaperAccount) {
+      window.location.href = `/app?tab=daily&mode=${autopilotMode}#daily-controls`;
+      return;
+    }
     if (advisorDecision.action === "planning") {
       goPlanning();
       return;

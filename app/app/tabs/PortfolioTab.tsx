@@ -861,7 +861,7 @@ export default function PortfolioTab({
                 <td className="py-1">O Syntrake usou alocacao segura de fallback para te deixar arrancar hoje.</td>
               </tr>
               <tr className="border-t border-amber-200/70">
-                <td className="pr-3 py-1">Apply Starter Pack</td>
+                <td className="pr-3 py-1">Fund Paper account</td>
                 <td className="pr-3 py-1 font-semibold text-emerald-700">Ativo</td>
                 <td className="py-1">Podes aplicar ja e criar o portfolio inicial sem bloqueio.</td>
               </tr>
@@ -1159,7 +1159,7 @@ export default function PortfolioTab({
             it: "Passo 1: niente posizioni? Syntrake le prepara",
           }),
           detail: pickByLang(lang, {
-            en: "Apply Starter Pack to begin with a plan-aligned allocation, then refine manually if needed.",
+            en: "Fund the simulated account, then review the plan-aligned allocation in Daily before submitting any Paper order.",
             pt: "Aplica o Starter Pack para comecar com uma alocacao alinhada ao plano e depois ajusta se precisares.",
             es: "Aplica Starter Pack para empezar con una asignacion alineada al plan y luego ajusta si hace falta.",
             fr: "Appliquez le Starter Pack pour demarrer avec une allocation alignee au plan, puis ajustez si besoin.",
@@ -1167,7 +1167,7 @@ export default function PortfolioTab({
             it: "Applica lo Starter Pack per iniziare con un allocazione allineata al piano, poi regola se necessario.",
           }),
           actionLabel: pickByLang(lang, {
-            en: "Prepare holdings for me",
+            en: "Fund Paper portfolio",
             pt: "Preparar holdings por mim",
             es: "Preparar holdings por mi",
             fr: "Preparer mes positions",
@@ -1182,7 +1182,7 @@ export default function PortfolioTab({
         step: 1,
         total: 3,
         title: pickByLang(lang, {
-          en: "Step 1: add your first holdings",
+          en: "Step 1: fund the Paper account",
           pt: "Passo 1: adiciona as primeiras holdings",
           es: "Paso 1: agrega tus primeras holdings",
           fr: "Etape 1 : ajoutez vos premieres positions",
@@ -1198,7 +1198,7 @@ export default function PortfolioTab({
           it: "Aggiungi almeno 3 simboli per un analisi affidabile.",
         }),
         actionLabel: pickByLang(lang, {
-          en: "Add holdings now",
+          en: "Fund Paper portfolio",
           pt: "Adicionar holdings",
           es: "Agregar holdings",
           fr: "Ajouter des positions",
@@ -2404,14 +2404,14 @@ export default function PortfolioTab({
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="rounded-xl border border-zinc-200 bg-white p-3">
                     <div className="text-sm font-semibold text-zinc-900">Ja tenho holdings</div>
-                    <div className="mt-1 text-xs text-zinc-600">Inserir holdings reais para analise imediata.</div>
+                    <div className="mt-1 text-xs text-zinc-600">As posições Paper são alteradas apenas através de propostas revistas em Daily.</div>
                     <button
                       onClick={() => {
                         focusAddHoldingInput();
                       }}
                       className="mt-3 rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white"
                     >
-                      Inserir holdings
+                      Rever em Daily
                     </button>
                   </div>
                   {!showStarterApplyTopCard ? (
@@ -2482,7 +2482,7 @@ export default function PortfolioTab({
                       }}
                       className="mt-3 rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white"
                     >
-                      Inserir holdings
+                      Rever em Daily
                     </button>
                   </div>
                   <div className={clsx("rounded-xl border p-3", setupHasExistingHoldings === false ? "border-emerald-300 bg-emerald-50" : "border-zinc-200 bg-white")}>
@@ -2517,7 +2517,7 @@ export default function PortfolioTab({
                       disabled={!hasStarterCandidate || busy || applyingStarter}
                       className="mt-3 rounded-xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50"
                     >
-                      {applyingStarter ? "A preparar..." : "Syntrake prepara por mim"}
+                      {applyingStarter ? "A financiar Paper..." : "Financiar portefólio Paper"}
                     </button>
                   </div>
                 </div>
