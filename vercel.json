@@ -15,6 +15,10 @@
     {
       "path": "/api/engine/loop",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/investing/shadow-parity",
+      "schedule": "0 8 * * *"
     }
   ]
 }
