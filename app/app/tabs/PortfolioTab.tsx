@@ -1917,13 +1917,14 @@ export default function PortfolioTab({
           <div className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#93a4bf]">Portfolio Control</div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="mr-2 text-[30px] font-black leading-none tracking-[-0.06em] text-[#e7effc]">Portfolio</h1>
+            <Badge tone="neutral">Paper · no real money</Badge>
             <Badge tone={hasHoldings ? "good" : "warn"}>{hasHoldings ? `Holdings: ${items.length}` : "Holdings: none"}</Badge>
             <Pill>Mode: {autopilotMode}</Pill>
             {!isBeginnerUX && typeof coveragePct === "number" ? <Pill>Coverage: {coveragePct}%</Pill> : null}
             {!isBeginnerUX && typeof priceAgeSeconds === "number" ? <Pill>Price age: {fmtAge(priceAgeSeconds)}</Pill> : null}
           </div>
           <div className="text-sm text-zinc-600">
-            Portfolio is the engine's fuel. Better inputs -&gt; stronger protection -&gt; better decisions.
+            Your canonical Paper positions, cash and pricing evidence. Changes here improve Daily guidance; no broker order is sent.
           </div>
         </div>
 

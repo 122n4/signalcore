@@ -11,6 +11,10 @@ type RiskProfile = "Conservative" | "Balanced" | "Aggressive";
 type RealityVerdict = "realistic" | "stretch" | "unrealistic";
 type SetupMode = "offline" | "broker";
 type ModeKey = "investing";
+type ExperienceLevel = "beginner" | "intermediate" | "advanced";
+type LossReaction = "sell" | "hold" | "buy";
+
+const ONBOARDING_DRAFT_KEY = "syntrake_investing_onboarding_draft_v2";
 
 type StarterRow = {
   symbol: string;
@@ -157,6 +161,12 @@ export default function OfflineSetupClient() {
   const [monthlyContributionInput, setMonthlyContributionInput] = useState<string>("300");
   const [targetCapitalInput, setTargetCapitalInput] = useState<string>("50000");
   const [hasExistingHoldings, setHasExistingHoldings] = useState<boolean>(false);
+  const [experienceLevel, setExperienceLevel] = useState<ExperienceLevel>("beginner");
+  const [lossReaction, setLossReaction] = useState<LossReaction>("hold");
+  const [incomeStable, setIncomeStable] = useState<boolean>(true);
+  const [needsCapitalSoon, setNeedsCapitalSoon] = useState<boolean>(false);
+  const [paperConfirmed, setPaperConfirmed] = useState<boolean>(false);
+  const [draftHydrated, setDraftHydrated] = useState<boolean>(false);
 
   const [previewLoading, setPreviewLoading] = useState(false);
   const [starterPreview, setStarterPreview] = useState<StarterRow[]>([]);
@@ -202,6 +212,68 @@ export default function OfflineSetupClient() {
 
   const monthlyGap = Math.max(0, requiredMonthly - monthlyContribution);
   const shouldPrepareStarter = !hasExistingHoldings && startingCapital >= 100;
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(ONBOARDING_DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as Record<string, unknown>;
+        if (typeof draft.startingCapitalInput === "string") setStartingCapitalInput(draft.startingCapitalInput);
+        if (typeof draft.monthlyContributionInput === "string") setMonthlyContributionInput(draft.monthlyContributionInput);
+        if (typeof draft.targetCapitalInput === "string") setTargetCapitalInput(draft.targetCapitalInput);
+        if (typeof draft.horizonMonths === "number") setHorizonMonths(draft.horizonMonths);
+        if (typeof draft.hasExistingHoldings === "boolean") setHasExistingHoldings(draft.hasExistingHoldings);
+        if (["beginner", "intermediate", "advanced"].includes(String(draft.experienceLevel))) {
+          setExperienceLevel(draft.experienceLevel as ExperienceLevel);
+        }
+        if (["sell", "hold", "buy"].includes(String(draft.lossReaction))) setLossReaction(draft.lossReaction as LossReaction);
+        if (typeof draft.incomeStable === "boolean") setIncomeStable(draft.incomeStable);
+        if (typeof draft.needsCapitalSoon === "boolean") setNeedsCapitalSoon(draft.needsCapitalSoon);
+      }
+    } catch {
+      // A damaged local draft must never block onboarding.
+    } finally {
+      setDraftHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+    try {
+      window.localStorage.setItem(
+        ONBOARDING_DRAFT_KEY,
+        JSON.stringify({
+          startingCapitalInput,
+          monthlyContributionInput,
+          targetCapitalInput,
+          horizonMonths,
+          hasExistingHoldings,
+          experienceLevel,
+          lossReaction,
+          incomeStable,
+          needsCapitalSoon,
+        })
+      );
+    } catch {
+      // Draft persistence is helpful but non-blocking.
+    }
+  }, [
+    draftHydrated,
+    experienceLevel,
+    hasExistingHoldings,
+    horizonMonths,
+    incomeStable,
+    lossReaction,
+    monthlyContributionInput,
+    needsCapitalSoon,
+    startingCapitalInput,
+    targetCapitalInput,
+  ]);
+
+  useEffect(() => {
+    const score = (lossReaction === "buy" ? 3 : lossReaction === "hold" ? 2 : 0) + (incomeStable ? 2 : 0) + (needsCapitalSoon ? 0 : 2);
+    setRiskProfile(score >= 6 ? "Aggressive" : score <= 2 ? "Conservative" : "Balanced");
+  }, [incomeStable, lossReaction, needsCapitalSoon]);
   useEffect(() => {
     const nextGoalType = goalTypeFromMode(requestedMode);
     setGoalType((current) => (current === nextGoalType ? current : nextGoalType));
@@ -298,7 +370,7 @@ export default function OfflineSetupClient() {
   }
 
   async function onLaunch() {
-    if (status === "saving") return;
+    if (status === "saving" || !paperConfirmed) return;
     setStatus("saving");
     setError("");
 
@@ -354,6 +426,10 @@ export default function OfflineSetupClient() {
             monthlyContribution: Math.round(monthlyContribution),
             targetCapital: Math.round(targetCapital),
             hasExistingHoldings,
+            experienceLevel,
+            lossReaction,
+            incomeStable,
+            needsCapitalSoon,
             annualReturn,
             verdict,
           })
@@ -363,6 +439,7 @@ export default function OfflineSetupClient() {
         starterBudgetParsed[mode] = Math.max(100, Math.round(startingCapital));
         window.localStorage.setItem("sc_starter_budget_v1", JSON.stringify(starterBudgetParsed));
         window.localStorage.setItem("sc_onboarded", "1");
+        window.localStorage.removeItem(ONBOARDING_DRAFT_KEY);
       } catch {
         // non-blocking
       }
@@ -399,19 +476,21 @@ export default function OfflineSetupClient() {
           <section className="lg:col-span-2 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs text-neutral-700">
               <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              90-second setup to your first action
+              First visit · about 3 minutes
             </div>
 
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Turn a real money goal into your first Syntrake action</h1>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Build your first investment plan safely</h1>
             <p className="mt-2 text-sm text-neutral-600">
-              Answer six inputs. Syntrake activates your plan, prepares your Portfolio import or Starter Pack, and then hands
-              you a clear next step in Daily.
+              Start in Paper mode with no real money. Your answers are saved on this device so you can pause, return, and
+              review everything before any positions are created.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2 text-xs text-neutral-600">
-              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">1. Set goal and guardrails</div>
-              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">2. Confirm holdings or starter pack</div>
-              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">3. Land on one next best action</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">1. Goal</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">2. Risk</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">3. Experience</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">4. Paper portfolio</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">5. Review</div>
             </div>
 
             <div className="mt-8 space-y-6">
@@ -430,19 +509,37 @@ export default function OfflineSetupClient() {
               </div>
 
               <div>
-                <div className="text-sm font-semibold">2) How risky can this strategy be?</div>
+                <div className="text-sm font-semibold">2) How would you react if the portfolio fell 20%?</div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {(["Conservative", "Balanced", "Aggressive"] as RiskProfile[]).map((r) => (
-                    <Pill key={r} active={riskProfile === r} onClick={() => setRiskProfile(r)}>
-                      {r}
-                    </Pill>
-                  ))}
+                  <Pill active={lossReaction === "sell"} onClick={() => setLossReaction("sell")}>Sell to limit losses</Pill>
+                  <Pill active={lossReaction === "hold"} onClick={() => setLossReaction("hold")}>Hold and reassess</Pill>
+                  <Pill active={lossReaction === "buy"} onClick={() => setLossReaction("buy")}>Buy more gradually</Pill>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <label className="flex items-start gap-2 rounded-xl border border-neutral-200 p-3 text-xs">
+                    <input type="checkbox" checked={incomeStable} onChange={(e) => setIncomeStable(e.target.checked)} className="mt-0.5" />
+                    My income and monthly contribution are reasonably stable.
+                  </label>
+                  <label className="flex items-start gap-2 rounded-xl border border-neutral-200 p-3 text-xs">
+                    <input type="checkbox" checked={needsCapitalSoon} onChange={(e) => setNeedsCapitalSoon(e.target.checked)} className="mt-0.5" />
+                    I may need a meaningful part of this capital within 24 months.
+                  </label>
+                </div>
+                <div className="mt-2 text-xs text-neutral-600">Suggested profile from your answers: <strong>{riskProfile}</strong></div>
+              </div>
+
+              <div>
+                <div className="text-sm font-semibold">3) How much investing experience do you have?</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Pill active={experienceLevel === "beginner"} onClick={() => setExperienceLevel("beginner")}>I am beginning</Pill>
+                  <Pill active={experienceLevel === "intermediate"} onClick={() => setExperienceLevel("intermediate")}>Some experience</Pill>
+                  <Pill active={experienceLevel === "advanced"} onClick={() => setExperienceLevel("advanced")}>Advanced</Pill>
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block">
-                  <div className="text-sm font-semibold">3) Starting capital now (EUR)</div>
+                  <div className="text-sm font-semibold">4) Starting capital now (EUR)</div>
                   <input
                     value={startingCapitalInput}
                     onChange={(e) => setStartingCapitalInput(e.target.value)}
@@ -453,7 +550,7 @@ export default function OfflineSetupClient() {
                 </label>
 
                 <label className="block">
-                  <div className="text-sm font-semibold">4) Monthly contribution (EUR)</div>
+                  <div className="text-sm font-semibold">5) Monthly contribution (EUR)</div>
                   <input
                     value={monthlyContributionInput}
                     onChange={(e) => setMonthlyContributionInput(e.target.value)}
@@ -464,7 +561,7 @@ export default function OfflineSetupClient() {
                 </label>
 
                 <label className="block">
-                  <div className="text-sm font-semibold">5) Final target capital (EUR)</div>
+                  <div className="text-sm font-semibold">6) Final target capital (EUR)</div>
                   <input
                     value={targetCapitalInput}
                     onChange={(e) => setTargetCapitalInput(e.target.value)}
@@ -475,7 +572,7 @@ export default function OfflineSetupClient() {
                 </label>
 
                 <div className="block">
-                  <div className="text-sm font-semibold">6) Deadline</div>
+                  <div className="text-sm font-semibold">7) Deadline</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {[12, 24, 36, 60, 120].map((m) => (
                       <Pill key={m} active={horizonMonths === m} onClick={() => setHorizonMonths(m)}>
@@ -596,17 +693,33 @@ export default function OfflineSetupClient() {
           <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{error}</div>
         )}
 
+        <label className="mt-6 flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+          <input
+            type="checkbox"
+            checked={paperConfirmed}
+            onChange={(e) => setPaperConfirmed(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
+          />
+          <div>
+            <div className="text-sm font-semibold text-sky-950">I understand this creates a Paper portfolio only</div>
+            <div className="mt-1 text-xs text-sky-800">
+              No real money is invested and no broker order is sent. You will review the suggested or imported positions,
+              their source, and a creation receipt before using the daily guidance.
+            </div>
+          </div>
+        </label>
+
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onLaunch}
-            disabled={status === "saving"}
+            disabled={status === "saving" || !paperConfirmed}
             className={classNames(
               "rounded-2xl px-5 py-3 text-sm font-semibold text-white",
-              status === "saving" ? "bg-neutral-400" : "bg-neutral-950 hover:bg-black"
+              status === "saving" || !paperConfirmed ? "cursor-not-allowed bg-neutral-400" : "bg-neutral-950 hover:bg-black"
             )}
           >
-            {status === "saving" ? "Launching..." : "Get my first action"}
+            {status === "saving" ? "Creating Paper plan..." : "Review my Paper portfolio"}
           </button>
 
           <Link
@@ -616,7 +729,7 @@ export default function OfflineSetupClient() {
             Connect broker instead
           </Link>
 
-          <div className="text-xs text-neutral-600">Plan now, Portfolio next, Daily action after that.</div>
+          <div className="text-xs text-neutral-600">Saved locally as you answer · Paper only · You remain in control.</div>
         </div>
       </div>
     </main>
