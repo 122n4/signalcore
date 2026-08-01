@@ -177,12 +177,12 @@ export function buildModeAwareNavItems(args: {
     asNavItem(
       "advisor",
       pickByLang(args.lang, {
-        en: "Advisor",
-        pt: "Advisor",
-        es: "Asesor",
-        fr: "Conseiller",
-        de: "Berater",
-        it: "Consulente",
+        en: "Recommendations",
+        pt: "Recomendacoes",
+        es: "Recomendaciones",
+        fr: "Recommandations",
+        de: "Empfehlungen",
+        it: "Raccomandazioni",
       }),
       locked.has("advisor"),
     ),

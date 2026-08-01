@@ -8,6 +8,7 @@ function euros(value: number) {
 
 export default function InvestingHomeHero(props: {
   totalEur: number;
+  cashEur: number;
   hasPlan: boolean;
   hasHoldings: boolean;
   lastEvaluation: string;
@@ -44,6 +45,23 @@ export default function InvestingHomeHero(props: {
           </div>
           <p className="mt-6 text-xs font-semibold uppercase tracking-[.2em] text-slate-400">Portfolio value</p>
           <h1 className="mt-1 text-4xl font-black tracking-[-.05em] text-white sm:text-5xl">{euros(props.totalEur)}</h1>
+
+          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <AnswerMetric label="Performance" value="Building history" note="Cash-flow-adjusted result pending" tone="neutral" />
+            <AnswerMetric label="Available cash" value={euros(props.cashEur)} note="Persistent Paper balance" tone="neutral" />
+            <AnswerMetric
+              label="Plan fit"
+              value={!props.hasPlan ? "Plan missing" : props.blocked ? "Needs attention" : "Within plan"}
+              note={!props.hasPlan ? "Complete your constraints" : props.blocked ? "See the priority below" : "No material blocker"}
+              tone={!props.hasPlan || props.blocked ? "warn" : "good"}
+            />
+            <AnswerMetric
+              label="Account integrity"
+              value={`${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}% verified`}
+              note={props.lastEvaluation}
+              tone={props.pricingCoveragePct >= 80 ? "good" : "warn"}
+            />
+          </div>
 
           <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[.06] p-4 sm:p-5">
             <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-200">{props.nextAction.label}</p>
@@ -105,6 +123,27 @@ function Metric({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
       <div className="text-[9px] font-bold uppercase tracking-[.14em] text-slate-500">{label}</div>
       <div className="mt-1 truncate text-sm font-black text-white">{value}</div>
+    </div>
+  );
+}
+
+function AnswerMetric({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone: "neutral" | "good" | "warn";
+}) {
+  const valueTone = tone === "good" ? "text-emerald-200" : tone === "warn" ? "text-amber-200" : "text-white";
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-3">
+      <div className="text-[9px] font-black uppercase tracking-[.16em] text-slate-500">{label}</div>
+      <div className={`mt-1 text-base font-black ${valueTone}`}>{value}</div>
+      <div className="mt-1 text-[10px] leading-4 text-slate-400">{note}</div>
     </div>
   );
 }
