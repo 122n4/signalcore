@@ -280,6 +280,117 @@ function writeFirstAdvisorIntroSeen(mode: Mode, seen: boolean, userId?: string |
   }
 }
 
+function buildAdvisorHumanAction(args: {
+  advisorDecision: { kind: string; title: string; detail: string; actionLabel: string };
+  topLeak: any;
+  holdings: any[];
+  coveragePct: number;
+  maxSinglePositionPct: number;
+}) {
+  const base = {
+    title: args.advisorDecision.title,
+    summary: args.advisorDecision.detail,
+    reason: args.advisorDecision.detail,
+    impact: "Complete this step, then return to Daily so Syntrake can verify the new portfolio state.",
+    actionLabel: args.advisorDecision.actionLabel,
+    contextLabel: "One priority",
+    statusLabel: "Review required",
+  };
+
+  if (args.advisorDecision.kind === "no_plan") {
+    return {
+      ...base,
+      title: "Define the plan before changing the portfolio",
+      reason: "Syntrake needs your goal, time horizon and acceptable risk before it can judge whether an investment fits.",
+      impact: "An active plan creates the limits used by every later recommendation.",
+      contextLabel: "Setup · step 1 of 4",
+      statusLabel: "Plan missing",
+    };
+  }
+  if (args.advisorDecision.kind === "no_holdings") {
+    return {
+      ...base,
+      title: "Add the investments you already own",
+      reason: "Without holdings, concentration, valuation and portfolio fit cannot be measured.",
+      impact: "After adding the holdings, Advisor can identify the first strategic correction.",
+      contextLabel: "Setup · step 2 of 4",
+      statusLabel: "Portfolio missing",
+    };
+  }
+
+  const leakKey = String(args.topLeak?.key || "").toLowerCase().trim();
+  const valued = args.holdings
+    .map((holding) => ({
+      symbol: String(holding?.symbol || "Holding").toUpperCase(),
+      value: Math.max(0, Number(holding?.valueEur ?? holding?.value_eur ?? 0) || 0),
+    }))
+    .filter((holding) => holding.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const investedTotal = valued.reduce((sum, holding) => sum + holding.value, 0);
+  const largest = valued[0] || null;
+  const largestPct = largest && investedTotal > 0 ? (largest.value / investedTotal) * 100 : null;
+
+  if ((leakKey === "concentration_high" || leakKey === "concentration_med") && largest && largestPct != null) {
+    const limitPct = Math.max(1, args.maxSinglePositionPct || 8);
+    const targetValue = (investedTotal * limitPct) / 100;
+    const reduction = Math.max(0, largest.value - targetValue);
+    return {
+      ...base,
+      title: `Reduce ${largest.symbol} from ${Math.round(largestPct)}% toward ${Math.round(limitPct)}%`,
+      summary: `${largest.symbol} is the main constraint on the portfolio’s risk balance. Correct this position before considering additional exposure.`,
+      reason: `${largest.symbol} represents ${fmtEUR(largest.value)} of ${fmtEUR(investedTotal)} invested, so its movement can dominate the portfolio result.`,
+      impact: reduction > 0
+        ? `A gradual reduction of about ${fmtEUR(reduction)} would bring the position toward the current limit. Re-check after updating it.`
+        : "Verify the holding values and re-check concentration before adding risk.",
+      actionLabel: `Review ${largest.symbol} correction`,
+      contextLabel: "Risk correction · one priority",
+      statusLabel: `${largest.symbol} above concentration limit`,
+    };
+  }
+
+  if (leakKey === "pricing_low" || leakKey === "valuation_zero" || leakKey.startsWith("pricing_stale")) {
+    return {
+      ...base,
+      title: `Repair portfolio data (${Math.round(args.coveragePct)}% verified)`,
+      summary: "Strategic recommendations are paused until the portfolio values are reliable.",
+      reason: "Missing or stale values can distort concentration, risk pressure and proposed position sizes.",
+      impact: "Correct the highlighted rows and re-check until pricing coverage reaches at least 80%.",
+      actionLabel: "Show the rows to correct",
+      contextLabel: "Data correction · one priority",
+      statusLabel: `Pricing coverage ${Math.round(args.coveragePct)}%`,
+    };
+  }
+
+  if (args.advisorDecision.kind === "fix_leak" && args.topLeak) {
+    return {
+      ...base,
+      title: String(args.topLeak.title || "Correct the active portfolio risk"),
+      summary: String(args.topLeak.detail || "Resolve the current portfolio constraint before adding risk."),
+      reason: "This issue currently has the greatest effect on the reliability of your investment plan.",
+      impact: "Complete the indicated correction, then return to Daily to confirm that the blocker has cleared.",
+      contextLabel: "Risk correction · one priority",
+      statusLabel: "Growth paused until corrected",
+    };
+  }
+
+  if (args.advisorDecision.kind === "done_today") {
+    return {
+      ...base,
+      title: "Today’s strategic review is complete",
+      reason: "No additional strategic change is required during this cycle.",
+      impact: "Return at the next evaluation instead of making an unnecessary portfolio change.",
+      contextLabel: "Cycle complete",
+      statusLabel: "No material blocker",
+    };
+  }
+
+  return {
+    ...base,
+    contextLabel: "Strategic guidance · one priority",
+    statusLabel: args.topLeak ? "Correction required" : "No material blocker",
+  };
+}
+
 export default function AdvisorTab({
   mode,
   experienceLevel,
@@ -1386,6 +1497,13 @@ export default function AdvisorTab({
       rawAdvisorDecision.kind === "low_data_quality",
     mode: autopilotMode,
   });
+  const advisorAction = buildAdvisorHumanAction({
+    advisorDecision,
+    topLeak,
+    holdings: Array.isArray(bundle?.portfolio?.items) ? bundle.portfolio.items : [],
+    coveragePct,
+    maxSinglePositionPct: decisionView.guardrails.maxSinglePositionPct,
+  });
 
   useEffect(() => {
     track("advisor_directive", {
@@ -1452,15 +1570,14 @@ export default function AdvisorTab({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={advisorDecision.badgeTone}>{advisorDecision.badgeLabel}</Badge>
-              <Pill>State: {String(decisionView.stateReason || "unknown").replace(/_/g, " ")}</Pill>
-              <Pill>Stability: {advisorDecision.stabilitySource}</Pill>
+              <Pill>{advisorAction.contextLabel}</Pill>
             </div>
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8ea4c6]">Start here</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8ea4c6]">Your next strategic step</div>
               <h2 className="mt-2 text-[28px] font-black leading-[1.02] tracking-[-0.05em] text-[#f5f9ff]">
-                {advisorDecision.title}
+                {advisorAction.title}
               </h2>
-              <p className="mt-3 max-w-[760px] text-[14px] leading-6 text-[#b7c7dd]">{advisorDecision.detail}</p>
+              <p className="mt-3 max-w-[760px] text-[14px] leading-6 text-[#b7c7dd]">{advisorAction.summary}</p>
             </div>
           </div>
           <button
@@ -1468,28 +1585,23 @@ export default function AdvisorTab({
             onClick={runAdvisorPrimaryAction}
             className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-[#0f1728] shadow-[0_12px_30px_rgba(255,255,255,.12)] transition hover:bg-[#f3f6fb]"
           >
-            {advisorDecision.actionLabel}
+            {advisorAction.actionLabel}
           </button>
         </div>
       </div>
-      <div className="grid gap-3 px-6 py-5 md:grid-cols-4">
+      <div className="grid gap-3 px-6 py-5 md:grid-cols-3">
         <div className="rounded-2xl border border-[#243754] bg-[#0f1b2f] px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Strategic posture</div>
-          <div className="mt-2 text-sm font-semibold text-[#eef5ff]">{strategyPostureRaw}</div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Why this matters</div>
+          <div className="mt-2 text-sm leading-5 text-[#eef5ff]">{advisorAction.reason}</div>
         </div>
         <div className="rounded-2xl border border-[#243754] bg-[#0f1b2f] px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Plan alignment</div>
-          <div className="mt-2 text-sm font-semibold text-[#eef5ff]">{strategyPlanAlignmentRaw}</div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Expected result</div>
+          <div className="mt-2 text-sm leading-5 text-[#eef5ff]">{advisorAction.impact}</div>
         </div>
         <div className="rounded-2xl border border-[#243754] bg-[#0f1b2f] px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Top blocker</div>
-          <div className="mt-2 text-sm font-semibold text-[#eef5ff]">
-            {topLeak ? String(topLeak.title || topLeak.key || "No major blocker") : "No major blocker"}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-[#243754] bg-[#0f1b2f] px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Action gate</div>
-          <div className="mt-2 text-sm font-semibold text-[#eef5ff]">{actionGateStatus.toUpperCase()}</div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-[#6f88ad]">Portfolio status</div>
+          <div className="mt-2 text-sm font-semibold text-[#eef5ff]">{advisorAction.statusLabel}</div>
+          <div className="mt-1 text-xs text-[#8ea4c6]">Plan {strategyPlanAlignmentRaw.toLowerCase()} · {openLeakCount} material issue{openLeakCount === 1 ? "" : "s"}</div>
         </div>
       </div>
     </div>
