@@ -5,6 +5,7 @@ import TrackedLink from "@/components/TrackedLink";
 import DailyHtmlDashboard from "@/components/daily/DailyHtmlDashboard";
 import InvestingOperatingLoopRail from "@/components/investing/InvestingOperatingLoopRail";
 import InvestingHomeHero from "@/components/investing/InvestingHomeHero";
+import { resolveOverviewTopRiskLeak } from "./overviewRiskTruth";
 import { track } from "@/lib/analytics/client";
 import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
@@ -687,7 +688,18 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
 
   const canClose = (!doneToday || proposalRetryRequired) && hasPlan && (hasHoldings || hasFundedPaperAccount);
 
-  const topRiskLeak = riskLeaks?.[0] ?? null;
+  const canonicalTopRiskLeak = riskLeaks?.[0] ?? null;
+  const topRiskLeak = resolveOverviewTopRiskLeak({
+    canonicalTopLeak: canonicalTopRiskLeak,
+    holdings,
+    maxSinglePositionPct: Number(
+      derived?.decision?.guardrails?.maxSinglePositionPct ??
+      derived?.guardrails?.maxSinglePositionPct ??
+      plan?.max_single_position_pct ??
+      plan?.maxSinglePositionPct ??
+      33,
+    ),
+  });
   const topLeakSeverity = (topRiskLeak?.severity as "high" | "med" | "low" | undefined) ?? null;
   const coveragePct = Number(diagnostics?.pricing?.coveragePct || 0);
 
