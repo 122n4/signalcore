@@ -10,13 +10,20 @@ export default function InvestingHomeHero(props: {
   totalEur: number;
   hasPlan: boolean;
   hasHoldings: boolean;
-  action: string;
-  rationale: string;
   lastEvaluation: string;
   blocked: boolean;
   completed: boolean;
   holdingsCount: number;
   pricingCoveragePct: number;
+  nextAction: {
+    label: string;
+    title: string;
+    reason: string;
+    impact?: string | null;
+    ctaLabel: string;
+    ctaHref: string;
+  };
+  loop: ReadonlyArray<{ label: string; state: "done" | "active" | "idle" }>;
 }) {
   const state = !props.hasPlan
     ? "Plan required"
@@ -38,10 +45,22 @@ export default function InvestingHomeHero(props: {
           <p className="mt-6 text-xs font-semibold uppercase tracking-[.2em] text-slate-400">Portfolio value</p>
           <h1 className="mt-1 text-4xl font-black tracking-[-.05em] text-white sm:text-5xl">{euros(props.totalEur)}</h1>
 
-          <div className="mt-6 rounded-2xl border border-white/10 bg-black/15 p-4 sm:p-5">
-            <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-200">Recommended today</p>
-            <h2 className="mt-2 text-2xl font-black tracking-[-.03em] text-white">{props.action}</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">{props.rationale}</p>
+          <div className="mt-6 rounded-2xl border border-cyan-300/20 bg-cyan-300/[.06] p-4 sm:p-5">
+            <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-200">{props.nextAction.label}</p>
+            <h2 className="mt-2 text-2xl font-black tracking-[-.03em] text-white">{props.nextAction.title}</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+                <div className="text-[9px] font-black uppercase tracking-[.16em] text-slate-500">Why this matters</div>
+                <p className="mt-1 text-sm leading-5 text-slate-200">{props.nextAction.reason}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+                <div className="text-[9px] font-black uppercase tracking-[.16em] text-slate-500">Expected result</div>
+                <p className="mt-1 text-sm leading-5 text-slate-200">{props.nextAction.impact || "Complete this step, then re-check the portfolio to confirm the result."}</p>
+              </div>
+            </div>
+            <Link href={props.nextAction.ctaHref} className="mt-4 inline-flex rounded-xl bg-cyan-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-100">
+              {props.nextAction.ctaLabel}
+            </Link>
           </div>
         </div>
         <div className="w-full space-y-3 lg:max-w-[340px]">
@@ -59,6 +78,20 @@ export default function InvestingHomeHero(props: {
               </Link>
               <Link href="/app?mode=investing&tab=portfolio" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Portfolio</Link>
               <Link href="/investing/research" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Research</Link>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Complete the loop</div>
+              <div className="text-[10px] font-semibold text-slate-400">One step at a time</div>
+            </div>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {props.loop.map((step, index) => (
+                <div key={`${step.label}-${index}`} className="min-w-0">
+                  <div className={`h-1.5 rounded-full ${step.state === "done" ? "bg-emerald-400" : step.state === "active" ? "bg-cyan-300" : "bg-slate-700"}`} />
+                  <div className={`mt-2 truncate text-[10px] font-bold ${step.state === "active" ? "text-cyan-100" : step.state === "done" ? "text-emerald-200" : "text-slate-500"}`}>{step.label}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
