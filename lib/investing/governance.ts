@@ -48,10 +48,10 @@ export function buildInvestingGovernancePolicy(args: {
   if (blockedSymbols.length > 0) {
     manualReviewReasons.push("blocked_instrument_in_execution_set");
   }
-  if (turnoverStatus === "review") {
+  if (turnoverStatus === "review" && !isInitialAllocation) {
     manualReviewReasons.push("turnover_near_policy_cap");
   }
-  if (turnoverStatus === "outside_policy") {
+  if (turnoverStatus === "outside_policy" && !isInitialAllocation) {
     manualReviewReasons.push("turnover_outside_policy_cap");
   }
   if (taxDragBucket === "high") {
@@ -64,10 +64,11 @@ export function buildInvestingGovernancePolicy(args: {
     manualReviewReasons.push("no_clear_approved_execution_set");
   }
 
+  const effectiveTurnoverStatus = isInitialAllocation && blockedSymbols.length === 0 ? "inside_policy" : turnoverStatus;
   const suitabilityStatus =
     blockedSymbols.length > 0
       ? "blocked"
-      : turnoverStatus !== "inside_policy" || taxDragBucket === "high"
+      : effectiveTurnoverStatus !== "inside_policy" || taxDragBucket === "high"
         ? "review"
         : "ok";
 
@@ -117,7 +118,7 @@ export function buildInvestingGovernancePolicy(args: {
   return {
     suitabilityStatus,
     autonomyStatus,
-    turnoverStatus,
+    turnoverStatus: effectiveTurnoverStatus,
     taxDragBucket,
     executionClearance,
     approvalRequired,

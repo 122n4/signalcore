@@ -27,10 +27,10 @@ describe("investing runtime adapter", () => {
     expect(out?.starterPackMeta?.strategySource).toBe("canonical_mandate_engine");
     expect(out?.benchmark.objective).toBe("balanced");
     expect(out?.executionPolicy.executionMode).toBe("phase_rebalance");
-    expect(out?.governancePolicy.autonomyStatus).toBe("supervised");
-    expect(out?.governancePolicy.executionClearance).toBe("review");
-    expect(out?.governancePolicy.approvalRequired).toBe(true);
-    expect(out?.governancePolicy.manualReviewReasons).toContain("turnover_outside_policy_cap");
+    expect(out?.governancePolicy.autonomyStatus).toBe("eligible");
+    expect(out?.governancePolicy.executionClearance).toBe("cleared");
+    expect(out?.governancePolicy.approvalRequired).toBe(false);
+    expect(out?.governancePolicy.manualReviewReasons).not.toContain("turnover_outside_policy_cap");
     expect(out?.starterPackItems.length).toBeGreaterThan(0);
     expect(out?.construction.totalCapitalEur).toBe(700);
     expect(out?.starterPackItems.every((item) => item.value_eur > 0)).toBe(true);

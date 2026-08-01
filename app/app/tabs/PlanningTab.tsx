@@ -435,6 +435,8 @@ export default function PlanningTab({ mode }: { mode?: string }) {
   const hasPlan = !!plan?.id || !!plan?.is_active || !!plan?.active;
   const holdingsCount = Array.isArray(bundle?.portfolio?.items) ? bundle.portfolio.items.length : 0;
   const hasHoldings = holdingsCount > 0;
+  const hasFundedPaperAccount =
+    Boolean(bundle?.portfolio?.accountId) && Number(bundle?.portfolio?.cashEur ?? bundle?.portfolio?.cash_eur ?? 0) > 0;
   const starterPack = useMemo(() => {
     return Array.isArray(bundle?.daily?.starterPack) ? (bundle.daily.starterPack as any[]) : [];
   }, [bundle?.daily?.starterPack]);
@@ -711,6 +713,17 @@ export default function PlanningTab({ mode }: { mode?: string }) {
     }
 
     if (!hasHoldings) {
+      if (hasFundedPaperAccount) {
+        return {
+          step: 2,
+          total: 3,
+          title: "Step 2: review the Paper proposal",
+          detail: "Your simulated account is funded. Daily now prepares the governed initial allocation for review.",
+          actionLabel: "Review proposal in Daily",
+          action: "daily",
+          tone: "good",
+        };
+      }
       return {
         step: 2,
         total: 3,
@@ -806,7 +819,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
       action: "refresh",
       tone: "good",
     };
-  }, [hasPlan, hasHoldings, doneToday, lang]);
+  }, [hasPlan, hasHoldings, hasFundedPaperAccount, doneToday, lang]);
 
   const contractText = useMemo(() => {
     return goalStringFromPreset({ goal: goalPreset, risk: riskPreset, horizon: horizonPreset, mode: autopilotMode });
@@ -1006,6 +1019,10 @@ export default function PlanningTab({ mode }: { mode?: string }) {
   async function applyStarterPack() {
     if (busy) return;
     if (!starterPackScaled.length) return;
+    if (hasFundedPaperAccount) {
+      goDaily();
+      return;
+    }
 
     setBusy(true);
     try {
@@ -1023,7 +1040,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
           environment: "paper",
           currency: "EUR",
           initialDeposit: String(starterBudgetDesired),
-          clientRequestId: `planning-paper-${starterBudgetDesired}`,
+          clientRequestId: `planning-paper-${new Date().toISOString().slice(0, 10)}-${starterBudgetDesired}`,
         }),
       });
 
@@ -1052,7 +1069,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
           : "Paper portfolio funded"
       );
       track("starter_pack_apply_success", { mode: autopilotMode, items: starterPackScaled.length, fundedEur: starterBudgetDesired });
-      await load();
+      goDaily();
     } finally {
       setBusy(false);
     }
@@ -1671,11 +1688,11 @@ export default function PlanningTab({ mode }: { mode?: string }) {
             </div>
           </Card>
 
-          {/* Starter Pack */}
+          {/* Governed Paper starter proposal */}
           {hasPlan && !hasHoldings && starterPack.length > 0 ? (
             <Card
-              title="Starter Pack"
-              subtitle="Fast-start holdings so the engine can protect you immediately."
+              title="Paper starter proposal"
+              subtitle="Fund simulated cash, then review the governed allocation in Daily before any Paper order."
               right={
                 <div className="flex items-center gap-2">
                   <Badge tone="warn">Recommended</Badge>
@@ -1690,7 +1707,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
               }
             >
               <div className="text-sm text-zinc-700">
-                Apply a starter allocation now, then refine later. This unlocks leak detection and daily monitoring instantly.
+                No position is created here. Daily builds the allocation, shows the evidence, and waits for explicit Paper submission.
               </div>
               {starterBudgetAdjusted ? (
                 <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -1705,13 +1722,13 @@ export default function PlanningTab({ mode }: { mode?: string }) {
                   disabled={busy}
                   className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white disabled:opacity-50"
                 >
-                  {busy ? "Funding Paper account..." : "Fund Paper portfolio"}
+                  {busy ? "Funding Paper account..." : hasFundedPaperAccount ? "Review proposal in Daily" : "Fund Paper portfolio"}
                 </button>
                 <button
-                  onClick={goPortfolio}
+                  onClick={goDaily}
                   className="rounded-xl px-4 py-2 text-sm font-semibold border border-zinc-200 bg-white text-zinc-900"
                 >
-                  Review positions in Daily
+                  Open Daily
                 </button>
               </div>
 

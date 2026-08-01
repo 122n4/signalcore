@@ -96,7 +96,7 @@ describe("investing governance policy", () => {
     expect(out.manualReviewReasons).toHaveLength(0);
   });
 
-  it("routes an initial allocation above the turnover cap to supervised approval", () => {
+  it("clears an initial Paper allocation of approved instruments despite first-deployment turnover", () => {
     const out = buildInvestingGovernancePolicy({
       mandate: {
         objective: "balanced",
@@ -134,12 +134,13 @@ describe("investing governance policy", () => {
       ],
     });
 
-    expect(out.suitabilityStatus).toBe("review");
-    expect(out.autonomyStatus).toBe("supervised");
-    expect(out.executionClearance).toBe("review");
-    expect(out.approvalRequired).toBe(true);
+    expect(out.suitabilityStatus).toBe("ok");
+    expect(out.autonomyStatus).toBe("eligible");
+    expect(out.executionClearance).toBe("cleared");
+    expect(out.approvalRequired).toBe(false);
     expect(out.killSwitchActive).toBe(false);
     expect(out.overrideAllowed).toBe(true);
-    expect(out.manualReviewReasons).toContain("turnover_outside_policy_cap");
+    expect(out.turnoverStatus).toBe("inside_policy");
+    expect(out.manualReviewReasons).not.toContain("turnover_outside_policy_cap");
   });
 });

@@ -425,7 +425,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   );
   const paperSubmissionReady =
     String(executionQueue?.operational_state || "").toLowerCase() === "approved" &&
-    String(executionQueue?.approval_status || "").toLowerCase() === "approved";
+    ["approved", "not_required"].includes(String(executionQueue?.approval_status || "").toLowerCase());
   const paperOrderSymbol = String(
     (Array.isArray(daily?.investingEngine?.rebalance?.actions) ? daily.investingEngine.rebalance.actions : []).find(
       (action: any) => (action?.action === "buy" || action?.action === "sell") && action?.symbol,
@@ -447,6 +447,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const starterBudgetServer = Number(starterPackMeta?.budgetEur ?? NaN);
 
   const lastSnapshotAt = daily?.lastSnapshotAt ?? derived?.lastSnapshotAt ?? null;
+  const hasRecordedPaperCycle = hasFundedPaperAccount && Boolean(lastSnapshotAt);
 
   const receiptsCount = typeof derived?.receiptsCount === "number" ? derived.receiptsCount : 0;
   const receiptsTimeline = Array.isArray(derived?.receiptsTimeline) ? derived.receiptsTimeline : [];
@@ -1141,7 +1142,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     hasPlan,
     hasHoldings,
     hasFundedPaperAccount,
-    doneToday,
+    doneToday: doneToday || hasRecordedPaperCycle,
     coveragePct,
     holdings,
     portfolioTotalEur,
@@ -1568,13 +1569,13 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
               hasFundedPaperAccount={hasFundedPaperAccount}
               lastEvaluation={lastEvaluationLabel}
               blocked={Boolean(riskFixPlan) || decisionView.blockerState !== "none"}
-              completed={doneToday}
+              completed={doneToday || hasRecordedPaperCycle}
               holdingsCount={holdings.length}
               pricingCoveragePct={coveragePct}
               nextAction={homeNextAction}
               loop={loopTimeline}
             />
-            <details id="daily-controls" className="mb-5 scroll-mt-24 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
+            <details id="daily-controls" open={hasFundedPaperAccount && !hasHoldings} className="mb-5 scroll-mt-24 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
               <summary className="cursor-pointer text-sm font-semibold text-slate-200">View analysis, controls and evidence</summary>
               <div className="mt-5">
             <div className="mb-5">
@@ -1585,8 +1586,15 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
                 primaryAction={
                   !hasPlan
                     ? { label: "Open Planning", href: `/app?tab=planning&mode=${autopilotMode}` }
-                    : !hasHoldings
+                    : !hasHoldings && !hasFundedPaperAccount
                       ? { label: "Open Portfolio", href: `/app?tab=portfolio&mode=${autopilotMode}` }
+                      : paperSubmissionReady && paperOrderSymbol
+                        ? {
+                            label: submittingPaper ? "Submitting..." : `Submit ${paperOrderSymbol} to Paper`,
+                            onClick: () => {
+                              void submitApprovedPaperOrder();
+                            },
+                          }
                       : canClose
                         ? {
                             label: markingDone ? "Closing..." : "Complete loop",
@@ -1861,6 +1869,16 @@ function buildHomeNextAction(args: {
   }
   if (!args.hasHoldings) {
     if (args.hasFundedPaperAccount) {
+      if (args.doneToday) {
+        return {
+          label: "What to do now · step 2 of 4",
+          title: "Review today's Paper proposal",
+          reason: "The canonical cycle is recorded and the proposed allocation is available in the open review panel below.",
+          impact: "Review the evidence and submit the Paper order only if it matches your plan.",
+          ctaLabel: "Review Paper proposal",
+          ctaHref: "#daily-controls",
+        };
+      }
       return {
         label: "What to do now · step 2 of 4",
         title: "Review your first Paper proposal",
