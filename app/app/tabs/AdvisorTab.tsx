@@ -549,8 +549,7 @@ export default function AdvisorTab({
   const hasPlan = typeof derived?.hasPlan === "boolean" ? Boolean(derived.hasPlan) : !!plan?.id || !!plan?.is_active || !!plan?.active;
   const holdingsCount = Array.isArray(bundle?.portfolio?.items) ? bundle.portfolio.items.length : 0;
   const hasHoldings = typeof derived?.hasHoldings === "boolean" ? Boolean(derived.hasHoldings) : holdingsCount > 0;
-  const hasFundedPaperAccount =
-    Boolean(bundle?.portfolio?.accountId) && Number(bundle?.portfolio?.cashEur ?? bundle?.portfolio?.cash_eur ?? 0) > 0;
+  const hasFundedPaperAccount = Number(bundle?.portfolio?.cashEur ?? bundle?.portfolio?.cash_eur ?? 0) > 0;
 
   const autopilot = derived?.autopilot ?? null; // {total,safety,growth,reasonsShort}
   const pressureV2 = derived?.pressureV2 ?? null; // {score,drivers[]}
