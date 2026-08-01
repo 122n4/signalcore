@@ -33,7 +33,7 @@ describe("controlled legacy Paper import", () => {
   it("resolves fill activity through the canonical order ownership edge", () => {
     expect(sql).toContain("join public.investing_orders ord on ord.id=fill.order_id");
     expect(fillScopeFix).toContain("pg_get_functiondef");
-    expect(fillScopeFix).toContain("position(v_safe in v_definition)>0");
+    expect(fillScopeFix).toContain("position(v_safe_marker in v_definition)>0");
     expect(fillScopeFix).toContain("investing_legacy_import_fill_scope_fix_refused");
   });
 });
