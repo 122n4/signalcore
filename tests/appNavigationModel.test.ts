@@ -15,7 +15,7 @@ describe("app navigation model", () => {
       { key: "portfolio", label: "Portfolio" },
       { key: "advisor", label: "Recommendations" },
       { key: "planning", label: "Plan" },
-      { key: "autonomy", label: "Settings" },
+      { key: "autonomy", label: "Autonomy" },
     ]);
 
     expect(buildModeAwareNavItems({ mode: "trading", lang: "en" })).toEqual([
