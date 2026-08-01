@@ -70,7 +70,7 @@ begin
     raise exception 'investing_legacy_import_cash_mismatch';
   end if;
 
-  v_payload_hash:=encode(digest(convert_to(
+  v_payload_hash:=encode(extensions.digest(convert_to(
     p_actor_user_id||':'||p_portfolio_id||':'||v_legacy_count||':'||v_legacy_total||':'||v_legacy_cash,
     'UTF8'),'sha256'),'hex');
 
