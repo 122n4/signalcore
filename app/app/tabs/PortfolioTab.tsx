@@ -1910,7 +1910,7 @@ export default function PortfolioTab({
   ];
 
   return (
-    <div className="w-full max-w-[1280px] mx-auto px-[26px] py-[26px]">
+    <div className="mx-auto w-full min-w-0 max-w-[1280px] px-3 py-4 sm:px-[26px] sm:py-[26px]">
       {/* Header */}
       <div className="mb-[18px] flex items-end justify-between gap-[18px] max-[980px]:flex-col max-[980px]:items-start">
         <div className="space-y-2">
@@ -2797,7 +2797,7 @@ export default function PortfolioTab({
                         : "border-[#23314c] bg-[linear-gradient(180deg,#131f37_0%,#0e182b_100%)]"
                     )}
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1 space-y-3">
                         <div className="flex flex-wrap items-start gap-3">
                           <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[#31415f] bg-[#0d182d] text-[13px] font-black uppercase tracking-[.08em] text-white shadow-[0_0_22px_rgba(77,126,255,.14)]">
@@ -2815,7 +2815,7 @@ export default function PortfolioTab({
                             </div>
                             <div className="mt-1 text-sm text-[#93a4bf]">{name || "Position"}</div>
                           </div>
-                          <div className="grid min-w-[180px] grid-cols-2 gap-4 text-left sm:text-right">
+                          <div className="grid w-full basis-full grid-cols-2 gap-4 text-left sm:ml-auto sm:w-auto sm:min-w-[180px] sm:basis-auto sm:text-right">
                             <div>
                               <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[#7d93b2]">Entry</div>
                               <div className="mt-1 text-base font-semibold text-[#eef5ff]">{fmtPrice(entryPrice)}</div>
@@ -2862,7 +2862,7 @@ export default function PortfolioTab({
                         ) : null}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 sm:shrink-0">
                         <button
                           onClick={() => remove(it.id, sym)}
                           disabled={busy}
