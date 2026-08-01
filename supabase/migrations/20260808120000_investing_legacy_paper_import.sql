@@ -8,7 +8,7 @@ create or replace function public.investing_import_legacy_paper_v1(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public
 as $$
 declare
   v_account public.investing_accounts%rowtype;
