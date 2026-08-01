@@ -420,9 +420,6 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     return next && typeof next === "object" ? next : {};
   }, [bundle]);
   const executionQueue = daily?.execution?.queue && typeof daily.execution.queue === "object" ? daily.execution.queue : null;
-  const proposalRetryRequired = ["blocked", "submission_failed", "reconciliation_failed"].includes(
-    String(executionQueue?.operational_state || "").toLowerCase(),
-  );
   const paperSubmissionReady =
     String(executionQueue?.operational_state || "").toLowerCase() === "approved" &&
     ["approved", "not_required"].includes(String(executionQueue?.approval_status || "").toLowerCase());
@@ -440,6 +437,12 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const hasPlan = typeof derived?.hasPlan === "boolean" ? Boolean(derived.hasPlan) : !!plan?.id || !!plan?.is_active || !!plan?.active;
   const hasHoldings = typeof derived?.hasHoldings === "boolean" ? Boolean(derived.hasHoldings) : holdings.length > 0;
   const hasFundedPaperAccount = Boolean(portfolio?.accountId) && Number(portfolio?.cashEur || 0) > 0;
+  const queueOperationalState = String(executionQueue?.operational_state || "").toLowerCase();
+  const queueApprovalStatus = String(executionQueue?.approval_status || "").toLowerCase();
+  const staleInitialApproval =
+    hasFundedPaperAccount && !hasHoldings && queueOperationalState === "awaiting_approval" && queueApprovalStatus === "pending";
+  const proposalRetryRequired =
+    staleInitialApproval || ["blocked", "submission_failed", "reconciliation_failed"].includes(queueOperationalState);
 
   const opportunities = useMemo(() => (Array.isArray(daily?.opportunities) ? daily.opportunities : []), [daily]);
   const starterPack = useMemo(() => (Array.isArray(daily?.starterPack) ? daily.starterPack : []), [daily]);
@@ -1597,7 +1600,13 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
                           }
                       : canClose
                         ? {
-                            label: markingDone ? "Closing..." : "Complete loop",
+                            label: markingDone
+                              ? "Creating proposal..."
+                              : proposalRetryRequired
+                                ? "Retry Paper proposal"
+                                : hasFundedPaperAccount && !hasHoldings
+                                  ? "Create Paper proposal"
+                                  : "Complete loop",
                             onClick: () => {
                               void closeTheDay();
                             },
