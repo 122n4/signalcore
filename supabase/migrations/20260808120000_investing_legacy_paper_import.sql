@@ -45,7 +45,8 @@ begin
   select count(*) into v_position_count from public.investing_positions where account_id=v_account.id and quantity>0;
   if v_position_count<>0 then raise exception 'investing_legacy_import_canonical_not_empty'; end if;
   if exists(select 1 from public.investing_orders where account_id=v_account.id)
-    or exists(select 1 from public.investing_fills where account_id=v_account.id) then
+    or exists(select 1 from public.investing_fills fill
+      join public.investing_orders ord on ord.id=fill.order_id where ord.account_id=v_account.id) then
     raise exception 'investing_legacy_import_activity_exists';
   end if;
 
