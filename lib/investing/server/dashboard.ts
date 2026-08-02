@@ -53,7 +53,10 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
 
   const universe = getCanonicalInvestingInstrumentMaster();
   const positionRows = Array.isArray(positions.data) ? positions.data : [];
-  const symbols = Array.from(new Set([...universe.map((item) => item.symbol), ...positionRows.map((item: any) => String(item.symbol))]));
+  // The client dashboard must not wait for quotes for the entire research universe.
+  // Load only owned positions here; proposal execution obtains its own fresh quote
+  // through the fail-closed Paper boundary.
+  const symbols = Array.from(new Set<string>(positionRows.map((item: any) => String(item.symbol)).filter(Boolean)));
   const quotes = await getQuotes({ symbols, ttlSec: 60 });
   const cashEur = (cash.data || []).filter((row: any) => row.currency === "EUR").reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
   const items = positionRows.map((position: any) => {
