@@ -32,8 +32,6 @@ export default function InvestingHomeHero(props: {
 }) {
   const state = !props.hasPlan
     ? "Plan required"
-    : props.completed
-      ? "Cycle recorded"
     : !props.hasHoldings
       ? props.hasFundedPaperAccount ? "Proposal required" : "Paper funding required"
       : props.blocked
@@ -43,7 +41,7 @@ export default function InvestingHomeHero(props: {
           : "Ready for review";
   return (
     <section className="mb-5 overflow-hidden rounded-[28px] border border-cyan-300/15 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,.12),transparent_42%),linear-gradient(180deg,#111f36,#0c1628)] p-5 shadow-[0_24px_70px_rgba(0,0,0,.28)] sm:p-7">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mx-auto max-w-5xl">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[.18em] text-amber-100">Paper portfolio / no real money</span>
@@ -52,7 +50,7 @@ export default function InvestingHomeHero(props: {
           <p className="mt-6 text-xs font-semibold uppercase tracking-[.2em] text-slate-400">Portfolio value</p>
           <h1 className="mt-1 text-4xl font-black tracking-[-.05em] text-white sm:text-5xl">{euros(props.totalEur)}</h1>
 
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid gap-2 sm:grid-cols-3">
             <AnswerMetric label="Investment result" value={props.performanceValue} note={props.performanceNote} tone={props.performanceTone} />
             <AnswerMetric label="Available cash" value={euros(props.cashEur)} note="Persistent Paper balance" tone="neutral" />
             <AnswerMetric
@@ -60,12 +58,6 @@ export default function InvestingHomeHero(props: {
               value={!props.hasPlan ? "Plan missing" : props.blocked ? "Needs attention" : "Within plan"}
               note={!props.hasPlan ? "Complete your constraints" : props.blocked ? "See the priority below" : "No material blocker"}
               tone={!props.hasPlan || props.blocked ? "warn" : "good"}
-            />
-            <AnswerMetric
-              label="Account integrity"
-              value={props.hasHoldings ? `${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}% verified` : "Awaiting portfolio"}
-              note={props.hasHoldings ? props.lastEvaluation : "No positions to verify yet"}
-              tone={props.hasHoldings && props.pricingCoveragePct >= 80 ? "good" : "warn"}
             />
           </div>
 
@@ -87,27 +79,10 @@ export default function InvestingHomeHero(props: {
             </Link>
           </div>
         </div>
-        <div className="w-full space-y-3 lg:max-w-[340px]">
-          <div className="grid grid-cols-3 gap-2">
-            <Metric label="Plan" value={props.hasPlan ? "Active" : "Missing"} />
-            <Metric label="Assets" value={String(props.holdingsCount)} />
-            <Metric label="Data" value={props.hasHoldings ? `${Math.max(0, Math.min(100, Math.round(props.pricingCoveragePct)))}%` : "Pending"} />
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
-            <div className="text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Last evaluation</div>
-            <div className="mt-1 text-sm font-semibold text-slate-100">{props.lastEvaluation}</div>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-              <Link href={props.hasPlan ? props.hasHoldings ? "/app?mode=investing&tab=advisor" : props.hasFundedPaperAccount ? "#daily-controls" : "/app?mode=investing&tab=portfolio" : "/app?mode=investing&tab=planning"} className="rounded-xl bg-cyan-200 px-3 py-2.5 text-center text-xs font-black text-slate-950">
-                {props.hasPlan ? props.hasHoldings ? "Review advice" : props.hasFundedPaperAccount ? "Review proposal" : "Fund Paper portfolio" : "Complete plan"}
-              </Link>
-              <Link href="/app?mode=investing&tab=portfolio" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Portfolio</Link>
-              <Link href="/app?mode=investing&tab=planning" className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-xs font-semibold text-white">Plan</Link>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+          <div className="mt-5 rounded-2xl border border-white/10 bg-black/15 p-4">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Complete the loop</div>
-              <div className="text-[10px] font-semibold text-slate-400">One step at a time</div>
+              <div className="text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Your progress</div>
+              <div className="text-[10px] font-semibold text-slate-400">{props.lastEvaluation}</div>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2">
               {props.loop.map((step, index) => (
@@ -117,19 +92,14 @@ export default function InvestingHomeHero(props: {
                 </div>
               ))}
             </div>
+            <div className="mt-4 flex flex-wrap gap-3 border-t border-white/10 pt-4 text-xs">
+              <Link href="/app?mode=investing&tab=portfolio" className="font-semibold text-slate-300 hover:text-white">View portfolio</Link>
+              <Link href="/app?mode=investing&tab=planning" className="font-semibold text-slate-300 hover:text-white">View plan</Link>
+              {props.hasHoldings ? <Link href="/app?mode=investing&tab=advisor" className="font-semibold text-slate-300 hover:text-white">View recommendation</Link> : null}
+            </div>
           </div>
         </div>
-      </div>
     </section>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/15 px-3 py-3">
-      <div className="text-[9px] font-bold uppercase tracking-[.14em] text-slate-500">{label}</div>
-      <div className="mt-1 truncate text-sm font-black text-white">{value}</div>
-    </div>
   );
 }
 

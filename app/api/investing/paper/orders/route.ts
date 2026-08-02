@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getRequestUserId } from "@/lib/auth/requestUser";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
-import { submitPersistentPaperOrder } from "@/lib/investing/server/persistentPaper";
+import { processPersistentPaperOrder, submitPersistentPaperOrder } from "@/lib/investing/server/persistentPaper";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +42,12 @@ export async function POST(req: Request) {
   if (environment !== "paper") return reply({ ok: false, error: "invalid_environment" }, 400);
   try {
     const order = await submitPersistentPaperOrder({ userId, queueId, expectedQueueVersion, symbol, clientRequestId });
-    return reply({ ok: true, order });
+    const orderId = String(order?.order_id || order?.id || "");
+    const orderStatus = String(order?.status || "").toLowerCase();
+    const fill = orderId && (orderStatus === "submitted" || orderStatus === "partially_filled")
+      ? await processPersistentPaperOrder(orderId)
+      : null;
+    return reply({ ok: true, order, fill });
   } catch (error: any) {
     const code = String(error?.message || "investing_paper_submit_failed").split(":", 1)[0];
     const status = code.includes("not_found") ? 404 : code.includes("conflict") || code.includes("insufficient") || code.includes("blocked") || code.includes("required") ? 409 : 500;

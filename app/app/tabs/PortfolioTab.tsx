@@ -769,13 +769,13 @@ export default function PortfolioTab({
   const onboardingHintShownRef = useRef(false);
   const onboardingDailyRedirectedRef = useRef(false);
 
-  // data quality (from daily-bundle)
+  // Investing reads the same canonical dashboard as Overview, Daily and Advisor.
   const [bundle, setBundle] = useState<any>(null);
   const pricing = bundle?.derived?.pricing ?? null; // {coveragePct, missingSymbols, priceAgeSeconds}
   const diagnostics = bundle?.derived?.diagnostics ?? null; // includes riskLeaks
   const portfolioQuotes = bundle?.portfolio?.quotes ?? {};
   const portfolioValuation = bundle?.portfolio?.valuation ?? null;
-  const portfolioCash = Math.max(0, safeNum(bundle?.portfolio?.cash, 0) ?? 0);
+  const portfolioCash = Math.max(0, safeNum(bundle?.portfolio?.cashEur ?? bundle?.portfolio?.cash_eur ?? bundle?.portfolio?.cash, 0) ?? 0);
   const capitalStatus = bundle?.daily?.capitalStatus ?? null;
 
   // add UI
@@ -840,7 +840,8 @@ export default function PortfolioTab({
   }, [starterPack, autopilotMode]);
   const showStarterWhyPanel =
     onboardingFromSetupRef.current && setupHasExistingHoldings !== true && starterExplainRows.length > 0;
-  const showStarterApplyTopCard = showStarterWhyPanel && !hasHoldings;
+  const hasFundedPaperAccount = portfolioCash > 0 || Boolean(bundle?.portfolio?.accountId);
+  const showStarterApplyTopCard = showStarterWhyPanel && !hasHoldings && !hasFundedPaperAccount;
   const starterFallbackInfoTable =
     !hasHoldings && !starterUsesLiveQuotes ? (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -920,7 +921,10 @@ export default function PortfolioTab({
     try {
       const budgetEur = readStarterBudget(autopilotMode);
       const budgetParam = budgetEur != null ? `&budgetEur=${budgetEur}` : "";
-      const r = await fetchJSON(`/api/daily-bundle?mode=${encodeURIComponent(String(autopilotMode))}${budgetParam}&_=${Date.now()}`, { method: "GET" });
+      const sourceUrl = autopilotMode === "investing"
+        ? `/api/investing/dashboard?_=${Date.now()}`
+        : `/api/daily-bundle?mode=${encodeURIComponent(String(autopilotMode))}${budgetParam}&_=${Date.now()}`;
+      const r = await fetchJSON(sourceUrl, { method: "GET" });
       if (!r.ok) return [] as HoldingRow[];
 
       const list = Array.isArray(r.data?.portfolio?.items) ? r.data.portfolio.items : [];
@@ -957,10 +961,10 @@ export default function PortfolioTab({
   async function loadBundle() {
     const budgetEur = readStarterBudget(autopilotMode);
     const budgetParam = budgetEur != null ? `&budgetEur=${budgetEur}` : "";
-    const r = await fetchJSON(
-      `/api/daily-bundle?mode=${encodeURIComponent(String(autopilotMode))}${budgetParam}&_=${Date.now()}`,
-      { method: "GET" }
-    );
+    const sourceUrl = autopilotMode === "investing"
+      ? `/api/investing/dashboard?_=${Date.now()}`
+      : `/api/daily-bundle?mode=${encodeURIComponent(String(autopilotMode))}${budgetParam}&_=${Date.now()}`;
+    const r = await fetchJSON(sourceUrl, { method: "GET" });
     if (r.ok) {
       setBundle(r.data);
       setItems(Array.isArray(r.data?.portfolio?.items) ? r.data.portfolio.items : []);
@@ -1331,6 +1335,11 @@ export default function PortfolioTab({
 
   async function applyStarterPack() {
     if (busy || applyingStarter) return;
+    if (portfolioCash > 0 || Boolean(bundle?.portfolio?.accountId)) {
+      setToast("Your Paper portfolio is already funded. Opening the proposal review...");
+      goDaily("starter_pack");
+      return;
+    }
     if (!starterPack.length) {
       await loadBundle();
       setToast("Starter pack not ready yet. Refresh and try again.");
@@ -1938,7 +1947,7 @@ export default function PortfolioTab({
                       <div className="flex items-center justify-between gap-4"><span>Plan alignment</span><span className="font-semibold">{capitalStatus?.planAlignment ? String(capitalStatus.planAlignment).replace(/_/g, " ") : "Stable"}</span></div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {!hasHoldings && hasStarterCandidate ? (
+                      {!hasHoldings && hasStarterCandidate && !hasFundedPaperAccount ? (
                         <button
                           onClick={() => void applyStarterPack()}
                           disabled={!hasStarterCandidate || busy || applyingStarter}
