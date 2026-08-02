@@ -472,18 +472,6 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     return [300, 1000, 2500, 5000];
   }, [autopilotMode]);
 
-  const autonomyScore = useMemo(() => {
-    let s = 0;
-    if (check.hasPlan) s += 22;
-    if (check.hasHoldings) s += 22;
-    if (check.coveragePct >= 80) s += 14;
-    if (brokerPrefs.connected) s += 14;
-    if (brokerPrefs.autoSync) s += 10;
-    if (handsFreeFixNow) s += 10;
-    if (check.doneToday) s += 8;
-    return Math.min(100, s);
-  }, [check.hasPlan, check.hasHoldings, check.coveragePct, brokerPrefs.connected, brokerPrefs.autoSync, handsFreeFixNow, check.doneToday]);
-
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2500);
@@ -545,7 +533,10 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     const budget = clampStarterBudget(typeof budgetOverride === "number" ? budgetOverride : starterBudget);
     setLoading(true);
     try {
-      const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}&budgetEur=${budget}`);
+      const sourceUrl = autopilotMode === "investing"
+        ? "/api/investing/dashboard"
+        : `/api/daily-bundle?mode=${autopilotMode}&budgetEur=${budget}`;
+      const r = await fetchJSON(sourceUrl);
       if (!r.ok) {
         setToast(r.data?.error || "Health check failed.");
         return;
@@ -736,7 +727,10 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
       setOperatorSteps((prev) => [...prev, { step, status, detail }]);
     };
     const loadBundleStrict = async () => {
-      const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}&budgetEur=${budget}&_=${Date.now()}`, { method: "GET" });
+      const sourceUrl = autopilotMode === "investing"
+        ? `/api/investing/dashboard?_=${Date.now()}`
+        : `/api/daily-bundle?mode=${autopilotMode}&budgetEur=${budget}&_=${Date.now()}`;
+      const r = await fetchJSON(sourceUrl, { method: "GET" });
       if (!r.ok) {
         throw new Error(String(r.data?.error || r.data?.message || `daily_bundle_failed_${r.status}`));
       }
@@ -1205,15 +1199,15 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
       ) : null}
 
       <Card
-        title="Syntrake Autopilot Control Tower"
-        subtitle="Live operating state, capital protection and system trust in one place."
+        title="How Syntrake is helping"
+        subtitle="See what is being monitored, what needs your attention, and when the portfolio will be reviewed again."
         right={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={autonomyDecisionView.topStatusBadgeTone}>{autonomyDecisionView.topStatusBadgeLabel}</Badge>
             {autonomyDecisionView.actionNeededBadgeLabel ? (
               <Badge tone={autonomyDecisionView.actionNeededBadgeTone ?? "warn"}>{autonomyDecisionView.actionNeededBadgeLabel}</Badge>
             ) : null}
-            <Badge tone={autonomyScore >= 85 ? "good" : autonomyScore >= 60 ? "warn" : "bad"}>Autonomy {autonomyScore}/100</Badge>
+            <Badge tone="neutral">Paper only</Badge>
           </div>
         }
       >
@@ -1237,24 +1231,6 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
                 <div className="mt-1 text-base font-semibold text-zinc-900">{controlModel.nextEvaluationCountdown}</div>
                 <div className="mt-1 text-xs text-zinc-500">{autonomyDecisionView.nextEvaluationAt ? fmtTime(autonomyDecisionView.nextEvaluationAt) : "Next window pending"}</div>
               </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-4">
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Active mode</div>
-              <div className="mt-1 font-semibold text-zinc-900">{controlModel.activeMode}</div>
-            </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Last evaluation</div>
-              <div className="mt-1 font-semibold text-zinc-900">{fmtTime(controlModel.lastEvaluationAt)}</div>
-            </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Execution tempo</div>
-              <div className="mt-1 font-semibold text-zinc-900">{autonomyDecisionView.executionTempo}</div>
-            </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">State source</div>
-              <div className="mt-1 font-semibold text-zinc-900">{autonomyDecisionView.stabilitySource === "held" ? "Stabilizing" : "Live"}</div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1295,6 +1271,9 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
         </Card>
       ) : null}
 
+      <details className="rounded-2xl border border-zinc-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-zinc-900">Advanced system information</summary>
+        <div className="mt-5 space-y-5">
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
           title="Capital Protection"
@@ -1594,6 +1573,8 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
           <div className="text-sm text-zinc-600">Automation controls are collapsed to keep live intelligence as the primary layer.</div>
         )}
       </Card>
+        </div>
+      </details>
 
       <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
         Syntrake continuously evaluates your capital strategy and adapts as conditions evolve.

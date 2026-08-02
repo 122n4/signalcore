@@ -42,8 +42,24 @@ export async function POST(req: Request) {
   if (environment !== "paper") return reply({ ok: false, error: "invalid_environment" }, 400);
   try {
     const order = await submitPersistentPaperOrder({ userId, queueId, expectedQueueVersion, symbol, clientRequestId });
-    const orderId = String(order?.order_id || order?.id || "");
-    const orderStatus = String(order?.status || "").toLowerCase();
+    let orderId = String(order?.order_id || order?.id || "");
+    let orderStatus = String(order?.status || "").toLowerCase();
+    if (!orderId || !orderStatus) {
+      const database = getInvestingSupabaseAdmin() as any;
+      const persisted = await database
+        .from("investing_orders")
+        .select("id,status")
+        .eq("user_id", userId)
+        .eq("queue_id", queueId)
+        .eq("symbol", symbol)
+        .eq("environment", "paper")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (persisted.error) throw new Error("investing_paper_order_read_failed");
+      orderId = orderId || String(persisted.data?.id || "");
+      orderStatus = orderStatus || String(persisted.data?.status || "").toLowerCase();
+    }
     const fill = orderId && (orderStatus === "submitted" || orderStatus === "partially_filled")
       ? await processPersistentPaperOrder(orderId)
       : null;
