@@ -207,7 +207,9 @@ async function readCanonicalPaperHistory(
 ): Promise<{ rows: PaperTradeHistoryRow[]; observability: PaperTradeObservability }> {
   const days = args.days ?? 183;
   const maxSettlements = args.maxSettlements ?? 8;
-  const canonical = await readCanonicalPaperRows(userId, days);
+  const canonical = await readCanonicalPaperRows(userId, days, {
+    includeRawDetails: args.readOnly !== true,
+  });
 
   if (!canonical.schemaReady) {
     throw new Error(canonical.error || "paper_trades_missing");

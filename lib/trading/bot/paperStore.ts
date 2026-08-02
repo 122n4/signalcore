@@ -533,15 +533,22 @@ export async function reconcileCanonicalPaperTrades(args: {
   return { schemaReady: true, reconciled: payload.length, error: null };
 }
 
-export async function readCanonicalPaperRows(userId: string, days = 183) {
+export async function readCanonicalPaperRows(
+  userId: string,
+  days = 183,
+  options: { includeRawDetails?: boolean } = {},
+) {
   const windowDays = Math.max(1, Math.min(183, Math.round(days)));
   const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
   const sb = getSupabaseAdmin();
+  const columns = [
+    "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,idempotency_key,signal_id,trigger_source,reason_code,reason_detail,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,cron_scheduled_at,cron_fired_at,signal_loaded_at,policy_evaluated_at,lock_acquired_at,lock_released_at,persist_started_at,persist_completed_at,settlement_started_at,settlement_completed_at",
+    options.includeRawDetails === false ? null : "raw_details",
+    "created_at",
+  ].filter(Boolean).join(",");
   const { data, error } = await sb
     .from("paper_trades")
-    .select(
-      "id,user_id,mode,source,source_journal_entry_id,instrument,side,broker,execution_status,status,idempotency_key,signal_id,trigger_source,reason_code,reason_detail,entry_price,stop_price,target_price,risk_pct,risk_amount,result_r,exit_price,opened_at,settled_at,last_settlement_at,settlement_error,cron_scheduled_at,cron_fired_at,signal_loaded_at,policy_evaluated_at,lock_acquired_at,lock_released_at,persist_started_at,persist_completed_at,settlement_started_at,settlement_completed_at,raw_details,created_at",
-    )
+    .select(columns)
     .eq("user_id", userId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })

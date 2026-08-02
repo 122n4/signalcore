@@ -152,6 +152,9 @@ describe("paper runner history reads", () => {
     expect(result.count).toBe(1);
     expect(result.history[0]?.id).toBe("paper-read-only");
     expect(mocks.readCanonicalPaperRows).toHaveBeenCalledTimes(1);
+    expect(mocks.readCanonicalPaperRows).toHaveBeenCalledWith("owner_1", 183, {
+      includeRawDetails: false,
+    });
     expect(mocks.reconcileCanonicalPaperTrades).not.toHaveBeenCalled();
     expect(mocks.settleCanonicalPaperRows).not.toHaveBeenCalled();
     expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled();
