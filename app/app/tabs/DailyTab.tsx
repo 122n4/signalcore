@@ -327,6 +327,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const [markingDone, setMarkingDone] = useState(false);
   const [applyingStarter, setApplyingStarter] = useState(false);
   const [submittingPaper, setSubmittingPaper] = useState(false);
+  const [paperOrderIssue, setPaperOrderIssue] = useState<"market_data_stale" | null>(null);
   const [starterBudget, setStarterBudget] = useState<number>(() => defaultStarterBudget(autopilotMode));
 
   const [toast, setToast] = useState<string | null>(null);
@@ -606,9 +607,16 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         }),
       });
       if (!result.ok) {
-        setToast(result.data?.error || "Paper order submission failed.");
+        const errorCode = String(result.data?.error || "");
+        if (errorCode === "investing_market_data_stale") {
+          setPaperOrderIssue("market_data_stale");
+          setToast("No fresh market price is available. The Paper order remains safely pending.");
+        } else {
+          setToast(errorCode || "Paper order submission failed.");
+        }
         return;
       }
+      setPaperOrderIssue(null);
       setToast(`${paperOrderSymbol} submitted to the persistent Paper worker.`);
       await loadBundle(false);
     } finally {
@@ -1163,12 +1171,18 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const homeNextAction = paperSubmissionReady && paperOrderSymbol
     ? {
         label: "What to do now · step 2 of 4",
-        title: paperOrderNeedsProcessing ? `Complete the ${paperOrderSymbol} Paper order` : `Confirm ${paperOrderSymbol} in Paper`,
-        reason: paperOrderNeedsProcessing
+        title: paperOrderIssue === "market_data_stale"
+          ? "Wait for a fresh market price"
+          : paperOrderNeedsProcessing ? `Complete the ${paperOrderSymbol} Paper order` : `Confirm ${paperOrderSymbol} in Paper`,
+        reason: paperOrderIssue === "market_data_stale"
+          ? "The market data is older than the 15-minute safety limit, so Syntrake did not execute the simulated order. This commonly happens while the market is closed."
+          : paperOrderNeedsProcessing
           ? "The simulated order was accepted but its position has not been created yet."
           : "The proposal passed the plan and safety checks and is ready for your explicit confirmation.",
-        impact: "Syntrake will process the simulated order, refresh the cash balance and show the resulting position.",
-        ctaLabel: paperOrderNeedsProcessing ? "Complete Paper order" : "Review and confirm",
+        impact: paperOrderIssue === "market_data_stale"
+          ? "Nothing was invested and your Paper cash is unchanged. Try again when a current price is available."
+          : "Syntrake will process the simulated order, refresh the cash balance and show the resulting position.",
+        ctaLabel: paperOrderIssue === "market_data_stale" ? "Try fresh price again" : paperOrderNeedsProcessing ? "Complete Paper order" : "Review and confirm",
         ctaHref: "#daily-controls",
       }
     : baseHomeNextAction;
@@ -1199,6 +1213,8 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         ? {
             label: submittingPaper
               ? "Processing Paper order..."
+              : paperOrderIssue === "market_data_stale"
+                ? "Try fresh price again"
               : paperOrderNeedsProcessing
                 ? `Complete ${paperOrderSymbol} Paper order`
                 : `Confirm ${paperOrderSymbol} in Paper`,
@@ -1604,7 +1620,11 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-200">Your next step</div>
                 <div className="mt-1 text-lg font-bold text-white">{decisionPrimaryAction.label}</div>
-                <p className="mt-1 text-sm text-slate-400">One action only. Syntrake will refresh the portfolio and show the result when it is complete.</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {paperOrderIssue === "market_data_stale"
+                    ? "The previous attempt was safely blocked because no current market price was available. Your Paper cash has not changed."
+                    : "One action only. Syntrake will refresh the portfolio and show the result when it is complete."}
+                </p>
               </div>
               {decisionPrimaryAction.href ? (
                 <a href={decisionPrimaryAction.href} className="mt-4 inline-flex rounded-xl bg-cyan-200 px-4 py-3 text-sm font-black text-slate-950 sm:mt-0">
