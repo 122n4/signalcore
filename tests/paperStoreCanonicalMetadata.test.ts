@@ -21,6 +21,12 @@ function createPaperTradesQuery(row: any) {
   return { from: vi.fn(() => chain), chain };
 }
 
+function createCompactPaperHistoryQuery(row: any) {
+  return {
+    rpc: vi.fn(async () => ({ data: [row], error: null })),
+  };
+}
+
 describe("canonical paper trade metadata", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,7 +81,7 @@ describe("canonical paper trade metadata", () => {
   });
 
   it("omits raw_details for lightweight interactive history reads", async () => {
-    const query = createPaperTradesQuery({
+    const query = createCompactPaperHistoryQuery({
       id: "paper-light",
       user_id: "owner_1",
       source_journal_entry_id: "journal-light",
@@ -100,9 +106,11 @@ describe("canonical paper trade metadata", () => {
     mocks.getSupabaseAdmin.mockReturnValue(query);
 
     const result = await readCanonicalPaperRows("owner_1", 183, { includeRawDetails: false });
-    const selectedColumns = String(query.chain.select.mock.calls[0]?.[0]);
-
-    expect(selectedColumns).not.toContain("raw_details");
+    expect(query.rpc).toHaveBeenCalledWith("read_paper_trade_history_compact_v1", {
+      p_user_id: "owner_1",
+      p_days: 183,
+      p_limit: 100,
+    });
     expect(result.rows[0]?.details.intent?.instrument).toBe("BTCUSD");
     expect(result.rows[0]?.details.paperOutcome?.status).toBe("won");
     expect(result.rows[0]?.details.paperOutcome?.resultR).toBe(1);
