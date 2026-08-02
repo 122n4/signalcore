@@ -10,6 +10,7 @@ import AutopilotSwitcher from "@/components/AutopilotSwitcher";
 import UpgradeModal from "@/components/UpgradeModal";
 import TradingUpgradeGate from "@/components/trading/TradingUpgradeGate";
 import TradingNotificationManager from "@/components/trading/TradingNotificationManager";
+import InvestingCommandCenter from "@/components/investing/InvestingCommandCenter";
 import { buildTradingUpgradeModel } from "@/components/trading/tradingUpgradeModel";
 import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
@@ -1015,6 +1016,10 @@ export default function AppUI() {
             onChange={handleModeChange}
           />
 
+          {workspaceMode === "investing" ? (
+            <InvestingCommandCenter activeView={view} onNavigate={(href) => router.push(href)} />
+          ) : null}
+
           {workspaceMode === "trading" ? (
             <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-300/[0.08] p-4 text-cyan-50 shadow-[0_18px_50px_rgba(8,145,178,0.08)]">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1038,7 +1043,7 @@ export default function AppUI() {
             </div>
           ) : null}
 
-          {!settingsLoading && !loadingAccess && !modeLoading ? (
+          {workspaceMode !== "investing" && !settingsLoading && !loadingAccess && !modeLoading ? (
             <FirstValueRail
               lang={lang}
               mode={workspaceMode}
