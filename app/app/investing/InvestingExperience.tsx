@@ -74,14 +74,19 @@ export default function InvestingExperience({ screen }: { screen: Screen }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
       const localQa = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
         ? "&qa=assisted"
         : "";
-      const response = await fetch(`/api/investing/dashboard?_=${Date.now()}${localQa}`, { cache: "no-store" });
+      const response = await fetch(`/api/investing/dashboard?view=experience&_=${Date.now()}${localQa}`, { cache: "no-store", signal: controller.signal });
       const body = await response.json().catch(() => null);
       setData(response.ok && body?.ok ? body : null);
+    } catch {
+      setData(null);
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
