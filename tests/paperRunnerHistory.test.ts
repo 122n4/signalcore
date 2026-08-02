@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   readCanonicalPaperRows: vi.fn(),
+  reconcileCanonicalPaperTradeRuns: vi.fn(async () => ({ schemaReady: true, reconciled: 0, error: null })),
   reconcileCanonicalPaperTrades: vi.fn(),
   settleCanonicalPaperRows: vi.fn(),
   buildPaperObservability: vi.fn((args: any) => ({
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/trading/bot/paperStore", () => ({
   buildPaperObservability: mocks.buildPaperObservability,
   readCanonicalPaperRows: mocks.readCanonicalPaperRows,
+  reconcileCanonicalPaperTradeRuns: mocks.reconcileCanonicalPaperTradeRuns,
   reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,
   settleCanonicalPaperRows: mocks.settleCanonicalPaperRows,
   upsertCanonicalPaperTradeFromJournal: vi.fn(),
@@ -119,6 +121,40 @@ describe("paper runner history reads", () => {
     expect(result.count).toBe(0);
     expect(result.history).toEqual([]);
     expect(result.observability.error).toContain("statement timeout");
+  });
+
+  it("serves the interactive history GET as a single canonical read without repair writes", async () => {
+    const canonicalRows = [
+      {
+        id: "paper-read-only",
+        title: "Paper cycle read only",
+        created_at: "2026-07-31T07:48:22.166Z",
+        details: {
+          planned: { action: "ready" },
+          execution: { status: "paper_queued" },
+          intent: { instrument: "BTCUSD", side: "buy" },
+          paperOutcome: { status: "won", resultR: 1 },
+        },
+      },
+    ];
+    mocks.readCanonicalPaperRows.mockResolvedValueOnce({
+      schemaReady: true,
+      rows: canonicalRows,
+      error: null,
+    });
+
+    const result = await readPaperHistoryPayloadSafe("owner_1", {
+      days: 183,
+      maxSettlements: 0,
+      readOnly: true,
+    });
+
+    expect(result.count).toBe(1);
+    expect(result.history[0]?.id).toBe("paper-read-only");
+    expect(mocks.readCanonicalPaperRows).toHaveBeenCalledTimes(1);
+    expect(mocks.reconcileCanonicalPaperTrades).not.toHaveBeenCalled();
+    expect(mocks.settleCanonicalPaperRows).not.toHaveBeenCalled();
+    expect(mocks.getSupabaseAdmin).not.toHaveBeenCalled();
   });
 
   it("reports the actual requested windowDays in the payload metadata", async () => {

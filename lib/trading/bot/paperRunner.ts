@@ -203,7 +203,7 @@ export async function readSettledPaperRows(userId: string, days = 183, maxSettle
 
 async function readCanonicalPaperHistory(
   userId: string,
-  args: { days?: number; maxSettlements?: number } = {},
+  args: { days?: number; maxSettlements?: number; readOnly?: boolean } = {},
 ): Promise<{ rows: PaperTradeHistoryRow[]; observability: PaperTradeObservability }> {
   const days = args.days ?? 183;
   const maxSettlements = args.maxSettlements ?? 8;
@@ -211,6 +211,20 @@ async function readCanonicalPaperHistory(
 
   if (!canonical.schemaReady) {
     throw new Error(canonical.error || "paper_trades_missing");
+  }
+
+  if (args.readOnly) {
+    const rows = sortPaperRowsNewestFirst(canonical.rows);
+    return {
+      rows,
+      observability: buildPaperObservability({
+        schemaReady: true,
+        reconciledHistoricalCycles: 0,
+        repairedThisRun: 0,
+        rows,
+        error: null,
+      }),
+    };
   }
 
   const { reconciliation } = await reconcileLegacyPaperWindow(userId, days);
@@ -283,7 +297,10 @@ function hasDuplicateIntent(rows: PaperTradeHistoryRow[], idempotencyKey: string
   });
 }
 
-export async function readPaperHistoryPayload(userId: string, args: { days?: number; maxSettlements?: number } = {}) {
+export async function readPaperHistoryPayload(
+  userId: string,
+  args: { days?: number; maxSettlements?: number; readOnly?: boolean } = {},
+) {
   const { rows, observability } = await readCanonicalPaperHistory(userId, args);
   const windowDays = Math.max(1, Math.min(183, Math.round(args.days ?? 183)));
   return {
@@ -298,7 +315,7 @@ export async function readPaperHistoryPayload(userId: string, args: { days?: num
 
 export async function readPaperHistoryPayloadSafe(
   userId: string,
-  args: { days?: number; maxSettlements?: number } = {},
+  args: { days?: number; maxSettlements?: number; readOnly?: boolean } = {},
 ) {
   try {
     return await readPaperHistoryPayload(userId, args);

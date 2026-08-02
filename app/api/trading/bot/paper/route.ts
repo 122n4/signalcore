@@ -34,7 +34,8 @@ export async function GET(req: Request) {
         ok: true,
         ...(await readPaperHistoryPayloadSafe(userId, {
           days: Number.isFinite(days) ? days : 183,
-          maxSettlements: 4,
+          maxSettlements: 0,
+          readOnly: true,
         })),
       },
     );
