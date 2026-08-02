@@ -1150,6 +1150,17 @@ export default function PortfolioTab({
 
   const simpleGuide = useMemo<PortfolioSimpleGuide>(() => {
     if (!hasHoldings) {
+      if (hasFundedPaperAccount) {
+        return {
+          step: 2,
+          total: 3,
+          title: "Step 2: review the prepared Paper proposal",
+          detail: "Your simulated account is already funded. Continue in Overview to review the proposal and confirm it when a fresh market price is available.",
+          actionLabel: "Review proposal in Overview",
+          action: "daily",
+          tone: "good",
+        };
+      }
       if (starterPack.length > 0 && setupHasExistingHoldings !== true) {
         return {
           step: 1,
@@ -1310,7 +1321,7 @@ export default function PortfolioTab({
       action: "daily",
       tone: "good",
     };
-  }, [hasHoldings, starterPack.length, setupHasExistingHoldings, missingForPricing.length, coveragePct, lang]);
+  }, [hasHoldings, hasFundedPaperAccount, starterPack.length, setupHasExistingHoldings, missingForPricing.length, coveragePct, lang]);
 
   async function runSimpleGuideAction() {
     if (simpleGuide.action === "add_first") {
@@ -2521,13 +2532,22 @@ export default function PortfolioTab({
                         : ""}
                     </div>
                     <div className="mt-2">{starterFallbackInfoTable}</div>
-                    <button
-                      onClick={() => void applyStarterPack()}
-                      disabled={!hasStarterCandidate || busy || applyingStarter}
-                      className="mt-3 rounded-xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50"
-                    >
-                      {applyingStarter ? "A financiar Paper..." : "Financiar portefólio Paper"}
-                    </button>
+                    {!hasFundedPaperAccount ? (
+                      <button
+                        onClick={() => void applyStarterPack()}
+                        disabled={!hasStarterCandidate || busy || applyingStarter}
+                        className="mt-3 rounded-xl px-4 py-2 text-sm font-semibold bg-emerald-600 text-white disabled:opacity-50"
+                      >
+                        {applyingStarter ? "A financiar Paper..." : "Financiar portefólio Paper"}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => goDaily("starter_pack")}
+                        className="mt-3 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white"
+                      >
+                        Rever proposta no Overview
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
