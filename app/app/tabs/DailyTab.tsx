@@ -1147,7 +1147,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     weeklyMissionPct,
     Math.round((loopTimeline.filter((step) => step.state === "done").length / loopTimeline.length) * 100)
   );
-  const homeNextAction = buildHomeNextAction({
+  const baseHomeNextAction = buildHomeNextAction({
     hasPlan,
     hasHoldings,
     hasFundedPaperAccount,
@@ -1160,6 +1160,18 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     maxSinglePositionPct: decisionView.guardrails.maxSinglePositionPct,
     mode: autopilotMode,
   });
+  const homeNextAction = paperSubmissionReady && paperOrderSymbol
+    ? {
+        label: "What to do now · step 2 of 4",
+        title: paperOrderNeedsProcessing ? `Complete the ${paperOrderSymbol} Paper order` : `Confirm ${paperOrderSymbol} in Paper`,
+        reason: paperOrderNeedsProcessing
+          ? "The simulated order was accepted but its position has not been created yet."
+          : "The proposal passed the plan and safety checks and is ready for your explicit confirmation.",
+        impact: "Syntrake will process the simulated order, refresh the cash balance and show the resulting position.",
+        ctaLabel: paperOrderNeedsProcessing ? "Complete Paper order" : "Review and confirm",
+        ctaHref: "#daily-controls",
+      }
+    : baseHomeNextAction;
   const decisionStats: Array<{ label: string; value: string; note: string; tone?: "default" | "green" | "amber" }> = [
     { label: "Confidence", value: `${decisionView.confidencePct}%`, note: "Decision certainty" },
     { label: "Recommended Exposure", value: recommendedExposureLabel, note: "Preferred stance", tone: recommendedExposureLabel === "Low" ? "amber" : recommendedExposureLabel === "High" ? "green" : "default" },

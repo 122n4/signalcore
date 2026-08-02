@@ -400,7 +400,8 @@ export default function PlanningTab({ mode }: { mode?: string }) {
 
   async function load() {
     setLoading(true);
-    const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}`, { method: "GET" });
+    const sourceUrl = autopilotMode === "investing" ? "/api/investing/dashboard" : `/api/daily-bundle?mode=${autopilotMode}`;
+    const r = await fetchJSON(sourceUrl, { method: "GET" });
     if (r.ok) {
       setBundle(r.data);
       if (r.data?.plan?.goal) setGoalText(String(r.data.plan.goal));
@@ -1209,7 +1210,9 @@ export default function PlanningTab({ mode }: { mode?: string }) {
       ) : null}
 
       {!loading ? (
-        <div className="mb-5">
+        <details className="mb-5 rounded-2xl border border-[#23314c] bg-[#0d1729] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[#cbd8eb]">See plan progress and evidence</summary>
+          <div className="mt-4">
           <InvestingOperatingLoopRail
             summary={investingLoopSummary}
             theme="dark"
@@ -1239,11 +1242,14 @@ export default function PlanningTab({ mode }: { mode?: string }) {
                   : null
             }
           />
-        </div>
+          </div>
+        </details>
       ) : null}
 
       {!loading ? (
-        <div className="mb-5">
+        <details className="mb-5 rounded-2xl border border-[#23314c] bg-[#0d1729] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[#cbd8eb]">See how the plan is used</summary>
+          <div className="mt-4">
           <ProofRail
             theme="dark"
             eyebrow={pickByLang(lang, {
@@ -1281,7 +1287,8 @@ export default function PlanningTab({ mode }: { mode?: string }) {
               it: "Il valore di Planning e piu forte quando il contratto e attivo e le posizioni sono monitorate.",
             })}
           />
-        </div>
+          </div>
+        </details>
       ) : null}
 
       {loading ? (
@@ -1465,6 +1472,9 @@ export default function PlanningTab({ mode }: { mode?: string }) {
             </Card>
           ) : null}
 
+          <details open={!hasPlan} className="rounded-2xl border border-zinc-200 bg-white p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-zinc-900">Edit plan settings and projection</summary>
+            <div className="mt-5 space-y-5">
           {/* Autopilot contract */}
           <Card
             title="Autopilot contract"
@@ -1687,9 +1697,11 @@ export default function PlanningTab({ mode }: { mode?: string }) {
               </button>
             </div>
           </Card>
+            </div>
+          </details>
 
           {/* Governed Paper starter proposal */}
-          {hasPlan && !hasHoldings && starterPack.length > 0 ? (
+          {hasPlan && !hasHoldings && !hasFundedPaperAccount && starterPack.length > 0 ? (
             <Card
               title="Paper starter proposal"
               subtitle="Fund simulated cash, then review the governed allocation in Daily before any Paper order."
