@@ -92,6 +92,13 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
     mode: "investing",
     asOf: new Date().toISOString(),
     plan: plans.data ?? null,
+    profile: {
+      goalType: settings.data?.goal_type ?? null,
+      goalTargetValue: number(settings.data?.goal_target_value ?? settings.data?.goal_amount),
+      monthlyContribution: number(settings.data?.monthly_contribution ?? settings.data?.monthly_contribution_eur),
+      riskProfile: settings.data?.risk_profile ?? null,
+      horizon: settings.data?.horizon ?? null,
+    },
     portfolio: {
       accountId,
       portfolioId,

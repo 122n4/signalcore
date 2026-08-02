@@ -39,3 +39,6 @@ tsconfig.tsbuildinfo
 /daily_current.png
 /.codex-next-dev.err.log & echo started
 .env*
+
+# Local Clerk runtime state; never commit authentication configuration.
+/.clerk/

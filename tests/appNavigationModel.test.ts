@@ -13,9 +13,8 @@ describe("app navigation model", () => {
     expect(buildModeAwareNavItems({ mode: "investing", lang: "en" })).toEqual([
       { key: "daily", label: "Overview" },
       { key: "portfolio", label: "Portfolio" },
-      { key: "advisor", label: "Recommendations" },
+      { key: "advisor", label: "Insights" },
       { key: "planning", label: "Plan" },
-      { key: "autonomy", label: "Autonomy" },
     ]);
 
     expect(buildModeAwareNavItems({ mode: "trading", lang: "en" })).toEqual([
@@ -58,8 +57,8 @@ describe("app navigation model", () => {
 
   it("exposes dedicated shell copy for each workspace", () => {
     expect(buildShellCopy({ mode: "investing", view: "planning", lang: "en" })).toEqual({
-      title: "Investing Plan",
-      subtitle: "Translate goals, risk, and horizon into a capital plan that the daily loop can actually enforce.",
+      title: "Your plan",
+      subtitle: "See where you are going and what can improve the probability of getting there.",
     });
     expect(buildShellCopy({ mode: "trading", view: "execution", lang: "en" })).toEqual({
       title: "Trading Execution",
