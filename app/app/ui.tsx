@@ -1017,7 +1017,11 @@ export default function AppUI() {
           />
 
           {workspaceMode === "investing" ? (
-            <InvestingCommandCenter activeView={view} onNavigate={(href) => router.push(href)} />
+            <InvestingCommandCenter
+              activeView={view}
+              hasPlan={setupProgress.complete}
+              onNavigate={(href) => router.push(href)}
+            />
           ) : null}
 
           {workspaceMode === "trading" ? (
