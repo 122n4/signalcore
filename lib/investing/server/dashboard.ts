@@ -15,36 +15,28 @@ function assert(error: { message?: string } | null, code: string) {
 export async function loadInvestingDashboard(userId: string, portfolioId = "primary") {
   const database = getInvestingSupabaseAdmin() as any;
   const today = new Date().toISOString().slice(0, 10);
-  const [settings, plans, account, cycles, queue, orders] = await Promise.all([
-    database.from("user_settings").select("*").eq("user_id", userId).maybeSingle(),
-    database.from("plans").select("*").eq("user_id", userId).eq("mode", "investing").order("created_at", { ascending: false }).limit(1).maybeSingle(),
-    database.from("investing_accounts").select("id,base_currency,environment,status").eq("user_id", userId).eq("portfolio_id", portfolioId).eq("environment", "paper").eq("status", "active").maybeSingle(),
-    database.from("investing_daily_cycles").select("id,day_key,created_at,canonical_result").eq("user_id", userId).eq("portfolio_id", portfolioId).order("created_at", { ascending: false }).limit(30),
-    database.from("investing_execution_queue").select("id,operational_state,approval_status,execution_decision,version,decision_fingerprint,created_at").eq("user_id", userId).eq("portfolio_id", portfolioId).order("created_at", { ascending: false }).limit(20),
-    database.from("investing_orders").select("id,queue_id,symbol,side,status,quantity,cumulative_filled_quantity,created_at,updated_at").eq("user_id", userId).eq("portfolio_id", portfolioId).eq("environment", "paper").order("created_at", { ascending: false }).limit(20),
-  ]);
-  assert(settings.error, "investing_dashboard_settings_failed");
-  assert(plans.error, "investing_dashboard_plan_failed");
-  assert(account.error, "investing_dashboard_account_failed");
-  assert(cycles.error, "investing_dashboard_cycles_failed");
-  assert(queue.error, "investing_dashboard_queue_failed");
-  assert(orders.error, "investing_dashboard_orders_failed");
+  const compact = await database.rpc("read_investing_dashboard_compact_v1", {
+    p_user_id: userId,
+    p_portfolio_id: portfolioId,
+  });
+  assert(compact.error, "investing_dashboard_compact_failed");
+  const snapshot = compact.data && typeof compact.data === "object" ? compact.data : {};
+  const settings = snapshot.settings ?? null;
+  const plan = snapshot.plan ?? null;
+  const account = snapshot.account ?? null;
+  const cycles = Array.isArray(snapshot.cycles) ? snapshot.cycles : [];
+  const queue = Array.isArray(snapshot.queue) ? snapshot.queue : [];
+  const orders = Array.isArray(snapshot.orders) ? snapshot.orders : [];
+  const cash = Array.isArray(snapshot.cash) ? snapshot.cash : [];
+  const positions = Array.isArray(snapshot.positions) ? snapshot.positions : [];
 
-  const accountId = account.data?.id ? String(account.data.id) : null;
-  const [cash, positions] = accountId
-    ? await Promise.all([
-        database.from("investing_cash_balances").select("currency,available_amount,settled_amount,reserved_amount,as_of").eq("account_id", accountId),
-        database.from("investing_positions").select("symbol,quantity,reserved_quantity,cost_basis,currency,updated_at").eq("account_id", accountId).gt("quantity", 0),
-      ])
-    : [{ data: [], error: null }, { data: [], error: null }];
-  assert(cash.error, "investing_dashboard_cash_failed");
-  assert(positions.error, "investing_dashboard_positions_failed");
+  const accountId = account?.id ? String(account.id) : null;
 
   const universe = getCanonicalInvestingInstrumentMaster();
-  const positionRows = Array.isArray(positions.data) ? positions.data : [];
+  const positionRows = positions;
   const symbols = Array.from(new Set([...universe.map((item) => item.symbol), ...positionRows.map((item: any) => String(item.symbol))]));
   const quotes = await getQuotes({ symbols, ttlSec: 60 });
-  const cashEur = (cash.data || []).filter((row: any) => row.currency === "EUR").reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
+  const cashEur = cash.filter((row: any) => row.currency === "EUR").reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
   const items = positionRows.map((position: any) => {
     const symbol = String(position.symbol || "").toUpperCase();
     const qty = number(position.quantity);
@@ -55,8 +47,8 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
   const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
   const runtime = buildInvestingRuntimeSnapshot({
     referenceTotalEur: totalEur,
-    userSettings: settings.data,
-    plan: plans.data,
+    userSettings: settings,
+    plan,
     portfolioItems: items,
     valuation: { cashEur },
     quotes,
@@ -67,15 +59,15 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       price_source: quotes[instrument.symbol]?.source ?? null,
     })),
   });
-  const cycleRows = Array.isArray(cycles.data) ? cycles.data : [];
-  const latestQueue = Array.isArray(queue.data) ? queue.data[0] ?? null : null;
-  const latestOrder = Array.isArray(orders.data) ? orders.data[0] ?? null : null;
+  const cycleRows = cycles;
+  const latestQueue = queue[0] ?? null;
+  const latestOrder = orders[0] ?? null;
 
   return {
     ok: true,
     mode: "investing",
     asOf: new Date().toISOString(),
-    plan: plans.data ?? null,
+    plan,
     portfolio: {
       accountId,
       portfolioId,
@@ -94,7 +86,7 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       execution: { queue: latestQueue, order: latestOrder },
     },
     derived: {
-      hasPlan: Boolean(plans.data),
+      hasPlan: Boolean(plan),
       hasHoldings: items.length > 0,
       doneToday: cycleRows.some((row: any) => row.day_key === today),
       receiptsCount: cycleRows.length,
