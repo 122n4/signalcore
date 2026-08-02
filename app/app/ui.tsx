@@ -18,17 +18,12 @@ import { useAccess } from "@/lib/signalcore/useAccess";
 import { useAutopilotMode } from "@/lib/signalcore/useAutopilotMode";
 import { useUserSettings } from "@/lib/signalcore/useUserSettings";
 import { canAccessView, getLockedViewsForMode } from "@/lib/signalcore/entitlements";
-import { deriveFirstValueRailState, deriveSetupProgress, type FirstValueSetupKey } from "@/app/app/firstValue";
+import { deriveFirstValueRailState, type FirstValueSetupKey } from "@/app/app/firstValue";
 
-import DailyTab from "@/app/app/tabs/DailyTab";
 import TradingTab from "@/app/app/tabs/TradingTab";
-import PlanningTab from "@/app/app/tabs/PlanningTab";
-import AdvisorTab from "@/app/app/tabs/AdvisorTab";
-import PortfolioTab from "@/app/app/tabs/PortfolioTab";
-import AutonomyTab from "@/app/app/tabs/AutonomyTab";
+import InvestingExperience from "@/app/app/investing/InvestingExperience";
 import JournalTab from "@/app/app/tabs/JournalTab";
 import AlertsTab from "@/app/app/tabs/AlertsTab";
-import BrokerPageClient from "@/app/app/broker/BrokerPageClient";
 import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
 import WorkspaceIdentityRail from "@/app/app/WorkspaceIdentityRail";
 import {
@@ -760,7 +755,7 @@ export default function AppUI() {
   const [qaAuthBypass, setQaAuthBypass] = useState(false);
   const { lang } = useSiteLanguage();
 
-  const { isPaid, hasProAccess, trial, tier, entitlements, loadingAccess } = useAccess();
+  const { isPaid, trial, tier, entitlements, loadingAccess } = useAccess();
   const { loading: modeLoading, mode, setActiveMode } = useAutopilotMode();
   const { data: settingsData, loading: settingsLoading } = useUserSettings();
   const activeMode = mode;
@@ -778,7 +773,6 @@ export default function AppUI() {
   );
   const [lockedNavTarget, setLockedNavTarget] = useState<ViewKey | null>(null);
 
-  const brokerSetupRequested = (search?.get("brokerSetup") ?? "") === "1";
   const welcomeSetupRequested = (search?.get("welcomeSetup") ?? "") === "1";
   const offlineSetupRequested = (search?.get("offlineSetup") ?? "") === "1";
 
@@ -844,13 +838,7 @@ export default function AppUI() {
 	      }),
 	    [workspaceMode, tier, settings, view, welcomeSetupRequested, offlineSetupRequested],
 	  );
-  const setupProgress = useMemo(() => deriveSetupProgress(settings), [settings]);
-  const showInvestingExplainerRails =
-    workspaceMode === "investing" &&
-    view === "daily" &&
-    firstValueRailState.kind === "hidden" &&
-    !loadingAccess &&
-    !modeLoading;
+  const showInvestingExplainerRails = false;
   const firstValuePrimaryHref =
     workspaceMode === "trading" ? `/app?tab=trading&mode=${workspaceMode}` : `/app?tab=daily&mode=${workspaceMode}`;
   const setupHref = `/app?tab=planning&welcomeSetup=1&mode=${workspaceMode}`;
@@ -893,54 +881,14 @@ export default function AppUI() {
       <div className="hidden gap-2 md:flex">
         <MoneyPill
           label={pickByLang(lang, {
-            en: "Setup",
-            pt: "Setup",
-            es: "Setup",
-            fr: "Setup",
-            de: "Setup",
-            it: "Setup",
+            en: "Environment",
+            pt: "Ambiente",
+            es: "Entorno",
+            fr: "Environnement",
+            de: "Umgebung",
+            it: "Ambiente",
           })}
-          value={
-            setupProgress.complete
-              ? pickByLang(lang, {
-                  en: "Complete",
-                  pt: "Completo",
-                  es: "Completo",
-                  fr: "Complet",
-                  de: "Komplett",
-                  it: "Completo",
-                })
-              : `${setupProgress.progressDone}/${setupProgress.progressTotal}`
-          }
-        />
-        <MoneyPill
-          label={pickByLang(lang, {
-            en: "Protection",
-            pt: "Protecao",
-            es: "Proteccion",
-            fr: "Protection",
-            de: "Schutz",
-            it: "Protezione",
-          })}
-          value={
-            setupProgress.complete
-              ? pickByLang(lang, {
-                  en: "Plan ready",
-                  pt: "Plano pronto",
-                  es: "Plan listo",
-                  fr: "Plan pret",
-                  de: "Plan bereit",
-                  it: "Piano pronto",
-                })
-              : pickByLang(lang, {
-                  en: "Configure",
-                  pt: "Configurar",
-                  es: "Configurar",
-                  fr: "Configurer",
-                  de: "Einrichten",
-                  it: "Configura",
-                })
-          }
+          value="PAPER"
         />
       </div>
     );
@@ -1038,7 +986,7 @@ export default function AppUI() {
             </div>
           ) : null}
 
-          {!settingsLoading && !loadingAccess && !modeLoading ? (
+          {workspaceMode === "trading" && !settingsLoading && !loadingAccess && !modeLoading ? (
             <FirstValueRail
               lang={lang}
               mode={workspaceMode}
@@ -1053,25 +1001,16 @@ export default function AppUI() {
 
           {workspaceMode === "investing" ? (
             <>
-              {view === "daily" && (
-                <div className="order-first min-w-0 md:order-none">
-                  <DailyTab mode={workspaceMode} isPaid={Boolean(hasProAccess)} />
-                </div>
-              )}
+              {view === "daily" && <InvestingExperience screen="home" />}
               {view === "planning" &&
                 (welcomeSetupRequested || offlineSetupRequested ? (
                   <OfflineSetupClient />
                 ) : (
-                  <PlanningTab mode={workspaceMode} />
+                  <InvestingExperience screen="plan" />
                 ))}
-              {view === "advisor" && <AdvisorTab mode={workspaceMode} />}
-              {view === "portfolio" && <PortfolioTab mode={workspaceMode} />}
-              {view === "autonomy" &&
-                (brokerSetupRequested ? (
-                  <BrokerPageClient />
-                ) : (
-                  <AutonomyTab mode={workspaceMode} isPaid={Boolean(hasProAccess)} />
-                ))}
+              {view === "advisor" && <InvestingExperience screen="insights" />}
+              {view === "portfolio" && <InvestingExperience screen="portfolio" />}
+              {view === "autonomy" && <InvestingExperience screen="insights" />}
             </>
           ) : tradingViewLocked && lockedTradingSurface ? (
             <TradingUpgradeGate surface={lockedTradingSurface} />

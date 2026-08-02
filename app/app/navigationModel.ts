@@ -177,12 +177,12 @@ export function buildModeAwareNavItems(args: {
     asNavItem(
       "advisor",
       pickByLang(args.lang, {
-        en: "Recommendations",
-        pt: "Recomendacoes",
-        es: "Recomendaciones",
-        fr: "Recommandations",
-        de: "Empfehlungen",
-        it: "Raccomandazioni",
+        en: "Insights",
+        pt: "Insights",
+        es: "Insights",
+        fr: "Insights",
+        de: "Insights",
+        it: "Insights",
       }),
       locked.has("advisor"),
     ),
@@ -197,18 +197,6 @@ export function buildModeAwareNavItems(args: {
         it: "Piano",
       }),
       locked.has("planning"),
-    ),
-    asNavItem(
-      "autonomy",
-      pickByLang(args.lang, {
-        en: "Autonomy",
-        pt: "Autonomia",
-        es: "Autonomia",
-        fr: "Autonomie",
-        de: "Autonomie",
-        it: "Autonomia",
-      }),
-      locked.has("autonomy"),
     ),
   ];
 }
@@ -284,16 +272,16 @@ export function buildShellCopy(args: {
   if (args.view === "planning") {
     return {
       title: pickByLang(args.lang, {
-        en: "Investing Plan",
-        pt: "Plano Investing",
+        en: "Your plan",
+        pt: "O teu plano",
         es: "Plan Investing",
         fr: "Plan Investing",
         de: "Investing-Plan",
         it: "Piano Investing",
       }),
       subtitle: pickByLang(args.lang, {
-        en: "Translate goals, risk, and horizon into a capital plan that the daily loop can actually enforce.",
-        pt: "Traduz objetivo, risco e horizonte num plano de capital que o daily loop consegue mesmo impor.",
+        en: "See where you are going and what can improve the probability of getting there.",
+        pt: "Vê para onde estás a caminhar e o que pode melhorar a probabilidade de lá chegar.",
         es: "Traduce objetivo, riesgo y horizonte en un plan de capital que el daily loop pueda imponer.",
         fr: "Traduisez objectif, risque et horizon en plan de capital que la boucle daily peut vraiment appliquer.",
         de: "Ubersetze Ziel, Risiko und Horizont in einen Kapitalplan, den der Daily-Loop wirklich durchsetzen kann.",
@@ -305,16 +293,16 @@ export function buildShellCopy(args: {
   if (args.view === "portfolio") {
     return {
       title: pickByLang(args.lang, {
-        en: "Investing Portfolio",
-        pt: "Portfolio Investing",
+        en: "Your portfolio",
+        pt: "O teu portfolio",
         es: "Portfolio Investing",
         fr: "Portefeuille Investing",
         de: "Investing-Portfolio",
         it: "Portafoglio Investing",
       }),
       subtitle: pickByLang(args.lang, {
-        en: "Capital, holdings, starter packs, and leak repair for long-term compounding.",
-        pt: "Capital, holdings, starter packs e reparacao de leaks para compounding de longo prazo.",
+        en: "Understand what you own, what is available, and how it supports your goal.",
+        pt: "Percebe o que tens, o que está disponível e como isso apoia o teu objetivo.",
         es: "Capital, holdings, starter packs y reparacion de leaks para compounding de largo plazo.",
         fr: "Capital, positions, starter packs et reparation des leaks pour le compounding de longo prazo.",
         de: "Kapital, Holdings, Starter-Packs und Leak-Reparatur fur langfristiges Compounding.",
@@ -323,18 +311,32 @@ export function buildShellCopy(args: {
     };
   }
 
+  if (args.view === "advisor" || args.view === "autonomy") {
+    return {
+      title: "Insights",
+      subtitle: pickByLang(args.lang, {
+        en: "Clear observations that can help your plan, without financial noise.",
+        pt: "Observações claras que podem ajudar o teu plano, sem ruído financeiro.",
+        es: "Observaciones claras que pueden ayudar a tu plan, sin ruido financiero.",
+        fr: "Des observations claires pour aider votre plan, sans bruit financier.",
+        de: "Klare Hinweise für deinen Plan, ohne Finanzrauschen.",
+        it: "Osservazioni chiare per aiutare il tuo piano, senza rumore finanziario.",
+      }),
+    };
+  }
+
   return {
     title: pickByLang(args.lang, {
-      en: "Investing OS",
-      pt: "Investing OS",
+      en: "Your investments",
+      pt: "Os teus investimentos",
       es: "Investing OS",
       fr: "Investing OS",
       de: "Investing OS",
       it: "Investing OS",
     }),
     subtitle: pickByLang(args.lang, {
-      en: "Goal-led capital decisions, calmer daily actions, and institutional risk control for long-term investors.",
-      pt: "Decisoes de capital guiadas por objetivo, acoes diarias mais calmas e controlo de risco institucional para investidores.",
+      en: "Your progress, portfolio and next useful decision in one calm view.",
+      pt: "O teu progresso, portfolio e próxima decisão útil numa visão simples.",
       es: "Decisiones de capital guiadas por objetivo, acciones diarias mas calmadas y control de riesgo institucional para inversores.",
       fr: "Decisions de capital guidees par objectif, actions quotidiennes plus calmes et controle de risque institutionnel pour investisseurs.",
       de: "Zielgeleitete Kapitalentscheidungen, ruhigere Tagesaktionen und institutionelle Risikokontrolle fur langfristige Investoren.",
