@@ -420,9 +420,17 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     return next && typeof next === "object" ? next : {};
   }, [bundle]);
   const executionQueue = daily?.execution?.queue && typeof daily.execution.queue === "object" ? daily.execution.queue : null;
+  const executionOrder = daily?.execution?.order && typeof daily.execution.order === "object" ? daily.execution.order : null;
+  const executionOrderStatus = String(executionOrder?.status || "").toLowerCase();
+  const orderBelongsToCurrentQueue =
+    Boolean(executionOrder?.queue_id || executionOrder?.queueId) &&
+    String(executionOrder?.queue_id || executionOrder?.queueId) === String(executionQueue?.id || "");
+  const paperOrderNeedsProcessing = orderBelongsToCurrentQueue && ["submitted", "partially_filled"].includes(executionOrderStatus);
+  const currentQueueAlreadyExecuted = orderBelongsToCurrentQueue && ["filled", "reconciled", "cancelled", "rejected"].includes(executionOrderStatus);
   const paperSubmissionReady =
     String(executionQueue?.operational_state || "").toLowerCase() === "approved" &&
-    ["approved", "not_required"].includes(String(executionQueue?.approval_status || "").toLowerCase());
+    ["approved", "not_required"].includes(String(executionQueue?.approval_status || "").toLowerCase()) &&
+    !currentQueueAlreadyExecuted;
   const paperOrderSymbol = String(
     (Array.isArray(daily?.investingEngine?.rebalance?.actions) ? daily.investingEngine.rebalance.actions : []).find(
       (action: any) => (action?.action === "buy" || action?.action === "sell") && action?.symbol,
@@ -450,8 +458,6 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
   const starterBudgetServer = Number(starterPackMeta?.budgetEur ?? NaN);
 
   const lastSnapshotAt = daily?.lastSnapshotAt ?? derived?.lastSnapshotAt ?? null;
-  const hasRecordedPaperCycle = hasFundedPaperAccount && Boolean(lastSnapshotAt);
-
   const receiptsCount = typeof derived?.receiptsCount === "number" ? derived.receiptsCount : 0;
   const receiptsTimeline = Array.isArray(derived?.receiptsTimeline) ? derived.receiptsTimeline : [];
   const decisionImpact = derived?.decisionImpact ?? null;
@@ -1145,7 +1151,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     hasPlan,
     hasHoldings,
     hasFundedPaperAccount,
-    doneToday: doneToday || hasRecordedPaperCycle,
+    doneToday: doneToday && hasHoldings,
     coveragePct,
     holdings,
     portfolioTotalEur,
@@ -1179,7 +1185,11 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         }
       : paperSubmissionReady && paperOrderSymbol
         ? {
-            label: submittingPaper ? "Submitting to Paper..." : `Submit ${paperOrderSymbol} to Paper`,
+            label: submittingPaper
+              ? "Processing Paper order..."
+              : paperOrderNeedsProcessing
+                ? `Complete ${paperOrderSymbol} Paper order`
+                : `Confirm ${paperOrderSymbol} in Paper`,
             onClick: submitApprovedPaperOrder,
             disabled: submittingPaper,
             variant: "primary" as const,
@@ -1572,14 +1582,35 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
               hasFundedPaperAccount={hasFundedPaperAccount}
               lastEvaluation={lastEvaluationLabel}
               blocked={Boolean(riskFixPlan) || decisionView.blockerState !== "none"}
-              completed={doneToday || hasRecordedPaperCycle}
+              completed={doneToday && hasHoldings}
               holdingsCount={holdings.length}
               pricingCoveragePct={coveragePct}
               nextAction={homeNextAction}
               loop={loopTimeline}
             />
-            <details id="daily-controls" open={hasFundedPaperAccount && !hasHoldings} className="mb-5 scroll-mt-24 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
-              <summary className="cursor-pointer text-sm font-semibold text-slate-200">View analysis, controls and evidence</summary>
+            <section id="daily-controls" className="mb-5 scroll-mt-24 rounded-2xl border border-cyan-300/20 bg-[#101d31] p-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-200">Your next step</div>
+                <div className="mt-1 text-lg font-bold text-white">{decisionPrimaryAction.label}</div>
+                <p className="mt-1 text-sm text-slate-400">One action only. Syntrake will refresh the portfolio and show the result when it is complete.</p>
+              </div>
+              {decisionPrimaryAction.href ? (
+                <a href={decisionPrimaryAction.href} className="mt-4 inline-flex rounded-xl bg-cyan-200 px-4 py-3 text-sm font-black text-slate-950 sm:mt-0">
+                  {decisionPrimaryAction.label}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled={decisionPrimaryAction.disabled}
+                  onClick={decisionPrimaryAction.onClick}
+                  className="mt-4 inline-flex rounded-xl bg-cyan-200 px-4 py-3 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-0"
+                >
+                  {decisionPrimaryAction.label}
+                </button>
+              )}
+            </section>
+            <details id="advanced-investing-details" className="mb-5 rounded-2xl border border-slate-800/80 bg-[#0d1729]/75 p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-300">See detailed analysis</summary>
               <div className="mt-5">
             <div className="mb-5">
               <InvestingOperatingLoopRail
@@ -1593,7 +1624,11 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
                       ? { label: "Open Portfolio", href: `/app?tab=portfolio&mode=${autopilotMode}` }
                       : paperSubmissionReady && paperOrderSymbol
                         ? {
-                            label: submittingPaper ? "Submitting..." : `Submit ${paperOrderSymbol} to Paper`,
+                            label: submittingPaper
+                              ? "Processing Paper order..."
+                              : paperOrderNeedsProcessing
+                                ? `Complete ${paperOrderSymbol} Paper order`
+                                : `Confirm ${paperOrderSymbol} in Paper`,
                             onClick: () => {
                               void submitApprovedPaperOrder();
                             },
