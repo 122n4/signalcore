@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { getQuotes } from "@/lib/market/quotes";
+import { buildInvestingEngineV1CustomerBridge } from "@/lib/investing/engineV1CustomerBridge";
+import { buildCustomerDecisionProjection } from "@/lib/investing/customerDecisionProjection";
 import { buildInvestingExecutionPlan } from "@/lib/investing/execution";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import {
@@ -11,6 +13,12 @@ import {
 } from "@/lib/investing/persistence";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
+import {
+  buildCanonicalMarketSnapshotFromQuotes,
+  persistInvestingMarketSnapshot,
+  quotesFromCanonicalMarketSnapshot,
+  toCustomerMarketSnapshot,
+} from "@/lib/investing/server/marketSnapshots";
 
 type CloseInvestingDailyCycleCommand = {
   userId: string;
@@ -86,18 +94,40 @@ export async function closeInvestingDailyCycle(command: CloseInvestingDailyCycle
   const universe = getCanonicalInvestingInstrumentMaster();
   const symbols = Array.from(new Set([...universe.map((item) => item.symbol), ...positions.map((item: any) => String(item.symbol || ""))])).filter(Boolean);
   const quotes = await getQuotes({ symbols, ttlSec: 60 });
+  const canonicalMarketSnapshot = buildCanonicalMarketSnapshotFromQuotes({
+    asOf: now.toISOString(),
+    symbols,
+    quotes,
+  });
+  const snapshotQuotes = quotesFromCanonicalMarketSnapshot(canonicalMarketSnapshot);
+  const persistedMarketSnapshot = await persistInvestingMarketSnapshot({
+    userId: command.userId,
+    portfolioId: command.portfolioId,
+    accountId,
+    snapshot: canonicalMarketSnapshot,
+  });
+  const customerMarketSnapshot = toCustomerMarketSnapshot({
+    snapshot: canonicalMarketSnapshot,
+    persisted: persistedMarketSnapshot.persisted,
+  });
   const cashEur = (Array.isArray(cashQuery.data) ? cashQuery.data : [])
     .filter((row: any) => String(row.currency || "").toUpperCase() === "EUR")
     .reduce((sum: number, row: any) => sum + finiteNumber(row.available_amount), 0);
   const portfolioItems = positions.map((position: any) => {
     const symbol = String(position.symbol || "").toUpperCase();
     const quantity = finiteNumber(position.quantity);
-    const quote = finiteNumber(quotes[symbol]?.price);
+    const quote = finiteNumber(snapshotQuotes[symbol]?.price);
     const costBasis = finiteNumber(position.cost_basis);
     return {
       symbol,
       qty: quantity,
       valueEur: quote > 0 ? quantity * quote : costBasis,
+      value_eur: quote > 0 ? quantity * quote : costBasis,
+      costBasisEur: costBasis,
+      cost_basis_eur: costBasis,
+      price: quote,
+      currency: position.currency,
+      valuationSource: quote > 0 ? "market_quote" : "cost_basis_fallback",
     };
   });
   const holdingsValue = portfolioItems.reduce((sum, item) => sum + finiteNumber(item.valueEur), 0);
@@ -108,15 +138,15 @@ export async function closeInvestingDailyCycle(command: CloseInvestingDailyCycle
     plan: planQuery.data,
     portfolioItems,
     valuation: { cashEur },
-    quotes,
+    quotes: snapshotQuotes,
     starterPriceHints: universe.map((instrument) => ({
       symbol: instrument.symbol,
       name: instrument.name,
-      price: quotes[instrument.symbol]?.price ?? null,
-      price_source: quotes[instrument.symbol]?.source ?? null,
-      prev_close: quotes[instrument.symbol]?.prevClose ?? null,
-      volume: quotes[instrument.symbol]?.volume ?? null,
-      avg_volume: quotes[instrument.symbol]?.averageVolume ?? null,
+      price: snapshotQuotes[instrument.symbol]?.price ?? null,
+      price_source: snapshotQuotes[instrument.symbol]?.source ?? null,
+      prev_close: snapshotQuotes[instrument.symbol]?.prevClose ?? null,
+      volume: snapshotQuotes[instrument.symbol]?.volume ?? null,
+      avg_volume: snapshotQuotes[instrument.symbol]?.averageVolume ?? null,
     })),
   });
   if (!runtime) throw new Error("investing_setup_required");
@@ -167,8 +197,31 @@ export async function closeInvestingDailyCycle(command: CloseInvestingDailyCycle
           ? "awaiting_approval"
           : executionPlan.decision === "paper_execute"
             ? "approved"
-            : "proposed",
+      : "proposed",
   };
+  const engineV1Bridge = buildInvestingEngineV1CustomerBridge({
+    userId: command.userId,
+    portfolioId: command.portfolioId,
+    asOf: now.toISOString(),
+    account,
+    settings: settingsQuery.data,
+    plan: planQuery.data,
+    cash: Array.isArray(cashQuery.data) ? cashQuery.data : [],
+    positions,
+    orders: [],
+    runtime,
+    marketSnapshot: canonicalMarketSnapshot,
+  });
+  const customerDecision = buildCustomerDecisionProjection({
+    asOf: now.toISOString(),
+    plan: planQuery.data,
+    runtime,
+    executionPlan,
+    portfolio: { totalEur, cashEur, items: portfolioItems },
+    quotes: snapshotQuotes,
+    marketSnapshot: customerMarketSnapshot,
+    engineV1Bridge,
+  });
   const canonicalResult = {
     asOf: now.toISOString(),
     dayKey,
@@ -182,6 +235,12 @@ export async function closeInvestingDailyCycle(command: CloseInvestingDailyCycle
     executionDecision: executionPlan.decision,
     approvalStatus: executionPlan.approvalStatus,
     decisionFingerprint: rebalance.decision_fingerprint,
+    customerDecision,
+    marketSnapshot: customerDecision.marketSnapshot,
+    engineV1Bridge: customerDecision.source.engineV1Bridge,
+    marketSnapshotPersistence: persistedMarketSnapshot,
+    researchPublication: customerDecision.researchPublication,
+    performanceAttribution: customerDecision.performanceAttribution,
   };
 
   const result = await database.rpc("investing_record_daily_cycle_v2", {

@@ -6,6 +6,9 @@ export type ViewKey =
   | "daily"
   | "planning"
   | "advisor"
+  | "research"
+  | "reports"
+  | "settings"
   | "portfolio"
   | "autonomy"
   | "trading"
@@ -25,7 +28,7 @@ function asNavItem(key: ViewKey, label: string, locked: boolean): ShellNavItem {
   return locked ? { key, label, locked: true } : { key, label };
 }
 
-const INVESTING_VIEWS: ViewKey[] = ["daily", "planning", "portfolio", "advisor", "autonomy"];
+const INVESTING_VIEWS: ViewKey[] = ["daily", "portfolio", "planning", "research", "reports", "autonomy", "settings"];
 const TRADING_VIEWS: ViewKey[] = ["trading", "alerts", "journal"];
 const LEGACY_TRADING_VIEWS: ViewKey[] = ["opportunities", "execution", "risk"];
 
@@ -54,6 +57,7 @@ export function inferModeFromView(rawView: string | null | undefined): Autopilot
   ) {
     return "trading";
   }
+  if (normalized === "advisor") return "investing";
   if (INVESTING_VIEWS.includes(normalized as ViewKey)) return "investing";
   return null;
 }
@@ -81,6 +85,10 @@ export function resolveModeAwareView(args: {
   if (args.mode === "trading" && LEGACY_TRADING_VIEWS.includes(normalized as ViewKey)) {
     return "trading" as const;
   }
+  if (normalized === "advisor" && args.mode === "investing") {
+    return "research" as const;
+  }
+
   if (normalized === "portfolio" && args.allowHiddenPortfolio && args.mode === "investing") {
     return "portfolio" as const;
   }
@@ -163,18 +171,6 @@ export function buildModeAwareNavItems(args: {
       locked.has("daily"),
     ),
     asNavItem(
-      "planning",
-      pickByLang(args.lang, {
-        en: "Plan",
-        pt: "Plano",
-        es: "Plan",
-        fr: "Plan",
-        de: "Plan",
-        it: "Piano",
-      }),
-      locked.has("planning"),
-    ),
-    asNavItem(
       "portfolio",
       pickByLang(args.lang, {
         en: "Portfolio",
@@ -187,16 +183,40 @@ export function buildModeAwareNavItems(args: {
       locked.has("portfolio"),
     ),
     asNavItem(
-      "advisor",
+      "planning",
       pickByLang(args.lang, {
-        en: "Advisor",
-        pt: "Advisor",
-        es: "Asesor",
-        fr: "Conseiller",
-        de: "Berater",
-        it: "Consulente",
+        en: "Plan",
+        pt: "Plano",
+        es: "Plan",
+        fr: "Plan",
+        de: "Plan",
+        it: "Piano",
       }),
-      locked.has("advisor"),
+      locked.has("planning"),
+    ),
+    asNavItem(
+      "research",
+      pickByLang(args.lang, {
+        en: "Research",
+        pt: "Research",
+        es: "Research",
+        fr: "Research",
+        de: "Research",
+        it: "Research",
+      }),
+      locked.has("research"),
+    ),
+    asNavItem(
+      "reports",
+      pickByLang(args.lang, {
+        en: "Reports",
+        pt: "Reports",
+        es: "Reports",
+        fr: "Reports",
+        de: "Reports",
+        it: "Reports",
+      }),
+      locked.has("reports"),
     ),
     asNavItem(
       "autonomy",
@@ -209,6 +229,18 @@ export function buildModeAwareNavItems(args: {
         it: "Autonomia",
       }),
       locked.has("autonomy"),
+    ),
+    asNavItem(
+      "settings",
+      pickByLang(args.lang, {
+        en: "Settings",
+        pt: "Settings",
+        es: "Settings",
+        fr: "Settings",
+        de: "Settings",
+        it: "Settings",
+      }),
+      locked.has("settings"),
     ),
   ];
 }
@@ -320,6 +352,34 @@ export function buildShellCopy(args: {
         de: "Kapital, Holdings, Starter-Packs und Leak-Reparatur fur langfristiges Compounding.",
         it: "Capitale, posizioni, starter pack e riparazione dei leak per compounding di lungo periodo.",
       }),
+    };
+  }
+
+  if (args.view === "research") {
+    return {
+      title: "Investing Research",
+      subtitle: "Validation-oriented instrument research, benchmark relative checks, and review notes.",
+    };
+  }
+
+  if (args.view === "reports") {
+    return {
+      title: "Investing Reports",
+      subtitle: "Portfolio activity, decision receipts, Paper orders, and operational snapshots.",
+    };
+  }
+
+  if (args.view === "settings") {
+    return {
+      title: "Investing Settings",
+      subtitle: "Paper/manual workflow controls, valuation policy, notifications, and security state.",
+    };
+  }
+
+  if (args.view === "autonomy") {
+    return {
+      title: "Investing Autonomy",
+      subtitle: "Supervised Paper autonomy, operational readiness, and explicit Live blocking.",
     };
   }
 

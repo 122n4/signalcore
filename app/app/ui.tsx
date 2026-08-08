@@ -10,7 +10,6 @@ import AutopilotSwitcher from "@/components/AutopilotSwitcher";
 import UpgradeModal from "@/components/UpgradeModal";
 import TradingUpgradeGate from "@/components/trading/TradingUpgradeGate";
 import TradingNotificationManager from "@/components/trading/TradingNotificationManager";
-import InvestingCommandCenter from "@/components/investing/InvestingCommandCenter";
 import { buildTradingUpgradeModel } from "@/components/trading/tradingUpgradeModel";
 import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
@@ -21,17 +20,12 @@ import { useUserSettings } from "@/lib/signalcore/useUserSettings";
 import { canAccessView, getLockedViewsForMode } from "@/lib/signalcore/entitlements";
 import { deriveFirstValueRailState, deriveSetupProgress, type FirstValueSetupKey } from "@/app/app/firstValue";
 
-import DailyTab from "@/app/app/tabs/DailyTab";
 import TradingTab from "@/app/app/tabs/TradingTab";
-import PlanningTab from "@/app/app/tabs/PlanningTab";
-import AdvisorTab from "@/app/app/tabs/AdvisorTab";
-import PortfolioTab from "@/app/app/tabs/PortfolioTab";
-import AutonomyTab from "@/app/app/tabs/AutonomyTab";
+import InvestingDashboardSurface from "@/app/app/tabs/InvestingDashboardSurface";
 import JournalTab from "@/app/app/tabs/JournalTab";
 import AlertsTab from "@/app/app/tabs/AlertsTab";
 import BrokerPageClient from "@/app/app/broker/BrokerPageClient";
 import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
-import WorkspaceIdentityRail from "@/app/app/WorkspaceIdentityRail";
 import {
   buildModeAwareNavItems,
   buildShellCopy,
@@ -820,7 +814,7 @@ export default function AppUI() {
   );
   const shellCopy = useMemo(() => buildShellCopy({ mode: workspaceMode, view, lang }), [workspaceMode, view, lang]);
   const homeHref = useMemo(() => `/app?tab=${getModeHomeView(workspaceMode)}&mode=${workspaceMode}`, [workspaceMode]);
-  const showTopRight = workspaceMode === "trading" ? false : view !== "daily" && view !== "planning";
+  const showTopRight = false;
   const modeHint = useMemo(() => buildModeHint({ lang, tier }), [lang, tier]);
   const tradingViewLocked = workspaceMode === "trading" && !canAccessView({ tier, mode: workspaceMode, view });
   const lockedTradingSurface = toLockedTradingSurface(view);
@@ -846,12 +840,6 @@ export default function AppUI() {
 	    [workspaceMode, tier, settings, view, welcomeSetupRequested, offlineSetupRequested],
 	  );
   const setupProgress = useMemo(() => deriveSetupProgress(settings), [settings]);
-  const showInvestingExplainerRails =
-    workspaceMode === "investing" &&
-    view === "daily" &&
-    firstValueRailState.kind === "hidden" &&
-    !loadingAccess &&
-    !modeLoading;
   const firstValuePrimaryHref =
     workspaceMode === "trading" ? `/app?tab=trading&mode=${workspaceMode}` : `/app?tab=daily&mode=${workspaceMode}`;
   const setupHref = `/app?tab=planning&welcomeSetup=1&mode=${workspaceMode}`;
@@ -970,7 +958,7 @@ export default function AppUI() {
 
   return (
     <>
-      {entitlements.trading.alertsEnabled ? (
+      {workspaceMode === "trading" && entitlements.trading.alertsEnabled ? (
         <TradingNotificationManager enabled={entitlements.trading.alertsEnabled} />
       ) : null}
 
@@ -1002,7 +990,7 @@ export default function AppUI() {
         onLockedNav={(key) => setLockedNavTarget(key as ViewKey)}
         isPaid={Boolean(isPaid)}
         trial={loadingAccess || modeLoading ? null : trial}
-        showPageHeader={!(workspaceMode === "trading" && view === "trading")}
+        showPageHeader={workspaceMode === "trading" && view !== "trading"}
       >
         <div className="grid gap-4">
           <AutopilotSwitcher
@@ -1015,14 +1003,6 @@ export default function AppUI() {
             variant={workspaceMode === "trading" ? "compact" : "default"}
             onChange={handleModeChange}
           />
-
-          {workspaceMode === "investing" ? (
-            <InvestingCommandCenter
-              activeView={view}
-              hasPlan={setupProgress.complete}
-              onNavigate={(href) => router.push(href)}
-            />
-          ) : null}
 
           {workspaceMode === "trading" ? (
             <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-300/[0.08] p-4 text-cyan-50 shadow-[0_18px_50px_rgba(8,145,178,0.08)]">
@@ -1062,20 +1042,23 @@ export default function AppUI() {
 
           {workspaceMode === "investing" ? (
             <>
-              {view === "daily" && <DailyTab mode={workspaceMode} isPaid={Boolean(hasProAccess)} />}
               {view === "planning" &&
                 (welcomeSetupRequested || offlineSetupRequested ? (
                   <OfflineSetupClient />
                 ) : (
-                  <PlanningTab mode={workspaceMode} />
+                  <InvestingDashboardSurface page="planning" />
                 ))}
-              {view === "advisor" && <AdvisorTab mode={workspaceMode} />}
-              {view === "portfolio" && <PortfolioTab mode={workspaceMode} />}
+              {view === "daily" && <InvestingDashboardSurface page="daily" />}
+              {view === "advisor" && <InvestingDashboardSurface page="research" />}
+              {view === "research" && <InvestingDashboardSurface page="research" />}
+              {view === "portfolio" && <InvestingDashboardSurface page="portfolio" />}
+              {view === "reports" && <InvestingDashboardSurface page="reports" />}
+              {view === "settings" && <InvestingDashboardSurface page="settings" />}
               {view === "autonomy" &&
                 (brokerSetupRequested ? (
                   <BrokerPageClient />
                 ) : (
-                  <AutonomyTab mode={workspaceMode} isPaid={Boolean(hasProAccess)} />
+                  <InvestingDashboardSurface page="autonomy" />
                 ))}
             </>
           ) : tradingViewLocked && lockedTradingSurface ? (
@@ -1090,26 +1073,6 @@ export default function AppUI() {
             </>
           )}
 
-          {showInvestingExplainerRails ? (
-            <WorkspaceIdentityRail
-              lang={lang}
-              mode={workspaceMode}
-              view={view}
-              tier={tier}
-              onNavigate={(href) => router.push(href)}
-            />
-          ) : null}
-
-          {showInvestingExplainerRails ? (
-            <TrustProofRail
-              lang={lang}
-              mode={workspaceMode}
-              tier={tier}
-              trustHref={trustHref}
-              secondaryHref={trustSecondaryHref}
-              onNavigate={(href) => router.push(href)}
-            />
-          ) : null}
         </div>
       </CockpitShell>
 

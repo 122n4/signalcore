@@ -46,6 +46,7 @@ describe("investing architecture isolation", () => {
       ...listTsFiles(join(root, "lib/investing")),
       ...listTsFiles(join(root, "app/api/investing")),
       join(root, "app/app/tabs/DailyTab.tsx"),
+      join(root, "app/app/tabs/InvestingDashboardSurface.tsx"),
       join(root, "app/app/tabs/dailyDecisionViewModel.ts"),
       ...listTsFiles(join(root, "components/investing")),
     ];
@@ -79,5 +80,25 @@ describe("investing architecture isolation", () => {
     expect(source).toContain("/api/investing/dashboard");
     expect(source).toContain("/api/investing/daily-cycle");
     expect(source).toContain("/api/investing/paper/accounts");
+  });
+
+  it("keeps the Investing portfolio tab on canonical Investing APIs", () => {
+    const source = readFileSync(join(process.cwd(), "app/app/tabs/PortfolioTab.tsx"), "utf8");
+    for (const endpoint of ["/api/daily-bundle", "/api/portfolio-items", "/api/fix-now/"]) {
+      expect(source).not.toContain(endpoint);
+    }
+    expect(source).toContain("/api/investing/dashboard");
+    expect(source).toContain("/api/investing/paper/accounts");
+  });
+
+  it("keeps all primary Investing tabs off legacy shared automation APIs", () => {
+    const tabFiles = ["DailyTab.tsx", "PlanningTab.tsx", "PortfolioTab.tsx", "AdvisorTab.tsx", "AutonomyTab.tsx", "InvestingDashboardSurface.tsx"];
+    for (const tabFile of tabFiles) {
+      const source = readFileSync(join(process.cwd(), "app/app/tabs", tabFile), "utf8");
+      for (const endpoint of ["/api/daily-bundle", "/api/portfolio-items", "/api/fix-now/", "/api/broker/", "/api/daily/close", "@/lib/broker"]) {
+        expect(source, `${tabFile} should not call ${endpoint}`).not.toContain(endpoint);
+      }
+      expect(source, `${tabFile} should read the canonical Investing dashboard`).toContain("/api/investing/dashboard");
+    }
   });
 });

@@ -370,7 +370,7 @@ function buildFixVisualGuide(fixKey: string): FixVisualGuide {
   if (fixKey === "no_holdings") {
     return {
       title: "FixNow: add holdings first",
-      subtitle: "Without holdings, Safety Brain cannot calculate drift, concentration, or risk leaks.",
+      subtitle: "Without holdings, the system cannot calculate drift, concentration or incomplete-data risks.",
       targetCoverage: 80,
       steps: [
         { title: "Add symbols", detail: "Add 3-10 holdings using search or paste list.", visual: "Search/Paste -> Add" },
@@ -738,6 +738,149 @@ function clearFixQueryFromUrl() {
   }
 }
 
+function canonicalPortfolioItemsFromDashboard(data: any): HoldingRow[] {
+  const rows = Array.isArray(data?.portfolio?.items) ? data.portfolio.items : [];
+  return rows
+    .map((item: any) => {
+      const symbol = String(item?.symbol || "").trim().toUpperCase();
+      if (!symbol) return null;
+      const qty = safeNum(item?.qty, null);
+      const valueEur = safeNum(item?.valueEur ?? item?.value_eur, null);
+      return {
+        id: item?.id ? String(item.id) : `canonical:${symbol}`,
+        symbol,
+        name: item?.name ? String(item.name) : symbol,
+        qty,
+        valueEur,
+        value_eur: valueEur,
+      } satisfies HoldingRow;
+    })
+    .filter(Boolean) as HoldingRow[];
+}
+
+function buildCanonicalPortfolioDiagnostics(data: any, items: HoldingRow[]) {
+  const hasPlan = Boolean(data?.derived?.hasPlan ?? data?.plan);
+  const hasHoldings = items.length > 0;
+  const coveragePct =
+    typeof data?.portfolio?.valuation?.coveragePct === "number"
+      ? Number(data.portfolio.valuation.coveragePct)
+      : hasHoldings
+        ? 0
+        : 100;
+  const riskLeaks: Array<Record<string, any>> = [];
+
+  if (!hasPlan) {
+    riskLeaks.push({
+      key: "no_plan",
+      title: "Plan missing",
+      severity: "high",
+      detail: "Create an active Investing plan before portfolio decisions.",
+      fix: { href: "/app?tab=planning&mode=investing" },
+    });
+  }
+  if (!hasHoldings) {
+    riskLeaks.push({
+      key: "no_holdings",
+      title: "No canonical Paper positions",
+      severity: "high",
+      detail: "Fund Paper and create a reviewed proposal before portfolio monitoring can start.",
+      fix: { href: "/app?tab=daily&mode=investing" },
+    });
+  } else if (coveragePct < 80) {
+    riskLeaks.push({
+      key: "pricing_low",
+      title: "Pricing coverage is low",
+      severity: coveragePct < 50 ? "high" : "med",
+      detail: `Only ${Math.round(coveragePct)}% of canonical positions have fresh prices.`,
+      fix: { href: "/app?tab=daily&mode=investing" },
+    });
+  }
+
+  return {
+    pricing: {
+      coveragePct,
+      missingSymbols: items
+        .filter((item) => safeNum(item.valueEur ?? item.value_eur, null) == null)
+        .map((item) => item.symbol),
+      priceAgeSeconds: null,
+    },
+    diagnostics: {
+      ...(data?.derived?.diagnostics && typeof data.derived.diagnostics === "object" ? data.derived.diagnostics : {}),
+      riskLeaks,
+    },
+  };
+}
+
+function normalizeInvestingDashboardBundle(data: any) {
+  const items = canonicalPortfolioItemsFromDashboard(data);
+  const canonical = buildCanonicalPortfolioDiagnostics(data, items);
+  const cashEur = safeNum(data?.portfolio?.cashEur, 0) ?? 0;
+  const totalEur = safeNum(data?.portfolio?.totalEur, 0) ?? 0;
+  const deployedEur = Math.max(0, totalEur - cashEur);
+  const exposurePct = totalEur > 0 ? Math.round((deployedEur / totalEur) * 100) : 0;
+  const cashPct = totalEur > 0 ? Math.round((cashEur / totalEur) * 100) : 100;
+
+  return {
+    ...(data && typeof data === "object" ? data : {}),
+    portfolio: {
+      ...(data?.portfolio && typeof data.portfolio === "object" ? data.portfolio : {}),
+      items,
+      cash: cashEur,
+      cashEur,
+      total: totalEur,
+      totalEur,
+      valuation: {
+        ...(data?.portfolio?.valuation && typeof data.portfolio.valuation === "object" ? data.portfolio.valuation : {}),
+        cashEur,
+        totalEur,
+        coveragePct: canonical.pricing.coveragePct,
+      },
+    },
+    daily: {
+      ...(data?.daily && typeof data.daily === "object" ? data.daily : {}),
+      capitalStatus: {
+        posture: items.length > 0 ? "STABLE" : "SETUP",
+        planAlignment: data?.derived?.hasPlan ? "CANONICAL" : "PENDING",
+        exposurePct,
+        cashPct,
+      },
+    },
+    derived: {
+      ...(data?.derived && typeof data.derived === "object" ? data.derived : {}),
+      hasHoldings: items.length > 0,
+      pricing: canonical.pricing,
+      diagnostics: canonical.diagnostics,
+    },
+  };
+}
+
+function hydrateDraftsFromItems(args: {
+  items: HoldingRow[];
+  setDraftQty: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setDraftVal: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}) {
+  args.setDraftQty((prev) => {
+    const next = { ...(prev || {}) };
+    for (const it of args.items) {
+      const sym = String(it?.symbol || "").toUpperCase();
+      if (!sym) continue;
+      if (next[sym] == null) next[sym] = it?.qty == null ? "" : String(it.qty);
+    }
+    return next;
+  });
+
+  args.setDraftVal((prev) => {
+    const next = { ...(prev || {}) };
+    for (const it of args.items) {
+      const sym = String(it?.symbol || "").toUpperCase();
+      const value = it?.valueEur ?? it?.value_eur;
+      if (!sym) continue;
+      if (next[sym] == null) next[sym] = value == null ? "" : String(value);
+    }
+    return next;
+  });
+}
+
 export default function PortfolioTab({
   mode,
   experienceLevel,
@@ -771,7 +914,7 @@ export default function PortfolioTab({
   const onboardingAutoFreshStartRef = useRef(false);
   const onboardingDailyRedirectedRef = useRef(false);
 
-  // data quality (from daily-bundle)
+  // data quality (from the canonical Investing dashboard)
   const [bundle, setBundle] = useState<any>(null);
   const pricing = bundle?.derived?.pricing ?? null; // {coveragePct, missingSymbols, priceAgeSeconds}
   const diagnostics = bundle?.derived?.diagnostics ?? null; // includes riskLeaks
@@ -927,33 +1070,14 @@ export default function PortfolioTab({
   async function loadServerItems() {
     setLoading(true);
     try {
-      const r = await fetchJSON(`/api/portfolio-items?mode=${encodeURIComponent(String(autopilotMode))}`, { method: "GET" });
+      const r = await fetchJSON(`/api/investing/dashboard?mode=${encodeURIComponent(String(autopilotMode))}&_=${Date.now()}`, { method: "GET" });
       if (!r.ok) return [] as HoldingRow[];
 
-      const list = Array.isArray(r.data?.items) ? r.data.items : [];
+      const normalized = normalizeInvestingDashboardBundle(r.data);
+      const list = canonicalPortfolioItemsFromDashboard(normalized);
       setItems(list);
-
-      // hydrate drafts from server (only if empty)
-      setDraftQty((prev) => {
-        const next = { ...(prev || {}) };
-        for (const it of list) {
-          const sym = String(it?.symbol || "").toUpperCase();
-          if (!sym) continue;
-          if (next[sym] == null) next[sym] = it?.qty == null ? "" : String(it.qty);
-        }
-        return next;
-      });
-
-      setDraftVal((prev) => {
-        const next = { ...(prev || {}) };
-        for (const it of list) {
-          const sym = String(it?.symbol || "").toUpperCase();
-          const v = it?.valueEur ?? it?.value_eur;
-          if (!sym) continue;
-          if (next[sym] == null) next[sym] = v == null ? "" : String(v);
-        }
-        return next;
-      });
+      setBundle(normalized);
+      hydrateDraftsFromItems({ items: list, setDraftQty, setDraftVal });
 
       return list as HoldingRow[];
     } finally {
@@ -962,15 +1086,14 @@ export default function PortfolioTab({
   }
 
   async function loadBundle() {
-    const budgetEur = readStarterBudget(autopilotMode);
-    const budgetParam = budgetEur != null ? `&budgetEur=${budgetEur}` : "";
-    const r = await fetchJSON(
-      `/api/daily-bundle?mode=${encodeURIComponent(String(autopilotMode))}${budgetParam}&_=${Date.now()}`,
-      { method: "GET" }
-    );
+    const r = await fetchJSON(`/api/investing/dashboard?mode=${encodeURIComponent(String(autopilotMode))}&_=${Date.now()}`, { method: "GET" });
     if (r.ok) {
-      setBundle(r.data);
-      return r.data;
+      const normalized = normalizeInvestingDashboardBundle(r.data);
+      const list = canonicalPortfolioItemsFromDashboard(normalized);
+      setBundle(normalized);
+      setItems(list);
+      hydrateDraftsFromItems({ items: list, setDraftQty, setDraftVal });
+      return normalized;
     }
     return null;
   }
@@ -1002,6 +1125,15 @@ export default function PortfolioTab({
     loadBundle();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autopilotMode]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setToast("Could not update portfolio data within 10 seconds. Last confirmed values remain visible.");
+    }, 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [loading]);
 
   useEffect(() => {
     if (loading || hasHoldings) return;
@@ -1201,7 +1333,7 @@ export default function PortfolioTab({
           it: "Passo 1: aggiungi le prime posizioni",
         }),
         detail: pickByLang(lang, {
-          en: "Add at least 3 symbols so Syntrake can generate reliable analysis.",
+          en: "Add one holding or import progressively. Confidence depends on covered capital, not the number of assets.",
           pt: "Adiciona pelo menos 3 simbolos para gerar analise fiavel.",
           es: "Agrega al menos 3 simbolos para un analisis fiable.",
           fr: "Ajoutez au moins 3 symboles pour une analyse fiable.",
@@ -1351,28 +1483,39 @@ export default function PortfolioTab({
     setApplyingStarter(true);
     setBusy(true);
     try {
-      const payloadItems = starterPack.map((x: any) => ({
-        symbol: String(x.symbol || "").toUpperCase(),
-        name: x.name ?? null,
-        qty: x.qty == null ? null : Number(x.qty),
-        value_eur: Number(x.valueEur || 0),
-      }));
+      const budgetFromPack = starterPack.reduce((sum: number, item: any) => {
+        const value = Number(item?.valueEur ?? item?.value_eur ?? 0);
+        return sum + (Number.isFinite(value) && value > 0 ? value : 0);
+      }, 0);
+      const requestedBudget =
+        Number.isFinite(Number(starterPackMeta?.budgetEur)) && Number(starterPackMeta?.budgetEur) > 0
+          ? Number(starterPackMeta.budgetEur)
+          : budgetFromPack > 0
+            ? budgetFromPack
+            : readStarterBudget(autopilotMode);
+      const initialDeposit = String(clampStarterBudget(Number(requestedBudget || 0)));
 
-      const r = await fetchJSON("/api/portfolio-items/reset", {
+      const r = await fetchJSON("/api/investing/paper/accounts", {
         method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: payloadItems, source: "starter_pack" }),
+        body: JSON.stringify({
+          action: "open_paper_account",
+          portfolioId: "primary",
+          environment: "paper",
+          currency: "EUR",
+          initialDeposit,
+          clientRequestId: `portfolio-starter-paper-${new Date().toISOString().slice(0, 10)}-${initialDeposit}`,
+        }),
       });
       if (!r.ok) {
-        setToast(String(r.data?.error || "Failed to apply starter pack."));
+        setToast(String(r.data?.error || "Failed to prepare persistent Paper account."));
         return;
       }
 
       writeStarterWarmup(autopilotMode);
-      const inserted = Number(r.data?.inserted || payloadItems.length || 0);
       setToast(
         starterUsesLiveQuotes
-          ? `Starter pack applied (${inserted} holdings). Redirecting to Daily...`
-          : `Starter pack applied (${inserted} holdings, provisional allocation). Redirecting to Daily...`
+          ? "Persistent Paper funded. Review the canonical proposal in Daily..."
+          : "Persistent Paper funded with provisional starter budget. Review the canonical proposal in Daily..."
       );
       await loadServerItems();
       await loadBundle();
@@ -1389,17 +1532,9 @@ export default function PortfolioTab({
     setClearingStarterFreshStart(true);
     setBusy(true);
     try {
-      const r = await fetchJSON("/api/portfolio-items/reset", {
-        method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: [] }),
-      });
-      if (!r.ok) {
-        setToast(String(r.data?.error || "Failed to clear existing holdings."));
-        return;
-      }
       await loadServerItems();
       await loadBundle();
-      setToast("Old holdings cleared. You can now apply Starter Pack.");
+      setToast("Investing now uses canonical Paper positions. Legacy portfolio clearing is disabled.");
     } finally {
       setClearingStarterFreshStart(false);
       setBusy(false);
@@ -1412,75 +1547,15 @@ export default function PortfolioTab({
     leakKey: string;
     itemSnapshot: HoldingRow[];
   }) {
-    const planMap = new Map<string, FixNowExecutionRow>();
-    for (const row of args.rows) {
-      planMap.set(String(row.symbol || "").toUpperCase(), row);
-    }
-
-    const itemMap = new Map<string, HoldingRow>();
-    for (const it of args.itemSnapshot) {
-      const sym = String(it?.symbol || "").toUpperCase();
-      if (!sym) continue;
-      itemMap.set(sym, it);
-    }
-
-    const payloadItems = args.rows
-      .map((row) => {
-        const sym = String(row.symbol || "").toUpperCase();
-        const target = row.targetValueEur;
-        if (!sym || target == null || !Number.isFinite(target)) return null;
-
-        const current = itemMap.get(sym);
-        const currentValue = safeNum(current?.valueEur ?? current?.value_eur, null);
-        const currentQty = safeNum(current?.qty, null);
-        const nextValue = Math.max(0, Number(target));
-
-        const nextQty =
-          currentQty != null && currentValue != null && currentValue > 0
-            ? Math.max(0, (nextValue / currentValue) * currentQty)
-            : null;
-
-        return {
-          symbol: sym,
-          name: current?.name ?? null,
-          qty: nextQty,
-          value_eur: nextValue,
-        };
-      })
-      .filter(Boolean) as Array<{ symbol: string; name: string | null; qty: number | null; value_eur: number }>;
-
-    if (!payloadItems.length) {
+    void args;
+    if (!args.rows.length) {
       return { ok: false as const, count: 0, error: "Nothing to apply." };
     }
-
-    const r = await fetchJSON("/api/portfolio-items", {
-      method: "POST",
-      body: JSON.stringify({ mode: autopilotMode, items: payloadItems }),
-    });
-    if (!r.ok) {
-      return { ok: false as const, count: 0, error: String(r.data?.error || "Auto-fix failed.") };
-    }
-
-    const receiptRows = payloadItems.map((x) => {
-      const plan = planMap.get(String(x.symbol || "").toUpperCase());
-      return {
-        symbol: String(x.symbol || "").toUpperCase(),
-        action: plan?.action ?? "FIX_DATA",
-        targetValueEur: x.value_eur ?? null,
-        qty: x.qty ?? null,
-        reason: plan?.reason ?? "Applied by FixNow auto execution.",
-      };
-    });
-
-    setLastAutoFixReceipt({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      at: new Date().toISOString(),
-      source: args.source,
-      fixKey: args.leakKey,
-      rows: receiptRows,
-    });
-
-    return { ok: true as const, count: payloadItems.length };
+    return {
+      ok: false as const,
+      count: 0,
+      error: "FixNow legacy writes are disabled for Investing. Use Daily to generate a canonical Paper proposal.",
+    };
   }
 
   async function autoApplyFixNow(source: "manual" | "handsfree" = "manual") {
@@ -1548,102 +1623,10 @@ export default function PortfolioTab({
     }
 
     setBusy(true);
-    setToast("Running FixAll...");
     try {
-      const leakHint = fixKey || topLeakKeyFromBundle(bundle);
-      const budgetEur = readStarterBudget(autopilotMode);
-      const run = await fetchJSON("/api/fix-now/run", {
-        method: "POST",
-        body: JSON.stringify({
-          mode: autopilotMode,
-          leakKey: leakHint || undefined,
-          maxRounds: 4,
-          budgetEur: budgetEur ?? undefined,
-        }),
-      });
-      if (!run.ok) {
-        setToast(String(run.data?.error || "FixAll failed."));
-        return;
-      }
-
-      const resolved = Boolean(run.data?.resolved);
-      const rounds = Number(run.data?.rounds || 0);
-      const appliedTotal = Number(run.data?.appliedRows || 0);
-      const serverFinalLeak = run.data?.finalLeakKey ? String(run.data.finalLeakKey).toLowerCase().trim() : null;
-      const nonAutoFixable = Boolean(run.data?.nonAutoFixable);
-      const manualPlan = Array.isArray(run.data?.manualPlan) ? run.data.manualPlan : [];
-
-      if (manualPlan.length > 0) {
-        const receiptRows = manualPlan.slice(0, 24).map((row: any) => {
-          const rawAction = String(row?.action || "").toUpperCase();
-          const action: FixNowAction = rawAction === "BUY" || rawAction === "SELL" || rawAction === "HOLD" ? rawAction : "FIX_DATA";
-          return {
-            symbol: String(row?.symbol || "").toUpperCase(),
-            action,
-            targetValueEur: Number.isFinite(Number(row?.targetValueEur)) ? Number(row.targetValueEur) : null,
-            qty: Number.isFinite(Number(row?.qtyTarget)) ? Number(row.qtyTarget) : null,
-            reason: String(row?.strategy || "FixNow execution"),
-          };
-        }).filter((r: any) => r.symbol);
-        if (receiptRows.length > 0) {
-          setLastAutoFixReceipt({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            at: new Date().toISOString(),
-            source: "manual",
-            fixKey: leakHint || serverFinalLeak || "general",
-            rows: receiptRows,
-          });
-        }
-      }
-
       await loadServerItems();
-      const finalBundle = await loadBundle();
-      const currentLeak = topLeakKeyFromBundle(finalBundle);
-      const remainingLeakKey = currentLeak || serverFinalLeak;
-
-      if (!remainingLeakKey || resolved) {
-        setDismissFixGuide(true);
-        clearFixQueryFromUrl();
-        setToast(
-          appliedTotal > 0
-            ? `FixAll completed in ${Math.max(1, rounds)} round${rounds === 1 ? "" : "s"}. Returning to Daily...`
-            : "No active leak detected. Returning to Daily..."
-        );
-        setTimeout(() => goDaily(), 350);
-        return;
-      }
-
-      if (appliedTotal === 0) {
-        if (isAutoFixableLeakKey(remainingLeakKey) && !nonAutoFixable) {
-          setToast(`No automatic actions available for leak: ${remainingLeakKey}.`);
-          return;
-        }
-
-        const manualCta = manualFixCtaForLeak(remainingLeakKey, autopilotMode);
-        setToast(`Top leak needs manual action: ${remainingLeakKey}. Opening the correct flow...`);
-        if (manualCta) {
-          setTimeout(() => {
-            window.location.href = manualCta.href;
-          }, 350);
-        }
-        return;
-      }
-
-      setToast(
-        `FixAll applied ${appliedTotal} updates in ${Math.max(1, rounds)} round${rounds === 1 ? "" : "s"}. Remaining leak: ${remainingLeakKey}.`
-      );
-      if (remainingLeakKey) {
-        if (!isAutoFixableLeakKey(remainingLeakKey) || nonAutoFixable) {
-          const manualCta = manualFixCtaForLeak(remainingLeakKey, autopilotMode);
-          if (manualCta) {
-            setTimeout(() => {
-              window.location.href = manualCta.href;
-            }, 350);
-          }
-        }
-        return;
-      }
-
+      await loadBundle();
+      setToast("FixAll legacy writes are disabled for Investing. Use Daily to generate a canonical Paper proposal.");
       if (alwaysReturnToDaily) {
         setTimeout(() => goDaily(), 350);
       }
@@ -1679,39 +1662,9 @@ export default function PortfolioTab({
       return;
     }
 
-    setBusy(true);
-    try {
-      const payload = {
-        mode: autopilotMode,
-        items: [
-          {
-            symbol,
-            name: hit?.name ? String(hit.name).trim() : null,
-            qty: qtyNumber,
-          },
-        ],
-      };
-
-      const r = await fetchJSON("/api/portfolio-items", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to add holding.");
-        return;
-      }
-
-      setToast(`Added ${symbol} OK`);
-      setQ("");
-      setQty("");
-      setHits([]);
-      setOpen(false);
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setBusy(false);
-    }
+    void hit;
+    void qtyNumber;
+    setToast(`${symbol} was not added. Investing portfolio now comes from canonical Paper positions.`);
   }
 
   async function addFromPaste() {
@@ -1723,58 +1676,15 @@ export default function PortfolioTab({
       return;
     }
 
-    setBusy(true);
-    try {
-      const payload = {
-        mode: autopilotMode,
-        items: symbols.map((s) => ({ symbol: s, name: null, qty: null })),
-      };
-
-      const r = await fetchJSON("/api/portfolio-items", { method: "POST", body: JSON.stringify(payload) });
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to add list.");
-        return;
-      }
-
-      setToast(`Added ${symbols.length} OK`);
-      setPaste("");
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setBusy(false);
-    }
+    void symbols;
+    setToast("Paste import is disabled for Investing. Use canonical Paper proposals from Daily.");
   }
 
   async function remove(id: string, symbol?: string) {
     if (busy) return;
-    setBusy(true);
-    try {
-      const r = await fetchJSON(`/api/portfolio-items?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to remove.");
-        return;
-      }
-
-      const sym = symbol ? String(symbol).toUpperCase() : "";
-      if (sym) {
-        setDraftQty((prev) => {
-          const next = { ...(prev || {}) };
-          delete next[sym];
-          return next;
-        });
-        setDraftVal((prev) => {
-          const next = { ...(prev || {}) };
-          delete next[sym];
-          return next;
-        });
-      }
-
-      setToast("Removed OK");
-      await loadServerItems();
-      await loadBundle();
-    } finally {
-      setBusy(false);
-    }
+    void id;
+    const label = symbol ? ` ${String(symbol).toUpperCase()}` : "";
+    setToast(`Cannot remove${label} here. Canonical Paper positions change through orders, fills, cash movements and reconciliation.`);
   }
 
   async function saveRow(symbol: string, name?: string | null) {
@@ -1791,25 +1701,10 @@ export default function PortfolioTab({
 
     setRowSaving((p) => ({ ...(p || {}), [sym]: true }));
     try {
-      const payload = {
-        mode: autopilotMode,
-        items: [
-          {
-            symbol: sym,
-            name: name ?? null,
-            qty: qtyN,
-            value_eur: valueN, // allow null to clear
-          },
-        ],
-      };
-
-      const r = await fetchJSON("/api/portfolio-items", { method: "POST", body: JSON.stringify(payload) });
-      if (!r.ok) {
-        setToast(r.data?.error || "Failed to save.");
-        return;
-      }
-
-      setToast(`Saved ${sym} OK`);
+      void name;
+      void qtyN;
+      void valueN;
+      setToast(`Cannot save ${sym} here. Investing uses canonical Paper positions, not browser-edited holdings.`);
       await loadServerItems();
       await loadBundle();
     } finally {
@@ -1908,13 +1803,22 @@ export default function PortfolioTab({
       value: typeof priceAgeSeconds === "number" ? (priceAgeSeconds < 60 * 60 ? "Stable" : priceAgeSeconds < 6 * 60 * 60 ? "Aging" : "Stale") : "Pending",
     },
   ];
+  const portfolioDataState = !hasHoldings
+    ? "empty"
+    : coveragePct == null
+      ? "unavailable"
+      : typeof priceAgeSeconds === "number" && priceAgeSeconds >= 6 * 60 * 60
+        ? "stale"
+        : coveragePct < 90 || missingForPricing.length > 0
+          ? "partial"
+          : "fresh";
 
   return (
     <div className="w-full max-w-[1280px] mx-auto px-[26px] py-[26px]">
       {/* Header */}
       <div className="mb-[18px] flex items-end justify-between gap-[18px] max-[980px]:flex-col max-[980px]:items-start">
         <div className="space-y-2">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#93a4bf]">Portfolio Control</div>
+          <div className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#93a4bf]">Composition and mandate alignment</div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="mr-2 text-[30px] font-black leading-none tracking-[-0.06em] text-[#e7effc]">Portfolio</h1>
             <Badge tone={hasHoldings ? "good" : "warn"}>{hasHoldings ? `Holdings: ${items.length}` : "Holdings: none"}</Badge>
@@ -1922,8 +1826,8 @@ export default function PortfolioTab({
             {!isBeginnerUX && typeof coveragePct === "number" ? <Pill>Coverage: {coveragePct}%</Pill> : null}
             {!isBeginnerUX && typeof priceAgeSeconds === "number" ? <Pill>Price age: {fmtAge(priceAgeSeconds)}</Pill> : null}
           </div>
-          <div className="text-sm text-zinc-600">
-            Portfolio is the engine's fuel. Better inputs -&gt; stronger protection -&gt; better decisions.
+          <div className="text-sm text-[#95a6c2]">
+            See how every position affects concentration, risk and progress toward your objective.
           </div>
         </div>
 
@@ -1980,6 +1884,13 @@ export default function PortfolioTab({
           {toast}
         </div>
       ) : null}
+
+      <div role={portfolioDataState === "fresh" ? "status" : "alert"} className={clsx("mb-5 rounded-[16px] border px-4 py-3 text-sm", portfolioDataState === "fresh" ? "border-[#1f4a3b] bg-[#102d28] text-[#9de9cb]" : portfolioDataState === "empty" ? "border-[#31415f] bg-[#0d182d] text-[#c4d2e5]" : "border-[#4a3514] bg-[#362813] text-[#f4cf91]")}>
+        <div className="font-bold capitalize">Data state: {portfolioDataState}</div>
+        <div className="mt-1">
+          {portfolioDataState === "fresh" ? `Pricing coverage is ${coveragePct}% and can support portfolio diagnostics.` : portfolioDataState === "empty" ? "No positions yet. Add one asset, an ETF, or import progressively; a single holding is valid." : portfolioDataState === "stale" ? `Prices are ${fmtAge(priceAgeSeconds!)} old. Actionable recommendations and broker-ready output are blocked until refresh.` : portfolioDataState === "partial" ? `Coverage is ${coveragePct}%. Diagnostics are indicative and cannot produce a definitive recommendation.` : "Pricing status is unavailable. The last confirmed portfolio is preserved without generating a new recommendation."}
+        </div>
+      </div>
 
       <div className="space-y-5">
         <div className={clsx("grid gap-5", hasHoldings && !isBeginnerUX ? "xl:grid-cols-[1.45fr_.95fr]" : "")}>
@@ -2143,7 +2054,7 @@ export default function PortfolioTab({
                       <div className="flex items-center justify-between gap-4"><span>Pricing coverage</span><span className="font-semibold">{typeof coveragePct === "number" ? `${coveragePct}%` : "-"}</span></div>
                       <div className="flex items-center justify-between gap-4"><span>Position sync</span><span className="font-semibold">{missingForPricing.length === 0 ? "Healthy" : "Needs input"}</span></div>
                       <div className="flex items-center justify-between gap-4"><span>Data integrity</span><span className="font-semibold">{missingSymbols.length === 0 ? "Verified" : "Review symbols"}</span></div>
-                      <div className="flex items-center justify-between gap-4"><span>Plan alignment</span><span className="font-semibold">{capitalStatus?.planAlignment ? String(capitalStatus.planAlignment).replace(/_/g, " ") : "Stable"}</span></div>
+                      <div className="flex items-center justify-between gap-4"><span>Plan alignment</span><span className="font-semibold">{capitalStatus?.planAlignment ? String(capitalStatus.planAlignment).replace(/_/g, " ") : "Unavailable"}</span></div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {!hasHoldings && hasStarterCandidate ? (
@@ -2454,6 +2365,7 @@ export default function PortfolioTab({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div ref={boxRef} className="relative md:col-span-2">
               <input
+                aria-label="Search asset symbol or name"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={onKeyDown}
@@ -2481,6 +2393,7 @@ export default function PortfolioTab({
 
             <div className="flex gap-2">
               <input
+                aria-label="Holding quantity"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
                 placeholder="Qty (optional)"
@@ -2498,6 +2411,7 @@ export default function PortfolioTab({
 
           <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
             <textarea
+              aria-label="Paste asset symbols"
               value={paste}
               onChange={(e) => setPaste(e.target.value)}
               placeholder="Paste list: AAPL MSFT TSLA BTC ETH..."

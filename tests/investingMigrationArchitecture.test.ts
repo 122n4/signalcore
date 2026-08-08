@@ -10,6 +10,10 @@ const containment = readFileSync(
   join(process.cwd(), "supabase/migrations/20260719170000_investing_phase0_containment.sql"),
   "utf8",
 );
+const marketSnapshots = readFileSync(
+  join(process.cwd(), "supabase/migrations/20260810120000_investing_market_snapshots.sql"),
+  "utf8",
+);
 
 describe("investing financial migration", () => {
   it("defines required accounting tables and append-only guards", () => {
@@ -57,5 +61,15 @@ describe("investing financial migration", () => {
     expect(containment).toContain("investing_accounts_environment_non_live_check");
     expect(containment).toContain("investing_orders_environment_non_live_check");
     expect(containment).toContain("message = 'investing_live_execution_blocked'");
+  });
+
+  it("defines immutable market snapshots for replayable Investing decisions", () => {
+    expect(marketSnapshots).toContain("create table if not exists public.investing_market_snapshots");
+    expect(marketSnapshots).toContain("create table if not exists public.investing_market_snapshot_items");
+    expect(marketSnapshots).toContain("create or replace function public.investing_record_market_snapshot_v1");
+    expect(marketSnapshots).toContain("investing_market_snapshots_block_update");
+    expect(marketSnapshots).toContain("investing_market_snapshot_items_block_update");
+    expect(marketSnapshots).toMatch(/grant execute on function public\.investing_record_market_snapshot_v1\([^;]+to service_role;/);
+    expect(marketSnapshots).toContain("canonical_payload->>'snapshotHash' = snapshot_hash");
   });
 });

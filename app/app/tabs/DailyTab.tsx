@@ -3,12 +3,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import TrackedLink from "@/components/TrackedLink";
 import DailyHtmlDashboard from "@/components/daily/DailyHtmlDashboard";
-import InvestingOperatingLoopRail from "@/components/investing/InvestingOperatingLoopRail";
 import { track } from "@/lib/analytics/client";
 import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
 import { sanitizeProductHref } from "@/lib/navigation/sanitizeProductHref";
-import { buildInvestingOperatingLoopSummary } from "@/lib/investing/ui/operatingLoop";
 import {
   formatDecisionImpactActionLabel,
   getDecisionImpactTrackRecordSummary,
@@ -370,7 +368,6 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       );
       if (!r.ok) {
         setError(r.data?.error || `Failed (${r.status})`);
-        setBundle(null);
         return;
       }
       const effectiveOptimisticStarterWarmupAt =
@@ -386,7 +383,6 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       );
     } catch (e: any) {
       setError(e?.message || "Unknown error");
-      setBundle(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -397,6 +393,15 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     loadBundle(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyBundleUrl]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setError("Could not update data within 10 seconds. Try again; no new decision was generated.");
+    }, 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [loading]);
 
   useEffect(() => {
     track("daily_view", { mode: autopilotMode, isPaid });
@@ -570,7 +575,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
         items: [
           { label: "Canonical cycle saved", status: "ok" },
           { label: "Discipline confirmed", status: "ok" },
-          { label: "Safety Brain checked leaks", status: hasPlan && hasHoldings ? "ok" : "warn", detail: hasPlan && hasHoldings ? "OK" : "Setup incomplete" },
+          { label: "Plan limits checked", status: hasPlan && hasHoldings ? "ok" : "warn", detail: hasPlan && hasHoldings ? "OK" : "Setup incomplete" },
           { label: "Next best action executed", status: "ok", detail: nba?.title ? nba.title : "Closed day" },
         ],
       };
@@ -628,7 +633,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     if (!hasPlan) {
       return {
         title: "Create & activate your plan",
-        desc: "Safety Brain needs constraints before operating.",
+        desc: "Recommendations need explicit plan constraints before operating.",
         ctaLabel: "Go to Planning",
         ctaHref: `/app?tab=planning&mode=${autopilotMode}`,
         kind: "primary" as const,
@@ -990,7 +995,7 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
       stabilitySource: decisionView.stabilitySource,
     });
   }, [autopilotMode, decisionView.action, decisionView.stateReason, decisionView.stabilitySource]);
-  const lastEvaluationLabel = lastSnapshotAt ? `LAST EVALUATION ${fmtClockTime(lastSnapshotAt)}` : "LIVE DAILY OS";
+  const lastEvaluationLabel = lastSnapshotAt ? `LAST EVALUATION ${fmtClockTime(lastSnapshotAt)}` : "UPDATE TIME UNAVAILABLE";
   const operatorNote = riskFixPlan?.summary || proof?.meaning || reasonsShort[0] || decisionView.rationale || primary.desc;
   const dailyTrendsNode = daily?.trends ?? null;
   const riskPressureDelta = Number((dailyTrendsNode as any)?.riskPressure?.delta1);
@@ -1001,19 +1006,6 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
     daily?.decisionPreviewState?.nextEvaluationAt ||
     null;
   const nextReviewLabel = fmtReviewWindow(nextReviewAt);
-  const investingLoopSummary = useMemo(
-    () =>
-      buildInvestingOperatingLoopSummary({
-        hasPlan,
-        hasHoldings,
-        doneToday,
-        receiptsCount,
-        streak,
-        weeklyConfirmedEur: Number(decisionImpact?.confirmedMoneyEur?.week || 0),
-        nextReviewAt,
-      }),
-    [decisionImpact?.confirmedMoneyEur?.week, doneToday, hasHoldings, hasPlan, nextReviewAt, receiptsCount, streak],
-  );
   const heroSemantics = useMemo(
     () =>
       buildDailyHeroSemantics({
@@ -1509,45 +1501,15 @@ export default function DailyTab({ mode, isPaid = false }: { mode?: string; isPa
 
       {/* Error */}
       {!loading && error && (
-        <div className="rounded-[22px] border border-rose-900/70 bg-rose-950/40 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+        <div role="alert" className="mb-5 rounded-[22px] border border-rose-900/70 bg-rose-950/40 p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
           <div className="mb-1 text-sm font-semibold text-rose-200">Failed</div>
           <div className="text-sm text-rose-100/90">{error}</div>
+          <button type="button" onClick={() => void loadBundle(false)} className="mt-4 min-h-11 rounded-xl border border-rose-700/70 px-4 text-sm font-semibold text-white">Try again</button>
         </div>
       )}
 
-      {!loading && !error ? (
+      {!loading && (!error || bundle) ? (
         <>
-            <div className="mb-5">
-              <InvestingOperatingLoopRail
-                summary={investingLoopSummary}
-                theme="light"
-                rightBadge={<Badge tone={doneToday ? "good" : "warn"}>{doneToday ? "Loop closed" : "Loop open"}</Badge>}
-                primaryAction={
-                  !hasPlan
-                    ? { label: "Open Planning", href: `/app?tab=planning&mode=${autopilotMode}` }
-                    : !hasHoldings
-                      ? { label: "Open Portfolio", href: `/app?tab=portfolio&mode=${autopilotMode}` }
-                      : canClose
-                        ? {
-                            label: markingDone ? "Closing..." : "Complete loop",
-                            onClick: () => {
-                              void closeTheDay();
-                            },
-                          }
-                        : {
-                            label: refreshing ? "Refreshing..." : "Refresh Daily",
-                            onClick: () => {
-                              void loadBundle(false);
-                            },
-                          }
-                }
-                secondaryAction={
-                  hasPlan && hasHoldings
-                    ? { label: "Open Planning", href: `/app?tab=planning&mode=${autopilotMode}` }
-                    : null
-                }
-              />
-            </div>
             <DailyHtmlDashboard
               lastEvaluationLabel={lastEvaluationLabel}
               decision={{

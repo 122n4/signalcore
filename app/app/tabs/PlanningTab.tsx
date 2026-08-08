@@ -281,8 +281,8 @@ type PlanningSimpleGuide = {
 function buildPlanningFixGuide(fixKey: string): PlanningFixGuide {
   if (fixKey === "no_plan") {
     return {
-      title: "FixNow: activate your plan",
-      subtitle: "Without an active plan, Safety Brain has no constraints.",
+      title: "Canonical review: activate your plan",
+      subtitle: "Without an active plan, recommendations have no enforceable constraints.",
       steps: [
         { title: "Choose preset", detail: "Set goal, risk, and horizon from the top panels.", visual: "Goal + Risk + Horizon" },
         { title: "Write contract", detail: "Keep one clear sentence describing your objective.", visual: "Contract text -> Save" },
@@ -293,7 +293,7 @@ function buildPlanningFixGuide(fixKey: string): PlanningFixGuide {
 
   if (fixKey === "cash_drag_high" || fixKey === "cash_drag_med") {
     return {
-      title: "FixNow: reduce cash drag",
+      title: "Canonical review: reduce cash drag",
       subtitle: "Too much idle cash can slow compounding. Define deployment pace safely.",
       steps: [
         { title: "Set target", detail: "Adjust target and horizon for realistic deployment.", visual: "Target + Horizon" },
@@ -304,7 +304,7 @@ function buildPlanningFixGuide(fixKey: string): PlanningFixGuide {
   }
 
   return {
-    title: "FixNow: planning correction",
+    title: "Canonical review: planning correction",
     subtitle: "Use this quick sequence to restore guardrails before the daily loop.",
     steps: [
       { title: "Check presets", detail: "Confirm goal, risk, and horizon fit your objective.", visual: "Preset review" },
@@ -377,7 +377,9 @@ export default function PlanningTab({ mode }: { mode?: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dismissFixGuide, setDismissFixGuide] = useState(false);
+  const [reviewPlanChange, setReviewPlanChange] = useState(false);
 
   const [goalPreset, setGoalPreset] = useState<GoalKey>("growth");
   const [riskPreset, setRiskPreset] = useState<RiskKey>("medium");
@@ -396,10 +398,13 @@ export default function PlanningTab({ mode }: { mode?: string }) {
 
   async function load() {
     setLoading(true);
-    const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}`, { method: "GET" });
+    setLoadError(null);
+    const r = await fetchJSON(`/api/investing/dashboard?mode=${autopilotMode}&_=${Date.now()}`, { method: "GET" });
     if (r.ok) {
       setBundle(r.data);
       if (r.data?.plan?.goal) setGoalText(String(r.data.plan.goal));
+    } else {
+      setLoadError(String(r.data?.error || "The plan could not be updated."));
     }
     setLoading(false);
   }
@@ -409,6 +414,15 @@ export default function PlanningTab({ mode }: { mode?: string }) {
     track("planning_view", { mode: autopilotMode });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autopilotMode]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setLoadError("The update exceeded 10 seconds.");
+    }, 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [loading]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -979,7 +993,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         title: hasPlan ? "Plan updated" : "Plan activated",
         items: [
           { label: "Autopilot contract saved", status: "ok", detail: "Your plan is now your constraint system." },
-          { label: "Guardrails armed", status: "ok", detail: "Safety Brain will enforce limits daily." },
+          { label: "Guardrails active", status: "ok", detail: "Daily recommendations will respect these limits." },
           {
             label: "Next step",
             status: hasHoldings ? "ok" : "warn",
@@ -1014,19 +1028,32 @@ export default function PlanningTab({ mode }: { mode?: string }) {
       const payloadItems = starterPackScaled
         .map((x: any) => ({
           symbol: String(x?.symbol || "").trim().toUpperCase(),
-          name: x?.name ? String(x.name).trim() : null,
-          qty: x?.qty ?? null,
-          value_eur: x?.value_eur ?? x?.valueEur ?? null,
+          valueEur: Number(x?.value_eur ?? x?.valueEur ?? 0),
         }))
         .filter((x: any) => x.symbol.length >= 1);
+      const initialDeposit = Math.max(
+        0,
+        Math.round(
+          Number(starterBudgetDesired || 0) ||
+            payloadItems.reduce((sum: number, item: any) => sum + Math.max(0, Number(item.valueEur || 0)), 0)
+        )
+      );
+      const dayKey = new Date().toISOString().slice(0, 10);
 
-      const r = await fetchJSON("/api/portfolio-items/reset", {
+      const r = await fetchJSON("/api/investing/paper/accounts", {
         method: "POST",
-        body: JSON.stringify({ mode: autopilotMode, items: payloadItems, source: "starter_pack" }),
+        body: JSON.stringify({
+          action: "open_paper_account",
+          portfolioId: "primary",
+          environment: "paper",
+          currency: "EUR",
+          initialDeposit,
+          clientRequestId: `planning-starter-paper-${dayKey}-${initialDeposit}`,
+        }),
       });
 
       if (!r.ok) {
-        setToast(r.data?.error || "Failed to add starter pack.");
+        setToast(r.data?.error || "Failed to fund Persistent Paper.");
         track("starter_pack_apply_error", { mode: autopilotMode, status: r.status });
         return;
       }
@@ -1035,10 +1062,10 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         id: tinyId(),
         at: new Date().toISOString(),
         mode: autopilotMode,
-        title: "Starter Pack applied",
+        title: "Persistent Paper funded",
         items: [
-          { label: "Holdings added", status: "ok", detail: `${payloadItems.length} items` },
-          { label: "Next step", status: "ok", detail: "Go to Daily to get your Next Best Action." },
+          { label: "Paper account", status: "ok", detail: `${fmtEUR(initialDeposit)} available` },
+          { label: "Next step", status: "ok", detail: "Go to Daily to review the canonical proposal." },
         ],
       };
       setLastReceipt(receipt);
@@ -1046,8 +1073,8 @@ export default function PlanningTab({ mode }: { mode?: string }) {
 
       setToast(
         starterBudgetAdjusted
-          ? `Starter Pack applied with ${fmtEUR(starterBudgetDesired)} budget.`
-          : "Starter Pack applied"
+          ? `Persistent Paper funded with ${fmtEUR(starterBudgetDesired)} budget.`
+          : "Persistent Paper funded"
       );
       track("starter_pack_apply_success", { mode: autopilotMode, items: payloadItems.length });
       await load();
@@ -1077,7 +1104,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
       {/* Header */}
       <div className="mb-[18px] flex items-end justify-between gap-[18px] max-[980px]:flex-col max-[980px]:items-start">
         <div className="space-y-2">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#93a4bf]">Plan Setup</div>
+          <div className="text-[10px] font-extrabold uppercase tracking-[.12em] text-[#93a4bf]">Investment mandate</div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="mr-2 text-[30px] font-black leading-none tracking-[-0.06em] text-[#e7effc]">
               {pickByLang(lang, {
@@ -1130,26 +1157,13 @@ export default function PlanningTab({ mode }: { mode?: string }) {
             <Pill>Mode: {autopilotMode}</Pill>
           </div>
           <div className="max-w-[72ch] text-sm text-[#95a6c2]">
-            Your plan is a <span className="font-semibold text-zinc-900">contract</span>. It tells Safety Brain what "safe" means, so growth can be systematic.
+            Your versioned mandate defines the objective, risk limits and review rules used by every recommendation.
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            onClick={goDaily}
-            className="rounded-[12px] border border-[#233453] bg-[#13213b] px-4 py-2 text-sm font-semibold text-[#d8e5fb]"
-          >
-            {pickByLang(lang, {
-              en: "Back to Daily",
-              pt: "Voltar ao Daily",
-              es: "Volver a Daily",
-              fr: "Retour a Daily",
-              de: "Zuruck zu Daily",
-              it: "Torna a Daily",
-            })}
-          </button>
-          <button
-            onClick={() => savePlan(true)}
+            onClick={() => setReviewPlanChange(true)}
             disabled={busy || loading}
             className="rounded-[12px] bg-[linear-gradient(180deg,#4b8bff_0%,#2f6df6_100%)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(47,109,246,0.22)] disabled:opacity-50"
           >
@@ -1189,7 +1203,33 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         </div>
       ) : null}
 
-      {!loading ? (
+      {loadError ? (
+        <div role="alert" className="mb-5 rounded-[16px] border border-[#4a2830] bg-[#341a20] p-4 text-sm text-[#ffc1c1]">
+          <div className="font-bold">Update failed</div>
+          <p className="mt-1">{loadError} The last confirmed values remain visible when available.</p>
+          <button type="button" onClick={() => void load()} className="mt-3 min-h-11 rounded-xl border border-[#7b414b] px-4 font-semibold">Try again</button>
+        </div>
+      ) : null}
+
+      {reviewPlanChange ? (
+        <div role="dialog" aria-modal="true" aria-label="Review plan changes" className="mb-5 rounded-[18px] border border-[#365d98] bg-[#0d182d] p-5 text-[#dbe7f8]">
+          <div className="text-[11px] font-bold uppercase tracking-[.14em] text-[#91a3bc]">Change review</div>
+          <h2 className="mt-2 text-xl font-black text-white">Confirm the mandate before it takes effect</h2>
+          <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div><span className="block text-xs text-[#91a3bc]">Objective</span>{goalText}</div>
+            <div><span className="block text-xs text-[#91a3bc]">Target</span>{fmtEUR(targetCapital)}</div>
+            <div><span className="block text-xs text-[#91a3bc]">Horizon</span>{formatYearsLabel(Math.ceil(horizonMonths / 12))}</div>
+            <div><span className="block text-xs text-[#91a3bc]">Risk profile</span>{riskPreset}</div>
+          </div>
+          <p className="mt-4 text-sm text-[#aebed4]">This version will affect future portfolio limits and Advisor recommendations. Projections remain illustrative ranges, not guaranteed outcomes.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => { setReviewPlanChange(false); void savePlan(true); }} disabled={busy} className="rounded-xl bg-[#2f6df6] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving..." : "Confirm new version"}</button>
+            <button type="button" onClick={() => setReviewPlanChange(false)} className="rounded-xl border border-[#31415f] px-4 py-2 text-sm font-semibold">Continue editing</button>
+          </div>
+        </div>
+      ) : null}
+
+      {false && !loading ? (
         <div className="mb-5">
           <InvestingOperatingLoopRail
             summary={investingLoopSummary}
@@ -1223,7 +1263,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         </div>
       ) : null}
 
-      {!loading ? (
+      {false && !loading ? (
         <div className="mb-5">
           <ProofRail
             theme="dark"
@@ -1269,10 +1309,10 @@ export default function PlanningTab({ mode }: { mode?: string }) {
         <div className="rounded-[18px] border border-[#23314c] bg-[linear-gradient(180deg,#111c31_0%,#0d1729_100%)] p-6 shadow-[0_18px_50px_rgba(0,0,0,.28)]">
           <div className="text-sm text-[#95a6c2]">
             {pickByLang(lang, {
-              en: "Loading...",
-              pt: "A carregar...",
-              es: "Cargando...",
-              fr: "Chargement...",
+              en: "Loading the last confirmed plan...",
+              pt: "A carregar o ultimo plano confirmado...",
+              es: "Cargando el ultimo plan confirmado...",
+              fr: "Chargement du dernier plan confirme...",
               de: "Laden...",
               it: "Caricamento...",
             })}
@@ -1389,7 +1429,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
 
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={() => savePlan(true)}
+                    onClick={() => setReviewPlanChange(true)}
                     disabled={busy}
                     className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white disabled:opacity-50"
                   >
@@ -1531,17 +1571,11 @@ export default function PlanningTab({ mode }: { mode?: string }) {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Badge tone="neutral">Safety Brain: enforces limits</Badge>
-              <Badge tone="neutral">Growth Brain: suggests compounding</Badge>
-              <Badge tone="neutral">Daily: 1 Next Best Action</Badge>
-            </div>
           </Card>
 
           <Card
-            title="Wealth trajectory"
-            subtitle="Realistic projection from capital, contributions, horizon, and risk profile."
-            right={<Badge tone="neutral">Base return ~{baseAnnualReturnPct.toFixed(1)}%</Badge>}
+            title="Projected trajectory range"
+            subtitle="Illustrative paths from capital, contributions, horizon and risk assumptions. Outcomes are not guaranteed."
           >
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
@@ -1616,7 +1650,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
               </button>
               <button
                 type="button"
-                onClick={() => savePlan(true)}
+                onClick={() => setReviewPlanChange(true)}
                 disabled={busy}
                 className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white disabled:opacity-50"
               >
@@ -1648,7 +1682,7 @@ export default function PlanningTab({ mode }: { mode?: string }) {
 
             <div className="mt-4 flex flex-wrap gap-2">
               <button
-                onClick={() => savePlan(true)}
+                onClick={() => setReviewPlanChange(true)}
                 disabled={busy}
                 className="rounded-xl px-4 py-2 text-sm font-semibold bg-zinc-900 text-white disabled:opacity-50"
               >

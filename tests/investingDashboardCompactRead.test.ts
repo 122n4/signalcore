@@ -21,8 +21,8 @@ describe("compact Investing dashboard read", () => {
   it("loads the whole dashboard through one compact RPC", async () => {
     mocks.rpc.mockResolvedValue({
       data: {
-        settings: { risk_profile: "balanced" },
-        plan: { id: "plan-1" },
+        settings: { risk_profile: "Balanced", horizon: "Medium", goal_target_value: 10000 },
+        plan: { id: "plan-1", goal: "Growth with controlled risk" },
         account: { id: "account-1" },
         cycles: [{ id: "cycle-1", day_key: new Date().toISOString().slice(0, 10), created_at: "2026-08-02T10:00:00Z" }],
         queue: [],
@@ -45,5 +45,15 @@ describe("compact Investing dashboard read", () => {
     expect(result.portfolio.items).toHaveLength(1);
     expect(result.portfolio.totalEur).toBe(1000);
     expect(result.derived.doneToday).toBe(true);
+    expect(result.derived.customerDecision.contractVersion).toBe("investing-customer-decision-projection/v1");
+    expect(result.derived.customerDecision.marketSnapshot.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.derived.customerDecision.source.engineV1Bridge.contractVersion).toBe("investing-engine-v1-client-bridge/v1");
+    expect(result.derived.customerDecision.source.engineV1Bridge.status).toBe("phase3f_shadow_connected");
+    expect(result.derived.customerDecision.source.engineV1Bridge.finalPhase3FConnected).toBe(true);
+    expect(result.derived.customerDecision.source.engineV1Bridge.shadow?.contractVersion).toBe("investing-engine-v1-customer-bridge/v1");
+    expect(result.derived.customerDecision.source.engineV1Bridge.shadow?.finalResultHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.derived.customerDecision.researchPublication.contractVersion).toBe("investing-research-publication-boundary/v1");
+    expect(result.derived.customerDecision.performanceAttribution.contractVersion).toBe("investing-performance-attribution/v1");
+    expect(result.daily.customerDecision.projectionId).toBe(result.derived.customerDecision.projectionId);
   });
 });

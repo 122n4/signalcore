@@ -5,13 +5,10 @@ import type { AutopilotMode } from "@/lib/signalcore/modes";
 import { normalizeMode } from "@/lib/signalcore/modes";
 import { track } from "@/lib/analytics/client";
 import { buildAutonomyDecisionView } from "./autonomyDecisionViewModel";
-import {
-  hasConnectionEvidence as hasConnectionEvidenceShared,
-  serverReferencePlaceholder,
-  type BrokerConnectionMethod,
-} from "@/lib/broker/shared";
 import { buildDailyDecisionView } from "./dailyDecisionViewModel";
 import { useDecisionStability } from "./decisionStability";
+
+type BrokerConnectionMethod = "none" | "api" | "oauth" | "csv";
 
 type BrokerPrefs = {
   connected: boolean;
@@ -106,25 +103,6 @@ type ControlTowerModel = {
   };
 };
 
-type BrokerApiStatus = {
-  connected?: boolean;
-  broker?: string;
-  provider?: string;
-  accountLabel?: string | null;
-  connectionMethod?: BrokerConnectionMethod;
-  autoSync?: boolean;
-  syncEveryMinutes?: number;
-  importExecutions?: boolean;
-  readOnly?: boolean;
-  lastSyncAt?: string | null;
-  status?: "disconnected" | "connected" | "active" | "error";
-  lastError?: string | null;
-  sync?: {
-    positions?: number;
-    totalEur?: number;
-  };
-};
-
 const BROKER_PREFS_KEY = "sc_broker_connection_v1";
 const HANDS_FREE_FIXNOW_KEY = "sc_hands_free_fixnow_v1";
 const STARTER_BUDGET_KEY = "sc_starter_budget_v1";
@@ -169,9 +147,9 @@ const DEFAULT_BROKER_PREFS: BrokerPrefs = {
   connectionMethod: "none",
   connectionReference: "",
   csvImported: false,
-  autoSync: true,
+  autoSync: false,
   syncEveryMinutes: 15,
-  importExecutions: true,
+  importExecutions: false,
   readOnly: true,
   lastSyncAt: null,
 };
@@ -180,14 +158,6 @@ function normalizeConnectionMethod(v: unknown): BrokerPrefs["connectionMethod"] 
   const x = String(v || "").toLowerCase().trim();
   if (x === "api" || x === "oauth" || x === "csv" || x === "none") return x;
   return "none";
-}
-
-function hasConnectionEvidence(prefs: BrokerPrefs) {
-  return hasConnectionEvidenceShared({
-    connectionMethod: prefs.connectionMethod,
-    connectionReference: prefs.connectionReference,
-    csvImported: prefs.csvImported,
-  });
 }
 
 function clsx(...xs: Array<string | false | null | undefined>) {
@@ -249,19 +219,18 @@ function readBrokerPrefs() {
     const next: BrokerPrefs = {
       ...DEFAULT_BROKER_PREFS,
       ...parsed,
-      connected: Boolean(parsed?.connected),
+      connected: false,
       broker: String(parsed?.broker || DEFAULT_BROKER_PREFS.broker),
       connectionMethod: normalizeConnectionMethod(parsed?.connectionMethod),
       connectionReference: String(parsed?.connectionReference || ""),
       csvImported: Boolean(parsed?.csvImported),
-      autoSync: Boolean(parsed?.autoSync),
+      autoSync: false,
       syncEveryMinutes: Number(parsed?.syncEveryMinutes || 15),
       readOnly: parsed?.readOnly !== false,
-      importExecutions: parsed?.importExecutions !== false,
+      importExecutions: false,
       accountLabel: String(parsed?.accountLabel || ""),
       lastSyncAt: parsed?.lastSyncAt ? String(parsed.lastSyncAt) : null,
     };
-    if (!hasConnectionEvidence(next)) next.connected = false;
     return next;
   } catch {
     return DEFAULT_BROKER_PREFS;
@@ -362,11 +331,6 @@ function formatCountdownCompact(targetIso: string | null | undefined, nowIso?: s
   return `${mins}m`;
 }
 
-function isAutoFixableLeakKey(key: string | null | undefined) {
-  const leak = String(key || "").toLowerCase().trim();
-  return leak === "no_holdings" || leak === "concentration_high" || leak === "concentration_med" || leak === "pricing_low" || leak === "valuation_zero";
-}
-
 async function fetchJSON(url: string, opts?: RequestInit) {
   const res = await fetch(url, {
     ...opts,
@@ -379,27 +343,6 @@ async function fetchJSON(url: string, opts?: RequestInit) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false as const, status: res.status, data };
   return { ok: true as const, status: res.status, data };
-}
-
-function applyServerStatus(local: BrokerPrefs, status: BrokerApiStatus | null) {
-  if (!status || typeof status !== "object") return local;
-  const next: BrokerPrefs = { ...local };
-  if (status.broker || status.provider) next.broker = String(status.broker || status.provider || local.broker);
-  if (status.accountLabel != null) next.accountLabel = String(status.accountLabel);
-  if (status.connectionMethod) next.connectionMethod = normalizeConnectionMethod(status.connectionMethod);
-  if (typeof status.autoSync === "boolean") next.autoSync = status.autoSync;
-  if (typeof status.syncEveryMinutes === "number") next.syncEveryMinutes = Math.max(5, Number(status.syncEveryMinutes || 15));
-  if (typeof status.importExecutions === "boolean") next.importExecutions = status.importExecutions;
-  if (typeof status.readOnly === "boolean") next.readOnly = status.readOnly;
-  if (status.lastSyncAt != null) next.lastSyncAt = status.lastSyncAt;
-
-  const connected = Boolean(status.connected);
-  if (connected && !hasConnectionEvidence(next)) {
-    next.connectionReference = serverReferencePlaceholder(next.connectionMethod);
-    if (next.connectionMethod === "csv") next.csvImported = true;
-  }
-  next.connected = connected;
-  return next;
 }
 
 function Card({
@@ -458,6 +401,7 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
   const [bundle, setBundle] = useState<Record<string, any> | null>(null);
   const [showAutomationActions, setShowAutomationActions] = useState(false);
   const [showSystemDiagnostics, setShowSystemDiagnostics] = useState(false);
+  const [reviewMaxAutonomy, setReviewMaxAutonomy] = useState(false);
   const [check, setCheck] = useState<DailyCheck>({
     hasPlan: false,
     hasHoldings: false,
@@ -472,18 +416,6 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     return [300, 1000, 2500, 5000];
   }, [autopilotMode]);
 
-  const autonomyScore = useMemo(() => {
-    let s = 0;
-    if (check.hasPlan) s += 22;
-    if (check.hasHoldings) s += 22;
-    if (check.coveragePct >= 80) s += 14;
-    if (brokerPrefs.connected) s += 14;
-    if (brokerPrefs.autoSync) s += 10;
-    if (handsFreeFixNow) s += 10;
-    if (check.doneToday) s += 8;
-    return Math.min(100, s);
-  }, [check.hasPlan, check.hasHoldings, check.coveragePct, brokerPrefs.connected, brokerPrefs.autoSync, handsFreeFixNow, check.doneToday]);
-
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2500);
@@ -494,16 +426,8 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     const bp = readBrokerPrefs();
     const hf = readHandsFreeFixNow();
     const sb = readStarterBudget(autopilotMode);
-    let next = bp;
-    try {
-      const status = await fetchJSON("/api/broker/status", { method: "GET" });
-      if (status.ok) {
-        next = applyServerStatus(bp, status.data as BrokerApiStatus);
-        writeBrokerPrefs(next);
-      }
-    } catch {
-      // non-blocking
-    }
+    const next = { ...bp, connected: false, autoSync: false, importExecutions: false, readOnly: true };
+    writeBrokerPrefs(next);
     setBrokerPrefs(next);
     setHandsFreeFixNow(hf);
     setStarterBudget(sb);
@@ -545,7 +469,7 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     const budget = clampStarterBudget(typeof budgetOverride === "number" ? budgetOverride : starterBudget);
     setLoading(true);
     try {
-      const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}&budgetEur=${budget}`);
+      const r = await fetchJSON(`/api/investing/dashboard?mode=${autopilotMode}&budgetEur=${budget}&_=${Date.now()}`);
       if (!r.ok) {
         setToast(r.data?.error || "Health check failed.");
         return;
@@ -581,6 +505,15 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autopilotMode]);
 
+  useEffect(() => {
+    if (!loading) return;
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setToast("System status could not be refreshed within 10 seconds. Permissions were not changed.");
+    }, 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [loading]);
+
   async function applyBudget() {
     const next = clampStarterBudget(starterBudget);
     setStarterBudget(next);
@@ -595,79 +528,40 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     setHandsFreeFixNow(next);
     writeHandsFreeFixNow(next);
     track("autonomy_handsfree_toggle", { mode: autopilotMode, enabled: next });
-    setToast(next ? "Hands-free FixNow enabled." : "Hands-free FixNow disabled.");
+    setToast(next ? "Canonical operator preference enabled." : "Canonical operator preference disabled.");
+  }
+
+  function pauseAutonomy() {
+    setHandsFreeFixNow(false);
+    writeHandsFreeFixNow(false);
+    track("autonomy_paused", { mode: autopilotMode });
+    setToast("Autonomy paused. Monitoring remains available; no automated workflow can proceed.");
+  }
+
+  async function revokeAutomationPermissions() {
+    setHandsFreeFixNow(false);
+    writeHandsFreeFixNow(false);
+    if (brokerPrefs.connected) await toggleBrokerConnection();
+    setReviewMaxAutonomy(false);
+    track("autonomy_permissions_revoked", { mode: autopilotMode });
+    setToast("Automation permissions revoked. Capital execution remains prohibited.");
   }
 
   async function syncNow() {
-    if (!brokerPrefs.connected) {
-      setToast("Broker is not connected yet.");
-      return;
-    }
-    const r = await fetchJSON("/api/broker/sync", {
-      method: "POST",
-      body: JSON.stringify({ mode: autopilotMode }),
-    });
-    if (!r.ok) {
-      setToast(String(r.data?.error || r.data?.message || "Sync failed."));
-      const tuned = applyServerStatus(brokerPrefs, r.data as BrokerApiStatus);
-      setBrokerPrefs(tuned);
-      writeBrokerPrefs(tuned);
-      return;
-    }
-    const next = applyServerStatus(brokerPrefs, r.data as BrokerApiStatus);
+    const next = { ...brokerPrefs, connected: false, lastSyncAt: brokerPrefs.lastSyncAt };
     setBrokerPrefs(next);
     writeBrokerPrefs(next);
-    track("autonomy_sync_now", { mode: autopilotMode, broker: next.broker });
+    track("autonomy_sync_now_blocked", { mode: autopilotMode });
     await runHealthCheck();
-    const positions = Number((r.data as any)?.sync?.positions || 0);
-    setToast(`Sync completed (${positions} positions).`);
+    setToast("Investing broker sync is disabled. Autonomy reads canonical Paper state only.");
   }
 
   async function toggleBrokerConnection() {
-    if (!brokerPrefs.connected && !hasConnectionEvidence(brokerPrefs)) {
-      setToast("Add API/OAuth/CSV reference in Broker setup first.");
-      return;
-    }
-    if (brokerPrefs.connected) {
-      const r = await fetchJSON("/api/broker/disconnect", {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      if (!r.ok) {
-        setToast(String(r.data?.error || "Disconnect failed."));
-        return;
-      }
-      const next = applyServerStatus({ ...brokerPrefs, connected: false }, r.data as BrokerApiStatus);
-      setBrokerPrefs(next);
-      writeBrokerPrefs(next);
-      track("autonomy_broker_toggle", { mode: autopilotMode, connected: false });
-      setToast("Broker disconnected.");
-      return;
-    }
-
-    const r = await fetchJSON("/api/broker/connect", {
-      method: "POST",
-      body: JSON.stringify({
-        broker: brokerPrefs.broker,
-        accountLabel: brokerPrefs.accountLabel,
-        connectionMethod: brokerPrefs.connectionMethod,
-        connectionReference: brokerPrefs.connectionReference,
-        csvImported: brokerPrefs.csvImported,
-        autoSync: brokerPrefs.autoSync,
-        syncEveryMinutes: brokerPrefs.syncEveryMinutes,
-        importExecutions: brokerPrefs.importExecutions,
-        readOnly: brokerPrefs.readOnly,
-      }),
-    });
-    if (!r.ok) {
-      setToast(String(r.data?.error || r.data?.message || "Connect failed."));
-      return;
-    }
-    const next = applyServerStatus({ ...brokerPrefs, connected: true }, r.data as BrokerApiStatus);
+    const next = { ...brokerPrefs, connected: false, autoSync: false, importExecutions: false, readOnly: true };
     setBrokerPrefs(next);
     writeBrokerPrefs(next);
-    track("autonomy_broker_toggle", { mode: autopilotMode, connected: true });
-    setToast("Broker connected.");
+    track("autonomy_broker_toggle_blocked", { mode: autopilotMode });
+    setToast("Investing broker connection is disabled. Use Persistent Paper only.");
   }
 
   async function enableMaxAutonomy() {
@@ -675,57 +569,24 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
       setToast("Max autonomy is a Pro feature.");
       return;
     }
-    if (!hasConnectionEvidence(brokerPrefs)) {
-      const tuned: BrokerPrefs = {
-        ...brokerPrefs,
-        connected: false,
-        autoSync: true,
-        syncEveryMinutes: 5,
-        importExecutions: true,
-        readOnly: true,
-      };
-      setBrokerPrefs(tuned);
-      writeBrokerPrefs(tuned);
-      setToast("Autonomy profile set. Add API/OAuth/CSV reference, then connect broker.");
-      return;
-    }
     const tuned: BrokerPrefs = {
       ...brokerPrefs,
-      connected: true,
-      autoSync: true,
+      connected: false,
+      autoSync: false,
       syncEveryMinutes: 5,
-      importExecutions: true,
+      importExecutions: false,
       readOnly: true,
       lastSyncAt: brokerPrefs.lastSyncAt,
     };
 
-    const r = await fetchJSON("/api/broker/connect", {
-      method: "POST",
-      body: JSON.stringify({
-        broker: tuned.broker,
-        accountLabel: tuned.accountLabel,
-        connectionMethod: tuned.connectionMethod,
-        connectionReference: tuned.connectionReference,
-        csvImported: tuned.csvImported,
-        autoSync: tuned.autoSync,
-        syncEveryMinutes: tuned.syncEveryMinutes,
-        importExecutions: tuned.importExecutions,
-        readOnly: tuned.readOnly,
-      }),
-    });
-    if (!r.ok) {
-      setToast(String(r.data?.error || r.data?.message || "Could not enable max autonomy."));
-      return;
-    }
-
-    const next = applyServerStatus(tuned, r.data as BrokerApiStatus);
-    setBrokerPrefs(next);
-    setHandsFreeFixNow(true);
-    writeBrokerPrefs(next);
-    writeHandsFreeFixNow(true);
-    track("autonomy_max_enable", { mode: autopilotMode, broker: next.broker });
+    setBrokerPrefs(tuned);
+    setHandsFreeFixNow(false);
+    writeBrokerPrefs(tuned);
+    writeHandsFreeFixNow(false);
+    track("autonomy_max_enable", { mode: autopilotMode, broker: tuned.broker, canonicalPaperOnly: true });
     await runHealthCheck();
-    setToast("Max autonomy enabled.");
+    setReviewMaxAutonomy(false);
+    setToast("Canonical Paper autonomy enabled. Live broker automation remains blocked.");
   }
 
   async function runCodexOperator() {
@@ -736,9 +597,9 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
       setOperatorSteps((prev) => [...prev, { step, status, detail }]);
     };
     const loadBundleStrict = async () => {
-      const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}&budgetEur=${budget}&_=${Date.now()}`, { method: "GET" });
+      const r = await fetchJSON(`/api/investing/dashboard?mode=${autopilotMode}&budgetEur=${budget}&_=${Date.now()}`, { method: "GET" });
       if (!r.ok) {
-        throw new Error(String(r.data?.error || r.data?.message || `daily_bundle_failed_${r.status}`));
+        throw new Error(String(r.data?.error || r.data?.message || `investing_dashboard_failed_${r.status}`));
       }
       return r.data ?? {};
     };
@@ -768,79 +629,40 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
           setToast("AI Operator parou: sem holdings e sem starter pack.");
           return;
         }
-        const items = parsed.starterPack.map((x: any) => ({
-          symbol: String(x?.symbol || "").toUpperCase(),
-          name: x?.name ? String(x.name) : null,
-          qty: x?.qty == null ? null : Number(x.qty),
-          value_eur: x?.value_eur == null ? Number(x?.valueEur || 0) : Number(x.value_eur),
-        }));
-        const reset = await fetchJSON("/api/portfolio-items/reset", {
+        const dayKey = new Date().toISOString().slice(0, 10);
+        const openAccount = await fetchJSON("/api/investing/paper/accounts", {
           method: "POST",
-          body: JSON.stringify({ mode: autopilotMode, items }),
+          body: JSON.stringify({
+            action: "open_paper_account",
+            portfolioId: "primary",
+            environment: "paper",
+            currency: "EUR",
+            initialDeposit: budget,
+            clientRequestId: `autonomy-starter-paper-${dayKey}-${budget}`,
+          }),
         });
-        if (!reset.ok) {
-          append("Starter pack", "error", String(reset.data?.error || "Could not apply starter pack."));
-          setToast("AI Operator falhou no starter pack.");
+        if (!openAccount.ok) {
+          append("Persistent Paper", "error", String(openAccount.data?.error || "Could not fund Persistent Paper."));
+          setToast("AI Operator falhou ao financiar Persistent Paper.");
           return;
         }
-        append("Starter pack", "ok", `Applied ${Number(reset.data?.inserted || items.length || 0)} holdings automatically.`);
+        append("Persistent Paper", "ok", `Funded canonical Paper with ${fmtEUR(budget)}.`);
         bundle = await loadBundleStrict();
         parsed = readBundleCheck(bundle);
       } else {
-        append("Starter pack", "ok", "Existing holdings detected, skipped.");
+        append("Persistent Paper", "ok", "Existing canonical Paper holdings detected, skipped funding.");
       }
 
       if (parsed.topLeakKey) {
-        if (isAutoFixableLeakKey(parsed.topLeakKey)) {
-          const fix = await fetchJSON("/api/fix-now/run", {
-            method: "POST",
-            body: JSON.stringify({
-              mode: autopilotMode,
-              leakKey: parsed.topLeakKey,
-              maxRounds: 4,
-              budgetEur: budget,
-              previewOnly: !brokerPrefs.connected,
-            }),
-          });
-          if (!fix.ok) {
-            append("FixNow", "error", String(fix.data?.error || "Auto-fix failed."));
-            setToast("AI Operator falhou no FixNow.");
-            return;
-          }
-          const resolved = Boolean(fix.data?.resolved);
-          const appliedRows = Number(fix.data?.appliedRows || 0);
-          const finalLeak = fix.data?.finalLeakKey ? String(fix.data.finalLeakKey) : null;
-          append(
-            "FixNow",
-            resolved ? "ok" : "warn",
-            resolved
-              ? `Resolved automatically (${appliedRows} updates).`
-              : `Applied ${appliedRows} updates. Remaining leak: ${finalLeak || "unknown"}.`
-          );
-        } else {
-          append("FixNow", "warn", `Leak ${parsed.topLeakKey} requires manual flow (Planning/Daily/Portfolio).`);
-        }
+        append("Canonical review", "warn", `Leak ${parsed.topLeakKey} requires Daily proposal review.`);
       } else {
-        append("FixNow", "ok", "No active leak detected.");
+        append("Canonical review", "ok", "No active leak detected.");
       }
 
       bundle = await loadBundleStrict();
       parsed = readBundleCheck(bundle);
 
-      if (brokerPrefs.connected) {
-        const sync = await fetchJSON("/api/broker/sync", {
-          method: "POST",
-          body: JSON.stringify({ mode: autopilotMode }),
-        });
-        if (!sync.ok) {
-          append("Broker sync", "warn", String(sync.data?.error || sync.data?.message || "Sync failed."));
-        } else {
-          const positions = Number((sync.data as any)?.sync?.positions || 0);
-          append("Broker sync", "ok", `Synced ${positions} positions.`);
-        }
-      } else {
-        append("Broker sync", "warn", "Broker not connected. Skipped sync.");
-      }
+      append("Broker sync", "ok", "Skipped by design. Investing Autonomy uses canonical Paper storage.");
 
       bundle = await loadBundleStrict();
       parsed = readBundleCheck(bundle);
@@ -856,25 +678,18 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
           derived: bundle?.derived ?? {},
         };
 
-        const closeDay = await fetchJSON("/api/daily/close", {
+        const dayKey = new Date().toISOString().slice(0, 10);
+        const closeDay = await fetchJSON("/api/investing/daily-cycle", {
           method: "POST",
           body: JSON.stringify({
-            mode: autopilotMode,
-            snapshot: snapshotPayload,
-            dailyDone: {
-              type: "daily_done",
-              title: "Daily completed (AI Operator)",
-              details: {
-                asOf: new Date().toISOString(),
-                mode: autopilotMode,
-                source: "autonomy_operator",
-                hasPlan: parsed.hasPlan,
-                hasHoldings: parsed.hasHoldings,
-                topLeak: parsed.topLeakTitle,
-              },
-            },
+            action: "close_daily_loop",
+            portfolioId: "primary",
+            environment: "paper",
+            clientRequestId: `autonomy-daily-cycle-${dayKey}`,
+            note: `Autonomy operator close: plan=${parsed.hasPlan ? "yes" : "no"} holdings=${parsed.hasHoldings ? "yes" : "no"}`,
           }),
         });
+        void snapshotPayload;
         if (!closeDay.ok) {
           append("Close day", "error", String(closeDay.data?.error || "Close day failed."));
           setToast("AI Operator falhou ao fechar o dia.");
@@ -890,8 +705,8 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
       await runHealthCheck(budget);
       track("autonomy_ai_operator_run", {
         mode: autopilotMode,
-        connected: brokerPrefs.connected,
-        handsFreeFixNow,
+        connected: false,
+        handsFreeFixNow: false,
         budgetEur: budget,
       });
       setToast("AI Operator completed.");
@@ -904,9 +719,9 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     }
   }
 
-  function openFixNow() {
+  function openCanonicalReview() {
     const leak = check.topLeakKey || "general";
-    window.location.href = `/app?tab=portfolio&mode=${autopilotMode}&fixNow=1&fixKey=${encodeURIComponent(leak)}&fixFrom=autonomy`;
+    window.location.href = `/app?tab=daily&mode=${autopilotMode}&review=1&reason=${encodeURIComponent(leak)}`;
   }
 
   const controlModel = useMemo<ControlTowerModel>(() => {
@@ -1038,8 +853,8 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
     const proofQuality = toNumOrNull((executionEvidenceNode as any)?.avgQuality14);
     const topPattern = safeArr((executionCoachNode as any)?.topPatterns)[0];
     const topSuggestion =
-      cleanUtf8Copy((topPattern as any)?.nextStep || (executionCoachNode as any)?.todayRule || "Keep logging broker references and proof data for better calibration.") ||
-      "Keep logging broker references and proof data for better calibration.";
+      cleanUtf8Copy((topPattern as any)?.nextStep || (executionCoachNode as any)?.todayRule || "Keep reviewing canonical Paper evidence for better calibration.") ||
+      "Keep reviewing canonical Paper evidence for better calibration.";
 
     const decisionEngineActive =
       Boolean((modules as any)?.livingEngineV5?.active) ||
@@ -1213,7 +1028,7 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
             {autonomyDecisionView.actionNeededBadgeLabel ? (
               <Badge tone={autonomyDecisionView.actionNeededBadgeTone ?? "warn"}>{autonomyDecisionView.actionNeededBadgeLabel}</Badge>
             ) : null}
-            <Badge tone={autonomyScore >= 85 ? "good" : autonomyScore >= 60 ? "warn" : "bad"}>Autonomy {autonomyScore}/100</Badge>
+            <Badge tone="neutral">Approval required</Badge>
           </div>
         }
       >
@@ -1254,7 +1069,7 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
             </div>
             <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-3">
               <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">State source</div>
-              <div className="mt-1 font-semibold text-zinc-900">{autonomyDecisionView.stabilitySource === "held" ? "Stabilizing" : "Live"}</div>
+              <div className="mt-1 font-semibold text-zinc-900">{autonomyDecisionView.stabilitySource === "held" ? "Last confirmed state" : controlModel.lastEvaluationAt ? "Confirmed evaluation" : "Unavailable"}</div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1267,33 +1082,59 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
               {loading ? "Checking..." : "Refresh system status"}
             </button>
             {proActive ? (
-              <button type="button" onClick={enableMaxAutonomy} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white">
-                Apply max autonomy profile
+              <button type="button" onClick={() => setReviewMaxAutonomy(true)} className="rounded-xl border border-[#365d98] bg-[#12203a] px-4 py-2 text-sm font-semibold text-white">
+                Review autonomy profile
               </button>
             ) : (
-              <a href="/pricing" className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900">
-                Start 7-day Pro Trial
-              </a>
+              <Badge tone="neutral">Monitoring only</Badge>
             )}
+          </div>
+          {reviewMaxAutonomy ? (
+            <div role="dialog" aria-label="Review autonomy profile" className="rounded-[16px] border border-[#365d98] bg-[#0c1629] p-4">
+              <div className="text-sm font-bold text-white">Review before enabling</div>
+              <p className="mt-2 text-sm leading-6 text-[#b7c7dd]">This enables canonical Paper monitoring and daily-cycle preparation. Broker access and Live capital execution remain blocked.</p>
+              <div className="mt-3 grid gap-2 text-xs text-[#dbe7f8] sm:grid-cols-2">
+                <div>Enabled: monitoring and recommendations</div><div>Limit: Persistent Paper only</div>
+                <div>Requires: active plan and Paper state</div><div>Revocation: available immediately below</div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={enableMaxAutonomy} className="rounded-xl bg-[#2f6df6] px-4 py-2 text-sm font-semibold text-white">Confirm permissions</button>
+                <button type="button" onClick={() => setReviewMaxAutonomy(false)} className="rounded-xl border border-[#31415f] px-4 py-2 text-sm font-semibold text-[#dbe7f8]">Cancel</button>
+              </div>
+            </div>
+          ) : null}
+          <div className="rounded-[16px] border border-[#4a3514] bg-[#241b10] p-4">
+            <div className="text-[11px] font-bold uppercase tracking-[.14em] text-[#d2a85f]">Emergency controls</div>
+            <p className="mt-2 text-sm text-[#d8c6a8]">These controls change authority immediately and never place an order.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={pauseAutonomy} className="min-h-11 rounded-xl border border-[#6c5122] px-4 text-sm font-semibold text-[#f4cf91]">Pause autonomy</button>
+              <button type="button" onClick={() => void revokeAutomationPermissions()} className="min-h-11 rounded-xl border border-[#7b414b] px-4 text-sm font-semibold text-[#ffc1c1]">Revoke permissions</button>
+              <button type="button" onClick={() => setHandsFreeFixNow(false)} className="min-h-11 rounded-xl border border-[#31415f] px-4 text-sm font-semibold text-[#dbe7f8]">Require confirmation</button>
+            </div>
           </div>
         </div>
       </Card>
 
-      {!proActive ? (
-        <Card title={controlModel.paywall.title} subtitle={controlModel.paywall.subtitle} right={<Badge tone="warn">Free</Badge>}>
-          <div className="space-y-3">
-            <div className="rounded-xl border border-zinc-100 bg-white px-3 py-2 text-sm text-zinc-700">{controlModel.paywall.trust}</div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Monitoring and intelligence stay visible. Deep automation execution is unlocked on Pro.
+      <Card title="Delegated permissions" subtitle="What Syntrake may do now, the applicable limit, and how authority is removed." right={<Badge tone="neutral">Explicit authority</Badge>}>
+        <div className="space-y-2 text-sm">
+          {[
+            { label: "Monitor data", state: "Allowed", limit: "Canonical Paper dashboard only", used: controlModel.lastEvaluationAt ? fmtTime(controlModel.lastEvaluationAt) : "Not used yet" },
+            { label: "Create recommendations", state: check.hasPlan ? "Allowed" : "Blocked", limit: check.hasPlan ? "Must follow the active plan" : "Requires an active plan", used: controlModel.lastEvaluationAt ? fmtTime(controlModel.lastEvaluationAt) : "Not used yet" },
+            { label: "Prepare instructions", state: proActive ? "Approval required" : "Blocked", limit: "Never submits an order", used: "No capital action" },
+            { label: "Send alerts", state: "Approval required", limit: "User-configured channels only", used: "No delivery inferred" },
+            { label: "Initiate execution", state: "Blocked", limit: "Explicit confirmation required", used: "No capital action" },
+            { label: "Execute without confirmation", state: "Prohibited", limit: "Not granted in this profile", used: "Never" },
+          ].map((permission) => (
+            <div key={permission.label} className="grid gap-2 rounded-xl border border-[#23314c] bg-[#0d182d] px-4 py-3 md:grid-cols-[1.1fr_.8fr_1.3fr_1fr_auto] md:items-center">
+              <span className="font-semibold text-[#eef5ff]">{permission.label}</span>
+              <Badge tone={permission.state === "Allowed" ? "good" : permission.state === "Prohibited" || permission.state === "Blocked" ? "bad" : "warn"}>{permission.state}</Badge>
+              <span className="text-[#aebed4]">{permission.limit}</span>
+              <span className="text-xs text-[#91a3bc]">Last use: {permission.used}</span>
+              <button type="button" onClick={permission.state === "Allowed" ? pauseAutonomy : undefined} disabled={permission.state !== "Allowed"} className="min-h-11 rounded-xl border border-[#31415f] px-3 text-xs font-semibold text-[#dbe7f8] disabled:opacity-40">Revoke</button>
             </div>
-            <div>
-              <a href="/pricing" className="inline-flex rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
-                Start 7-day Pro Trial
-              </a>
-            </div>
-          </div>
-        </Card>
-      ) : null}
+          ))}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
@@ -1460,7 +1301,7 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
 
       <Card
         title="Automation Actions (Secondary)"
-        subtitle="Broker, sync and operator controls remain available, but secondary to live intelligence."
+        subtitle="Canonical Paper controls remain available; broker and FixNow automation are disabled for Investing."
         right={
           <button
             type="button"
@@ -1475,24 +1316,24 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
           proActive ? (
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-                <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Broker: <span className="font-semibold">{brokerPrefs.connected ? "connected" : "disconnected"}</span></div>
-                <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Sync cadence: <span className="font-semibold">{brokerPrefs.autoSync ? `${Math.max(5, Number(brokerPrefs.syncEveryMinutes || 15))}m` : "manual"}</span></div>
-                <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Hands-free: <span className="font-semibold">{handsFreeFixNow ? "enabled" : "disabled"}</span></div>
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Broker: <span className="font-semibold">blocked</span></div>
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Read model: <span className="font-semibold">canonical</span></div>
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Operator: <span className="font-semibold">{handsFreeFixNow ? "prepared" : "manual"}</span></div>
                 <div className="rounded-xl border border-zinc-100 bg-zinc-50 px-3 py-2">Top blocker: <span className="font-semibold">{check.topLeakTitle || "none"}</span></div>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={toggleBrokerConnection} className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900">
-                  {brokerPrefs.connected ? "Disconnect broker" : "Connect broker"}
+                  Block broker access
                 </button>
                 <button type="button" onClick={syncNow} className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900">
-                  Sync now
+                  Refresh canonical state
                 </button>
                 <a
-                  href={`/app?tab=autonomy&mode=${autopilotMode}&brokerSetup=1`}
+                  href={`/app?tab=daily&mode=${autopilotMode}`}
                   className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900"
                 >
-                  Open broker setup
+                  Open Daily review
                 </a>
                 <button
                   type="button"
@@ -1502,7 +1343,7 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
                     handsFreeFixNow ? "bg-emerald-600 text-white hover:bg-emerald-700" : "border border-zinc-200 bg-white text-zinc-900"
                   )}
                 >
-                  {handsFreeFixNow ? "Disable hands-free" : "Enable hands-free"}
+                  {handsFreeFixNow ? "Disable operator preference" : "Enable operator preference"}
                 </button>
               </div>
               <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3">
@@ -1555,8 +1396,8 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
                   Clear run log
                 </button>
                 {check.topLeakKey ? (
-                  <button type="button" onClick={openFixNow} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">
-                    Open FixNow workflow
+                  <button type="button" onClick={openCanonicalReview} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">
+                    Open Daily review
                   </button>
                 ) : null}
               </div>
@@ -1581,13 +1422,10 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
                 Free mode keeps monitoring visible, while deep automation execution remains locked.
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                <div className="rounded-xl border border-zinc-100 bg-white px-3 py-2">Broker status: <span className="font-semibold">{brokerPrefs.connected ? "connected" : "not connected"}</span></div>
-                <div className="rounded-xl border border-zinc-100 bg-white px-3 py-2">Auto-sync: <span className="font-semibold">{brokerPrefs.autoSync ? "enabled" : "disabled"}</span></div>
+                <div className="rounded-xl border border-zinc-100 bg-white px-3 py-2">Broker status: <span className="font-semibold">blocked</span></div>
+                <div className="rounded-xl border border-zinc-100 bg-white px-3 py-2">Auto-sync: <span className="font-semibold">disabled</span></div>
                 <div className="rounded-xl border border-zinc-100 bg-white px-3 py-2">Top blocker: <span className="font-semibold">{check.topLeakTitle || "none"}</span></div>
               </div>
-              <a href="/pricing" className="inline-flex rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
-                Start 7-day Pro Trial
-              </a>
             </div>
           )
         ) : (
@@ -1595,9 +1433,6 @@ export default function AutonomyTab({ mode, isPaid = false }: { mode?: string; i
         )}
       </Card>
 
-      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-        Syntrake continuously evaluates your capital strategy and adapts as conditions evolve.
-      </div>
     </div>
   );
 }

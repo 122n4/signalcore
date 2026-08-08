@@ -224,17 +224,20 @@ function monthsToTargetLabel(months: number | null) {
 function withFixContextHref(href: string, args: { mode: Mode; leakKey: string | null; source: "daily" | "advisor" }) {
   const raw = sanitizeProductHref({
     href,
-    fallbackHref: `/app?tab=portfolio&mode=${args.mode}`,
+    fallbackHref: `/app?tab=daily&mode=${args.mode}`,
     mode: args.mode,
   });
   try {
     const u = new URL(raw, "http://signalcore.local");
-    u.searchParams.set("fixNow", "1");
-    u.searchParams.set("fixKey", args.leakKey || "general");
-    u.searchParams.set("fixFrom", args.source);
+    u.pathname = "/app";
+    u.searchParams.set("tab", "daily");
+    u.searchParams.set("mode", args.mode);
+    u.searchParams.set("review", "1");
+    u.searchParams.set("reason", args.leakKey || "general");
+    u.searchParams.set("source", args.source);
     return `${u.pathname}${u.search}${u.hash}`;
   } catch {
-    return `/app?tab=portfolio&mode=${args.mode}&fixNow=1&fixKey=${encodeURIComponent(args.leakKey || "general")}&fixFrom=${args.source}`;
+    return `/app?tab=daily&mode=${args.mode}&review=1&reason=${encodeURIComponent(args.leakKey || "general")}&source=${args.source}`;
   }
 }
 
@@ -315,16 +318,14 @@ export default function AdvisorTab({
       else setRefreshing(true);
       setError(null);
 
-      const r = await fetchJSON(`/api/daily-bundle?mode=${autopilotMode}`, { method: "GET" });
+      const r = await fetchJSON(`/api/investing/dashboard?mode=${autopilotMode}&_=${Date.now()}`, { method: "GET" });
       if (!r.ok) {
         setError(r.data?.error || `Failed (${r.status})`);
-        setBundle(null);
         return;
       }
       setBundle(r.data);
     } catch (e: any) {
       setError(e?.message || "Unknown error");
-      setBundle(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -338,8 +339,17 @@ export default function AdvisorTab({
   }, [autopilotMode]);
 
   useEffect(() => {
+    if (!loading) return;
+    const timeout = window.setTimeout(() => {
+      setLoading(false);
+      setError("Could not update the analysis within 10 seconds. No new recommendation was generated.");
+    }, 10_000);
+    return () => window.clearTimeout(timeout);
+  }, [loading]);
+
+  useEffect(() => {
     if (loading || Boolean(error)) return;
-    setShowFirstAdvisorIntro(!readFirstAdvisorIntroSeen(autopilotMode, storageUserId));
+    setShowFirstAdvisorIntro(false);
   }, [loading, error, autopilotMode, storageUserId]);
 
   const plan = useMemo(() => bundle?.plan ?? null, [bundle]);
@@ -500,6 +510,7 @@ export default function AdvisorTab({
   );
   const actionGateStatus = String(((daily?.actionGate ?? derived?.actionGate) as any)?.status || "").toLowerCase().trim() || "unknown";
   const coveragePct = Math.max(0, Math.round(Number(derived?.pricing?.coveragePct ?? diagnostics?.pricing?.coveragePct ?? 0)));
+  const advisorDataState = !hasHoldings ? "empty" : coveragePct < 80 ? "partial" : "fresh";
   const planGoalLabel =
     String((plan as any)?.goal || (plan as any)?.goalType || (plan as any)?.goal_type || (plan as any)?.objective || "").trim() ||
     String((dailyPlanTrack as any)?.phase?.goal || "").trim() ||
@@ -1895,36 +1906,6 @@ export default function AdvisorTab({
                   })}
             </Badge>
 
-            <Pill>
-              Score: <span className="ml-1 font-semibold">{Math.round(autopilotScore || 0)}</span>
-            </Pill>
-
-            {!isBeginnerUX && typeof safetyScore === "number" ? (
-              <Pill>
-                Safety: <span className="ml-1 font-semibold">{Math.round(safetyScore)}</span>
-              </Pill>
-            ) : null}
-
-            {!isBeginnerUX && typeof growthScore === "number" ? (
-              <Pill>
-                Growth: <span className="ml-1 font-semibold">{Math.round(growthScore)}</span>
-              </Pill>
-            ) : null}
-
-            {!isBeginnerUX && typeof pressureScore === "number" ? (
-              <Pill>
-                {pickByLang(lang, {
-                  en: "Pressure",
-                  pt: "Pressao",
-                  es: "Presion",
-                  fr: "Pression",
-                  de: "Druck",
-                  it: "Pressione",
-                })}
-                : <span className="ml-1 font-semibold">{Math.round(pressureScore)}</span>
-              </Pill>
-            ) : null}
-
             {!isBeginnerUX ? (
               <Pill>
                 {pickByLang(lang, {
@@ -1940,10 +1921,10 @@ export default function AdvisorTab({
             ) : null}
           </div>
 
-          <div className="text-sm text-zinc-600">
+          <div className="text-sm text-[#95a6c2]">
             {pickByLang(lang, {
-              en: "This tab explains why the autopilot is acting, with institutional drivers.",
-              pt: "Este tab explica porque o autopilot esta a agir, com drivers institucionais.",
+              en: "Contextual recommendations linked to evidence, plan rules, alternatives and a clear validity window.",
+              pt: "Recomendacoes contextuais ligadas a evidencia, regras do plano, alternativas e um prazo de validade claro.",
               es: "Esta pestana explica por que el autopilot esta actuando, con drivers institucionales.",
               fr: "Cet onglet explique pourquoi l'autopilot agit, avec des facteurs institutionnels.",
               de: "Dieser Tab erklaert, warum der Autopilot handelt, mit institutionellen Treibern.",
@@ -1977,7 +1958,7 @@ export default function AdvisorTab({
         </button>
       </div>
 
-      {!loading ? (
+      {false && !loading ? (
         <div className="mb-5">
           <InvestingOperatingLoopRail
             summary={investingLoopSummary}
@@ -1999,7 +1980,7 @@ export default function AdvisorTab({
         </div>
       ) : null}
 
-      {!loading ? (
+      {false && !loading ? (
         <div className="mb-5">
           <ProofRail
             theme="dark"
@@ -2041,12 +2022,27 @@ export default function AdvisorTab({
         </div>
       ) : null}
 
+      {!loading && error && bundle ? (
+        <div role="alert" className="mb-5 rounded-[16px] border border-[#4a3514] bg-[#362813] p-4 text-sm text-[#f4cf91]">
+          Update failed. The last confirmed analysis remains visible and no new recommendation was generated. {error}
+        </div>
+      ) : null}
+
+      {!loading && bundle ? (
+        <div className="mb-5 grid gap-3 rounded-[16px] border border-[#23314c] bg-[#0d182d] p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#7f91ad]">Data used</span><span className="mt-1 block font-semibold text-[#eef5ff]">Plan + portfolio + pricing</span></div>
+          <div><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#7f91ad]">Last confirmed</span><span className="mt-1 block font-semibold text-[#eef5ff]">{fmtTime(lastSnapshotAt)}</span></div>
+          <div><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#7f91ad]">Coverage</span><span className="mt-1 block font-semibold text-[#eef5ff]">{coveragePct}% · {advisorDataState}</span></div>
+          <div><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#7f91ad]">Execution authority</span><span className="mt-1 block font-semibold text-[#eef5ff]">None · analysis only</span></div>
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="rounded-2xl border border-zinc-200 bg-white p-6">
           <div className="text-sm text-zinc-600">
             {pickByLang(lang, {
-              en: "Loading...",
-              pt: "A carregar...",
+              en: "Loading the last confirmed analysis...",
+              pt: "A carregar a ultima analise confirmada...",
               es: "Cargando...",
               fr: "Chargement...",
               de: "Laden...",
@@ -2054,7 +2050,7 @@ export default function AdvisorTab({
             })}
           </div>
         </div>
-      ) : error ? (
+      ) : error && !bundle ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6">
           <div className="text-sm font-semibold text-rose-900 mb-1">
             {pickByLang(lang, {
@@ -2067,6 +2063,12 @@ export default function AdvisorTab({
             })}
           </div>
           <div className="text-sm text-rose-900/90">{error}</div>
+        </div>
+      ) : advisorDataState !== "fresh" ? (
+        <div role="alert" className="rounded-[18px] border border-[#4a3514] bg-[#362813] p-5 text-[#f4cf91]">
+          <div className="text-sm font-bold">{advisorDataState === "empty" ? "Analysis unavailable" : "Partial analysis"}</div>
+          <p className="mt-2 text-sm leading-6">{advisorDataState === "empty" ? "Add at least one holding before Advisor relates evidence to your plan." : `Pricing coverage is ${coveragePct}%. Advisor will not issue a definitive or execution-ready recommendation until coverage reaches 80%.`}</p>
+          <button type="button" onClick={goPortfolio} className="mt-4 min-h-11 rounded-xl bg-[#2f6df6] px-4 text-sm font-semibold text-white">Open Portfolio</button>
         </div>
       ) : showFirstAdvisorIntro ? (
         <div className="space-y-5">
@@ -2149,7 +2151,7 @@ export default function AdvisorTab({
                 </div>
               </div>
               <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                <div className="text-sm font-semibold text-zinc-900">Safety Brain</div>
+                <div className="text-sm font-semibold text-zinc-900">Plan-limit analysis</div>
                 <div className="mt-2 text-xs text-zinc-700">
                   <span className="font-semibold text-zinc-900">Why this appears:</span> capital protection comes before growth.
                 </div>
@@ -2177,7 +2179,7 @@ export default function AdvisorTab({
               </div>
               {isProUX ? (
                 <div className="rounded-xl border border-zinc-200 bg-white px-3 py-3">
-                  <div className="text-sm font-semibold text-zinc-900">Decision pressure / Growth Brain</div>
+                  <div className="text-sm font-semibold text-zinc-900">Decision pressure and trajectory</div>
                   <div className="mt-2 text-xs text-zinc-700">
                     <span className="font-semibold text-zinc-900">Why this appears:</span> Pro users need deeper context for strategic adjustments.
                   </div>
@@ -2189,7 +2191,7 @@ export default function AdvisorTab({
                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3">
                   <div className="text-sm font-semibold text-zinc-900">Pro blocks (optional later)</div>
                   <div className="mt-2 text-xs text-zinc-700">
-                    Decision pressure and Growth Brain are deeper strategy diagnostics shown in Pro mode.
+                    Decision pressure and trajectory are secondary diagnostics shown when supporting evidence is available.
                   </div>
                 </div>
               )}
