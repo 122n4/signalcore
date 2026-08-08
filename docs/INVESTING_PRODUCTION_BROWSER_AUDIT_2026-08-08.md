@@ -3,15 +3,18 @@
 Data: 2026-08-08
 Ambiente: producao `https://www.syntrake.com`
 Sessao auditada: Chrome autenticado do utilizador
-Commit em producao auditado: `9ea6b2c3f feat(investing): finalize canonical paper dashboard`
+Commit app auditado: `d20fa6597 fix(investing): remove fake disabled settings action`
+Deploy auditado: `dpl_6ZACYBVmR2WeNNn4iGQSK2TWpyMf`
 
 ## 1. Resultado executivo
 
 Estado geral: **aprovado apos correcao complementar de vistoria funcional**.
 
-Nao foram encontrados crashes, erros de consola da app, overflow horizontal desktop/mobile, textos de execucao Live indevidos, nem falhas no QA Investing de producao.
+Nao foram encontrados crashes, overflow horizontal desktop/mobile, textos de execucao Live indevidos, botoes Investing sem navegacao, botoes falsos/desativados visiveis, nem falhas no QA Investing de producao.
 
 Revisao complementar: a primeira auditoria foi insuficiente porque validou renderizacao e QA, mas nao fez uma vistoria funcional completa aos botoes. A vistoria complementar encontrou um botao visivel mas inutil em Settings (`Reset settings disabled in audit build`). Esse controlo foi removido da UI e substituido por texto informativo nao clicavel. Foi adicionada uma guarda em teste para impedir botoes de acao falsos/desativados na superficie Investing.
+
+Nota de consola: durante automacao Chrome apareceram erros `Statsig` de `ab.chatgpt.com` pertencentes ao ambiente/connector ChatGPT, nao ao dominio `syntrake.com`. Nao foram classificados como erro first-party da app.
 
 ## 2. Superficies verificadas no Chrome
 
@@ -171,6 +174,33 @@ Resultado:
 - logo/shell home: clicavel e volta ao Today Investing;
 - user menu Clerk: abre menu autenticado; a auditoria nao executou sign-out nem acoes destrutivas;
 - Settings: sem botoes falsos/desativados apos correcao.
+
+Inventario final de controlos Investing no Today:
+
+- 18 controlos visiveis auditados;
+- 1 link shell/home;
+- 7 botoes top navigation;
+- 1 botao user menu;
+- 2 botoes workspace;
+- 7 botoes side navigation;
+- 0 botoes visiveis desativados;
+- 0 ocorrencias de `Reset settings disabled in audit build`.
+
+### 4.7 Deploy e smoke producao
+
+Deploy:
+
+- Vercel deployment: `https://signalcore-site-e55lgsue8-nunos-projects-5ce64860.vercel.app`;
+- aliases: `https://syntrake.com`, `https://www.syntrake.com`;
+- status: `Ready`;
+- build: passou;
+- warning de build: tracing/NFT em codigo `ops/trading`, nao introduzido por esta correcao.
+
+Smoke:
+
+- `https://www.syntrake.com/api/health`: HTTP 200;
+- `https://www.syntrake.com/app?tab=daily&mode=investing`: HTTP 200 com redirect esperado para sign-in em chamada anonima;
+- Chrome autenticado: app abriu diretamente em Investing, sem redirect para sign-in.
 
 ## 5. Estado final
 
