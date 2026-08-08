@@ -24,7 +24,6 @@ import TradingTab from "@/app/app/tabs/TradingTab";
 import InvestingDashboardSurface from "@/app/app/tabs/InvestingDashboardSurface";
 import JournalTab from "@/app/app/tabs/JournalTab";
 import AlertsTab from "@/app/app/tabs/AlertsTab";
-import BrokerPageClient from "@/app/app/broker/BrokerPageClient";
 import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
 import {
   buildModeAwareNavItems,
@@ -486,7 +485,6 @@ export default function AppUI() {
   );
   const [lockedNavTarget, setLockedNavTarget] = useState<ViewKey | null>(null);
 
-  const brokerSetupRequested = (search?.get("brokerSetup") ?? "") === "1";
   const welcomeSetupRequested = (search?.get("welcomeSetup") ?? "") === "1";
   const offlineSetupRequested = (search?.get("offlineSetup") ?? "") === "1";
 
@@ -762,12 +760,7 @@ export default function AppUI() {
               {view === "portfolio" && <InvestingDashboardSurface page="portfolio" />}
               {view === "reports" && <InvestingDashboardSurface page="reports" />}
               {view === "settings" && <InvestingDashboardSurface page="settings" />}
-              {view === "autonomy" &&
-                (brokerSetupRequested ? (
-                  <BrokerPageClient />
-                ) : (
-                  <InvestingDashboardSurface page="autonomy" />
-                ))}
+              {view === "autonomy" && <InvestingDashboardSurface page="autonomy" />}
             </>
           ) : tradingViewLocked && lockedTradingSurface ? (
             <TradingUpgradeGate surface={lockedTradingSurface} />

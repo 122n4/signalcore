@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -24,6 +24,7 @@ import {
 export type InvestingSurfacePage = "daily" | "planning" | "portfolio" | "research" | "reports" | "autonomy" | "settings";
 
 type Tone = "good" | "warn" | "bad" | "neutral" | "info";
+type RefreshDashboard = () => Promise<void>;
 
 async function fetchJSON(url: string, opts?: RequestInit) {
   const res = await fetch(url, {
@@ -66,6 +67,15 @@ function fmtDateTime(value?: string | null) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "Unavailable";
   return date.toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function makeClientRequestId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizedMoneyInput(value: string) {
+  const clean = value.trim().replace(",", ".");
+  return /^\d{1,10}(?:\.\d{1,8})?$/.test(clean) && Number(clean) > 0 ? clean : null;
 }
 
 function badgeTone(tone: Tone) {
@@ -144,6 +154,33 @@ function MetricCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function ActionButton({
+  children,
+  onClick,
+  tone = "info",
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  tone?: Tone;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        "inline-flex min-h-10 items-center justify-center rounded-lg border px-4 py-2 text-sm font-black transition",
+        tone === "good" && "border-emerald-400/30 bg-emerald-400/14 text-emerald-100 hover:bg-emerald-400/20",
+        tone === "warn" && "border-amber-400/30 bg-amber-400/14 text-amber-100 hover:bg-amber-400/20",
+        tone === "bad" && "border-rose-400/30 bg-rose-400/14 text-rose-100 hover:bg-rose-400/20",
+        tone === "info" && "border-sky-400/30 bg-sky-400/14 text-sky-100 hover:bg-sky-400/20",
+        tone === "neutral" && "border-[#263650] bg-[#0b1729] text-[#dbe7f8] hover:bg-[#102242]",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -274,6 +311,10 @@ function buildViewModel(data: any) {
     };
   });
   const coveragePct = num(portfolio?.valuation?.coveragePct ?? decision?.dataQuality?.pricingCoveragePct, items.length ? 0 : 100);
+  const accountEnvironment = String(portfolio?.environment || "").toLowerCase();
+  const accountStatus = String(portfolio?.accountStatus || "").toLowerCase();
+  const hasPaperAccount = Boolean(portfolio?.accountId && accountEnvironment === "paper" && accountStatus === "active");
+  const valuationSource = String(portfolio?.valuationSource || decision?.dataQuality?.valuationSource || "unknown");
   return {
     decision,
     runtime,
@@ -286,12 +327,25 @@ function buildViewModel(data: any) {
     actionRows,
     allocationRows,
     coveragePct,
+    accountEnvironment,
+    accountStatus,
+    hasPaperAccount,
+    valuationSource,
     queue: data?.daily?.execution?.queue ?? null,
     order: data?.daily?.execution?.order ?? null,
     receipts: Array.isArray(data?.derived?.receiptsTimeline) ? data.derived.receiptsTimeline : [],
     asOf: data?.asOf ?? decision?.asOf ?? null,
     lastSnapshotAt: data?.derived?.lastSnapshotAt ?? data?.daily?.lastSnapshotAt ?? null,
   };
+}
+
+function StatusRow({ label, value, tone = "neutral" }: { label: string; value: React.ReactNode; tone?: Tone }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-[#22314d] py-2 text-sm last:border-0">
+      <span className="text-[#8fa2bf]">{label}</span>
+      <span className={clsx("text-right font-bold", tone === "good" ? "text-emerald-300" : tone === "warn" ? "text-amber-300" : tone === "bad" ? "text-rose-300" : "text-white")}>{value}</span>
+    </div>
+  );
 }
 
 function Shell({ page, data, loading, error, children }: { page: InvestingSurfacePage; data: any; loading: boolean; error: string | null; children: React.ReactNode }) {
@@ -368,11 +422,12 @@ function Shell({ page, data, loading, error, children }: { page: InvestingSurfac
 }
 
 function TopMetrics({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
+  const accountValue = vm.hasPaperAccount ? "Paper active" : "Setup required";
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
       <MetricCard icon={<Target className="h-4 w-4" />} label="Active plan" value={vm.plan ? "Active" : "Missing"} detail={vm.decision?.risk?.objective || "Long-term mandate"} tone={vm.plan ? "good" : "warn"} />
-      <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Account mode" value="Paper active" detail="Manual approval controls" tone="info" />
-      <MetricCard icon={<Wallet className="h-4 w-4" />} label="Cash available" value={fmtEUR(vm.cashEur)} detail="Canonical cash balance" tone="good" />
+      <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Account mode" value={accountValue} detail={vm.accountStatus || "No active account"} tone={vm.hasPaperAccount ? "info" : "warn"} />
+      <MetricCard icon={<Wallet className="h-4 w-4" />} label="Cash available" value={fmtEUR(vm.cashEur)} detail="Canonical cash balance" tone={vm.hasPaperAccount ? "good" : "warn"} />
       <MetricCard icon={<BarChart3 className="h-4 w-4" />} label="Portfolio value" value={fmtEUR(vm.totalEur)} detail={`${vm.coveragePct}% price coverage`} tone={vm.coveragePct >= 90 ? "good" : "warn"} />
       <MetricCard icon={<CalendarDays className="h-4 w-4" />} label="Last daily cycle" value={fmtDateTime(vm.lastSnapshotAt)} detail={vm.receipts.length ? `${vm.receipts.length} receipts` : "No receipts yet"} tone={vm.lastSnapshotAt ? "good" : "warn"} />
     </div>
@@ -560,10 +615,185 @@ function PlanPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
   );
 }
 
-function PortfolioPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
+function PortfolioFundingPanel({ vm, onRefresh }: { vm: ReturnType<typeof buildViewModel>; onRefresh: RefreshDashboard }) {
+  const router = useRouter();
+  const [amount, setAmount] = useState("10000");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: Tone; text: string } | null>(null);
+  const accountId = String(vm.portfolio?.accountId || "");
+  const hasPlan = Boolean(vm.plan);
+  const hasAccount = Boolean(accountId);
+  const hasCash = vm.cashEur > 0;
+  const queueState = String(vm.queue?.operational_state || "").toLowerCase();
+  const approvalStatus = String(vm.queue?.approval_status || "").toLowerCase();
+  const queueVersion = Number(vm.queue?.version);
+  const tradeAction = vm.actionRows.find((row: any) => row?.side === "buy" || row?.side === "sell");
+  const tradeSymbol = String(tradeAction?.symbol || "").toUpperCase();
+  const canSubmitPaper =
+    Boolean(vm.queue?.id)
+    && Number.isSafeInteger(queueVersion)
+    && queueVersion > 0
+    && queueState === "approved"
+    && (approvalStatus === "approved" || approvalStatus === "not_required")
+    && Boolean(tradeSymbol);
+
+  async function run(label: string, work: () => Promise<void>) {
+    if (busy) return;
+    setBusy(label);
+    setMessage(null);
+    try {
+      await work();
+      await onRefresh();
+    } catch (error: any) {
+      setMessage({ tone: "bad", text: error?.message || "Paper action failed." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function openAccount() {
+    const initialDeposit = normalizedMoneyInput(amount);
+    if (!initialDeposit) {
+      setMessage({ tone: "warn", text: "Enter a valid Paper cash amount before opening the account." });
+      return;
+    }
+    await run("open_account", async () => {
+      const result = await fetchJSON("/api/investing/paper/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "open_paper_account",
+          portfolioId: "primary",
+          environment: "paper",
+          currency: "EUR",
+          initialDeposit,
+          clientRequestId: makeClientRequestId("portfolio-paper-account"),
+        }),
+      });
+      if (!result.ok) throw new Error(result.data?.error || "Failed to open Paper account.");
+      setMessage({ tone: "good", text: "Paper account opened and funded. Create a daily proposal next." });
+    });
+  }
+
+  async function depositCash() {
+    const depositAmount = normalizedMoneyInput(amount);
+    if (!accountId || !depositAmount) {
+      setMessage({ tone: "warn", text: "A valid Paper account and amount are required before adding cash." });
+      return;
+    }
+    await run("deposit_cash", async () => {
+      const result = await fetchJSON(`/api/investing/paper/accounts/${accountId}/movements`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "deposit",
+          environment: "paper",
+          amount: depositAmount,
+          currency: "EUR",
+          clientRequestId: makeClientRequestId("portfolio-cash-deposit"),
+        }),
+      });
+      if (!result.ok) throw new Error(result.data?.error || "Failed to add Paper cash.");
+      setMessage({ tone: "good", text: "Paper cash added. Refreshing canonical portfolio state." });
+    });
+  }
+
+  async function createProposal() {
+    if (!hasPlan || !hasAccount || !hasCash) {
+      setMessage({ tone: "warn", text: "Create a plan, open a Paper account, and add cash before generating a proposal." });
+      return;
+    }
+    await run("close_day", async () => {
+      const result = await fetchJSON("/api/investing/daily-cycle", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "close_daily_loop",
+          portfolioId: "primary",
+          clientRequestId: makeClientRequestId("portfolio-daily-cycle"),
+          environment: "paper",
+          note: "Portfolio add-holdings workflow",
+        }),
+      });
+      if (!result.ok) throw new Error(result.data?.error || "Failed to create Paper proposal.");
+      setMessage({ tone: "good", text: "Daily proposal created. Submit the Paper order only after review." });
+    });
+  }
+
+  async function submitPaperOrder() {
+    if (!canSubmitPaper) {
+      setMessage({ tone: "warn", text: "No approved Paper queue is ready to submit yet." });
+      return;
+    }
+    await run("submit_order", async () => {
+      const result = await fetchJSON("/api/investing/paper/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          queueId: String(vm.queue.id),
+          expectedQueueVersion: queueVersion,
+          symbol: tradeSymbol,
+          clientRequestId: makeClientRequestId(`portfolio-paper-order-${tradeSymbol.toLowerCase()}`),
+          environment: "paper",
+        }),
+      });
+      if (!result.ok) throw new Error(result.data?.error || "Paper order submission failed.");
+      setMessage({ tone: "good", text: `${tradeSymbol} submitted to Paper. The worker/fill lifecycle will create the canonical holding.` });
+    });
+  }
+
+  const steps = [
+    { label: "Plan", detail: hasPlan ? "Active Investing plan found" : "Plan required before proposals", done: hasPlan },
+    { label: "Paper account", detail: hasAccount ? "Canonical Paper account active" : "Open a Paper account", done: hasAccount },
+    { label: "Cash", detail: hasCash ? `${fmtEUR(vm.cashEur)} available` : "Add Paper cash before buying", done: hasCash },
+    { label: "Proposal", detail: vm.queue?.operational_state || "Create a daily proposal", done: Boolean(vm.queue?.id) },
+    { label: "Order", detail: vm.order?.status || "Submit approved Paper order", done: Boolean(vm.order?.id) },
+  ];
+
+  return (
+    <Panel title="Add Holdings - Canonical Paper Flow" subtitle="Holdings are created by Paper orders and fills, not by manual position entry">
+      <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
+        <div className="grid gap-2 md:grid-cols-5">
+          {steps.map((step) => (
+            <div key={step.label} className="rounded-lg border border-[#22314d] bg-[#081424] p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-black uppercase tracking-[0.08em] text-white">{step.label}</div>
+                {step.done ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <AlertTriangle className="h-4 w-4 text-amber-300" />}
+              </div>
+              <div className="mt-2 text-xs leading-5 text-[#8fa2bf]">{step.detail}</div>
+            </div>
+          ))}
+        </div>
+        <div className="space-y-3">
+          <label className="block text-xs font-bold uppercase tracking-[0.08em] text-[#8fa2bf]" htmlFor="paper-cash-amount">Paper cash amount</label>
+          <input
+            id="paper-cash-amount"
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            className="w-full rounded-lg border border-[#263650] bg-[#081424] px-3 py-2 text-sm font-bold text-white outline-none focus:border-sky-300"
+          />
+          <div className="flex flex-wrap gap-2">
+            {!hasPlan ? <ActionButton tone="warn" onClick={() => router.push("/app?tab=planning&mode=investing")}>Open Plan</ActionButton> : null}
+            {!hasAccount && !busy ? <ActionButton tone="good" onClick={openAccount}>Open & fund Paper</ActionButton> : null}
+            {hasAccount && !busy ? <ActionButton tone="info" onClick={depositCash}>Add Paper cash</ActionButton> : null}
+            {hasPlan && hasAccount && hasCash && !busy ? <ActionButton tone="good" onClick={createProposal}>Create Paper proposal</ActionButton> : null}
+            {canSubmitPaper && !busy ? <ActionButton tone="good" onClick={submitPaperOrder}>Submit {tradeSymbol} to Paper</ActionButton> : null}
+            {busy ? <div className="rounded-lg border border-sky-400/25 bg-sky-400/10 px-4 py-2 text-sm font-bold text-sky-100">Working...</div> : null}
+          </div>
+          {vm.queue?.id && !canSubmitPaper ? (
+            <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 text-xs leading-5 text-amber-100">
+              Queue is {vm.queue.operational_state || "present"} with approval {vm.queue.approval_status || "unknown"}. Submit becomes available only when Paper execution is cleared.
+            </div>
+          ) : null}
+          {message ? <div className={clsx("rounded-lg border p-3 text-xs leading-5", badgeTone(message.tone))}>{message.text}</div> : null}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function PortfolioPage({ vm, onRefresh }: { vm: ReturnType<typeof buildViewModel>; onRefresh: RefreshDashboard }) {
   return (
     <div className="space-y-3">
       <TopMetrics vm={vm} />
+      <PortfolioFundingPanel vm={vm} onRefresh={onRefresh} />
       <div className="grid gap-3 xl:grid-cols-[1fr_1fr]">
         <AllocationPanel vm={vm} />
         <Panel title="Concentration & Drift Analysis" subtitle="Instrument weight against mandate target">
@@ -591,7 +821,10 @@ function PortfolioPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
           {vm.receipts.length ? vm.receipts.slice(0, 4).map((row: any) => <div key={row.id} className="border-b border-[#22314d] py-2 text-sm text-[#dbe7f8] last:border-0">{fmtDateTime(row.at)}</div>) : <EmptyState title="No receipts" detail="Close a daily cycle to create a receipt." />}
         </Panel>
         <Panel title="Reconciliation & Health" subtitle="Operational checks">
-          {["Portfolio reconciliation", "Cash reconciliation", "Valuation check", "Data integrity"].map((row) => <div key={row} className="flex justify-between border-b border-[#22314d] py-2 text-sm last:border-0"><span className="text-[#8fa2bf]">{row}</span><span className="font-bold text-emerald-300">OK</span></div>)}
+          <StatusRow label="Portfolio reconciliation" value={vm.receipts.length ? "Receipts present" : "Unavailable"} tone={vm.receipts.length ? "good" : "warn"} />
+          <StatusRow label="Cash reconciliation" value={vm.hasPaperAccount ? "Read model only" : "Unavailable"} tone={vm.hasPaperAccount ? "warn" : "neutral"} />
+          <StatusRow label="Valuation check" value={`${vm.coveragePct}% price coverage`} tone={vm.coveragePct >= 90 ? "good" : "warn"} />
+          <StatusRow label="Data integrity" value={vm.decision ? "Projection returned" : "Unavailable"} tone={vm.decision ? "warn" : "neutral"} />
         </Panel>
       </div>
     </div>
@@ -646,7 +879,7 @@ function ReportsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
             <MetricCard icon={<Target className="h-4 w-4" />} label="Decision receipts" value={vm.receipts.length} tone={vm.receipts.length ? "good" : "warn"} />
             <MetricCard icon={<Activity className="h-4 w-4" />} label="Latest queue" value={vm.queue?.operational_state || "None"} tone={stateTone(vm.queue?.operational_state)} />
             <MetricCard icon={<Wallet className="h-4 w-4" />} label="Paper order" value={vm.order?.status || "None"} tone={stateTone(vm.order?.status)} />
-            <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Reconciliation" value="Operational" tone="good" />
+            <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Reconciliation" value={vm.receipts.length ? "Receipts present" : "Unavailable"} tone={vm.receipts.length ? "good" : "warn"} />
           </div>
         </Panel>
       </div>
@@ -689,16 +922,16 @@ function AutonomyPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
         <Panel title="Autonomy Overview / Control Tower" subtitle="Supervised Paper autonomy only" right={<Badge tone="bad">Live investing is blocked</Badge>}>
           <div className="grid gap-3 md:grid-cols-3">
             <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Autonomy mode" value="Supervised" detail="Human approval required" tone="info" />
-            <MetricCard icon={<Wallet className="h-4 w-4" />} label="Environment" value="Paper only" detail="No live capital route" tone="good" />
+            <MetricCard icon={<Wallet className="h-4 w-4" />} label="Environment" value={vm.hasPaperAccount ? "Paper active" : "Paper setup required"} detail="No live capital route" tone={vm.hasPaperAccount ? "good" : "warn"} />
             <MetricCard icon={<Lock className="h-4 w-4" />} label="Live status" value="Blocked" detail="No broker execution" tone="bad" />
           </div>
           <div className="mt-4 rounded-lg border border-rose-400/25 bg-rose-400/10 p-4 text-sm leading-6 text-rose-100">Live investing is blocked. The system can prepare, review, approve, and track Paper/manual workflows only.</div>
         </Panel>
         <Panel title="Operational Checklist" subtitle="Readiness for supervised Paper autonomy">
           {[
-            ["Health check passed", vm.coveragePct > 0],
+            ["Canonical projection returned", Boolean(vm.decision)],
             ["Approval required", Boolean(vm.decision?.action?.approvalRequired)],
-            ["Paper account active", true],
+            ["Paper account active", vm.hasPaperAccount],
             ["Data quality high", vm.coveragePct >= 90],
             ["Live execution blocked", true],
           ].map(([label, ok]) => <div key={String(label)} className="flex items-center justify-between border-b border-[#22314d] py-2 text-sm last:border-0"><span className="text-[#dbe7f8]">{String(label)}</span>{ok ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <AlertTriangle className="h-4 w-4 text-amber-300" />}</div>)}
@@ -709,9 +942,9 @@ function AutonomyPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
         <PaperLifecyclePanel vm={vm} />
         <Panel title="Diagnostics & Control" subtitle="No hidden live controls">
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-[#8fa2bf]">Broker pref</span><span className="font-bold text-white">Read-only disabled</span></div>
-            <div className="flex justify-between"><span className="text-[#8fa2bf]">Worker heartbeat</span><span className="font-bold text-white">{vm.order?.updated_at ? fmtDateTime(vm.order.updated_at) : "Unavailable"}</span></div>
-            <div className="flex justify-between"><span className="text-[#8fa2bf]">Autonomy logs</span><span className="font-bold text-white">{vm.receipts.length ? "Receipts present" : "No recent logs"}</span></div>
+            <StatusRow label="Shared broker route" value="Blocked in Investing" tone="bad" />
+            <StatusRow label="Worker heartbeat" value={vm.order?.updated_at ? fmtDateTime(vm.order.updated_at) : "Unavailable"} tone={vm.order?.updated_at ? "good" : "neutral"} />
+            <StatusRow label="Autonomy logs" value={vm.receipts.length ? "Receipts present" : "No recent logs"} tone={vm.receipts.length ? "good" : "warn"} />
           </div>
         </Panel>
       </div>
@@ -721,12 +954,12 @@ function AutonomyPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
 
 function SettingsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
   const settingGroups = [
-    ["Account & Execution", [["Environment", "Paper"], ["Manual approval", "Required"], ["Paper execution", "Enforced"], ["Live execution", "Blocked"]]],
+    ["Account & Execution", [["Environment", vm.hasPaperAccount ? "Paper active" : "Paper setup required"], ["Manual approval", vm.decision?.action?.approvalRequired ? "Required" : "Policy controlled"], ["Paper execution", "Proposal boundary only"], ["Live execution", "Blocked"]]],
     ["Plan Preferences", [["Risk profile", vm.decision?.risk?.riskProfile || "Unavailable"], ["Horizon", vm.decision?.risk?.horizon || "Unavailable"], ["Target policy", vm.allocationRows.map((r) => `${r.label} ${r.targetWeight.toFixed(0)}%`).join(" / ") || "Unavailable"]]],
-    ["Valuation & Data Quality", [["Price coverage", `${vm.coveragePct}%`], ["Price source status", vm.decision?.dataQuality?.valuationSource || "unknown"], ["Fallback policy", "Cost basis if quotes unavailable"]]],
-    ["Notifications & Reviews", [["Daily reminders", "Enabled"], ["Proposal expiry alerts", "Enabled"], ["Approval notifications", "Enabled"], ["Reconciliation alerts", "Enabled"]]],
+    ["Valuation & Data Quality", [["Price coverage", `${vm.coveragePct}%`], ["Price source status", vm.valuationSource], ["Fallback policy", "Explicitly flagged when used"]]],
+    ["Notifications & Reviews", [["Daily reminders", "Not exposed"], ["Proposal expiry alerts", "Not exposed"], ["Approval notifications", "Not exposed"], ["Reconciliation alerts", "Not exposed"]]],
     ["Research & Reporting", [["Research status", vm.decision?.researchPublication?.status || "unavailable"], ["Display currency", "EUR"], ["Report format", "PDF / CSV planned"]]],
-    ["Security & Access", [["Security posture", "Good"], ["Trusted devices", "Unavailable"], ["Two-factor", "Managed by account provider"]]],
+    ["Security & Access", [["Security posture", "Managed by account provider"], ["Trusted devices", "Unavailable"], ["Two-factor", "Managed by account provider"]]],
   ];
   return (
     <div className="space-y-3">
@@ -747,8 +980,8 @@ function SettingsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
         </div>
         <Panel title="Settings Summary" subtitle="Review key controls at a glance">
           <div className="space-y-3">
-            <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Account mode" value="Paper only" tone="good" />
-            <MetricCard icon={<Bell className="h-4 w-4" />} label="Decision flow" value="Manual approval" tone="warn" />
+            <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Account mode" value={vm.hasPaperAccount ? "Paper active" : "Paper setup required"} tone={vm.hasPaperAccount ? "good" : "warn"} />
+            <MetricCard icon={<Bell className="h-4 w-4" />} label="Decision flow" value={vm.decision?.action?.approvalRequired ? "Manual approval" : "Policy controlled"} tone="warn" />
             <MetricCard icon={<Lock className="h-4 w-4" />} label="Live execution" value="Blocked" tone="bad" />
           </div>
           <div className="mt-4 rounded-lg border border-[#263650] bg-[#0b1729] px-4 py-3 text-sm font-semibold leading-6 text-[#9fb1ca]">
@@ -765,31 +998,35 @@ export default function InvestingDashboardSurface({ page }: { page: InvestingSur
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const loadDashboard = useCallback(async (shouldApply: () => boolean = () => true) => {
+    setLoading(true);
+    setError(null);
+    const result = await fetchJSON(`/api/investing/dashboard?mode=investing&_=${Date.now()}`);
+    if (!shouldApply()) return;
+    if (!result.ok) {
+      setData(null);
+      setError(result.data?.error || "Canonical Investing dashboard unavailable.");
+    } else {
+      setData(result.data);
+    }
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
-      setError(null);
-      const result = await fetchJSON(`/api/investing/dashboard?mode=investing&_=${Date.now()}`);
-      if (cancelled) return;
-      if (!result.ok) {
-        setData(null);
-        setError(result.data?.error || "Canonical Investing dashboard unavailable.");
-      } else {
-        setData(result.data);
-      }
-      setLoading(false);
+      await loadDashboard(() => !cancelled);
     }
     void load();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadDashboard]);
 
   const vm = useMemo(() => buildViewModel(data), [data]);
   const body =
     page === "planning" ? <PlanPage vm={vm} /> :
-    page === "portfolio" ? <PortfolioPage vm={vm} /> :
+    page === "portfolio" ? <PortfolioPage vm={vm} onRefresh={loadDashboard} /> :
     page === "research" ? <ResearchPage vm={vm} /> :
     page === "reports" ? <ReportsPage vm={vm} /> :
     page === "autonomy" ? <AutonomyPage vm={vm} /> :

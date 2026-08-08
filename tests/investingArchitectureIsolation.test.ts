@@ -107,4 +107,29 @@ describe("investing architecture isolation", () => {
     expect(source).not.toMatch(/<button[^>]*\sdisabled[\s=>]/i);
     expect(source).not.toContain("disabled in audit build");
   });
+
+  it("does not mount shared broker setup inside the Investing workspace", () => {
+    const source = readFileSync(join(process.cwd(), "app/app/ui.tsx"), "utf8");
+    expect(source).not.toContain("BrokerPageClient");
+    expect(source).not.toMatch(/view === "autonomy"[\s\S]*brokerSetupRequested/);
+  });
+
+  it("does not present fabricated operational health or security claims on the Investing surface", () => {
+    const source = readFileSync(join(process.cwd(), "app/app/tabs/InvestingDashboardSurface.tsx"), "utf8");
+    expect(source).not.toContain(">OK<");
+    expect(source).not.toContain('value="Operational"');
+    expect(source).not.toContain('["Paper account active", true]');
+    expect(source).not.toContain('["Security posture", "Good"]');
+    expect(source).not.toContain('["Daily reminders", "Enabled"]');
+    expect(source).not.toContain("Read-only disabled");
+  });
+
+  it("routes Portfolio add-holdings actions through canonical Paper lifecycle APIs", () => {
+    const source = readFileSync(join(process.cwd(), "app/app/tabs/InvestingDashboardSurface.tsx"), "utf8");
+    expect(source).toContain("/api/investing/paper/accounts");
+    expect(source).toContain("/api/investing/daily-cycle");
+    expect(source).toContain("/api/investing/paper/orders");
+    expect(source).toContain("Holdings are created by Paper orders and fills");
+    expect(source).not.toContain("/api/portfolio-items");
+  });
 });

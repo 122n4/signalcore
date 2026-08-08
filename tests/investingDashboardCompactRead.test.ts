@@ -23,7 +23,7 @@ describe("compact Investing dashboard read", () => {
       data: {
         settings: { risk_profile: "Balanced", horizon: "Medium", goal_target_value: 10000 },
         plan: { id: "plan-1", goal: "Growth with controlled risk" },
-        account: { id: "account-1" },
+        account: { id: "account-1", environment: "paper", status: "active" },
         cycles: [{ id: "cycle-1", day_key: new Date().toISOString().slice(0, 10), created_at: "2026-08-02T10:00:00Z" }],
         queue: [],
         orders: [],
@@ -42,6 +42,8 @@ describe("compact Investing dashboard read", () => {
     });
     expect(result.ok).toBe(true);
     expect(result.portfolio.cashEur).toBe(700);
+    expect(result.portfolio.environment).toBe("paper");
+    expect(result.portfolio.accountStatus).toBe("active");
     expect(result.portfolio.items).toHaveLength(1);
     expect(result.portfolio.totalEur).toBe(1000);
     expect(result.derived.doneToday).toBe(true);
@@ -55,5 +57,35 @@ describe("compact Investing dashboard read", () => {
     expect(result.derived.customerDecision.researchPublication.contractVersion).toBe("investing-research-publication-boundary/v1");
     expect(result.derived.customerDecision.performanceAttribution.contractVersion).toBe("investing-performance-attribution/v1");
     expect(result.daily.customerDecision.projectionId).toBe(result.derived.customerDecision.projectionId);
+  });
+
+  it("prefers a persisted daily-cycle customer decision when one is available", async () => {
+    const persistedDecision = {
+      contractVersion: "investing-customer-decision-projection/v1",
+      projectionId: "customer_decision_persisted",
+      marketSnapshot: { snapshotId: "market_persisted" },
+      source: { engineV1Bridge: { status: "phase3f_shadow_connected" } },
+      researchPublication: { status: "heuristic_validation_only" },
+      performanceAttribution: { status: "unavailable" },
+    };
+    mocks.rpc.mockResolvedValue({
+      data: {
+        settings: { risk_profile: "Balanced", horizon: "Medium", goal_target_value: 10000 },
+        plan: { id: "plan-1", goal: "Growth with controlled risk" },
+        account: { id: "account-1", environment: "paper", status: "active" },
+        cycles: [{ id: "cycle-1", day_key: "2026-08-08", created_at: "2026-08-08T10:00:00Z", canonical_result: { customerDecision: persistedDecision } }],
+        queue: [],
+        orders: [],
+        cash: [{ currency: "EUR", available_amount: 700 }],
+        positions: [{ symbol: "VWCE", quantity: 3, cost_basis: 250, currency: "EUR" }],
+      },
+      error: null,
+    });
+
+    const result = await loadInvestingDashboard("owner-1");
+
+    expect(result.daily.customerDecision.projectionId).toBe("customer_decision_persisted");
+    expect(result.derived.customerDecisionSource).toBe("persisted_daily_cycle");
+    expect(result.derived.marketSnapshot.snapshotId).toBe("market_persisted");
   });
 });

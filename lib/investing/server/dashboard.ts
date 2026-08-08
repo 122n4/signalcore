@@ -117,6 +117,16 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
     marketSnapshot: customerMarketSnapshot,
     engineV1Bridge,
   });
+  const latestPersistedCanonicalResult =
+    cycleRows[0]?.canonical_result && typeof cycleRows[0].canonical_result === "object" ? cycleRows[0].canonical_result : null;
+  const persistedCustomerDecision =
+    latestPersistedCanonicalResult?.customerDecision
+      && typeof latestPersistedCanonicalResult.customerDecision === "object"
+      && latestPersistedCanonicalResult.customerDecision.contractVersion === "investing-customer-decision-projection/v1"
+      ? latestPersistedCanonicalResult.customerDecision
+      : null;
+  const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
+  const customerDecisionSource = persistedCustomerDecision ? "persisted_daily_cycle" : "volatile_runtime_adapter";
 
   return {
     ok: true,
@@ -126,7 +136,8 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
     portfolio: {
       accountId,
       portfolioId,
-      environment: "paper",
+      environment: account?.environment ? String(account.environment) : null,
+      accountStatus: account?.status ? String(account.status) : null,
       cashEur,
       totalEur,
       items,
@@ -134,7 +145,7 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
     },
     daily: {
       investingEngine: runtime,
-      customerDecision,
+      customerDecision: visibleCustomerDecision,
       starterPack: runtime?.starterPackItems ?? [],
       starterPackMeta: runtime?.starterPackMeta ?? null,
       opportunities: [],
@@ -150,11 +161,12 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
       diagnostics: { pricing: { coveragePct: items.length ? Math.round((items.filter((item: any) => item.price > 0).length / items.length) * 100) : 100 }, riskLeaks: [] },
       executionState: latestOrder?.status ?? latestQueue?.operational_state ?? "recommendation",
-      customerDecision,
-      marketSnapshot: customerDecision.marketSnapshot,
-      engineV1Bridge: customerDecision.source.engineV1Bridge,
-      researchPublication: customerDecision.researchPublication,
-      performanceAttribution: customerDecision.performanceAttribution,
+      customerDecision: visibleCustomerDecision,
+      customerDecisionSource,
+      marketSnapshot: visibleCustomerDecision.marketSnapshot,
+      engineV1Bridge: visibleCustomerDecision.source.engineV1Bridge,
+      researchPublication: visibleCustomerDecision.researchPublication,
+      performanceAttribution: visibleCustomerDecision.performanceAttribution,
     },
   };
 }
