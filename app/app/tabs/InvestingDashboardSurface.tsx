@@ -751,7 +751,9 @@ function SettingsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
             <MetricCard icon={<Bell className="h-4 w-4" />} label="Decision flow" value="Manual approval" tone="warn" />
             <MetricCard icon={<Lock className="h-4 w-4" />} label="Live execution" value="Blocked" tone="bad" />
           </div>
-          <button type="button" disabled className="mt-4 w-full rounded-lg border border-[#263650] bg-[#0b1729] px-4 py-3 text-sm font-bold text-[#7f91ad]">Reset settings disabled in audit build</button>
+          <div className="mt-4 rounded-lg border border-[#263650] bg-[#0b1729] px-4 py-3 text-sm font-semibold leading-6 text-[#9fb1ca]">
+            Settings reset is not exposed in this Paper/manual dashboard. Enforced controls are read-only here.
+          </div>
         </Panel>
       </div>
     </div>

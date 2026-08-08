@@ -101,4 +101,10 @@ describe("investing architecture isolation", () => {
       expect(source, `${tabFile} should read the canonical Investing dashboard`).toContain("/api/investing/dashboard");
     }
   });
+
+  it("does not expose fake disabled action buttons on the unified Investing dashboard", () => {
+    const source = readFileSync(join(process.cwd(), "app/app/tabs/InvestingDashboardSurface.tsx"), "utf8");
+    expect(source).not.toMatch(/<button[^>]*\sdisabled[\s=>]/i);
+    expect(source).not.toContain("disabled in audit build");
+  });
 });

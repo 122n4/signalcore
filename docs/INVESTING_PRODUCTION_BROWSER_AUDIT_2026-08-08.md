@@ -7,11 +7,11 @@ Commit em producao auditado: `9ea6b2c3f feat(investing): finalize canonical pape
 
 ## 1. Resultado executivo
 
-Estado geral: **aprovado com observacoes menores**.
+Estado geral: **aprovado apos correcao complementar de vistoria funcional**.
 
 Nao foram encontrados crashes, erros de consola da app, overflow horizontal desktop/mobile, textos de execucao Live indevidos, nem falhas no QA Investing de producao.
 
-Foi encontrado e corrigido localmente um problema menor de limpeza tecnica: quatro warnings ESLint em `app/app/ui.tsx` causados por codigo morto. A correcao removeu `TrustProofRail`, `hasProAccess`, `trustHref` e `trustSecondaryHref` nao utilizados. Esta correcao ainda precisa de commit/deploy se for para entrar em producao.
+Revisao complementar: a primeira auditoria foi insuficiente porque validou renderizacao e QA, mas nao fez uma vistoria funcional completa aos botoes. A vistoria complementar encontrou um botao visivel mas inutil em Settings (`Reset settings disabled in audit build`). Esse controlo foi removido da UI e substituido por texto informativo nao clicavel. Foi adicionada uma guarda em teste para impedir botoes de acao falsos/desativados na superficie Investing.
 
 ## 2. Superficies verificadas no Chrome
 
@@ -73,6 +73,19 @@ Foram encontrados 4 warnings:
 Acao tomada: removido codigo morto localmente.
 
 Classificacao: **limpeza tecnica menor, corrigida localmente**.
+
+### 3.5 Botao falso/desativado em Settings
+
+Foi encontrado um controlo visivel sem acao real em Settings:
+
+- texto: `Reset settings disabled in audit build`;
+- tipo: `<button disabled>`;
+- problema: o cliente via um botao de acao que nunca poderia executar nada;
+- risco: experiencia enganosa e auditoria funcional incompleta.
+
+Acao tomada: removido o botao e substituido por uma mensagem informativa nao clicavel sobre Settings read-only/enforced controls.
+
+Classificacao: **bug de UX funcional, corrigido**.
 
 ## 4. Validacoes executadas
 
@@ -141,8 +154,26 @@ npx eslint app/app/tabs/InvestingDashboardSurface.tsx app/app/navigationModel.ts
 
 Resultado apos correcao local: passou sem erros nem warnings.
 
+### 4.6 Vistoria funcional de botoes
+
+Resultado:
+
+- top navigation Today: clicavel, navega para `tab=daily`, renderiza Today;
+- top navigation Portfolio: clicavel, navega para `tab=portfolio`, renderiza Portfolio;
+- top navigation Plan: clicavel, navega para `tab=planning`, renderiza Plan;
+- top navigation Research: clicavel, navega para `tab=research`, renderiza Research;
+- top navigation Reports: clicavel, navega para `tab=reports`, renderiza Reports;
+- top navigation Autonomy: clicavel, navega para `tab=autonomy`, renderiza Autonomy;
+- top navigation Settings: clicavel, navega para `tab=settings`, renderiza Settings;
+- side navigation Today/Portfolio/Plan/Research/Reports/Autonomy/Settings: clicavel e consistente com a tab ativa;
+- workspace Investing: clicavel e permanece em `mode=investing`;
+- workspace Trading: clicavel e muda para `mode=trading` sem afetar dados Investing;
+- logo/shell home: clicavel e volta ao Today Investing;
+- user menu Clerk: abre menu autenticado; a auditoria nao executou sign-out nem acoes destrutivas;
+- Settings: sem botoes falsos/desativados apos correcao.
+
 ## 5. Estado final
 
-O produto Investing em producao esta operacional nas superficies auditadas. A experiencia mostra corretamente Paper/manual, bloqueia linguagem de Live, renderiza dados canonicos, nao apresenta erros de runtime visiveis e passa QA de producao.
+O produto Investing em producao esta operacional nas superficies auditadas. A experiencia mostra corretamente Paper/manual, bloqueia linguagem de Live, renderiza dados canonicos, nao apresenta erros de runtime visiveis, passa QA de producao e, apos a correcao complementar, deixa de expor um botao falso/desativado em Settings.
 
-Unica pendencia: a limpeza local em `app/app/ui.tsx` deve ser commitada e deployada se quiseres que o repo/producao fiquem tambem sem esses warnings ESLint.
+Pendencia de disciplina futura: qualquer auditoria de UI deste modulo deve incluir clique real em todos os botoes visiveis, nao apenas renderizacao e scanning textual.
