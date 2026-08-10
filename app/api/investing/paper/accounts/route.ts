@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { getRequestUserId } from "@/lib/auth/requestUser";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { toMoney } from "@/lib/investing/money/decimal";
+import {
+  assertInvestingPortfolioScope,
+  investingAuthzResponse,
+  requireInvestingRequestContext,
+} from "@/lib/investing/server/authz";
 import { readInvestingPaperConfig } from "@/lib/investing/server/config";
 
 export const runtime = "nodejs";
@@ -11,25 +15,31 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const reply = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
 export async function GET(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) return reply({ ok: false, error: "unauthorized" }, 401);
-  readInvestingPaperConfig();
-  const database = getInvestingSupabaseAdmin() as any;
-  const accounts = await database
-    .from("investing_accounts")
-    .select("id,portfolio_id,base_currency,environment,status,created_at,updated_at,investing_cash_balances(currency,available_amount,settled_amount,reserved_amount,as_of,version),investing_positions(symbol,quantity,reserved_quantity,cost_basis,currency,version,updated_at)")
-    .eq("user_id", userId)
-    .eq("environment", "paper")
-    .order("created_at", { ascending: true });
-  if (accounts.error) return reply({ ok: false, error: "investing_accounts_read_failed" }, 500);
-  return reply({ ok: true, accounts: accounts.data || [] });
+  try {
+    const authz = await requireInvestingRequestContext(req);
+    readInvestingPaperConfig();
+    const database = getInvestingSupabaseAdmin() as any;
+    const accounts = await database
+      .from("investing_accounts")
+      .select("id,portfolio_id,base_currency,environment,status,created_at,updated_at,investing_cash_balances(currency,available_amount,settled_amount,reserved_amount,as_of,version),investing_positions(symbol,quantity,reserved_quantity,cost_basis,currency,version,updated_at)")
+      .eq("user_id", authz.userId)
+      .eq("owner_user_id", authz.userId)
+      .eq("tenant_id", authz.tenantId)
+      .eq("environment", "paper")
+      .order("created_at", { ascending: true });
+    if (accounts.error) return reply({ ok: false, error: "investing_accounts_read_failed" }, 500);
+    return reply({ ok: true, accounts: accounts.data || [] });
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
+    return reply({ ok: false, error: "investing_accounts_read_failed" }, 500);
+  }
 }
 
 export async function POST(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) return reply({ ok: false, error: "unauthorized" }, 401);
-  if (Number(req.headers.get("content-length") || 0) > 16_384) return reply({ ok: false, error: "request_too_large" }, 413);
   try {
+    const authz = await requireInvestingRequestContext(req);
+    if (Number(req.headers.get("content-length") || 0) > 16_384) return reply({ ok: false, error: "request_too_large" }, 413);
     readInvestingPaperConfig();
     const body = await req.json().catch(() => null);
     const portfolioId = String(body?.portfolioId || "").trim();
@@ -40,10 +50,16 @@ export async function POST(req: Request) {
     if (environment !== "paper" || body?.action !== "open_paper_account" || !SAFE_ID.test(portfolioId) || !SAFE_ID.test(clientRequestId) || !/^[A-Z]{3}$/.test(currency)) {
       return reply({ ok: false, error: "invalid_account_command" }, 400);
     }
+    await assertInvestingPortfolioScope({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      portfolioId,
+      route: "/api/investing/paper/accounts",
+    });
     const initialDeposit = toMoney(String(body?.initialDeposit ?? "0"), 8);
     const database = getInvestingSupabaseAdmin() as any;
     const result = await database.rpc("investing_open_paper_account_v2", {
-      p_actor_user_id: userId,
+      p_actor_user_id: authz.userId,
       p_portfolio_id: portfolioId,
       p_base_currency: currency,
       p_initial_deposit: initialDeposit,
@@ -55,8 +71,10 @@ export async function POST(req: Request) {
       return reply({ ok: false, error: code }, code.includes("idempotency") ? 409 : 500);
     }
     return reply({ ok: true, account: result.data });
-  } catch (error: any) {
-    const code = String(error?.message || "invalid_account_command").split(":", 1)[0];
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
+    const code = String((error as { message?: string })?.message || "invalid_account_command").split(":", 1)[0];
     return reply({ ok: false, error: code }, code.includes("live") ? 403 : 400);
   }
 }

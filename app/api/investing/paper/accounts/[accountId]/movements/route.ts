@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { getRequestUserId } from "@/lib/auth/requestUser";
 import {
+  investingAuthzResponse,
+  requireInvestingAccountAccess,
+  requireInvestingRequestContext,
+} from "@/lib/investing/server/authz";
+import {
+  importPersistentPaperOpeningPosition,
   recordPersistentPaperCashMovement,
   reversePersistentPaperCashMovement,
 } from "@/lib/investing/server/cashAndCorporateActions";
@@ -12,30 +17,65 @@ export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/;
 const MONEY = /^\d{1,10}(?:\.\d{1,8})?$/;
+const QUANTITY = /^\d{1,12}(?:\.\d{1,12})?$/;
+const SYMBOL = /^[A-Z0-9._-]{1,24}$/;
 const reply = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, {
   status,
   headers: { "Cache-Control": "no-store" },
 });
 
+function validPastIsoDate(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.getTime() <= Date.now() + 60_000;
+}
+
 export async function POST(req: Request, context: { params: Promise<{ accountId: string }> }) {
-  const userId = await getRequestUserId(req);
-  if (!userId) return reply({ ok: false, error: "unauthorized" }, 401);
-  if (Number(req.headers.get("content-length") || 0) > 16_384) return reply({ ok: false, error: "request_too_large" }, 413);
-  const { accountId } = await context.params;
-  if (!UUID.test(accountId)) return reply({ ok: false, error: "invalid_account_id" }, 400);
-  const body = await req.json().catch(() => null);
-  if (String(body?.environment || "paper").toLowerCase() === "live") {
-    return reply({ ok: false, error: "investing_live_execution_blocked" }, 403);
-  }
-  const action = String(body?.action || "");
-  const clientRequestId = String(body?.clientRequestId || "").trim();
-  if (!SAFE_ID.test(clientRequestId)) return reply({ ok: false, error: "invalid_client_request_id" }, 400);
   try {
+    const authz = await requireInvestingRequestContext(req);
+    if (Number(req.headers.get("content-length") || 0) > 16_384) return reply({ ok: false, error: "request_too_large" }, 413);
+    const { accountId } = await context.params;
+    if (!UUID.test(accountId)) return reply({ ok: false, error: "invalid_account_id" }, 400);
+    const body = await req.json().catch(() => null);
+    if (String(body?.environment || "paper").toLowerCase() === "live") {
+      return reply({ ok: false, error: "investing_live_execution_blocked" }, 403);
+    }
+    await requireInvestingAccountAccess({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      accountId,
+      environment: "paper",
+      requireActive: true,
+      route: "/api/investing/paper/accounts/[accountId]/movements",
+    });
+
+    const action = String(body?.action || "");
+    const clientRequestId = String(body?.clientRequestId || "").trim();
+    if (!SAFE_ID.test(clientRequestId)) return reply({ ok: false, error: "invalid_client_request_id" }, 400);
     if (action === "reverse") {
       const movementId = String(body?.movementId || "");
       const reason = String(body?.reason || "").trim().slice(0, 500);
       if (!UUID.test(movementId) || reason.length < 3) return reply({ ok: false, error: "invalid_reversal_command" }, 400);
-      return reply({ ok: true, result: await reversePersistentPaperCashMovement({ userId, accountId, movementId, clientRequestId, reason }) });
+      return reply({ ok: true, result: await reversePersistentPaperCashMovement({ userId: authz.userId, accountId, movementId, clientRequestId, reason }) });
+    }
+    if (action === "opening_position") {
+      const symbol = String(body?.symbol || "").trim().toUpperCase();
+      const quantity = String(body?.quantity || "").trim().replace(",", ".");
+      const totalCost = String(body?.totalCost || "").trim().replace(",", ".");
+      const currency = String(body?.currency || "EUR").toUpperCase();
+      const acquiredAt = String(body?.acquiredAt || "");
+      if (!SYMBOL.test(symbol) || !QUANTITY.test(quantity) || !MONEY.test(totalCost) || !/^[A-Z]{3}$/.test(currency) || !validPastIsoDate(acquiredAt)) {
+        return reply({ ok: false, error: "invalid_opening_position_command" }, 400);
+      }
+      return reply({ ok: true, result: await importPersistentPaperOpeningPosition({
+        userId: authz.userId,
+        accountId,
+        symbol,
+        quantity,
+        totalCost,
+        currency,
+        acquiredAt,
+        clientRequestId,
+      }) });
     }
     if (!(["deposit", "withdrawal", "dividend"] as string[]).includes(action)) {
       return reply({ ok: false, error: "invalid_cash_movement_action" }, 400);
@@ -47,7 +87,7 @@ export async function POST(req: Request, context: { params: Promise<{ accountId:
       return reply({ ok: false, error: "invalid_cash_movement_command" }, 400);
     }
     return reply({ ok: true, result: await recordPersistentPaperCashMovement({
-      userId,
+      userId: authz.userId,
       accountId,
       action: action as "deposit" | "withdrawal" | "dividend",
       amount,
@@ -55,8 +95,10 @@ export async function POST(req: Request, context: { params: Promise<{ accountId:
       symbol,
       clientRequestId,
     }) });
-  } catch (error: any) {
-    const message = String(error?.message || "investing_cash_movement_failed");
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
+    const message = String((error as { message?: string })?.message || "investing_cash_movement_failed");
     const forbidden = message.includes("not_found_or_forbidden");
     return reply({ ok: false, error: forbidden ? "investing_account_not_found_or_forbidden" : message.split(":", 1)[0] }, forbidden ? 404 : 409);
   }

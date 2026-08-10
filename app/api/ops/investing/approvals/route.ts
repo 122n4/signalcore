@@ -1,26 +1,39 @@
 import { NextResponse } from "next/server";
 
-import { getRequestUserId } from "@/lib/auth/requestUser";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
+import {
+  investingAuthzResponse,
+  listInvestingAccountIdsForTenant,
+  requireInvestingQueueAccess,
+  requireInvestingRequestContext,
+} from "@/lib/investing/server/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const ROUTE = "/api/ops/investing/approvals";
+
 export async function GET(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  }
   try {
+    const authz = await requireInvestingRequestContext(req);
     const url = new URL(req.url);
     const mode = String(url.searchParams.get("mode") || "investing").trim() || "investing";
+    if (mode !== "investing") {
+      return NextResponse.json({ ok: false, error: "invalid_mode" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
     const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || 25) || 25));
+    const accountIds = await listInvestingAccountIdsForTenant({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      environments: ["paper", "simulation"],
+      route: ROUTE,
+    });
     const sb = getInvestingSupabaseAdmin() as any;
     const [queueQuery, historyQuery] = await Promise.all([
       sb
         .from("investing_execution_queue")
         .select("id,user_id,portfolio_id,account_id,mode,day_key,as_of,decision_fingerprint,approval_status,approval_required,execution_decision,operational_state,version,expires_at,kill_switch_active,deployable_capital_eur,blocking_reasons,notes,meta,created_at")
-        .eq("user_id", userId)
+        .eq("user_id", authz.userId)
         .eq("mode", mode)
         .eq("approval_status", "pending")
         .order("created_at", { ascending: false })
@@ -28,7 +41,7 @@ export async function GET(req: Request) {
       sb
         .from("investing_execution_approvals")
         .select("queue_id,queue_version,user_id,mode,decision_fingerprint,queue_day_key,decided_at,decided_by,approval_status,override_applied,note,meta,created_at")
-        .eq("user_id", userId)
+        .eq("user_id", authz.userId)
         .eq("mode", mode)
         .order("decided_at", { ascending: false })
         .limit(limit),
@@ -45,25 +58,28 @@ export async function GET(req: Request) {
       {
         ok: true,
         mode,
-        approvals: Array.isArray(queueQuery.data) ? queueQuery.data : [],
+        approvals: (Array.isArray(queueQuery.data) ? queueQuery.data : []).filter((row: Record<string, unknown>) => {
+          const accountId = row.account_id ? String(row.account_id) : null;
+          return accountId == null || accountIds.includes(accountId);
+        }),
         history: Array.isArray(historyQuery.data) ? historyQuery.data : [],
+        boundary: "user_scoped_ops_path",
       },
       { headers: { "Cache-Control": "no-store" } },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
     return NextResponse.json(
-      { ok: false, error: "investing_approvals_read_failed", message: error?.message ?? "Unknown" },
+      { ok: false, error: "investing_approvals_read_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
 }
 
 export async function POST(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  }
   try {
+    const authz = await requireInvestingRequestContext(req);
     const contentLength = Number(req.headers.get("content-length") || 0);
     if (contentLength > 16_384) {
       return NextResponse.json({ ok: false, error: "request_too_large" }, { status: 413, headers: { "Cache-Control": "no-store" } });
@@ -88,10 +104,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "note_too_long" }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
+    // TODO: move this user-scoped approval endpoint out of /ops or add an explicit operator-only variant.
+    await requireInvestingQueueAccess({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      queueId,
+      mode: "investing",
+      expectedVersion,
+      route: ROUTE,
+    });
+
     const sb = getInvestingSupabaseAdmin() as any;
     const correlationId = `investing_approval_${crypto.randomUUID()}`;
     const result = await sb.rpc("investing_record_approval_v2", {
-      p_actor_user_id: userId,
+      p_actor_user_id: authz.userId,
       p_queue_id: queueId,
       p_expected_status: expectedStatus,
       p_expected_version: expectedVersion,
@@ -122,9 +148,11 @@ export async function POST(req: Request) {
       },
       { headers: { "Cache-Control": "no-store" } },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
     return NextResponse.json(
-      { ok: false, error: "investing_approval_write_failed", message: error?.message ?? "Unknown" },
+      { ok: false, error: "investing_approval_write_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
