@@ -69,7 +69,7 @@ jobs:
           db_container="$(docker ps --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)"
           test -n "$db_container"
           docker exec "$db_container" pg_dump --schema-only --no-owner "postgresql://postgres:postgres@127.0.0.1:5432/postgres" \
-            | grep -Ev 'log_min_messages|pg_stat_statements_reset|pg_catalog\.pg_|WITH GRANT OPTION' \
+            | grep -Ev 'log_min_messages|pg_stat_statements_reset|pg_catalog\.pg_|WITH GRANT OPTION|ALTER DEFAULT PRIVILEGES' \
             | psql "postgresql://postgres:postgres@127.0.0.1:54322/investing_4b_qa" -v ON_ERROR_STOP=1
       - name: Run Investing Engine FASE 4B persistence, replay and corruption assertions
         env:
