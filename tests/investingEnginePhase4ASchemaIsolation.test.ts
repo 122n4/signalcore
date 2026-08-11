@@ -31,8 +31,24 @@ describe("FASE 4A persistence schema isolation", () => {
     const migrations = readdirSync(migrationRoot).filter((name) => name.endsWith(".sql"));
     expect(new Set(migrations).size).toBe(migrations.length);
     expect([...migrations].sort()).toEqual(migrations);
-    expect(migrations).toContain("20260720100000_investing_engine_v1_persistence.sql");
-    expect(migrations.at(-1)).toBe("20260722090000_investing_engine_phase4b_r5_empty_state_transition_gate.sql");
+    const protectedForwardChain = [
+      "20260720100000_investing_engine_v1_persistence.sql",
+      "20260721120000_investing_engine_v1_authorization_shape_guard.sql",
+      "20260721180000_investing_engine_phase4b_r2_root_sealing.sql",
+      "20260721220000_investing_engine_phase4b_r3_boundary_hardening.sql",
+      "20260721230000_investing_engine_phase4b_r4_final_conditions_closure.sql",
+      "20260722090000_investing_engine_phase4b_r5_empty_state_transition_gate.sql",
+    ];
+    for (const migration of protectedForwardChain) expect(migrations).toContain(migration);
+    expect(protectedForwardChain.map((migration) => migrations.indexOf(migration))).toEqual(
+      [...protectedForwardChain.map((migration) => migrations.indexOf(migration))].sort((left, right) => left - right),
+    );
+    expect(migrations).not.toContain("20260720100000_investing_engine_v1_persistence.down.sql");
+    expect(migrations).not.toContain("20260721120000_investing_engine_v1_authorization_shape_guard.down.sql");
+    expect(migrations).not.toContain("20260721180000_investing_engine_phase4b_r2_root_sealing.down.sql");
+    expect(migrations).not.toContain("20260721220000_investing_engine_phase4b_r3_boundary_hardening.down.sql");
+    expect(migrations).not.toContain("20260721230000_investing_engine_phase4b_r4_final_conditions_closure.down.sql");
+    expect(migrations).not.toContain("20260722090000_investing_engine_phase4b_r5_empty_state_transition_gate.down.sql");
     expect(existsSync(path.resolve(
       process.cwd(),
       "supabase/rollbacks/20260720100000_investing_engine_v1_persistence.down.sql",
