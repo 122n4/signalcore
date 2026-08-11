@@ -113,6 +113,7 @@ function seedFixtures() {
   );
   db.investing_execution_queue.splice(0, db.investing_execution_queue.length,
     { id: "queue_a", user_id: "user_a", portfolio_id: "primary", account_id: "account_a", mode: "investing", approval_status: "pending", version: 1 },
+    { id: "queue_primary_without_account", user_id: "user_a", portfolio_id: "primary", account_id: null, mode: "investing", approval_status: "pending", version: 1 },
     { id: "queue_b", user_id: "user_b", portfolio_id: "primary", account_id: "account_b", mode: "investing", approval_status: "pending", version: 1 },
   );
   db.investing_orders.splice(0, db.investing_orders.length,
@@ -220,5 +221,33 @@ describe("Investing trust boundary", () => {
       accountId: "account_a",
     });
     await expect(requireInvestingOrderAccess({ userId: "user_a", tenantId: "tenant_a", orderId: "order_b", environment: "paper" })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("does not authorize primary portfolio queues without proving a tenant account", async () => {
+    db.investing_accounts.splice(0, db.investing_accounts.length,
+      ...db.investing_accounts.filter((row) => row.id !== "account_a" && row.id !== "account_a_inactive"),
+    );
+
+    await expect(requireInvestingQueueAccess({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      queueId: "queue_primary_without_account",
+    })).rejects.toMatchObject({
+      code: "investing_portfolio_not_authorized",
+      status: 403,
+    });
+  });
+
+  it("authorizes primary portfolio queues without account_id only when a tenant account exists", async () => {
+    await expect(requireInvestingQueueAccess({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      queueId: "queue_primary_without_account",
+      expectedVersion: 1,
+    })).resolves.toMatchObject({
+      id: "queue_primary_without_account",
+      accountId: null,
+      portfolioId: "primary",
+    });
   });
 });

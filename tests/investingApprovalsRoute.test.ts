@@ -265,6 +265,47 @@ describe("investing approvals route", () => {
     expect(rpcCalls).toEqual([]);
   });
 
+  it("does not call the service-role approval RPC for a primary queue without proven account scope", async () => {
+    authzMocks.requireInvestingQueueAccess.mockRejectedValueOnce({
+      status: 403,
+      code: "investing_portfolio_not_authorized",
+      publicError: "investing_portfolio_not_authorized",
+    });
+    queueRows.push({
+      id: "33333333-3333-4333-8333-333333333333",
+      user_id: "owner_1",
+      portfolio_id: "primary",
+      account_id: null,
+      mode: "investing",
+      decision_fingerprint: "decision_primary_without_account",
+      approval_status: "pending",
+      version: 1,
+      created_at: "2026-07-17T08:00:03.000Z",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/ops/investing/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          queueId: "33333333-3333-4333-8333-333333333333",
+          expectedStatus: "pending",
+          expectedVersion: 1,
+          decision: "approved",
+          note: "should not reach rpc",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(authzMocks.requireInvestingQueueAccess).toHaveBeenCalledWith(expect.objectContaining({
+      queueId: "33333333-3333-4333-8333-333333333333",
+      tenantId: "tenant_test",
+      userId: "owner_1",
+    }));
+    expect(rpcCalls).toEqual([]);
+  });
+
   it("does not expose another user's queue", async () => {
     authState.userId = "other_user";
     const response = await GET(new Request("http://localhost/api/ops/investing/approvals?mode=investing"));

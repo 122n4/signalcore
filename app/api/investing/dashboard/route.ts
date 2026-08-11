@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import {
-  assertInvestingPortfolioScope,
   investingAuthzResponse,
   requireInvestingRequestContext,
 } from "@/lib/investing/server/authz";
@@ -13,13 +12,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const authz = await requireInvestingRequestContext(req);
-    await assertInvestingPortfolioScope({
-      userId: authz.userId,
-      tenantId: authz.tenantId,
-      portfolioId: "primary",
-      route: "/api/investing/dashboard",
-    });
-    return NextResponse.json(await loadInvestingDashboard(authz.userId), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      await loadInvestingDashboard({ userId: authz.userId, tenantId: authz.tenantId }),
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error: unknown) {
     const authzResponse = investingAuthzResponse(error);
     if (authzResponse) return authzResponse;

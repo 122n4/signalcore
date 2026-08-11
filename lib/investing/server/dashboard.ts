@@ -4,6 +4,7 @@ import { buildCustomerDecisionProjection } from "@/lib/investing/customerDecisio
 import { buildInvestingExecutionPlan } from "@/lib/investing/execution";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
+import type { InvestingEnvironment } from "@/lib/investing/server/authz";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
 import {
   buildCanonicalMarketSnapshotFromQuotes,
@@ -75,7 +76,104 @@ function assert(error: { message?: string } | null, code: string) {
   if (error) throw new Error(`${code}:${error.message || "database_error"}`);
 }
 
-export async function loadInvestingDashboard(userId: string, portfolioId = "primary") {
+type DashboardLoadArgs = {
+  userId: string;
+  tenantId: string;
+  portfolioId?: string;
+  environments?: InvestingEnvironment[];
+};
+
+const DEFAULT_DASHBOARD_ENVIRONMENTS: InvestingEnvironment[] = ["paper", "simulation"];
+
+function selectCanonicalAccount(rows: Record<string, any>[], environments: InvestingEnvironment[]) {
+  for (const environment of environments) {
+    const matches = rows.filter((row) => row.environment === environment);
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) throw new Error("investing_dashboard_account_ambiguous");
+  }
+  return null;
+}
+
+async function readTenantScopedFinancialRows(database: any, args: Required<Omit<DashboardLoadArgs, "environments">> & { environments: InvestingEnvironment[] }) {
+  const accountsResult = await database
+    .from("investing_accounts")
+    .select("id,portfolio_id,base_currency,environment,status,created_at,updated_at")
+    .eq("user_id", args.userId)
+    .eq("owner_user_id", args.userId)
+    .eq("tenant_id", args.tenantId)
+    .eq("portfolio_id", args.portfolioId)
+    .in("environment", args.environments)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(10);
+  assert(accountsResult.error, "investing_dashboard_account_scope_failed");
+
+  const account = selectCanonicalAccount(Array.isArray(accountsResult.data) ? accountsResult.data : [], args.environments);
+  const accountId = account?.id ? String(account.id) : null;
+  if (!accountId) {
+    return {
+      account: null,
+      cash: [],
+      positions: [],
+      cycles: [],
+      queue: [],
+      orders: [],
+    };
+  }
+
+  const [cashResult, positionsResult, cyclesResult, queueResult, ordersResult] = await Promise.all([
+    database
+      .from("investing_cash_balances")
+      .select("currency,available_amount,settled_amount,reserved_amount,as_of,version")
+      .eq("account_id", accountId),
+    database
+      .from("investing_positions")
+      .select("symbol,quantity,reserved_quantity,cost_basis,currency,version,updated_at")
+      .eq("account_id", accountId),
+    database
+      .from("investing_daily_cycles")
+      .select("id,account_id,portfolio_id,day_key,created_at,canonical_result")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    database
+      .from("investing_execution_queue")
+      .select("id,user_id,portfolio_id,account_id,mode,day_key,as_of,decision_fingerprint,approval_status,approval_required,execution_decision,operational_state,version,expires_at,kill_switch_active,deployable_capital_eur,blocking_reasons,notes,meta,created_at")
+      .eq("user_id", args.userId)
+      .eq("account_id", accountId)
+      .eq("mode", "investing")
+      .order("created_at", { ascending: false })
+      .limit(1),
+    database
+      .from("investing_orders")
+      .select("id,queue_id,portfolio_id,account_id,symbol,side,quantity,notional,limit_price,currency,status,environment,cumulative_filled_quantity,last_error_code,submitted_at,terminal_at,created_at,updated_at")
+      .eq("user_id", args.userId)
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+
+  assert(cashResult.error, "investing_dashboard_cash_scope_failed");
+  assert(positionsResult.error, "investing_dashboard_positions_scope_failed");
+  assert(cyclesResult.error, "investing_dashboard_cycles_scope_failed");
+  assert(queueResult.error, "investing_dashboard_queue_scope_failed");
+  assert(ordersResult.error, "investing_dashboard_orders_scope_failed");
+
+  return {
+    account,
+    cash: Array.isArray(cashResult.data) ? cashResult.data : [],
+    positions: Array.isArray(positionsResult.data) ? positionsResult.data : [],
+    cycles: Array.isArray(cyclesResult.data) ? cyclesResult.data : [],
+    queue: Array.isArray(queueResult.data) ? queueResult.data : [],
+    orders: Array.isArray(ordersResult.data) ? ordersResult.data : [],
+  };
+}
+
+export async function loadInvestingDashboard(args: DashboardLoadArgs) {
+  const userId = args.userId;
+  const tenantId = args.tenantId;
+  const portfolioId = args.portfolioId ?? "primary";
+  const environments = args.environments?.length ? args.environments : DEFAULT_DASHBOARD_ENVIRONMENTS;
   const database = getInvestingSupabaseAdmin() as any;
   const asOf = new Date().toISOString();
   const today = asOf.slice(0, 10);
@@ -87,12 +185,13 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
   const snapshot = compact.data && typeof compact.data === "object" ? compact.data : {};
   const settings = snapshot.settings ?? null;
   const plan = snapshot.plan ?? null;
-  const account = snapshot.account ?? null;
-  const cycles = Array.isArray(snapshot.cycles) ? snapshot.cycles : [];
-  const queue = Array.isArray(snapshot.queue) ? snapshot.queue : [];
-  const orders = Array.isArray(snapshot.orders) ? snapshot.orders : [];
-  const cash = Array.isArray(snapshot.cash) ? snapshot.cash : [];
-  const positions = Array.isArray(snapshot.positions) ? snapshot.positions : [];
+  const scopedFinancialRows = await readTenantScopedFinancialRows(database, { userId, tenantId, portfolioId, environments });
+  const account = scopedFinancialRows.account;
+  const cycles = scopedFinancialRows.cycles;
+  const queue = scopedFinancialRows.queue;
+  const orders = scopedFinancialRows.orders;
+  const cash = scopedFinancialRows.cash;
+  const positions = scopedFinancialRows.positions;
 
   const accountId = account?.id ? String(account.id) : null;
 

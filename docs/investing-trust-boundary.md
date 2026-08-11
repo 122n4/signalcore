@@ -14,6 +14,8 @@ Financial Investing routes follow this order:
 
 Service role is not authorization. It bypasses RLS, so every service-role financial operation must first prove the user, tenant and account/portfolio scope in server code or in a documented RPC validation.
 
+The dashboard still calls `read_investing_dashboard_compact_v1(text,text)` for transitional user-level settings and plan data. Because that RPC is not tenant-scoped in this PR, it is not trusted for financial rows. Cash, positions, daily cycles, execution queue rows and orders are read server-side only after a canonical tenant account has been selected, and those financial reads are scoped by `account_id`.
+
 ## Tenant Resolution
 
 `lib/investing/server/authz.ts` resolves tenant context from `investing_tenant_memberships`.
@@ -37,6 +39,8 @@ There is no separate Investing portfolio registry in this PR.
 
 Routes that close a daily cycle require an existing active account for the selected portfolio and environment.
 
+The central boundary is environment-aware. Current routes authorize the existing technical paper/simulation environments, while keeping the API shape ready for later explicitly authorized environments. This PR does not implement live trading.
+
 ## Account, Queue and Order Scope
 
 Account checks require:
@@ -49,7 +53,7 @@ Account checks require:
 - optional `environment`;
 - active status when the operation requires it.
 
-Queue checks first verify the queue belongs to the authenticated user and Investing mode. If the queue has an account, the account is validated through the same account boundary. If it only has a portfolio, the portfolio boundary is used.
+Queue checks first verify the queue belongs to the authenticated user and Investing mode. If the queue has an account, the account is validated through the same account boundary. If it only has a portfolio, the portfolio boundary must still prove an existing tenant account, including for `primary`; `primary` by convention alone is not ownership proof.
 
 Order checks verify the order belongs to the authenticated user and then validate the order account through the account boundary.
 
@@ -72,6 +76,10 @@ Financial responses use a small vocabulary:
 When identity, ownership, price or provenance cannot be proven, user-facing responses should prefer:
 
 `Dados indisponiveis neste momento`
+
+Fallbacks from prior candles or last-known values must never be `REAL`. Cost-basis fallback is `ESTIMATED`. Unknown or insufficient provider evidence is `UNAVAILABLE`.
+
+The current quote provider shape used by `getQuotes()`, for example `{ price: 100, ts, source: "twelvedata" }`, does not by itself prove freshness. It remains `UNAVAILABLE` until a future Market Data Truth contract explicitly defines provider freshness, observed time, source identity and acceptable staleness for customer-visible `REAL` market data.
 
 ## Protected Routes
 

@@ -421,7 +421,7 @@ export async function requireInvestingQueueAccess(args: {
       userId: args.userId,
       tenantId: args.tenantId,
       portfolioId,
-      requireExistingAccount: portfolioId !== "primary",
+      requireExistingAccount: true,
       database,
       route: args.route,
     });
