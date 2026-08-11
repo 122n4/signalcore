@@ -58,7 +58,9 @@ begin
   -- so each starts from the same valid persisted order.
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-cash');
+    execute 'reset role';
     update public.investing_cash_balances set available_amount=available_amount+1 where account_id=v_account;
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-cash');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -69,7 +71,9 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-settled');
+    execute 'reset role';
     update public.investing_cash_balances set settled_amount=settled_amount-1 where account_id=v_account;
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-settled');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -80,7 +84,9 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-reserved');
+    execute 'reset role';
     update public.investing_cash_balances set reserved_amount=1 where account_id=v_account;
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-reserved');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -91,7 +97,9 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-position');
+    execute 'reset role';
     update public.investing_positions set quantity=quantity+1 where account_id=v_account and symbol='VWCE';
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-position');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -102,8 +110,10 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-fees');
+    execute 'reset role';
     insert into public.investing_fees(fill_id,order_id,fee_type,amount,currency)
     values(v_fill,v_order,'regulatory',1,'EUR');
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-fees');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -114,9 +124,11 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-taxes');
+    execute 'reset role';
     insert into public.investing_fills(
       fill_id,order_id,broker_fill_id,quantity,price,gross_amount,fee_amount,tax_amount,currency,executed_at,payload_hash
     ) values('reconciliation-tax-mismatch-fill',v_order,'reconciliation-tax-mismatch-broker',0.1,100,10,0,1,'EUR',now(),'fixture-corruption');
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-taxes');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -127,9 +139,11 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-missing-ledger');
+    execute 'reset role';
     insert into public.investing_fills(
       fill_id,order_id,broker_fill_id,quantity,price,gross_amount,fee_amount,tax_amount,currency,executed_at,payload_hash
     ) values('reconciliation-uncovered-fill',v_order,'reconciliation-uncovered-broker',0.1,100,10,0,0,'EUR',now(),'fixture-corruption');
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-missing-ledger');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -140,12 +154,14 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-ledger');
+    execute 'reset role';
     insert into public.investing_ledger_transactions(
       account_id,correlation_id,source_type,source_id,currency,payload_hash,actor
     ) values(v_account,'rec-unbalanced-tx','fill','reconciliation-fill','EUR','fixture-corruption','validation')
     returning id into v_tx;
     insert into public.investing_ledger_entries(transaction_id,account_id,account_code,side,amount,currency)
     values(v_tx,v_account,'test_asset','debit',1,'EUR');
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-ledger');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -156,7 +172,9 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-queue');
+    execute 'reset role';
     update public.investing_execution_queue set operational_state='submitted' where id=v_queue;
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-queue');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -167,7 +185,9 @@ begin
 
   begin
     perform public.investing_start_paper_reconciliation_v2('reconciliation_validation_user',v_order,'rec-start-order');
+    execute 'reset role';
     update public.investing_orders set cumulative_filled_quantity=0.9 where id=v_order;
+    execute 'set local role service_role';
     v_result:=public.investing_reconcile_paper_order_v2('reconciliation_validation_user',v_order,'rec-break-order');
     if (v_result->>'ok')::boolean or not exists(
       select 1 from public.investing_reconciliation_items i join public.investing_reconciliation_runs r on r.id=i.run_id
@@ -178,16 +198,19 @@ begin
 
   -- Duplicate and orphan persistence are rejected by real unique/FK constraints.
   begin
+    execute 'reset role';
     insert into public.investing_fills(fill_id,order_id,broker_fill_id,quantity,price,gross_amount,currency,executed_at)
     values('reconciliation-fill',v_order,'other-broker',1,100,100,'EUR',now());
     raise exception 'duplicate_fill_constraint_missing';
   exception when unique_violation then null; end;
   begin
+    execute 'reset role';
     insert into public.investing_fills(fill_id,order_id,quantity,price,gross_amount,currency,executed_at)
     values('orphan-fill','11111111-1111-4111-8111-111111111111',1,100,100,'EUR',now());
     raise exception 'orphan_fill_constraint_missing';
   exception when foreign_key_violation then null; end;
   begin
+    execute 'reset role';
     delete from public.investing_orders where id=v_order;
     raise exception 'order_with_children_deleted';
   exception when others then
@@ -214,6 +237,7 @@ begin
 
   -- Informational findings may remain on a passed run, while their acceptance
   -- and material corrections are recorded as new facts/events.
+  execute 'reset role';
   insert into public.investing_reconciliation_runs(
     user_id,portfolio_id,account_id,status,score,correlation_id,environment,completed_at
   ) values(
@@ -224,6 +248,7 @@ begin
     run_id,item_type,severity,expected,observed,difference
   ) values(v_run,'decimal_representation','informational','{"quantity":1}','{"quantity":1.0}',null)
   returning id into v_item;
+  execute 'set local role service_role';
   v_result:=public.investing_resolve_reconciliation_item_v2(
     'reconciliation_validation_user',v_item,'accepted_informational','Numerically equivalent values',
     'rec-info-resolution'
@@ -234,6 +259,7 @@ begin
     raise exception 'informational_resolution_policy_failed';
   end if;
 
+  execute 'reset role';
   insert into public.investing_reconciliation_runs(
     user_id,portfolio_id,account_id,status,score,correlation_id,environment,completed_at
   ) values(
@@ -244,6 +270,7 @@ begin
     run_id,item_type,severity,expected,observed,difference
   ) values(v_run,'historical_material_break','material','{"value":1}','{"value":2}','{"delta":1}')
   returning id into v_item;
+  execute 'set local role service_role';
   v_result:=public.investing_resolve_reconciliation_item_v2(
     'reconciliation_validation_user',v_item,'corrected','Correction persisted separately',
     'rec-material-resolution'
