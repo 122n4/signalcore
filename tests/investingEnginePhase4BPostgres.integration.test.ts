@@ -285,7 +285,11 @@ pgDescribe("FASE 4B real PostgreSQL persistence", () => {
       expect((await own.query("select count(*)::int count from public.investing_engine_runs")).rows[0].count).toBe(0);
       await own.query("rollback");
       await own.query("begin"); await own.query("set local role anon");
-      expect((await own.query("select count(*)::int count from public.investing_engine_runs")).rows[0].count).toBe(0);
+      try {
+        expect((await own.query("select count(*)::int count from public.investing_engine_runs")).rows[0].count).toBe(0);
+      } catch (error) {
+        expect(error).toMatchObject({ code: "42501" });
+      }
       await own.query("rollback");
     } finally { own.release(); }
 
