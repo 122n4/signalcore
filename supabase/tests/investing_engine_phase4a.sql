@@ -290,12 +290,18 @@ reset role;
 set local role anon;
 do $$
 begin
-  if exists (select 1 from public.investing_engine_runs) then
-    raise exception 'anon can enumerate runs';
-  end if;
-  if exists (select 1 from public.investing_engine_artifacts) then
-    raise exception 'anon can enumerate hashes';
-  end if;
+  begin
+    if exists (select 1 from public.investing_engine_runs) then
+      raise exception 'anon can enumerate runs';
+    end if;
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    if exists (select 1 from public.investing_engine_artifacts) then
+      raise exception 'anon can enumerate hashes';
+    end if;
+  exception when insufficient_privilege then null;
+  end;
 end;
 $$;
 reset role;
