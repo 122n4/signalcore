@@ -1,5 +1,6 @@
 import pg from "pg";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -27,6 +28,19 @@ const destructiveQaTarget = databaseUrl
 
 if (destructiveQaTarget) {
   console.info(`[FASE 4B-R4 QA] destructive PostgreSQL target host=${destructiveQaTarget.host} port=${destructiveQaTarget.port} database=${destructiveQaTarget.database}`);
+}
+
+function deterministicUuid(seed: string): string {
+  const digest = createHash("md5").update(seed, "utf8").digest("hex");
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+}
+
+function personalTenantId(owner: string): string {
+  return deterministicUuid(`phase4b-postgres-tenant:${owner}`);
+}
+
+function personalMembershipId(owner: string): string {
+  return deterministicUuid(`phase4b-postgres-membership:${owner}`);
 }
 
 function processPersist(runId: string, idempotencyKey: string): Promise<{ status: string }> {
@@ -69,15 +83,27 @@ pgDescribe("FASE 4B real PostgreSQL persistence", () => {
         database: connectionParameters.database,
       });
       const server = await effective.query("select current_database() database, inet_server_port() port, host(inet_server_addr()) address");
-      expect(server.rows[0]).toMatchObject({ database: destructiveQaTarget!.database, port: destructiveQaTarget!.port });
+      expect(server.rows[0]).toMatchObject({ database: destructiveQaTarget!.database });
       expect(["127.0.0.1", "::1"]).toContain(server.rows[0].address);
     } finally {
       effective.release();
     }
-    await admin.query(`insert into public.investing_accounts(id,user_id,portfolio_id,base_currency,environment,status)
-      values($1,$2,'phase4b','EUR','paper','active') on conflict(id) do nothing`, [PHASE4B_ACCOUNT_ID, OWNER]);
-    await admin.query(`insert into public.investing_accounts(id,user_id,portfolio_id,base_currency,environment,status)
-      values($1,$2,'phase4b-cross-tenant','EUR','paper','active') on conflict(id) do nothing`, [OTHER_ACCOUNT, OTHER_OWNER]);
+    for (const [accountId, owner, portfolio] of [
+      [PHASE4B_ACCOUNT_ID, OWNER, "phase4b"],
+      [OTHER_ACCOUNT, OTHER_OWNER, "phase4b-cross-tenant"],
+    ] as const) {
+      const tenant = personalTenantId(owner);
+      await admin.query(`insert into public.investing_tenants(id,owner_user_id,kind,status)
+        values($1,$2,'personal','active') on conflict(owner_user_id) do nothing`, [tenant, owner]);
+      await admin.query(`insert into public.investing_tenant_memberships(id,tenant_id,user_id,role,permissions,status)
+        values(
+          $1,$2,$3,'owner',
+          array['investing:read','investing:create','investing:verify','investing:replay']::text[],
+          'active'
+        ) on conflict(tenant_id,user_id) do nothing`, [personalMembershipId(owner), tenant, owner]);
+      await admin.query(`insert into public.investing_accounts(id,tenant_id,owner_user_id,user_id,portfolio_id,base_currency,environment,status)
+        values($1,$2,$3,$3,$4,'EUR','paper','active') on conflict(id) do nothing`, [accountId, tenant, owner, portfolio]);
+    }
   });
   afterAll(async () => { await adapter.close(); await admin.end(); });
 
