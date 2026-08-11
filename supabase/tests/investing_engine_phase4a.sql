@@ -180,10 +180,40 @@ begin
 end;
 $$;
 
-insert into public.investing_accounts(user_id, portfolio_id, base_currency, environment, status)
-values
-  ('engine4a_user_a', 'engine4a_portfolio_a', 'EUR', 'paper', 'active'),
-  ('engine4a_user_b', 'engine4a_portfolio_b', 'EUR', 'paper', 'active');
+insert into public.investing_tenants(id, owner_user_id, kind, status)
+select (
+    substr(md5('investing-personal-tenant:' || owner_id), 1, 8) || '-' ||
+    substr(md5('investing-personal-tenant:' || owner_id), 9, 4) || '-4' ||
+    substr(md5('investing-personal-tenant:' || owner_id), 14, 3) || '-8' ||
+    substr(md5('investing-personal-tenant:' || owner_id), 18, 3) || '-' ||
+    substr(md5('investing-personal-tenant:' || owner_id), 21, 12)
+  )::uuid,
+  owner_id, 'personal', 'active'
+from (values ('engine4a_user_a'), ('engine4a_user_b')) owners(owner_id);
+
+insert into public.investing_tenant_memberships(
+  id, tenant_id, user_id, role, permissions, status
+)
+select (
+    substr(md5('investing-owner-membership:' || t.owner_user_id), 1, 8) || '-' ||
+    substr(md5('investing-owner-membership:' || t.owner_user_id), 9, 4) || '-4' ||
+    substr(md5('investing-owner-membership:' || t.owner_user_id), 14, 3) || '-8' ||
+    substr(md5('investing-owner-membership:' || t.owner_user_id), 18, 3) || '-' ||
+    substr(md5('investing-owner-membership:' || t.owner_user_id), 21, 12)
+  )::uuid,
+  t.id, t.owner_user_id, 'owner',
+  array['investing:read', 'investing:create', 'investing:verify', 'investing:replay']::text[],
+  'active'
+from public.investing_tenants t
+where t.owner_user_id in ('engine4a_user_a', 'engine4a_user_b');
+
+insert into public.investing_accounts(tenant_id, owner_user_id, user_id, portfolio_id, base_currency, environment, status)
+select t.id, t.owner_user_id, t.owner_user_id, account_fixture.portfolio_id, 'EUR', 'paper', 'active'
+from (values
+  ('engine4a_user_a', 'engine4a_portfolio_a'),
+  ('engine4a_user_b', 'engine4a_portfolio_b')
+) account_fixture(owner_id, portfolio_id)
+join public.investing_tenants t on t.owner_user_id = account_fixture.owner_id;
 
 set local role service_role;
 select pg_temp.persist_engine_run(
