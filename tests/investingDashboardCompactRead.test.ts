@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
 type Row = Record<string, any>;
 
 const db = {
+  user_settings: [] as Row[],
+  plans: [] as Row[],
   investing_accounts: [] as Row[],
   investing_cash_balances: [] as Row[],
   investing_positions: [] as Row[],
@@ -87,6 +89,19 @@ vi.mock("@/lib/market/quotes", () => ({ getQuotes: mocks.getQuotes }));
 import { loadInvestingDashboard } from "@/lib/investing/server/dashboard";
 
 function seedTenantAFinancialRows() {
+  db.user_settings.splice(0, db.user_settings.length, {
+    user_id: "owner-1",
+    risk_profile: "Balanced",
+    horizon: "Medium",
+    goal_target_value: 10000,
+  });
+  db.plans.splice(0, db.plans.length, {
+    id: "plan-1",
+    user_id: "owner-1",
+    mode: "investing",
+    goal: "Growth with controlled risk",
+    created_at: "2026-08-01T00:00:00.000Z",
+  });
   db.investing_accounts.splice(0, db.investing_accounts.length,
     {
       id: "account-a",
@@ -123,36 +138,20 @@ function seedTenantAFinancialRows() {
   db.investing_orders.splice(0, db.investing_orders.length);
 }
 
-describe("compact Investing dashboard read", () => {
+describe("Investing dashboard tenant-scoped read", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     for (const rows of Object.values(db)) rows.splice(0, rows.length);
     seedTenantAFinancialRows();
     mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "verified_fresh_test" } });
-    mocks.rpc.mockResolvedValue({
-      data: {
-        settings: { risk_profile: "Balanced", horizon: "Medium", goal_target_value: 10000 },
-        plan: { id: "plan-1", goal: "Growth with controlled risk" },
-        account: { id: "compact-account-ignored", environment: "paper", status: "active" },
-        cycles: [],
-        queue: [],
-        orders: [],
-        cash: [],
-        positions: [],
-      },
-      error: null,
-    });
   });
 
-  it("loads transitional settings through compact RPC but financial rows through tenant-scoped account tables", async () => {
+  it("loads transitional user-level rows directly and never calls the non-tenant-scoped compact RPC", async () => {
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
-    expect(mocks.rpc).toHaveBeenCalledTimes(1);
-    expect(mocks.rpc).toHaveBeenCalledWith("read_investing_dashboard_compact_v1", {
-      p_user_id: "owner-1",
-      p_portfolio_id: "primary",
-    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
     expect(result.ok).toBe(true);
+    expect(result.plan).toMatchObject({ id: "plan-1", goal: "Growth with controlled risk" });
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.cashEur).toBe(700);
     expect(result.portfolio.environment).toBe("paper");
@@ -232,22 +231,10 @@ describe("compact Investing dashboard read", () => {
       day_key: "2026-08-08",
       created_at: "2026-08-08T10:00:00Z",
     });
-    mocks.rpc.mockResolvedValue({
-      data: {
-        settings: { risk_profile: "Balanced" },
-        plan: { id: "plan-1" },
-        account: { id: "account-b", environment: "paper", status: "active" },
-        cash: [{ account_id: "account-b", currency: "EUR", available_amount: 9900 }],
-        positions: [{ account_id: "account-b", symbol: "TSLA", quantity: 50, cost_basis: 1, currency: "EUR" }],
-        cycles: [{ id: "cycle-b", account_id: "account-b", day_key: "2026-08-08" }],
-        queue: [],
-        orders: [],
-      },
-      error: null,
-    });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
+    expect(mocks.rpc).not.toHaveBeenCalled();
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.cashEur).toBe(700);
     expect(result.portfolio.items.map((item: any) => item.symbol)).toEqual(["VWCE"]);
@@ -324,7 +311,7 @@ describe("compact Investing dashboard read", () => {
     });
   });
 
-  it("fails closed for the current provider quote shape when explicit freshness evidence is absent", async () => {
+  it("does not use the current provider quote shape as customer-visible market truth without freshness evidence", async () => {
     mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, ts: "2026-08-08T10:00:00.000Z", source: "twelvedata" } });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
@@ -334,9 +321,27 @@ describe("compact Investing dashboard read", () => {
       price: 100,
       priceSource: "twelvedata",
       priceAvailability: "UNAVAILABLE",
-      valuationAvailability: "UNAVAILABLE",
+      valueEur: 250,
+      valuationSource: "cost_basis_fallback",
+      valuationAvailability: "ESTIMATED",
     });
-    expect(result.portfolio.valuation.provenance.status).toBe("UNAVAILABLE");
+    expect(result.portfolio.totalEur).toBe(950);
+    expect(result.portfolio.valuation).toMatchObject({
+      coveragePct: 0,
+      source: "cost_basis_fallback",
+      availability: "ESTIMATED",
+      missingPriceSymbols: ["VWCE"],
+      provenance: {
+        status: "ESTIMATED",
+        unavailableMessage: "Dados indisponiveis neste momento",
+      },
+    });
+    expect(result.derived.decisionAvailability).toBe("UNAVAILABLE");
+    expect(result.derived.decisionProvenance).toMatchObject({
+      status: "UNAVAILABLE",
+      source: "volatile_runtime_adapter",
+      unavailableMessage: "Dados indisponiveis neste momento",
+    });
   });
 
   it("fails closed for positive prices with unknown source", async () => {
@@ -348,9 +353,11 @@ describe("compact Investing dashboard read", () => {
       symbol: "VWCE",
       price: 100,
       priceAvailability: "UNAVAILABLE",
-      valuationAvailability: "UNAVAILABLE",
+      valueEur: 250,
+      valuationSource: "cost_basis_fallback",
+      valuationAvailability: "ESTIMATED",
     });
-    expect(result.portfolio.valuation.provenance.status).toBe("UNAVAILABLE");
+    expect(result.portfolio.valuation.provenance.status).toBe("ESTIMATED");
   });
 
   it("fails closed for positive prices with absent source", async () => {
@@ -359,7 +366,8 @@ describe("compact Investing dashboard read", () => {
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
     expect(result.portfolio.items[0].priceAvailability).toBe("UNAVAILABLE");
-    expect(result.portfolio.valuation.availability).toBe("UNAVAILABLE");
+    expect(result.portfolio.items[0].valuationAvailability).toBe("ESTIMATED");
+    expect(result.portfolio.valuation.availability).toBe("ESTIMATED");
   });
 
   it("marks stale quote evidence as STALE, not REAL", async () => {
@@ -369,6 +377,7 @@ describe("compact Investing dashboard read", () => {
 
     expect(result.portfolio.items[0]).toMatchObject({
       symbol: "VWCE",
+      valueEur: 300,
       priceAvailability: "STALE",
       valuationAvailability: "STALE",
     });

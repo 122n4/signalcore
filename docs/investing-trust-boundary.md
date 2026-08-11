@@ -14,7 +14,7 @@ Financial Investing routes follow this order:
 
 Service role is not authorization. It bypasses RLS, so every service-role financial operation must first prove the user, tenant and account/portfolio scope in server code or in a documented RPC validation.
 
-The dashboard still calls `read_investing_dashboard_compact_v1(text,text)` for transitional user-level settings and plan data. Because that RPC is not tenant-scoped in this PR, it is not trusted for financial rows. Cash, positions, daily cycles, execution queue rows and orders are read server-side only after a canonical tenant account has been selected, and those financial reads are scoped by `account_id`.
+The dashboard does not call `read_investing_dashboard_compact_v1(text,text)`. Transitional settings and plan data are read directly as user-level rows from `user_settings` by authenticated Clerk `user_id` and `plans` by authenticated Clerk `user_id` plus `mode = investing`. Cash, positions, daily cycles, execution queue rows and orders are read server-side only after a canonical tenant account has been selected, and those financial reads are scoped by `account_id`.
 
 ## Tenant Resolution
 
@@ -80,6 +80,8 @@ When identity, ownership, price or provenance cannot be proven, user-facing resp
 Fallbacks from prior candles or last-known values must never be `REAL`. Cost-basis fallback is `ESTIMATED`. Unknown or insufficient provider evidence is `UNAVAILABLE`.
 
 The current quote provider shape used by `getQuotes()`, for example `{ price: 100, ts, source: "twelvedata" }`, does not by itself prove freshness. It remains `UNAVAILABLE` until a future Market Data Truth contract explicitly defines provider freshness, observed time, source identity and acceptable staleness for customer-visible `REAL` market data.
+
+If price evidence is `UNAVAILABLE`, the positive provider price is not used as customer-visible market valuation. The dashboard falls back to cost basis when present, marks valuation `ESTIMATED`, and does not count that symbol as proven price coverage. If required market evidence is `UNAVAILABLE`, a volatile customer decision is also customer-visible `UNAVAILABLE` even if internal shadow computation still runs.
 
 ## Protected Routes
 

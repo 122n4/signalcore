@@ -24,7 +24,10 @@ import {
 export type InvestingSurfacePage = "daily" | "planning" | "portfolio" | "research" | "reports" | "autonomy" | "settings";
 
 type Tone = "good" | "warn" | "bad" | "neutral" | "info";
+type AvailabilityStatus = "REAL" | "STALE" | "ESTIMATED" | "UNAVAILABLE";
 type RefreshDashboard = () => Promise<void>;
+
+const FINANCIAL_DATA_UNAVAILABLE = "Dados indisponiveis neste momento";
 
 async function fetchJSON(url: string, opts?: RequestInit) {
   const res = await fetch(url, {
@@ -93,6 +96,25 @@ function stateTone(state?: string | null): Tone {
   if (raw.includes("ready") || raw.includes("ok") || raw.includes("aligned") || raw.includes("complete") || raw.includes("cleared")) return "good";
   if (raw.includes("paper")) return "info";
   return "neutral";
+}
+
+function normalizeAvailability(value: unknown): AvailabilityStatus {
+  const raw = String(value || "").trim().toUpperCase();
+  if (raw === "REAL" || raw === "STALE" || raw === "ESTIMATED" || raw === "UNAVAILABLE") return raw;
+  return "UNAVAILABLE";
+}
+
+function availabilityTone(status: AvailabilityStatus): Tone {
+  if (status === "REAL") return "good";
+  if (status === "STALE" || status === "ESTIMATED") return "warn";
+  return "bad";
+}
+
+function availabilityLabel(status: AvailabilityStatus) {
+  if (status === "REAL") return "Real";
+  if (status === "STALE") return "Stale";
+  if (status === "ESTIMATED") return "Estimated";
+  return "Unavailable";
 }
 
 function Badge({ tone = "neutral", children }: { tone?: Tone; children: React.ReactNode }) {
@@ -311,10 +333,14 @@ function buildViewModel(data: any) {
     };
   });
   const coveragePct = num(portfolio?.valuation?.coveragePct ?? decision?.dataQuality?.pricingCoveragePct, items.length ? 0 : 100);
+  const valuationAvailability = normalizeAvailability(portfolio?.valuation?.availability ?? portfolio?.valuation?.provenance?.status);
+  const decisionAvailability = normalizeAvailability(data?.derived?.decisionAvailability ?? data?.derived?.decisionProvenance?.status);
   const accountEnvironment = String(portfolio?.environment || "").toLowerCase();
   const accountStatus = String(portfolio?.accountStatus || "").toLowerCase();
   const hasPaperAccount = Boolean(portfolio?.accountId && accountEnvironment === "paper" && accountStatus === "active");
-  const valuationSource = String(portfolio?.valuationSource || decision?.dataQuality?.valuationSource || "unknown");
+  const valuationSource = String(portfolio?.valuation?.source || portfolio?.valuationSource || decision?.dataQuality?.valuationSource || "unknown");
+  const canShowPortfolioValue = valuationAvailability !== "UNAVAILABLE";
+  const dataQualityHigh = valuationAvailability === "REAL" && coveragePct >= 90;
   return {
     decision,
     runtime,
@@ -324,9 +350,16 @@ function buildViewModel(data: any) {
     totalEur,
     cashEur,
     targetRows,
-    actionRows,
+    actionRows: decisionAvailability === "UNAVAILABLE" ? [] : actionRows,
     allocationRows,
     coveragePct,
+    valuationAvailability,
+    decisionAvailability,
+    canShowPortfolioValue,
+    dataQualityHigh,
+    portfolioValue: canShowPortfolioValue ? fmtEUR(totalEur) : FINANCIAL_DATA_UNAVAILABLE,
+    valuationLabel: `${availabilityLabel(valuationAvailability)} - ${coveragePct}% proven price coverage`,
+    decisionUnavailable: decisionAvailability === "UNAVAILABLE",
     accountEnvironment,
     accountStatus,
     hasPaperAccount,
@@ -394,7 +427,7 @@ function Shell({ page, data, loading, error, children }: { page: InvestingSurfac
             </div>
             <div className="rounded-lg border border-[#263650] bg-[#0b1729] p-3">
               <div className="text-xs font-bold text-white">Data Quality</div>
-              <div className="mt-1 text-[11px] text-[#8da0bd]">{loading ? "Loading" : error ? "Unavailable" : `${vm.coveragePct}% price coverage`}</div>
+              <div className="mt-1 text-[11px] text-[#8da0bd]">{loading ? "Loading" : error ? "Unavailable" : vm.valuationLabel}</div>
             </div>
           </div>
         </aside>
@@ -428,7 +461,7 @@ function TopMetrics({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
       <MetricCard icon={<Target className="h-4 w-4" />} label="Active plan" value={vm.plan ? "Active" : "Missing"} detail={vm.decision?.risk?.objective || "Long-term mandate"} tone={vm.plan ? "good" : "warn"} />
       <MetricCard icon={<ShieldCheck className="h-4 w-4" />} label="Account mode" value={accountValue} detail={vm.accountStatus || "No active account"} tone={vm.hasPaperAccount ? "info" : "warn"} />
       <MetricCard icon={<Wallet className="h-4 w-4" />} label="Cash available" value={fmtEUR(vm.cashEur)} detail="Canonical cash balance" tone={vm.hasPaperAccount ? "good" : "warn"} />
-      <MetricCard icon={<BarChart3 className="h-4 w-4" />} label="Portfolio value" value={fmtEUR(vm.totalEur)} detail={`${vm.coveragePct}% price coverage`} tone={vm.coveragePct >= 90 ? "good" : "warn"} />
+      <MetricCard icon={<BarChart3 className="h-4 w-4" />} label="Portfolio value" value={vm.portfolioValue} detail={vm.valuationLabel} tone={availabilityTone(vm.valuationAvailability)} />
       <MetricCard icon={<CalendarDays className="h-4 w-4" />} label="Last daily cycle" value={fmtDateTime(vm.lastSnapshotAt)} detail={vm.receipts.length ? `${vm.receipts.length} receipts` : "No receipts yet"} tone={vm.lastSnapshotAt ? "good" : "warn"} />
     </div>
   );
@@ -477,21 +510,27 @@ function TodayPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
     <div className="space-y-3">
       <TopMetrics vm={vm} />
       <div className="grid gap-3 xl:grid-cols-[1.1fr_.9fr]">
-        <Panel title="Today's Decision" subtitle={vm.decision?.summary?.detail || "Canonical decision projection"} right={<Badge tone={stateTone(vm.decision?.state)}>{vm.decision?.state || "setup required"}</Badge>}>
+        <Panel title="Today's Decision" subtitle={vm.decisionUnavailable ? FINANCIAL_DATA_UNAVAILABLE : vm.decision?.summary?.detail || "Canonical decision projection"} right={<Badge tone={vm.decisionUnavailable ? "bad" : stateTone(vm.decision?.state)}>{vm.decisionUnavailable ? "unavailable" : vm.decision?.state || "setup required"}</Badge>}>
           <div className="space-y-4">
-            <div>
-              <div className="text-2xl font-black text-white">{vm.decision?.summary?.headline || "Setup required"}</div>
-              <div className="mt-2 text-sm leading-6 text-[#9fb1ca]">{vm.decision?.summary?.detail || "Create an active Investing plan and Paper account before a proposal can be generated."}</div>
-            </div>
-            <div className="grid gap-2 text-sm md:grid-cols-2">
-              <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">What</span><div className="mt-1 font-bold text-white">{action?.type || "setup_required"}</div></div>
-              <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">Why</span><div className="mt-1 font-bold text-white">{vm.decision?.risk?.governanceStatus || "unknown"}</div></div>
-              <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">Cost</span><div className="mt-1 font-bold text-white">{fmtEUR(vm.decision?.costs?.estimatedRoundTripCostEur || 0, 2)}</div></div>
-              <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">Validity</span><div className="mt-1 font-bold text-white">{action?.expiresAt ? fmtDateTime(action.expiresAt) : "Manual review window"}</div></div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(action?.allowedResponses || ["refresh"]).map((response: string) => <Badge key={response} tone="info">{response.replace(/_/g, " ")}</Badge>)}
-            </div>
+            {vm.decisionUnavailable ? (
+              <EmptyState title={FINANCIAL_DATA_UNAVAILABLE} detail="Refresh is required before displaying an actionable Investing decision." />
+            ) : (
+              <>
+                <div>
+                  <div className="text-2xl font-black text-white">{vm.decision?.summary?.headline || "Setup required"}</div>
+                  <div className="mt-2 text-sm leading-6 text-[#9fb1ca]">{vm.decision?.summary?.detail || "Create an active Investing plan and Paper account before a proposal can be generated."}</div>
+                </div>
+                <div className="grid gap-2 text-sm md:grid-cols-2">
+                  <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">What</span><div className="mt-1 font-bold text-white">{action?.type || "setup_required"}</div></div>
+                  <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">Why</span><div className="mt-1 font-bold text-white">{vm.decision?.risk?.governanceStatus || "unknown"}</div></div>
+                  <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">Cost</span><div className="mt-1 font-bold text-white">{fmtEUR(vm.decision?.costs?.estimatedRoundTripCostEur || 0, 2)}</div></div>
+                  <div className="rounded-lg border border-[#22314d] bg-[#081424] p-3"><span className="text-[#7f91ad]">Validity</span><div className="mt-1 font-bold text-white">{action?.expiresAt ? fmtDateTime(action.expiresAt) : "Manual review window"}</div></div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(action?.allowedResponses || ["refresh"]).map((response: string) => <Badge key={response} tone="info">{response.replace(/_/g, " ")}</Badge>)}
+                </div>
+              </>
+            )}
           </div>
         </Panel>
         <AllocationPanel vm={vm} />
@@ -517,13 +556,14 @@ function PortfolioSnapshot({ vm, compact = false }: { vm: ReturnType<typeof buil
               {vm.items.slice(0, compact ? 5 : 12).map((item: any) => {
                 const value = num(item.valueEur ?? item.value_eur);
                 const weight = vm.totalEur > 0 ? (value / vm.totalEur) * 100 : 0;
-                const price = num(item.price);
+                const itemValuationAvailability = normalizeAvailability(item.valuationAvailability ?? item.valuation_availability);
+                const itemPriceAvailability = normalizeAvailability(item.priceAvailability ?? item.price_availability);
                 return (
                   <tr key={String(item.symbol)}>
                     <td className="py-2 font-bold text-white">{String(item.symbol || "").toUpperCase()}</td>
-                    <td className="py-2 text-right text-[#dbe7f8]">{fmtEUR(value)}</td>
+                    <td className="py-2 text-right text-[#dbe7f8]">{itemValuationAvailability === "UNAVAILABLE" ? FINANCIAL_DATA_UNAVAILABLE : fmtEUR(value)}</td>
                     <td className="py-2 text-right text-[#dbe7f8]">{weight.toFixed(1)}%</td>
-                    <td className="py-2 text-right">{price > 0 ? <span className="text-emerald-300">100%</span> : <span className="text-amber-300">Fallback</span>}</td>
+                    <td className="py-2 text-right"><Badge tone={availabilityTone(itemPriceAvailability)}>{availabilityLabel(itemPriceAvailability)}</Badge></td>
                   </tr>
                 );
               })}
@@ -555,7 +595,7 @@ function BenchmarkPanel({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
     <Panel title="Benchmark & Data Quality" subtitle={vm.decision?.researchPublication?.benchmarkName || "Benchmark relative validation"}>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 text-sm"><span className="text-[#8fa2bf]">Validation</span><Badge tone={stateTone(vm.decision?.researchPublication?.validationStatus)}>{vm.decision?.researchPublication?.validationStatus || "unavailable"}</Badge></div>
-        <div className="flex items-center justify-between gap-3 text-sm"><span className="text-[#8fa2bf]">Price coverage</span><span className="font-bold text-white">{vm.coveragePct}%</span></div>
+        <div className="flex items-center justify-between gap-3 text-sm"><span className="text-[#8fa2bf]">Price coverage</span><span className={clsx("font-bold", vm.dataQualityHigh ? "text-emerald-300" : "text-amber-300")}>{vm.valuationLabel}</span></div>
         <div className="flex items-center justify-between gap-3 text-sm"><span className="text-[#8fa2bf]">Market snapshot</span><span className="truncate font-mono text-xs text-sky-200">{vm.decision?.marketSnapshot?.hash?.slice(0, 10) || "unavailable"}</span></div>
       </div>
     </Panel>
@@ -568,7 +608,7 @@ function PaperLifecyclePanel({ vm }: { vm: ReturnType<typeof buildViewModel> }) 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between gap-3"><span className="text-[#8fa2bf]">Queue</span><span className="font-bold text-white">{vm.queue?.operational_state || "No pending queue"}</span></div>
         <div className="flex justify-between gap-3"><span className="text-[#8fa2bf]">Latest order</span><span className="font-bold text-white">{vm.order?.status || "No order submitted"}</span></div>
-        <div className="flex justify-between gap-3"><span className="text-[#8fa2bf]">Market data</span><span className="font-bold text-emerald-300">Provider quotes operational</span></div>
+        <div className="flex justify-between gap-3"><span className="text-[#8fa2bf]">Market data</span><span className={clsx("font-bold", vm.dataQualityHigh ? "text-emerald-300" : "text-amber-300")}>{vm.valuationLabel}</span></div>
       </div>
     </Panel>
   );
@@ -635,6 +675,7 @@ function PortfolioFundingPanel({ vm, onRefresh }: { vm: ReturnType<typeof buildV
     && queueVersion > 0
     && queueState === "approved"
     && (approvalStatus === "approved" || approvalStatus === "not_required")
+    && !vm.decisionUnavailable
     && Boolean(tradeSymbol);
 
   async function run(label: string, work: () => Promise<void>) {
@@ -823,8 +864,8 @@ function PortfolioPage({ vm, onRefresh }: { vm: ReturnType<typeof buildViewModel
         <Panel title="Reconciliation & Health" subtitle="Operational checks">
           <StatusRow label="Portfolio reconciliation" value={vm.receipts.length ? "Receipts present" : "Unavailable"} tone={vm.receipts.length ? "good" : "warn"} />
           <StatusRow label="Cash reconciliation" value={vm.hasPaperAccount ? "Read model only" : "Unavailable"} tone={vm.hasPaperAccount ? "warn" : "neutral"} />
-          <StatusRow label="Valuation check" value={`${vm.coveragePct}% price coverage`} tone={vm.coveragePct >= 90 ? "good" : "warn"} />
-          <StatusRow label="Data integrity" value={vm.decision ? "Projection returned" : "Unavailable"} tone={vm.decision ? "warn" : "neutral"} />
+          <StatusRow label="Valuation check" value={vm.valuationLabel} tone={availabilityTone(vm.valuationAvailability)} />
+          <StatusRow label="Data integrity" value={vm.decisionUnavailable ? FINANCIAL_DATA_UNAVAILABLE : vm.decision ? "Projection returned" : "Unavailable"} tone={vm.decisionUnavailable ? "bad" : vm.decision ? "warn" : "neutral"} />
         </Panel>
       </div>
     </div>
@@ -870,8 +911,8 @@ function ReportsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
           <EmptyState title="Historical value series incomplete" detail="The current backend exposes latest value and receipts. It does not yet expose a full time series for charting." />
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             <MetricCard icon={<Wallet className="h-4 w-4" />} label="Cash available" value={fmtEUR(vm.cashEur)} tone="good" />
-            <MetricCard icon={<PieChart className="h-4 w-4" />} label="Holdings estimate" value={fmtEUR(Math.max(0, vm.totalEur - vm.cashEur))} tone="info" />
-            <MetricCard icon={<Database className="h-4 w-4" />} label="Price coverage" value={`${vm.coveragePct}%`} tone={vm.coveragePct >= 90 ? "good" : "warn"} />
+            <MetricCard icon={<PieChart className="h-4 w-4" />} label="Holdings estimate" value={vm.canShowPortfolioValue ? fmtEUR(Math.max(0, vm.totalEur - vm.cashEur)) : FINANCIAL_DATA_UNAVAILABLE} tone={availabilityTone(vm.valuationAvailability)} />
+            <MetricCard icon={<Database className="h-4 w-4" />} label="Price coverage" value={vm.valuationLabel} tone={availabilityTone(vm.valuationAvailability)} />
           </div>
         </Panel>
         <Panel title="Decision & Execution Summary" subtitle="Receipts and Paper lifecycle">
@@ -932,7 +973,7 @@ function AutonomyPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
             ["Canonical projection returned", Boolean(vm.decision)],
             ["Approval required", Boolean(vm.decision?.action?.approvalRequired)],
             ["Paper account active", vm.hasPaperAccount],
-            ["Data quality high", vm.coveragePct >= 90],
+            ["Data quality high", vm.dataQualityHigh],
             ["Live execution blocked", true],
           ].map(([label, ok]) => <div key={String(label)} className="flex items-center justify-between border-b border-[#22314d] py-2 text-sm last:border-0"><span className="text-[#dbe7f8]">{String(label)}</span>{ok ? <CheckCircle2 className="h-4 w-4 text-emerald-300" /> : <AlertTriangle className="h-4 w-4 text-amber-300" />}</div>)}
         </Panel>
@@ -956,7 +997,7 @@ function SettingsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
   const settingGroups = [
     ["Account & Execution", [["Environment", vm.hasPaperAccount ? "Paper active" : "Paper setup required"], ["Manual approval", vm.decision?.action?.approvalRequired ? "Required" : "Policy controlled"], ["Paper execution", "Proposal boundary only"], ["Live execution", "Blocked"]]],
     ["Plan Preferences", [["Risk profile", vm.decision?.risk?.riskProfile || "Unavailable"], ["Horizon", vm.decision?.risk?.horizon || "Unavailable"], ["Target policy", vm.allocationRows.map((r) => `${r.label} ${r.targetWeight.toFixed(0)}%`).join(" / ") || "Unavailable"]]],
-    ["Valuation & Data Quality", [["Price coverage", `${vm.coveragePct}%`], ["Price source status", vm.valuationSource], ["Fallback policy", "Explicitly flagged when used"]]],
+    ["Valuation & Data Quality", [["Price coverage", vm.valuationLabel], ["Price source status", vm.valuationSource], ["Fallback policy", "Explicitly flagged when used"]]],
     ["Notifications & Reviews", [["Daily reminders", "Not exposed"], ["Proposal expiry alerts", "Not exposed"], ["Approval notifications", "Not exposed"], ["Reconciliation alerts", "Not exposed"]]],
     ["Research & Reporting", [["Research status", vm.decision?.researchPublication?.status || "unavailable"], ["Display currency", "EUR"], ["Report format", "PDF / CSV planned"]]],
     ["Security & Access", [["Security posture", "Managed by account provider"], ["Trusted devices", "Unavailable"], ["Two-factor", "Managed by account provider"]]],

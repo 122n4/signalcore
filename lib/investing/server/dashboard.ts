@@ -76,6 +76,10 @@ function assert(error: { message?: string } | null, code: string) {
   if (error) throw new Error(`${code}:${error.message || "database_error"}`);
 }
 
+function firstRow(result: { data?: unknown }) {
+  return Array.isArray(result.data) ? result.data[0] ?? null : null;
+}
+
 type DashboardLoadArgs = {
   userId: string;
   tenantId: string;
@@ -169,6 +173,29 @@ async function readTenantScopedFinancialRows(database: any, args: Required<Omit<
   };
 }
 
+async function readUserLevelTransitionRows(database: any, userId: string) {
+  const [settingsResult, planResult] = await Promise.all([
+    database
+      .from("user_settings")
+      .select("user_id,active_mode,goal_type,goal_amount,goal_target_value,monthly_contribution,goal_timeframe_months,risk_profile,horizon,setup_status,setup_mode,modes,broker_connection,guardrails,plan_v1,plan_active,updated_at,created_at")
+      .eq("user_id", userId)
+      .limit(1),
+    database
+      .from("plans")
+      .select("id,user_id,mode,goal,status,is_active,version,activated_at,archived_at,created_at,updated_at")
+      .eq("user_id", userId)
+      .eq("mode", "investing")
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+  assert(settingsResult.error, "investing_dashboard_settings_failed");
+  assert(planResult.error, "investing_dashboard_plan_failed");
+  return {
+    settings: firstRow(settingsResult),
+    plan: firstRow(planResult),
+  };
+}
+
 export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const userId = args.userId;
   const tenantId = args.tenantId;
@@ -177,14 +204,9 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const database = getInvestingSupabaseAdmin() as any;
   const asOf = new Date().toISOString();
   const today = asOf.slice(0, 10);
-  const compact = await database.rpc("read_investing_dashboard_compact_v1", {
-    p_user_id: userId,
-    p_portfolio_id: portfolioId,
-  });
-  assert(compact.error, "investing_dashboard_compact_failed");
-  const snapshot = compact.data && typeof compact.data === "object" ? compact.data : {};
-  const settings = snapshot.settings ?? null;
-  const plan = snapshot.plan ?? null;
+  const transitionRows = await readUserLevelTransitionRows(database, userId);
+  const settings = transitionRows.settings;
+  const plan = transitionRows.plan;
   const scopedFinancialRows = await readTenantScopedFinancialRows(database, { userId, tenantId, portfolioId, environments });
   const account = scopedFinancialRows.account;
   const cycles = scopedFinancialRows.cycles;
@@ -217,9 +239,11 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const sourceQuote = quotes?.[symbol] && typeof quotes[symbol] === "object" ? quotes[symbol] : quote;
     const price = number(quote?.price);
     const costBasisEur = number(position.cost_basis);
-    const valueEur = price > 0 ? qty * price : costBasisEur;
-    const itemValuationSource = price > 0 ? "market_quote" : "cost_basis_fallback";
     const priceAvailability = priceAvailabilityFromQuote(sourceQuote, price);
+    const hasUsableMarketPrice = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
+    const hasCostBasisFallback = costBasisEur > 0;
+    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : 0;
+    const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
     const itemValuationAvailability = valuationAvailability({
       priceAvailability,
       valuationSource: itemValuationSource,
@@ -245,12 +269,19 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       valuationSource: itemValuationSource,
     };
   });
-  const missingPriceSymbols = items
-    .filter((item: any) => number(item.price) <= 0)
+  const unprovenPriceSymbols = items
+    .filter((item: any) => item.priceAvailability !== "REAL")
     .map((item: any) => String(item.symbol || "").toUpperCase())
     .filter(Boolean);
-  const pricingCoveragePct = items.length ? Math.round(((items.length - missingPriceSymbols.length) / items.length) * 100) : 100;
-  const valuationSource = items.length === 0 ? "empty" : missingPriceSymbols.length > 0 ? "cost_basis_fallback" : "market_quotes";
+  const pricingCoveragePct = items.length ? Math.round(((items.length - unprovenPriceSymbols.length) / items.length) * 100) : 100;
+  const valuationSource =
+    items.length === 0
+      ? "empty"
+      : items.every((item: any) => item.valuationSource === "market_quote")
+        ? "market_quotes"
+        : items.some((item: any) => item.valuationSource === "cost_basis_fallback")
+          ? "cost_basis_fallback"
+          : "unavailable";
   const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
   const runtime = buildInvestingRuntimeSnapshot({
     referenceTotalEur: totalEur,
@@ -303,7 +334,6 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       : null;
   const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
   const customerDecisionSource = persistedCustomerDecision ? "persisted_daily_cycle" : "volatile_runtime_adapter";
-  const visibleDecisionAvailability = decisionAvailability(customerDecisionSource, visibleCustomerDecision);
   const portfolioValuationAvailability: AvailabilityStatus =
     items.length === 0
       ? "UNAVAILABLE"
@@ -314,6 +344,11 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
           : items.some((item: any) => item.valuationAvailability === "STALE")
             ? "STALE"
             : "REAL";
+  const hasUnavailableMarketEvidence = items.some((item: any) => item.priceAvailability === "UNAVAILABLE");
+  const visibleDecisionAvailability =
+    customerDecisionSource === "volatile_runtime_adapter" && hasUnavailableMarketEvidence
+      ? "UNAVAILABLE"
+      : decisionAvailability(customerDecisionSource, visibleCustomerDecision);
 
   return {
     ok: true,
@@ -337,10 +372,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
         provenance: {
           status: portfolioValuationAvailability,
           source: valuationSource,
-          missingPriceSymbols,
+          missingPriceSymbols: unprovenPriceSymbols,
           unavailableMessage: portfolioValuationAvailability === "REAL" ? null : FINANCIAL_DATA_UNAVAILABLE,
         },
-        missingPriceSymbols,
+        missingPriceSymbols: unprovenPriceSymbols,
       },
     },
     daily: {
@@ -359,7 +394,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       receiptsCount: cycleRows.length,
       receiptsTimeline: cycleRows.map((row: any) => ({ id: row.id, at: row.created_at, dayKey: row.day_key })),
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
-      diagnostics: { pricing: { coveragePct: pricingCoveragePct, source: valuationSource, missingPriceSymbols }, riskLeaks: [] },
+      diagnostics: { pricing: { coveragePct: pricingCoveragePct, source: valuationSource, missingPriceSymbols: unprovenPriceSymbols }, riskLeaks: [] },
       executionState: latestOrder?.status ?? latestQueue?.operational_state ?? "recommendation",
       customerDecision: visibleCustomerDecision,
       customerDecisionSource,
