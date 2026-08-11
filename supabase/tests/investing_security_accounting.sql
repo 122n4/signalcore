@@ -204,7 +204,9 @@ reset role;
 -- Unauthenticated role sees no Investing financial rows.
 set local role anon;
 do $$ begin
-  if exists(select 1 from public.investing_accounts where user_id in ('validation_user_a','validation_user_b')) then raise exception 'anon_read_accounts'; end if;
+  begin
+    if exists(select 1 from public.investing_accounts where user_id in ('validation_user_a','validation_user_b')) then raise exception 'anon_read_accounts'; end if;
+  exception when insufficient_privilege then null; end;
   begin
     perform public.investing_open_paper_account_v2('validation_user_a','x','EUR',0,'anon-open-test','anon-open-corr');
     raise exception 'anon_executed_financial_rpc';
