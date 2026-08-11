@@ -14,6 +14,19 @@ function hash(seed, label) {
   return crypto.createHash("sha256").update(`${seed}:${label}`, "utf8").digest("hex");
 }
 
+function deterministicUuid(seed) {
+  const digest = crypto.createHash("md5").update(seed, "utf8").digest("hex");
+  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-4${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
+}
+
+function tenantId(owner) {
+  return deterministicUuid(`investing-personal-tenant:${owner}`);
+}
+
+function membershipId(owner) {
+  return deterministicUuid(`investing-owner-membership:${owner}`);
+}
+
 const artifactPhases = Object.freeze({
   canonical_input: "phase3c",
   portfolio_state_derivation: "phase3c",
@@ -38,14 +51,32 @@ function material(seed, overrides = {}) {
 }
 
 async function account(client, owner, portfolio) {
+  const tenant = tenantId(owner);
   await client.query(
-    `insert into public.investing_accounts(user_id,portfolio_id,base_currency,environment,status)
-     values($1,$2,'EUR','paper','active') on conflict(user_id,portfolio_id,environment) do nothing`,
-    [owner, portfolio],
+    `insert into public.investing_tenants(id,owner_user_id,kind,status)
+     values($1,$2,'personal','active')
+     on conflict(owner_user_id) do nothing`,
+    [tenant, owner],
+  );
+  await client.query(
+    `insert into public.investing_tenant_memberships(id,tenant_id,user_id,role,permissions,status)
+     values(
+       $1,$2,$3,'owner',
+       array['investing:read','investing:create','investing:verify','investing:replay']::text[],
+       'active'
+     )
+     on conflict(tenant_id,user_id) do nothing`,
+    [membershipId(owner), tenant, owner],
+  );
+  await client.query(
+    `insert into public.investing_accounts(tenant_id,owner_user_id,user_id,portfolio_id,base_currency,environment,status)
+     values($1,$2,$2,$3,'EUR','paper','active')
+     on conflict(tenant_id,owner_user_id,portfolio_id,environment) do nothing`,
+    [tenant, owner, portfolio],
   );
   const result = await client.query(
-    "select id from public.investing_accounts where user_id=$1 and portfolio_id=$2 and environment='paper'",
-    [owner, portfolio],
+    "select id from public.investing_accounts where tenant_id=$1 and owner_user_id=$2 and portfolio_id=$3 and environment='paper'",
+    [tenant, owner, portfolio],
   );
   invariant(result.rowCount === 1, "phase4a_account_missing");
   return result.rows[0].id;
