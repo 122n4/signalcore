@@ -5,8 +5,11 @@ on:
     paths:
       - "app/api/investing/**"
       - "lib/investing/**"
+      - "scripts/qa/runInvesting*.mjs"
+      - "scripts/qa/investingDestructiveQaGuard.*"
       - "supabase/migrations/**"
       - "supabase/tests/**"
+      - "tests/investingEnginePhase4B*.test.ts"
       - ".github/workflows/investing-postgres.yml"
   workflow_dispatch:
 
