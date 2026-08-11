@@ -233,6 +233,44 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.portfolio.valuation.availability).not.toBe("UNAVAILABLE");
   });
 
+  it("does not treat zero-quantity positions as customer-visible active holdings", async () => {
+    db.investing_cash_balances.splice(0, db.investing_cash_balances.length, {
+      account_id: "account-a",
+      currency: "EUR",
+      available_amount: 700,
+    });
+    db.investing_positions.splice(0, db.investing_positions.length, {
+      account_id: "account-a",
+      symbol: "VWCE",
+      quantity: 0,
+      cost_basis: 250,
+      currency: "EUR",
+      closed_at: "2026-08-10T10:00:00.000Z",
+    });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.getQuotes).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.portfolio.accountId).toBe("account-a");
+    expect(result.portfolio.cashEur).toBe(700);
+    expect(result.portfolio.items).toEqual([]);
+    expect(result.portfolio.totalEur).toBe(700);
+    expect(result.portfolio.valuation).toMatchObject({
+      cashEur: 700,
+      totalEur: 700,
+      source: "cash_only",
+      availability: "REAL",
+      missingPriceSymbols: [],
+      provenance: {
+        status: "REAL",
+        source: "cash_only",
+        unavailableMessage: null,
+      },
+    });
+  });
+
   it("never consumes financial rows linked to another tenant account with the same user and portfolio", async () => {
     db.investing_accounts.push({
       id: "account-b",

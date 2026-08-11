@@ -218,7 +218,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const accountId = account?.id ? String(account.id) : null;
 
   const universe = getCanonicalInvestingInstrumentMaster();
-  const positionRows = positions;
+  const positionRows = positions.filter((position: any) => number(position.quantity) > 0);
   const symbols = Array.from(new Set<string>(positionRows.map((item: any) => String(item.symbol).toUpperCase()).filter(Boolean)));
   const quotes = symbols.length ? await getQuotes({ symbols, ttlSec: 60 }) : {};
   const canonicalMarketSnapshot = buildCanonicalMarketSnapshotFromQuotes({
