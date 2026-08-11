@@ -6,7 +6,6 @@ import {
   requireInvestingRequestContext,
 } from "@/lib/investing/server/authz";
 import {
-  importPersistentPaperOpeningPosition,
   recordPersistentPaperCashMovement,
   reversePersistentPaperCashMovement,
 } from "@/lib/investing/server/cashAndCorporateActions";
@@ -17,17 +16,10 @@ export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/;
 const MONEY = /^\d{1,10}(?:\.\d{1,8})?$/;
-const QUANTITY = /^\d{1,12}(?:\.\d{1,12})?$/;
-const SYMBOL = /^[A-Z0-9._-]{1,24}$/;
 const reply = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, {
   status,
   headers: { "Cache-Control": "no-store" },
 });
-
-function validPastIsoDate(value: string) {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) && date.getTime() <= Date.now() + 60_000;
-}
 
 export async function POST(req: Request, context: { params: Promise<{ accountId: string }> }) {
   try {
@@ -56,26 +48,6 @@ export async function POST(req: Request, context: { params: Promise<{ accountId:
       const reason = String(body?.reason || "").trim().slice(0, 500);
       if (!UUID.test(movementId) || reason.length < 3) return reply({ ok: false, error: "invalid_reversal_command" }, 400);
       return reply({ ok: true, result: await reversePersistentPaperCashMovement({ userId: authz.userId, accountId, movementId, clientRequestId, reason }) });
-    }
-    if (action === "opening_position") {
-      const symbol = String(body?.symbol || "").trim().toUpperCase();
-      const quantity = String(body?.quantity || "").trim().replace(",", ".");
-      const totalCost = String(body?.totalCost || "").trim().replace(",", ".");
-      const currency = String(body?.currency || "EUR").toUpperCase();
-      const acquiredAt = String(body?.acquiredAt || "");
-      if (!SYMBOL.test(symbol) || !QUANTITY.test(quantity) || !MONEY.test(totalCost) || !/^[A-Z]{3}$/.test(currency) || !validPastIsoDate(acquiredAt)) {
-        return reply({ ok: false, error: "invalid_opening_position_command" }, 400);
-      }
-      return reply({ ok: true, result: await importPersistentPaperOpeningPosition({
-        userId: authz.userId,
-        accountId,
-        symbol,
-        quantity,
-        totalCost,
-        currency,
-        acquiredAt,
-        clientRequestId,
-      }) });
     }
     if (!(["deposit", "withdrawal", "dividend"] as string[]).includes(action)) {
       return reply({ ok: false, error: "invalid_cash_movement_action" }, 400);

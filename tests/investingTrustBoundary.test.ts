@@ -158,6 +158,13 @@ describe("Investing trust boundary", () => {
       status: 403,
     });
 
+    authState.userId = "revoked_user";
+    db.investing_tenant_memberships.push({ id: "membership_revoked", tenant_id: "tenant_a", user_id: "revoked_user", role: "owner", permissions: ["investing:*"], status: "active", revoked_at: "2026-08-01T00:00:00.000Z" });
+    await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
+      code: "investing_tenant_not_authorized",
+      status: 403,
+    });
+
     authState.userId = "user_a";
     db.investing_tenant_memberships.push({ id: "membership_a2", tenant_id: "tenant_b", user_id: "user_a", role: "member", permissions: [], status: "active", revoked_at: null });
     await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({

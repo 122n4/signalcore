@@ -16,160 +16,63 @@ function number(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function priceAvailabilityFromQuote(quote: Record<string, unknown>, price: number) {
-  if (price <= 0) return "UNAVAILABLE";
-  const source = String(quote.source || quote.provider || "").toLowerCase();
-  if (source.includes("stale") || source.includes("last_known") || source.includes("fallback")) return "STALE";
-  return "REAL";
+type AvailabilityStatus = "REAL" | "STALE" | "ESTIMATED" | "UNAVAILABLE";
+
+const FINANCIAL_DATA_UNAVAILABLE = "Dados indisponiveis neste momento";
+
+function normalizedEvidenceTokens(quote: Record<string, unknown>) {
+  const provenance = quote.provenance && typeof quote.provenance === "object" ? quote.provenance as Record<string, unknown> : {};
+  return [
+    quote.source,
+    quote.provider,
+    quote.availability,
+    quote.status,
+    quote.freshness,
+    quote.quality,
+    provenance.source,
+    provenance.provider,
+    provenance.status,
+    provenance.freshness,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
 }
 
-function valuationAvailability(args: { priceAvailability: string; valuationSource: string }) {
+function priceAvailabilityFromQuote(quote: Record<string, unknown>, price: number): AvailabilityStatus {
+  if (price <= 0) return "UNAVAILABLE";
+  const tokens = normalizedEvidenceTokens(quote);
+  if (tokens.length === 0) return "UNAVAILABLE";
+  if (tokens.some((token) => token.includes("stale") || token.includes("last_known") || token.includes("fallback"))) return "STALE";
+  if (tokens.some((token) => token === "real" || token.includes("fresh") || token.includes("verified") || token.includes("realtime") || token === "live")) {
+    return "REAL";
+  }
+  return "UNAVAILABLE";
+}
+
+function valuationAvailability(args: { priceAvailability: AvailabilityStatus; valuationSource: string }): AvailabilityStatus {
   if (args.valuationSource === "market_quote" && args.priceAvailability === "REAL") return "REAL";
   if (args.priceAvailability === "STALE") return "STALE";
   if (args.valuationSource === "cost_basis_fallback") return "ESTIMATED";
   return "UNAVAILABLE";
 }
 
-function decisionAvailability(source: string) {
-  if (source === "persisted_daily_cycle") return "REAL";
+function decisionAvailability(source: string, decision: Record<string, any> | null): AvailabilityStatus {
   if (source === "volatile_runtime_adapter") return "ESTIMATED";
+  if (source !== "persisted_daily_cycle" || !decision) return "UNAVAILABLE";
+  const rawStatus = String(
+    decision.decisionProvenance?.status
+      ?? decision.provenance?.status
+      ?? decision.availability
+      ?? "",
+  ).trim().toUpperCase();
+  if (rawStatus === "REAL" || rawStatus === "STALE" || rawStatus === "ESTIMATED" || rawStatus === "UNAVAILABLE") {
+    return rawStatus;
+  }
   return "UNAVAILABLE";
 }
 
 function assert(error: { message?: string } | null, code: string) {
   if (error) throw new Error(`${code}:${error.message || "database_error"}`);
-}
-
-function normalizeDate(value: unknown) {
-  const date = new Date(String(value || ""));
-  return Number.isFinite(date.getTime()) ? date : null;
-}
-
-function startOfUtcMonth(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function startOfUtcQuarter(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), Math.floor(date.getUTCMonth() / 3) * 3, 1));
-}
-
-function countCyclesSince(cycles: Array<Record<string, any>>, start: Date) {
-  return cycles.filter((cycle) => {
-    const date = normalizeDate(cycle.day_key ?? cycle.created_at);
-    return Boolean(date && date.getTime() >= start.getTime());
-  }).length;
-}
-
-function buildInvestingReportSummary(args: {
-  asOf: string;
-  cycles: Array<Record<string, any>>;
-  totalEur: number;
-  cashEur: number;
-  holdingsValueEur: number;
-  pricingCoveragePct: number;
-  valuationSource: string;
-  monthlyContributionEur: number;
-  unrealizedPnlEur: number | null;
-  missingPriceSymbols: string[];
-}) {
-  const asOfDate = normalizeDate(args.asOf) ?? new Date();
-  const monthStart = startOfUtcMonth(asOfDate);
-  const quarterStart = startOfUtcQuarter(asOfDate);
-  const sortedCycles = [...args.cycles].sort((left, right) => String(right.created_at || "").localeCompare(String(left.created_at || "")));
-  const latestCycle = sortedCycles[0] ?? null;
-  const snapshotCount = sortedCycles.length;
-  const dataQuality =
-    args.valuationSource === "market_quotes" && args.pricingCoveragePct >= 90
-      ? "ready"
-      : args.valuationSource === "empty"
-        ? "setup_required"
-        : "degraded";
-  return {
-    contractVersion: "investing-report-summary/v1",
-    asOf: args.asOf,
-    periods: {
-      monthToDate: {
-        label: `${asOfDate.getUTCFullYear()}-${String(asOfDate.getUTCMonth() + 1).padStart(2, "0")}`,
-        snapshotCount: countCyclesSince(sortedCycles, monthStart),
-      },
-      quarterToDate: {
-        label: `${asOfDate.getUTCFullYear()} Q${Math.floor(asOfDate.getUTCMonth() / 3) + 1}`,
-        snapshotCount: countCyclesSince(sortedCycles, quarterStart),
-      },
-    },
-    latestReceipt: latestCycle
-      ? {
-          id: latestCycle.id ?? null,
-          dayKey: latestCycle.day_key ?? null,
-          createdAt: latestCycle.created_at ?? null,
-        }
-      : null,
-    snapshotsAvailable: snapshotCount,
-    current: {
-      totalEur: args.totalEur,
-      cashEur: args.cashEur,
-      holdingsValueEur: args.holdingsValueEur,
-      monthlyContributionEur: args.monthlyContributionEur,
-      unrealizedPnlEur: args.unrealizedPnlEur,
-      pricingCoveragePct: args.pricingCoveragePct,
-      valuationSource: args.valuationSource,
-      missingPriceSymbols: args.missingPriceSymbols,
-    },
-    dataQuality,
-    limitations: [
-      "Report v1 uses the latest dashboard valuation and the available daily-cycle receipts.",
-      "It does not yet compute full time-weighted return, dividends, realized tax, fees or benchmark attribution.",
-      "Monthly and quarterly figures become stronger as more immutable daily cycles are saved.",
-    ],
-  };
-}
-
-function buildCustomerResearchOpportunities(args: {
-  runtime: ReturnType<typeof buildInvestingRuntimeSnapshot> | null;
-  snapshotQuotes: Record<string, any>;
-  positions: Array<Record<string, any>>;
-}) {
-  const currentSymbols = new Set(args.positions.map((position) => String(position.symbol || "").toUpperCase()).filter(Boolean));
-  const targetRows = args.runtime?.construction.targetAllocations ?? [];
-  const scorecards = new Map((args.runtime?.instrumentScorecards ?? []).map((scorecard) => [scorecard.symbol.toUpperCase(), scorecard]));
-  return targetRows
-    .filter((allocation) => allocation.assetClass !== "cash")
-    .map((allocation) => {
-      const symbol = allocation.symbol.toUpperCase();
-      const scorecard = scorecards.get(symbol);
-      const quote = args.snapshotQuotes[symbol] ?? {};
-      const alreadyHeld = currentSymbols.has(symbol);
-      const warnings = scorecard?.warnings ?? [];
-      const action = alreadyHeld ? "improve_alignment" : "consider_adding";
-      return {
-        contractVersion: "investing-customer-research-opportunity/v1",
-        symbol,
-        name: scorecard?.name ?? symbol,
-        action,
-        fit: scorecard?.mandateFit ?? "medium",
-        score: scorecard?.compositeScore ?? null,
-        targetWeightPct: allocation.targetWeightPct,
-        targetValueEur: allocation.targetValueEur,
-        currentState: alreadyHeld ? "already_held" : "not_held",
-        price: quote?.price ?? null,
-        priceSource: quote?.source ?? quote?.provider ?? null,
-        priceAsOf: quote?.asOf ?? quote?.timestamp ?? null,
-        labValidation: "not_connected",
-        rationale: allocation.rationale,
-        strengths: scorecard?.strengths ?? [],
-        warnings,
-        suitabilityWarning:
-          warnings.length > 0
-            ? "Review warnings before using this opportunity."
-            : "Mandate-fit opportunity from the Investing engine. Not investment advice.",
-      };
-    })
-    .sort((left, right) => {
-      const fitRank: Record<string, number> = { high: 3, medium: 2, low: 1 };
-      return (fitRank[right.fit] ?? 0) - (fitRank[left.fit] ?? 0)
-        || Number(right.score ?? 0) - Number(left.score ?? 0)
-        || left.symbol.localeCompare(right.symbol);
-    });
 }
 
 export async function loadInvestingDashboard(userId: string, portfolioId = "primary") {
@@ -212,17 +115,16 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
     const symbol = String(position.symbol || "").toUpperCase();
     const qty = number(position.quantity);
     const quote = snapshotQuotes[symbol] ?? {};
+    const sourceQuote = quotes?.[symbol] && typeof quotes[symbol] === "object" ? quotes[symbol] : quote;
     const price = number(quote?.price);
     const costBasisEur = number(position.cost_basis);
     const valueEur = price > 0 ? qty * price : costBasisEur;
     const itemValuationSource = price > 0 ? "market_quote" : "cost_basis_fallback";
-    const priceAvailability = priceAvailabilityFromQuote(quote, price);
+    const priceAvailability = priceAvailabilityFromQuote(sourceQuote, price);
     const itemValuationAvailability = valuationAvailability({
       priceAvailability,
       valuationSource: itemValuationSource,
     });
-    const unrealizedPnlEur = valueEur - costBasisEur;
-    const unrealizedPnlPct = costBasisEur > 0 ? (unrealizedPnlEur / costBasisEur) * 100 : null;
     return {
       symbol,
       name: universe.find((item) => item.symbol === symbol)?.name || symbol,
@@ -231,10 +133,6 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       value_eur: valueEur,
       costBasisEur,
       cost_basis_eur: costBasisEur,
-      unrealizedPnlEur,
-      unrealized_pnl_eur: unrealizedPnlEur,
-      unrealizedPnlPct,
-      unrealized_pnl_pct: unrealizedPnlPct,
       price,
       priceSource: quote?.source ?? quote?.provider ?? null,
       price_source: quote?.source ?? quote?.provider ?? null,
@@ -245,8 +143,6 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       valuationAvailability: itemValuationAvailability,
       valuation_availability: itemValuationAvailability,
       currency: position.currency,
-      positionUpdatedAt: position.updated_at ?? null,
-      position_updated_at: position.updated_at ?? null,
       valuationSource: itemValuationSource,
     };
   });
@@ -308,36 +204,17 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       : null;
   const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
   const customerDecisionSource = persistedCustomerDecision ? "persisted_daily_cycle" : "volatile_runtime_adapter";
-  const visibleDecisionAvailability = decisionAvailability(customerDecisionSource);
-  const portfolioValuationAvailability =
+  const visibleDecisionAvailability = decisionAvailability(customerDecisionSource, visibleCustomerDecision);
+  const portfolioValuationAvailability: AvailabilityStatus =
     items.length === 0
       ? "UNAVAILABLE"
-      : items.some((item: any) => item.valuationAvailability === "ESTIMATED")
-        ? "ESTIMATED"
-        : items.some((item: any) => item.valuationAvailability === "STALE")
-          ? "STALE"
-          : "REAL";
-  const opportunities = buildCustomerResearchOpportunities({
-    runtime,
-    snapshotQuotes,
-    positions: positionRows,
-  });
-  const totalUnrealizedPnlEur =
-    items.length > 0
-      ? items.reduce((sum: number, item: any) => sum + number(item.unrealizedPnlEur ?? item.unrealized_pnl_eur), 0)
-      : null;
-  const reportSummary = buildInvestingReportSummary({
-    asOf,
-    cycles: cycleRows,
-    totalEur,
-    cashEur,
-    holdingsValueEur: Math.max(0, totalEur - cashEur),
-    pricingCoveragePct,
-    valuationSource,
-    monthlyContributionEur: number(settings?.monthly_contribution),
-    unrealizedPnlEur: totalUnrealizedPnlEur,
-    missingPriceSymbols,
-  });
+      : items.some((item: any) => item.valuationAvailability === "UNAVAILABLE")
+        ? "UNAVAILABLE"
+        : items.some((item: any) => item.valuationAvailability === "ESTIMATED")
+          ? "ESTIMATED"
+          : items.some((item: any) => item.valuationAvailability === "STALE")
+            ? "STALE"
+            : "REAL";
 
   return {
     ok: true,
@@ -362,7 +239,7 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
           status: portfolioValuationAvailability,
           source: valuationSource,
           missingPriceSymbols,
-          unavailableMessage: portfolioValuationAvailability === "REAL" ? null : "Dados indisponíveis neste momento",
+          unavailableMessage: portfolioValuationAvailability === "REAL" ? null : FINANCIAL_DATA_UNAVAILABLE,
         },
         missingPriceSymbols,
       },
@@ -372,7 +249,7 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       customerDecision: visibleCustomerDecision,
       starterPack: runtime?.starterPackItems ?? [],
       starterPackMeta: runtime?.starterPackMeta ?? null,
-      opportunities,
+      opportunities: [],
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
       execution: { queue: latestQueue, order: latestOrder },
     },
@@ -385,14 +262,13 @@ export async function loadInvestingDashboard(userId: string, portfolioId = "prim
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
       diagnostics: { pricing: { coveragePct: pricingCoveragePct, source: valuationSource, missingPriceSymbols }, riskLeaks: [] },
       executionState: latestOrder?.status ?? latestQueue?.operational_state ?? "recommendation",
-      reportSummary,
       customerDecision: visibleCustomerDecision,
       customerDecisionSource,
       decisionAvailability: visibleDecisionAvailability,
       decisionProvenance: {
         status: visibleDecisionAvailability,
         source: customerDecisionSource,
-        unavailableMessage: visibleDecisionAvailability === "REAL" ? null : "Dados indisponíveis neste momento",
+        unavailableMessage: visibleDecisionAvailability === "REAL" ? null : FINANCIAL_DATA_UNAVAILABLE,
       },
       marketSnapshot: visibleCustomerDecision.marketSnapshot,
       engineV1Bridge: visibleCustomerDecision.source.engineV1Bridge,

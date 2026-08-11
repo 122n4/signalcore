@@ -5,6 +5,19 @@ const authState = { userId: "owner_1" as string | null };
 const queueRows: Array<Record<string, any>> = [];
 const approvalHistoryRows: Array<Record<string, any>> = [];
 const rpcCalls: Array<{ name: string; args: Record<string, any> }> = [];
+const authzMocks = vi.hoisted(() => ({
+  accountIds: ["account_a"] as string[],
+  assertInvestingPortfolioScope: vi.fn(async (args: { portfolioId: string }) => {
+    if (args.portfolioId !== "primary") throw { status: 403, code: "investing_portfolio_not_authorized", publicError: "investing_portfolio_not_authorized" };
+    return { portfolioId: args.portfolioId, accountId: "account_a" };
+  }),
+  requireInvestingQueueAccess: vi.fn(async (args: { queueId: string }) => {
+    if (args.queueId !== "11111111-1111-4111-8111-111111111111") {
+      throw { status: 404, code: "investing_queue_not_found_or_forbidden", publicError: "investing_queue_not_found_or_forbidden" };
+    }
+    return { id: args.queueId, accountId: "account_a" };
+  }),
+}));
 
 class SelectBuilder {
   constructor(private readonly table: string) {}
@@ -45,12 +58,13 @@ vi.mock("@/lib/auth/requestUser", () => ({
 }));
 
 vi.mock("@/lib/investing/server/authz", () => ({
+  assertInvestingPortfolioScope: authzMocks.assertInvestingPortfolioScope,
   requireInvestingRequestContext: vi.fn(async () => {
     if (!authState.userId) throw { status: 401, code: "unauthorized", publicError: "unauthorized" };
     return { userId: authState.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: [] };
   }),
-  listInvestingAccountIdsForTenant: vi.fn(async () => []),
-  requireInvestingQueueAccess: vi.fn(async () => ({ id: "11111111-1111-4111-8111-111111111111" })),
+  listInvestingAccountIdsForTenant: vi.fn(async () => authzMocks.accountIds),
+  requireInvestingQueueAccess: authzMocks.requireInvestingQueueAccess,
   investingAuthzResponse: vi.fn((error: any) =>
     error?.status ? Response.json({ ok: false, error: error.publicError ?? error.code, code: error.code }, { status: error.status }) : null,
   ),
@@ -107,11 +121,16 @@ const { GET, POST } = await import("@/app/api/ops/investing/approvals/route");
 
 beforeEach(() => {
   authState.userId = "owner_1";
+  authzMocks.accountIds = ["account_a"];
+  authzMocks.assertInvestingPortfolioScope.mockClear();
+  authzMocks.requireInvestingQueueAccess.mockClear();
   approvalHistoryRows.splice(0, approvalHistoryRows.length);
   rpcCalls.length = 0;
   queueRows.splice(0, queueRows.length, {
     id: "11111111-1111-4111-8111-111111111111",
     user_id: "owner_1",
+    portfolio_id: "primary",
+    account_id: "account_a",
     mode: "investing",
     day_key: "2026-07-17",
     as_of: "2026-07-17T08:00:00.000Z",
@@ -140,6 +159,45 @@ describe("investing approvals route", () => {
     expect(payload.approvals).toHaveLength(1);
     expect(payload.history).toEqual([]);
     expect(payload.approvals[0]?.decision_fingerprint).toBe("decision_a");
+  });
+
+  it("filters approvals and history that cannot be tied to the resolved tenant", async () => {
+    queueRows.push(
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        user_id: "owner_1",
+        portfolio_id: "primary",
+        account_id: "account_b",
+        mode: "investing",
+        decision_fingerprint: "decision_other_tenant",
+        approval_status: "pending",
+        version: 1,
+        created_at: "2026-07-17T08:00:02.000Z",
+      },
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        user_id: "owner_1",
+        portfolio_id: "other_portfolio",
+        account_id: null,
+        mode: "investing",
+        decision_fingerprint: "decision_null_account_other_portfolio",
+        approval_status: "pending",
+        version: 1,
+        created_at: "2026-07-17T08:00:03.000Z",
+      },
+    );
+    approvalHistoryRows.push(
+      { queue_id: "11111111-1111-4111-8111-111111111111", user_id: "owner_1", mode: "investing", decision_fingerprint: "decision_a" },
+      { queue_id: "22222222-2222-4222-8222-222222222222", user_id: "owner_1", mode: "investing", decision_fingerprint: "decision_other_tenant" },
+      { queue_id: "missing-queue", user_id: "owner_1", mode: "investing", decision_fingerprint: "history_without_scoped_queue" },
+    );
+
+    const response = await GET(new Request("http://localhost/api/ops/investing/approvals?mode=investing"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.approvals.map((row: Record<string, unknown>) => row.decision_fingerprint)).toEqual(["decision_a"]);
+    expect(payload.history.map((row: Record<string, unknown>) => row.decision_fingerprint)).toEqual(["decision_a"]);
   });
 
   it("updates approval status by queue identity and optimistic version", async () => {
@@ -174,6 +232,37 @@ describe("investing approvals route", () => {
         p_decision: "approved",
       },
     });
+  });
+
+  it("does not call the service-role approval RPC when authz rejects the queue", async () => {
+    queueRows.push({
+      id: "22222222-2222-4222-8222-222222222222",
+      user_id: "owner_1",
+      portfolio_id: "primary",
+      account_id: "account_b",
+      mode: "investing",
+      decision_fingerprint: "decision_other_tenant",
+      approval_status: "pending",
+      version: 1,
+      created_at: "2026-07-17T08:00:02.000Z",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/ops/investing/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          queueId: "22222222-2222-4222-8222-222222222222",
+          expectedStatus: "pending",
+          expectedVersion: 1,
+          decision: "approved",
+          note: "should not reach rpc",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(rpcCalls).toEqual([]);
   });
 
   it("does not expose another user's queue", async () => {

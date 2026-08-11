@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import {
+  assertInvestingPortfolioScope,
   investingAuthzResponse,
   listInvestingAccountIdsForTenant,
   requireInvestingQueueAccess,
@@ -12,6 +13,31 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const ROUTE = "/api/ops/investing/approvals";
+
+async function queueBelongsToTenant(args: {
+  row: Record<string, unknown>;
+  accountIds: string[];
+  userId: string;
+  tenantId: string;
+}) {
+  const accountId = args.row.account_id ? String(args.row.account_id) : null;
+  if (accountId) return args.accountIds.includes(accountId);
+
+  const portfolioId = args.row.portfolio_id ? String(args.row.portfolio_id) : "";
+  if (!portfolioId) return false;
+  try {
+    await assertInvestingPortfolioScope({
+      userId: args.userId,
+      tenantId: args.tenantId,
+      portfolioId,
+      requireExistingAccount: true,
+      route: ROUTE,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(req: Request) {
   try {
@@ -35,9 +61,8 @@ export async function GET(req: Request) {
         .select("id,user_id,portfolio_id,account_id,mode,day_key,as_of,decision_fingerprint,approval_status,approval_required,execution_decision,operational_state,version,expires_at,kill_switch_active,deployable_capital_eur,blocking_reasons,notes,meta,created_at")
         .eq("user_id", authz.userId)
         .eq("mode", mode)
-        .eq("approval_status", "pending")
         .order("created_at", { ascending: false })
-        .limit(limit),
+        .limit(Math.max(limit * 4, 100)),
       sb
         .from("investing_execution_approvals")
         .select("queue_id,queue_version,user_id,mode,decision_fingerprint,queue_day_key,decided_at,decided_by,approval_status,override_applied,note,meta,created_at")
@@ -53,16 +78,30 @@ export async function GET(req: Request) {
     if (historyQuery.error) {
       throw new Error(historyQuery.error.message);
     }
+    const queueRows = Array.isArray(queueQuery.data) ? queueQuery.data : [];
+    const scopedQueues = [];
+    for (const row of queueRows) {
+      if (await queueBelongsToTenant({
+        row,
+        accountIds,
+        userId: authz.userId,
+        tenantId: authz.tenantId,
+      })) {
+        scopedQueues.push(row);
+      }
+    }
+    const scopedQueueIds = new Set(scopedQueues.map((row: Record<string, unknown>) => String(row.id || "")).filter(Boolean));
 
     return NextResponse.json(
       {
         ok: true,
         mode,
-        approvals: (Array.isArray(queueQuery.data) ? queueQuery.data : []).filter((row: Record<string, unknown>) => {
-          const accountId = row.account_id ? String(row.account_id) : null;
-          return accountId == null || accountIds.includes(accountId);
-        }),
-        history: Array.isArray(historyQuery.data) ? historyQuery.data : [],
+        approvals: scopedQueues
+          .filter((row: Record<string, unknown>) => row.approval_status === "pending")
+          .slice(0, limit),
+        history: (Array.isArray(historyQuery.data) ? historyQuery.data : [])
+          .filter((row: Record<string, unknown>) => scopedQueueIds.has(String(row.queue_id || "")))
+          .slice(0, limit),
         boundary: "user_scoped_ops_path",
       },
       { headers: { "Cache-Control": "no-store" } },

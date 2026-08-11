@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getRequestUserId } from "@/lib/auth/requestUser";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 
-const FINANCIAL_DATA_UNAVAILABLE = "Dados indisponíveis neste momento";
+const FINANCIAL_DATA_UNAVAILABLE = "Dados indisponiveis neste momento";
 const SAFE_PORTFOLIO_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 
 export type InvestingEnvironment = "paper" | "simulation" | "live";

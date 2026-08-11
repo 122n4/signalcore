@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const auth = { userId: "cash_user" as string | null };
 const cashCalls: Array<Record<string, unknown>> = [];
 const reversalCalls: Array<Record<string, unknown>> = [];
-const openingPositionCalls: Array<Record<string, unknown>> = [];
 
 vi.mock("@/lib/auth/requestUser", () => ({
   getRequestUserId: vi.fn(async () => auth.userId),
@@ -21,10 +20,6 @@ vi.mock("@/lib/investing/server/authz", () => ({
 }));
 
 vi.mock("@/lib/investing/server/cashAndCorporateActions", () => ({
-  importPersistentPaperOpeningPosition: vi.fn(async (args: Record<string, unknown>) => {
-    openingPositionCalls.push(args);
-    return { ok: true };
-  }),
   recordPersistentPaperCashMovement: vi.fn(async (args: Record<string, unknown>) => {
     cashCalls.push(args);
     return { ok: true };
@@ -43,7 +38,6 @@ beforeEach(() => {
   auth.userId = "cash_user";
   cashCalls.length = 0;
   reversalCalls.length = 0;
-  openingPositionCalls.length = 0;
 });
 
 describe("Investing Paper cash and corporate-action route", () => {
@@ -87,54 +81,6 @@ describe("Investing Paper cash and corporate-action route", () => {
     expect((await response.json()).error).toBe("investing_live_execution_blocked");
     expect(cashCalls).toHaveLength(0);
     expect(reversalCalls).toHaveLength(0);
-    expect(openingPositionCalls).toHaveLength(0);
-  });
-
-  it("imports an existing holding as a canonical Paper opening position", async () => {
-    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "opening_position",
-        symbol: "iwda",
-        quantity: "12.345",
-        totalCost: "1000.25",
-        currency: "eur",
-        acquiredAt: "2025-01-15T00:00:00.000Z",
-        clientRequestId: "opening-position-1",
-        userId: "tampered_user",
-      }),
-    }), context);
-    expect(response.status).toBe(200);
-    expect(openingPositionCalls).toEqual([{
-      userId: "cash_user",
-      accountId,
-      symbol: "IWDA",
-      quantity: "12.345",
-      totalCost: "1000.25",
-      currency: "EUR",
-      acquiredAt: "2025-01-15T00:00:00.000Z",
-      clientRequestId: "opening-position-1",
-    }]);
-  });
-
-  it("rejects malformed opening-position imports before financial code", async () => {
-    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "opening_position",
-        symbol: "../../TSLA",
-        quantity: "0",
-        totalCost: "1",
-        currency: "EUR",
-        acquiredAt: "2099-01-01T00:00:00.000Z",
-        clientRequestId: "opening-position-2",
-      }),
-    }), context);
-    expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe("invalid_opening_position_command");
-    expect(openingPositionCalls).toHaveLength(0);
   });
 
   it("requires authentication", async () => {

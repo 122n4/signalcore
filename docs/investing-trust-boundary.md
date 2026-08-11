@@ -71,23 +71,18 @@ Financial responses use a small vocabulary:
 
 When identity, ownership, price or provenance cannot be proven, user-facing responses should prefer:
 
-`Dados indisponíveis neste momento`
+`Dados indisponiveis neste momento`
 
 ## Protected Routes
 
 The boundary is applied to:
 
 - `/api/investing/dashboard`
-- `/api/investing/accounts`
-- `/api/investing/accounts/[accountId]/movements`
 - `/api/investing/paper/accounts`
 - `/api/investing/paper/accounts/[accountId]/movements`
 - `/api/investing/paper/orders`
 - `/api/investing/paper/orders/[orderId]`
 - `/api/investing/daily-cycle`
-- `/api/investing/plan`
-- `/api/investing/preferences`
-- `/api/investing/broker/connections`
 - `/api/ops/investing/approvals`
 
 `/api/ops/investing/approvals` remains path-compatible but is treated as a user-scoped Investing approvals endpoint. A later PR should either rename it or add a separate operator-only endpoint.
