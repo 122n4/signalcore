@@ -341,6 +341,9 @@ function buildViewModel(data: any) {
   const valuationSource = String(portfolio?.valuation?.source || portfolio?.valuationSource || decision?.dataQuality?.valuationSource || "unknown");
   const canShowPortfolioValue = valuationAvailability !== "UNAVAILABLE";
   const dataQualityHigh = valuationAvailability === "REAL" && coveragePct >= 90;
+  const valuationLabel = valuationSource === "cash_only"
+    ? `${availabilityLabel(valuationAvailability)} - cash only`
+    : `${availabilityLabel(valuationAvailability)} - ${coveragePct}% proven price coverage`;
   return {
     decision,
     runtime,
@@ -358,7 +361,7 @@ function buildViewModel(data: any) {
     canShowPortfolioValue,
     dataQualityHigh,
     portfolioValue: canShowPortfolioValue ? fmtEUR(totalEur) : FINANCIAL_DATA_UNAVAILABLE,
-    valuationLabel: `${availabilityLabel(valuationAvailability)} - ${coveragePct}% proven price coverage`,
+    valuationLabel,
     decisionUnavailable: decisionAvailability === "UNAVAILABLE",
     accountEnvironment,
     accountStatus,

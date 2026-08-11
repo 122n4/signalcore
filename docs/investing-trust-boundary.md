@@ -83,6 +83,8 @@ The current quote provider shape used by `getQuotes()`, for example `{ price: 10
 
 If price evidence is `UNAVAILABLE`, the positive provider price is not used as customer-visible market valuation. The dashboard falls back to cost basis when present, marks valuation `ESTIMATED`, and does not count that symbol as proven price coverage. If required market evidence is `UNAVAILABLE`, a volatile customer decision is also customer-visible `UNAVAILABLE` even if internal shadow computation still runs.
 
+A canonical active account with a canonical EUR cash balance and zero positions is a cash-only portfolio. Its known portfolio value is the cash balance, marked `REAL` with valuation source `cash_only`; market pricing is not required and cash is not counted as a provider quote.
+
 ## Protected Routes
 
 The boundary is applied to:

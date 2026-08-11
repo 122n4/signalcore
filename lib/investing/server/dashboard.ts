@@ -219,8 +219,8 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
 
   const universe = getCanonicalInvestingInstrumentMaster();
   const positionRows = positions;
-  const symbols = Array.from(new Set([...universe.map((item) => item.symbol), ...positionRows.map((item: any) => String(item.symbol))]));
-  const quotes = await getQuotes({ symbols, ttlSec: 60 });
+  const symbols = Array.from(new Set<string>(positionRows.map((item: any) => String(item.symbol).toUpperCase()).filter(Boolean)));
+  const quotes = symbols.length ? await getQuotes({ symbols, ttlSec: 60 }) : {};
   const canonicalMarketSnapshot = buildCanonicalMarketSnapshotFromQuotes({
     asOf,
     symbols,
@@ -231,7 +231,8 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     snapshot: canonicalMarketSnapshot,
     persisted: false,
   });
-  const cashEur = cash.filter((row: any) => row.currency === "EUR").reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
+  const eurCashRows = cash.filter((row: any) => row.currency === "EUR");
+  const cashEur = eurCashRows.reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
   const items = positionRows.map((position: any) => {
     const symbol = String(position.symbol || "").toUpperCase();
     const qty = number(position.quantity);
@@ -273,10 +274,14 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     .filter((item: any) => item.priceAvailability !== "REAL")
     .map((item: any) => String(item.symbol || "").toUpperCase())
     .filter(Boolean);
+  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0);
+  const isCashOnlyPortfolio = hasCanonicalCashBalance && items.length === 0;
   const pricingCoveragePct = items.length ? Math.round(((items.length - unprovenPriceSymbols.length) / items.length) * 100) : 100;
   const valuationSource =
-    items.length === 0
-      ? "empty"
+    isCashOnlyPortfolio
+      ? "cash_only"
+      : items.length === 0
+        ? "empty"
       : items.every((item: any) => item.valuationSource === "market_quote")
         ? "market_quotes"
         : items.some((item: any) => item.valuationSource === "cost_basis_fallback")
@@ -335,7 +340,9 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
   const customerDecisionSource = persistedCustomerDecision ? "persisted_daily_cycle" : "volatile_runtime_adapter";
   const portfolioValuationAvailability: AvailabilityStatus =
-    items.length === 0
+    isCashOnlyPortfolio
+      ? "REAL"
+      : items.length === 0
       ? "UNAVAILABLE"
       : items.some((item: any) => item.valuationAvailability === "UNAVAILABLE")
         ? "UNAVAILABLE"
