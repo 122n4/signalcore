@@ -10,18 +10,263 @@ begin
     where n.nspname='public' and p.proname like 'investing_%' and p.prosecdef
   loop
     if has_function_privilege('anon',r.oid,'execute') then raise exception 'anon_execute:%',r.signature; end if;
-    -- Historical recovery fidelity: production currently grants authenticated
-    -- EXECUTE to these scope-check helpers. DB hardening must revisit this.
-    if has_function_privilege('authenticated',r.oid,'execute') and r.signature not in (
-      'investing_has_scope_permission_v1(uuid,text,text)',
-      'investing_research_has_exact_scope_v1(uuid,text,text,uuid)'
-    ) then raise exception 'authenticated_execute:%',r.signature; end if;
+    if has_function_privilege('authenticated',r.oid,'execute') then raise exception 'authenticated_execute:%',r.signature; end if;
     if exists(
       select 1 from aclexplode(coalesce((select proacl from pg_proc where oid=r.oid),acldefault('f',(select proowner from pg_proc where oid=r.oid))))
       where grantee=0 and privilege_type='EXECUTE'
     ) then raise exception 'public_execute:%',r.signature; end if;
-    if not ('search_path=pg_catalog, public'=any(coalesce(r.proconfig,array[]::text[]))) then
+    if not exists(
+      select 1
+      from unnest(coalesce(r.proconfig,array[]::text[])) cfg
+      where replace(cfg, ' ', '') = 'search_path=pg_catalog,public'
+    ) then
       raise exception 'unsafe_search_path:%',r.signature;
+    end if;
+  end loop;
+end $$;
+
+do $$
+declare
+  r record;
+begin
+  for r in
+    select p.oid::regprocedure::text as signature, p.proconfig
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in (
+        'investing_touch_updated_at',
+        'investing_block_append_only',
+        'investing_assert_ledger_balanced'
+      )
+  loop
+    if not exists(
+      select 1
+      from unnest(coalesce(r.proconfig,array[]::text[])) cfg
+      where replace(cfg, ' ', '') = 'search_path=pg_catalog,public'
+    ) then
+      raise exception 'mutable_search_path:%', r.signature;
+    end if;
+  end loop;
+end $$;
+
+do $$
+declare
+  r record;
+begin
+  for r in
+    select
+      d.defaclrole::regrole::text as owner_role,
+      d.defaclobjtype,
+      coalesce(g.rolname, 'public') as grantee_role,
+      x.privilege_type
+    from pg_default_acl d
+    join pg_namespace n on n.oid = d.defaclnamespace
+    cross join lateral aclexplode(d.defaclacl) x
+    left join pg_roles g on g.oid = x.grantee
+    where n.nspname = 'public'
+      and d.defaclrole::regrole::text = 'postgres'
+      and d.defaclobjtype in ('r', 'S', 'f')
+      and coalesce(g.rolname, 'public') in ('public', 'anon', 'authenticated', 'service_role')
+  loop
+    raise exception 'broad_default_acl:%:%:%:%',
+      r.owner_role, r.defaclobjtype, r.grantee_role, r.privilege_type;
+  end loop;
+end $$;
+
+do $$
+declare
+  r record;
+begin
+  for r in
+    select format('public.%I', c.relname) as object_name, c.relkind
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname like 'investing\_%' escape '\'
+      and c.relkind in ('r', 'p', 'v', 'm', 'f')
+  loop
+    if has_table_privilege('anon', r.object_name, 'select')
+       or has_table_privilege('anon', r.object_name, 'insert')
+       or has_table_privilege('anon', r.object_name, 'update')
+       or has_table_privilege('anon', r.object_name, 'delete') then
+      raise exception 'anon_investing_table_privilege:%', r.object_name;
+    end if;
+
+    if has_table_privilege('authenticated', r.object_name, 'insert')
+       or has_table_privilege('authenticated', r.object_name, 'update')
+       or has_table_privilege('authenticated', r.object_name, 'delete')
+       or has_table_privilege('authenticated', r.object_name, 'truncate')
+       or has_table_privilege('authenticated', r.object_name, 'references')
+       or has_table_privilege('authenticated', r.object_name, 'trigger') then
+      raise exception 'authenticated_investing_table_dml:%', r.object_name;
+    end if;
+  end loop;
+
+  for r in
+    select format('public.%I', c.relname) as object_name
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname like 'investing\_%' escape '\'
+      and c.relkind = 'S'
+  loop
+    if has_sequence_privilege('anon', r.object_name, 'usage')
+       or has_sequence_privilege('anon', r.object_name, 'select')
+       or has_sequence_privilege('anon', r.object_name, 'update')
+       or has_sequence_privilege('authenticated', r.object_name, 'usage')
+       or has_sequence_privilege('authenticated', r.object_name, 'select')
+       or has_sequence_privilege('authenticated', r.object_name, 'update') then
+      raise exception 'browser_investing_sequence_privilege:%', r.object_name;
+    end if;
+  end loop;
+end $$;
+
+do $$
+declare
+  actual text[];
+  expected text[] := array[
+    'investing_beta_activation_decisions',
+    'investing_effective_beta_readiness',
+    'investing_effective_readiness_revocations',
+    'investing_market_snapshot_items',
+    'investing_market_snapshots',
+    'investing_onboarding_progress',
+    'investing_release_candidates',
+    'investing_research_beta_readiness_reports',
+    'investing_worker_heartbeats'
+  ];
+  table_name text;
+begin
+  select coalesce(array_agg(c.relname order by c.relname), array[]::text[])
+  into actual
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname like 'investing\_%' escape '\'
+    and c.relkind in ('r', 'p')
+    and c.relrowsecurity
+    and not exists (
+      select 1
+      from pg_policy p
+      where p.polrelid = c.oid
+    );
+
+  if actual <> expected then
+    raise exception 'investing_rls_no_policy_unclassified:%', actual;
+  end if;
+
+  foreach table_name in array expected
+  loop
+    if has_table_privilege('anon', format('public.%I', table_name), 'select') then
+      raise exception 'anon_select_on_server_only:%', table_name;
+    end if;
+    if has_table_privilege('authenticated', format('public.%I', table_name), 'insert')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'update')
+       or has_table_privilege('authenticated', format('public.%I', table_name), 'delete') then
+      raise exception 'authenticated_dml_on_server_only:%', table_name;
+    end if;
+  end loop;
+end $$;
+
+do $$
+declare
+  r record;
+begin
+  if has_schema_privilege('anon', 'investing_internal', 'usage') then
+    raise exception 'anon_internal_schema_usage';
+  end if;
+  if not has_schema_privilege('authenticated', 'investing_internal', 'usage') then
+    raise exception 'authenticated_internal_schema_usage_missing';
+  end if;
+  if has_function_privilege('anon', 'investing_internal.has_scope_permission_v1(uuid,text,text)', 'execute')
+     or has_function_privilege('anon', 'investing_internal.research_has_exact_scope_v1(uuid,text,text,uuid)', 'execute') then
+    raise exception 'anon_internal_scope_helper_execute';
+  end if;
+  if exists(
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) x
+    where n.nspname = 'investing_internal'
+      and p.proname in ('has_scope_permission_v1', 'research_has_exact_scope_v1')
+      and x.grantee = 0
+      and x.privilege_type = 'EXECUTE'
+  ) then
+    raise exception 'public_internal_scope_helper_execute';
+  end if;
+
+  for r in
+    select p.oid::regprocedure::text as signature, p.proconfig
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'investing_internal'
+      and p.proname in ('has_scope_permission_v1', 'research_has_exact_scope_v1')
+      and p.prosecdef
+  loop
+    if not exists(
+      select 1
+      from unnest(coalesce(r.proconfig,array[]::text[])) cfg
+      where replace(cfg, ' ', '') in (
+        'search_path=pg_catalog,public',
+        'search_path=pg_catalog,public,investing_internal'
+      )
+    ) then
+      raise exception 'internal_scope_helper_unsafe_search_path:%', r.signature;
+    end if;
+  end loop;
+end $$;
+
+do $$
+declare
+  r record;
+  expected text[] := array[
+    'investing_research_dataset_requests',
+    'investing_research_acquisition_jobs',
+    'investing_research_datasets',
+    'investing_research_dataset_versions',
+    'investing_research_dataset_lineage',
+    'investing_research_dataset_quality_reports',
+    'investing_research_hypotheses',
+    'investing_research_candidates',
+    'investing_research_experiments',
+    'investing_research_experiment_runs',
+    'investing_research_jobs',
+    'investing_research_validation_reports',
+    'investing_research_scientific_decisions',
+    'investing_research_portfolio_risk_capacity_assessments',
+    'investing_research_portfolio_risk_capacity_members',
+    'investing_research_audit_events',
+    'investing_research_promotion_eligibility',
+    'investing_research_promotion_requests',
+    'investing_research_promotion_revocations'
+  ];
+  actual text[];
+begin
+  select coalesce(array_agg(c.relname order by c.relname), array[]::text[])
+  into actual
+  from pg_policy p
+  join pg_class c on c.oid = p.polrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = any(expected)
+    and p.polcmd = 'r';
+
+  if actual <> (select array_agg(x order by x) from unnest(expected) x) then
+    raise exception 'research_policy_table_set_mismatch:%', actual;
+  end if;
+
+  for r in
+    select c.relname, p.polname, pg_get_expr(p.polqual, p.polrelid) as qual
+    from pg_policy p
+    join pg_class c on c.oid = p.polrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = any(expected)
+  loop
+    if replace(r.qual, ' ', '') not like
+       '%investing_internal.research_has_exact_scope_v1(tenant_id,owner_id,portfolio_id,account_id)%' then
+      raise exception 'research_policy_not_exact_scope:%:%:%', r.relname, r.polname, r.qual;
     end if;
   end loop;
 end $$;
@@ -29,6 +274,209 @@ end $$;
 set local role service_role;
 select public.investing_open_paper_account_v2('validation_user_a','portfolio_a','EUR',1000,'validation-fund-a','validation-fund-corr-a');
 select public.investing_open_paper_account_v2('validation_user_b','portfolio_b','EUR',1000,'validation-fund-b','validation-fund-corr-b');
+
+reset role;
+
+do $$
+declare
+  tenant_a uuid;
+  tenant_b uuid;
+  account_a uuid;
+  account_b uuid;
+begin
+  select tenant_id, id into tenant_a, account_a
+  from public.investing_accounts
+  where user_id = 'validation_user_a';
+  select tenant_id, id into tenant_b, account_b
+  from public.investing_accounts
+  where user_id = 'validation_user_b';
+
+  if tenant_a is null or tenant_b is null or account_a is null or account_b is null then
+    raise exception 'adversarial_scope_fixture_missing';
+  end if;
+  perform set_config('investing_test.tenant_a', tenant_a::text, true);
+  perform set_config('investing_test.tenant_b', tenant_b::text, true);
+  perform set_config('investing_test.account_a', account_a::text, true);
+  perform set_config('investing_test.account_b', account_b::text, true);
+
+  begin
+    update public.investing_tenants
+    set kind = 'organization'
+    where id = tenant_a;
+    raise exception 'non_personal_tenant_kind_accepted';
+  exception when check_violation then null; end;
+
+  alter table public.investing_tenant_memberships
+    disable trigger investing_membership_personal_owner_guard;
+  insert into public.investing_tenant_memberships(
+    id, tenant_id, user_id, role, permissions, status
+  ) values (
+    '11111111-2222-4333-8444-555555555555',
+    tenant_b,
+    'validation_user_a',
+    'owner',
+    array['investing:read','investing:create','investing:verify','investing:replay']::text[],
+    'active'
+  );
+  alter table public.investing_tenant_memberships
+    enable trigger investing_membership_personal_owner_guard;
+
+  insert into public.investing_research_dataset_requests(
+    tenant_id, owner_id, portfolio_id, account_id, request_id, contract_version,
+    request_hash, state, created_at, canonical_payload
+  ) values (
+    tenant_a,
+    'validation_user_a',
+    'portfolio_a',
+    account_a,
+    'validation-research-a',
+    'research-dataset-request/v1',
+    repeat('a', 64),
+    'requested',
+    now(),
+    '{"requirementId":"validation-research-a"}'::jsonb
+  );
+
+  insert into public.investing_research_dataset_requests(
+    tenant_id, owner_id, portfolio_id, account_id, request_id, contract_version,
+    request_hash, state, created_at, canonical_payload
+  ) values (
+    tenant_b,
+    'validation_user_b',
+    'portfolio_b',
+    account_b,
+    'validation-research-b',
+    'research-dataset-request/v1',
+    repeat('b', 64),
+    'requested',
+    now(),
+    '{"requirementId":"validation-research-b"}'::jsonb
+  );
+end $$;
+
+select set_config('request.jwt.claims','{"sub":"validation_user_a"}',true);
+set local role authenticated;
+do $$ begin
+  if (select count(*) from public.investing_tenant_memberships where user_id='validation_user_a')<>1 then
+    raise exception 'user_a_membership_semantics_not_exact';
+  end if;
+  if exists(
+    select 1
+    from public.investing_tenant_memberships m
+    join public.investing_accounts a on a.tenant_id = m.tenant_id
+    where m.user_id = 'validation_user_a'
+      and a.user_id = 'validation_user_b'
+  ) then
+    raise exception 'user_a_reads_mismatched_owner_membership';
+  end if;
+  if (select count(*) from public.investing_research_dataset_requests where request_id='validation-research-a')<>1 then
+    raise exception 'user_a_cannot_read_own_research_scope';
+  end if;
+  if exists(select 1 from public.investing_research_dataset_requests where request_id='validation-research-b') then
+    raise exception 'user_a_reads_user_b_research_scope';
+  end if;
+  if investing_internal.research_has_exact_scope_v1(
+    current_setting('investing_test.tenant_b')::uuid,
+    'validation_user_a',
+    'portfolio_a',
+    current_setting('investing_test.account_a')::uuid
+  ) then
+    raise exception 'wrong_research_tenant_scope_accepted';
+  end if;
+  if investing_internal.research_has_exact_scope_v1(
+    current_setting('investing_test.tenant_a')::uuid,
+    'validation_user_a',
+    'portfolio_b',
+    current_setting('investing_test.account_a')::uuid
+  ) then
+    raise exception 'wrong_research_portfolio_scope_accepted';
+  end if;
+  if investing_internal.research_has_exact_scope_v1(
+    current_setting('investing_test.tenant_a')::uuid,
+    'validation_user_a',
+    'portfolio_a',
+    current_setting('investing_test.account_b')::uuid
+  ) then
+    raise exception 'wrong_research_account_scope_accepted';
+  end if;
+end $$;
+reset role;
+
+update public.investing_tenants
+set status = 'inactive'
+where owner_user_id = 'validation_user_a';
+select set_config('request.jwt.claims','{"sub":"validation_user_a"}',true);
+set local role authenticated;
+do $$ begin
+  if exists(select 1 from public.investing_tenant_memberships where user_id='validation_user_a') then
+    raise exception 'user_a_reads_membership_for_inactive_tenant';
+  end if;
+end $$;
+reset role;
+update public.investing_tenants
+set status = 'active'
+where owner_user_id = 'validation_user_a';
+
+update public.investing_tenant_memberships
+set status = 'inactive'
+where user_id = 'validation_user_a'
+  and tenant_id = (
+    select tenant_id from public.investing_accounts where user_id = 'validation_user_a'
+  );
+select set_config('request.jwt.claims','{"sub":"validation_user_a"}',true);
+set local role authenticated;
+do $$ begin
+  if exists(select 1 from public.investing_tenant_memberships where user_id='validation_user_a') then
+    raise exception 'user_a_reads_inactive_membership';
+  end if;
+end $$;
+reset role;
+update public.investing_tenant_memberships
+set status = 'active'
+where user_id = 'validation_user_a'
+  and tenant_id = (
+    select tenant_id from public.investing_accounts where user_id = 'validation_user_a'
+  );
+
+update public.investing_tenant_memberships
+set status = 'revoked',
+    revoked_at = statement_timestamp()
+where user_id = 'validation_user_a'
+  and tenant_id = (
+    select tenant_id from public.investing_accounts where user_id = 'validation_user_a'
+  );
+select set_config('request.jwt.claims','{"sub":"validation_user_a"}',true);
+set local role authenticated;
+do $$ begin
+  if exists(select 1 from public.investing_tenant_memberships where user_id='validation_user_a') then
+    raise exception 'user_a_reads_revoked_membership';
+  end if;
+end $$;
+reset role;
+update public.investing_tenant_memberships
+set status = 'active',
+    revoked_at = null
+where user_id = 'validation_user_a'
+  and tenant_id = (
+    select tenant_id from public.investing_accounts where user_id = 'validation_user_a'
+  );
+
+select set_config('request.jwt.claims','{"sub":"validation_user_b"}',true);
+set local role authenticated;
+do $$ begin
+  if exists(select 1 from public.investing_tenant_memberships where user_id='validation_user_a') then
+    raise exception 'user_b_reads_user_a_membership';
+  end if;
+  if exists(select 1 from public.investing_research_dataset_requests where request_id='validation-research-a') then
+    raise exception 'user_b_reads_user_a_research_scope';
+  end if;
+  if (select count(*) from public.investing_research_dataset_requests where request_id='validation-research-b')<>1 then
+    raise exception 'user_b_cannot_read_own_research_scope';
+  end if;
+end $$;
+reset role;
+
+set local role service_role;
 
 do $$
 declare
@@ -208,8 +656,22 @@ do $$ begin
     if exists(select 1 from public.investing_accounts where user_id in ('validation_user_a','validation_user_b')) then raise exception 'anon_read_accounts'; end if;
   exception when insufficient_privilege then null; end;
   begin
+    perform 1 from public.investing_cash_balances limit 1;
+    raise exception 'anon_read_cash_balances';
+  exception when insufficient_privilege then null; end;
+  begin
     perform public.investing_open_paper_account_v2('validation_user_a','x','EUR',0,'anon-open-test','anon-open-corr');
     raise exception 'anon_executed_financial_rpc';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.investing_has_scope_permission_v1('11111111-1111-4111-8111-111111111111','validation_user_a','investing:read');
+    raise exception 'anon_executed_scope_helper';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.investing_research_has_exact_scope_v1(
+      '11111111-1111-4111-8111-111111111111','validation_user_a','portfolio_a','22222222-2222-4222-8222-222222222222'
+    );
+    raise exception 'anon_executed_research_scope_helper';
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;
@@ -229,6 +691,23 @@ do $$ begin
   begin
     update public.investing_accounts set status='suspended' where user_id='validation_user_a';
     raise exception 'authenticated_direct_write_accepted';
+  exception when insufficient_privilege then null; end;
+  begin
+    insert into public.investing_execution_queue(user_id)
+    values('validation_user_a');
+    raise exception 'authenticated_direct_queue_insert_accepted';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.investing_has_scope_permission_v1(
+      '11111111-1111-4111-8111-111111111111','validation_user_a','investing:read'
+    );
+    raise exception 'authenticated_direct_scope_helper_accepted';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.investing_research_has_exact_scope_v1(
+      '11111111-1111-4111-8111-111111111111','validation_user_a','portfolio_a','22222222-2222-4222-8222-222222222222'
+    );
+    raise exception 'authenticated_direct_research_scope_helper_accepted';
   exception when insufficient_privilege then null; end;
   begin
     perform public.investing_record_approval_v2('validation_user_a','11111111-1111-4111-8111-111111111111','pending',1,'approved',null,'auth-direct-rpc');
