@@ -29,6 +29,8 @@ jobs:
         run: supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor
       - name: Reset schema from migrations
         run: supabase db reset --local
+      - name: Capture Investing ACL fidelity diagnostics
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/investing_acl_fidelity_snapshot.sql
       - name: Run Investing PostgreSQL assertions
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/investing_p0_p1.sql
       - name: Run Investing security, RLS, Live and accounting assertions

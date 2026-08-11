@@ -162,16 +162,40 @@ begin
   if (select count(*) from public.investing_orders where account_id=account_a)<>financial_before then raise exception 'live_attempt_created_order'; end if;
   if not exists(select 1 from public.investing_execution_events where account_id=account_a and event_type='blocked_live_attempt' and correlation_id='validation-live-blocked-corr') then raise exception 'blocked_live_event_missing'; end if;
 
-  -- Add a material child row for symmetric reconciliation-item RLS checks.
+end $$;
+
+reset role;
+
+-- Add material child rows as test fixtures for symmetric reconciliation-item
+-- RLS checks. Fixture setup is not part of the service-role product contract.
+do $$
+declare account_a uuid; account_b uuid; run_a uuid; run_b uuid; item_a uuid; item_b uuid;
+begin
+  select id into account_a from public.investing_accounts where user_id='validation_user_a';
+  select id into account_b from public.investing_accounts where user_id='validation_user_b';
   insert into public.investing_reconciliation_runs(user_id,portfolio_id,account_id,status,score,correlation_id,environment,completed_at)
   values('validation_user_b','portfolio_b',account_b,'failed',0,'validation-manual-break-b','paper',now()) returning id into run_b;
   insert into public.investing_reconciliation_items(run_id,item_type,severity,expected,observed,difference)
   values(run_b,'validation_break','material','{"value":1}','{"value":2}','{"delta":1}') returning id into item_b;
-  perform public.investing_resolve_reconciliation_item_v2('validation_user_b',item_b,'corrected','Validation correction B','validation-resolution-b');
   insert into public.investing_reconciliation_runs(user_id,portfolio_id,account_id,status,score,correlation_id,environment,completed_at)
   values('validation_user_a','portfolio_a',account_a,'failed',0,'validation-manual-break-a','paper',now()) returning id into run_a;
   insert into public.investing_reconciliation_items(run_id,item_type,severity,expected,observed,difference)
   values(run_a,'validation_break','material','{"value":1}','{"value":2}','{"delta":1}') returning id into item_a;
+end $$;
+
+set local role service_role;
+do $$
+declare item_a uuid; item_b uuid;
+begin
+  select i.id into item_b
+  from public.investing_reconciliation_items i
+  join public.investing_reconciliation_runs r on r.id=i.run_id
+  where r.correlation_id='validation-manual-break-b';
+  select i.id into item_a
+  from public.investing_reconciliation_items i
+  join public.investing_reconciliation_runs r on r.id=i.run_id
+  where r.correlation_id='validation-manual-break-a';
+  perform public.investing_resolve_reconciliation_item_v2('validation_user_b',item_b,'corrected','Validation correction B','validation-resolution-b');
   perform public.investing_resolve_reconciliation_item_v2('validation_user_a',item_a,'corrected','Validation correction A','validation-resolution-a');
 end $$;
 
