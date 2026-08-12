@@ -79,6 +79,7 @@ export type InvestingDashboardPayload = {
       source?: string | null;
       unavailableMessage?: string | null;
     } | null;
+    customerDecisionSource?: string | null;
     customerDecision?: Record<string, any> | null;
     performanceAttribution?: Record<string, any> | null;
   } | null;
@@ -103,6 +104,14 @@ export function normalizeFinancialAvailability(value: unknown): FinancialAvailab
 export function normalizePlanAvailability(value: unknown): PlanAvailability {
   const normalized = String(value ?? "").trim().toUpperCase();
   return normalized === "AVAILABLE" ? "AVAILABLE" : "UNAVAILABLE";
+}
+
+function hasAcceptedDecisionAuthority(source: unknown, decision: unknown) {
+  void source;
+  void decision;
+  // R3 has no accepted server decision-authority source yet. Plan display is
+  // separate from customer-facing mandate guidance.
+  return false;
 }
 
 export function formatEur(value: number): string {
@@ -181,8 +190,11 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
   const planAvailability = normalizePlanAvailability(planEnvelope?.availability);
   const planValue = planAvailability === "AVAILABLE" ? planEnvelope?.value ?? null : null;
   const hasPlan = Boolean(planValue);
-  const decisionAvailability = hasPlan ? rawDecisionAvailability : "UNAVAILABLE";
-  const decision = hasPlan ? payload?.derived?.customerDecision ?? payload?.daily?.customerDecision ?? null : null;
+  const rawDecision = payload?.derived?.customerDecision ?? payload?.daily?.customerDecision ?? null;
+  const decisionSource = payload?.derived?.customerDecisionSource ?? payload?.derived?.decisionProvenance?.source;
+  const hasDecisionAuthority = hasPlan && hasAcceptedDecisionAuthority(decisionSource, rawDecision);
+  const decisionAvailability = hasDecisionAuthority ? rawDecisionAvailability : "UNAVAILABLE";
+  const decision = hasDecisionAuthority ? rawDecision : null;
   const planStructured = planValue?.structured ?? null;
   const structuredAvailability = normalizePlanAvailability(planStructured?.availability);
   const rawPlanTarget = planStructured?.objective?.targetAmount?.amount;

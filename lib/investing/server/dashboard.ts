@@ -97,7 +97,14 @@ type DashboardLoadArgs = {
 };
 
 const DEFAULT_DASHBOARD_ENVIRONMENTS: InvestingEnvironment[] = ["paper", "simulation"];
-const PLAN_DECISION_UNAVAILABLE_SOURCE = "canonical_plan_unavailable";
+const CANONICAL_MANDATE_UNAVAILABLE_SOURCE = "canonical_mandate_unavailable";
+
+function hasAcceptedCanonicalDecisionAuthority(plan: Record<string, any>) {
+  void plan;
+  // R3 can read/display canonical structured plan fields, but it does not yet
+  // define an accepted canonical plan -> engine mandate adapter.
+  return false;
+}
 
 function selectCanonicalAccount(rows: Record<string, any>[], environments: InvestingEnvironment[]) {
   for (const environment of environments) {
@@ -209,7 +216,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   ]);
   const settings = transitionRows.settings;
   const plan = canonicalPlanResult.state;
-  const hasCanonicalDecisionPlan = plan.availability === "AVAILABLE" && plan.value?.structured?.availability === "AVAILABLE";
+  const hasCanonicalDecisionAuthority = hasAcceptedCanonicalDecisionAuthority(plan);
   const planForRuntime = plan.value
     ? {
         id: plan.value.id,
@@ -304,7 +311,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
           ? "cost_basis_fallback"
           : "unavailable";
   const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
-  const runtime = hasCanonicalDecisionPlan
+  const runtime = hasCanonicalDecisionAuthority
     ? buildInvestingRuntimeSnapshot({
         referenceTotalEur: totalEur,
         userSettings: settings,
@@ -323,8 +330,8 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const cycleRows = cycles;
   const latestQueue = queue[0] ?? null;
   const latestOrder = orders[0] ?? null;
-  const executionPlan = hasCanonicalDecisionPlan && runtime ? buildInvestingExecutionPlan({ engine: runtime as any, totalEur, cashEur, asOf }) : null;
-  const engineV1Bridge = hasCanonicalDecisionPlan
+  const executionPlan = hasCanonicalDecisionAuthority && runtime ? buildInvestingExecutionPlan({ engine: runtime as any, totalEur, cashEur, asOf }) : null;
+  const engineV1Bridge = hasCanonicalDecisionAuthority && runtime
     ? buildInvestingEngineV1CustomerBridge({
         userId,
         portfolioId,
@@ -339,7 +346,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
         marketSnapshot: canonicalMarketSnapshot,
       })
     : null;
-  const customerDecision = hasCanonicalDecisionPlan
+  const customerDecision = hasCanonicalDecisionAuthority && runtime && executionPlan
     ? buildCustomerDecisionProjection({
         asOf,
         plan: planForRuntime,
@@ -354,15 +361,15 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const latestPersistedCanonicalResult =
     cycleRows[0]?.canonical_result && typeof cycleRows[0].canonical_result === "object" ? cycleRows[0].canonical_result : null;
   const persistedCustomerDecision =
-    hasCanonicalDecisionPlan
+    hasCanonicalDecisionAuthority
       && latestPersistedCanonicalResult?.customerDecision
       && typeof latestPersistedCanonicalResult.customerDecision === "object"
       && latestPersistedCanonicalResult.customerDecision.contractVersion === "investing-customer-decision-projection/v1"
       ? latestPersistedCanonicalResult.customerDecision
       : null;
   const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
-  const customerDecisionSource = !hasCanonicalDecisionPlan
-    ? PLAN_DECISION_UNAVAILABLE_SOURCE
+  const customerDecisionSource = !hasCanonicalDecisionAuthority
+    ? CANONICAL_MANDATE_UNAVAILABLE_SOURCE
     : persistedCustomerDecision
       ? "persisted_daily_cycle"
       : "volatile_runtime_adapter";
@@ -380,9 +387,9 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
             : "REAL";
   const hasUnavailableMarketEvidence = items.some((item: any) => item.priceAvailability === "UNAVAILABLE");
   const visibleDecisionAvailability =
-    !hasCanonicalDecisionPlan
+    !hasCanonicalDecisionAuthority || !visibleCustomerDecision
       ? "UNAVAILABLE"
-      : customerDecisionSource === "volatile_runtime_adapter" && hasUnavailableMarketEvidence
+      : customerDecisionSource === "volatile_runtime_adapter" && (!runtime || !executionPlan || hasUnavailableMarketEvidence)
       ? "UNAVAILABLE"
       : decisionAvailability(customerDecisionSource, visibleCustomerDecision);
 
@@ -418,11 +425,11 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     daily: {
       investingEngine: runtime,
       customerDecision: visibleCustomerDecision,
-      starterPack: hasCanonicalDecisionPlan ? runtime?.starterPackItems ?? [] : [],
-      starterPackMeta: hasCanonicalDecisionPlan ? runtime?.starterPackMeta ?? null : null,
+      starterPack: hasCanonicalDecisionAuthority ? runtime?.starterPackItems ?? [] : [],
+      starterPackMeta: hasCanonicalDecisionAuthority ? runtime?.starterPackMeta ?? null : null,
       opportunities: [],
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
-      execution: hasCanonicalDecisionPlan ? { queue: latestQueue, order: latestOrder } : { queue: null, order: null },
+      execution: hasCanonicalDecisionAuthority ? { queue: latestQueue, order: latestOrder } : { queue: null, order: null },
     },
     derived: {
       hasPlan: plan.availability === "AVAILABLE" && Boolean(plan.value),
