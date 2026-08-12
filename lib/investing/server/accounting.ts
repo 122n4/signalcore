@@ -82,7 +82,7 @@ export type CanonicalAccountingSnapshot = {
   };
   reconciliation: {
     availability: AccountingAvailability;
-    status: "NOT_RECONCILED" | "INCOMPLETE" | "REAL";
+    status: "RECONCILED" | "NOT_RECONCILED" | "INCOMPLETE" | "UNAVAILABLE";
     source: string;
     latestRunId: string | null;
     latestRunStatus: string | null;
@@ -124,6 +124,11 @@ function numberOrZero(value: unknown) {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function currency(value: unknown) {
+  const normalized = text(value).toUpperCase();
+  return CURRENCY.test(normalized) ? normalized : null;
 }
 
 function safeSource(value: unknown) {
@@ -318,8 +323,56 @@ function validateLedger(args: {
   };
 }
 
-function sumRows(rows: Row[], key: string) {
-  return rows.reduce((sum, row) => sum + numberOrZero(row[key]), 0);
+function rowCurrenciesAreBase(rows: Row[], baseCurrency: string) {
+  if (rows.length === 0) return true;
+  return rows.every((row) => currency(row.currency) === baseCurrency);
+}
+
+function unavailableHistoricalComponent(args: {
+  rows: Row[];
+  baseCurrency: string;
+  source: string;
+  method: string;
+  asOf: string | null;
+  emptyReason: string;
+  incompleteReason: string;
+}) {
+  const reason = args.rows.length === 0
+    ? args.emptyReason
+    : rowCurrenciesAreBase(args.rows, args.baseCurrency)
+      ? args.incompleteReason
+      : "currency_conversion_unavailable";
+  return component({
+    availability: "UNAVAILABLE",
+    value: null,
+    currency: args.baseCurrency,
+    source: args.source,
+    method: args.method,
+    asOf: latestTimestamp(args.rows, "created_at") ?? args.asOf,
+    reason,
+    limitations: ["Historical totals require complete base-currency evidence; R4 does not infer FX or silent zero totals."],
+  });
+}
+
+function unrealizedPnlEvidence(item: Row, baseCurrency: string) {
+  const qty = finiteNumber(item.qty ?? item.quantity);
+  const value = finiteNumber(item.valueEur ?? item.value_eur);
+  const costBasis = finiteNumber(item.costBasisEur ?? item.cost_basis_eur ?? item.cost_basis);
+  const valuationSource = text(item.valuationSource ?? item.valuation_source);
+  const valuationAvailability = String(item.valuationAvailability ?? item.valuation_availability ?? "").toUpperCase();
+  const priceAvailability = String(item.priceAvailability ?? item.price_availability ?? "").toUpperCase();
+  const valuationCurrency = currency(item.valuationCurrency ?? item.valuation_currency ?? item.quoteCurrency ?? item.quote_currency);
+  const costBasisCurrency = currency(item.costBasisCurrency ?? item.cost_basis_currency ?? item.currency);
+
+  if (qty === null || qty <= 0) return { ok: false, reason: "active_holding_missing" };
+  if (value === null || costBasis === null || costBasis < 0) return { ok: false, reason: "valid_position_valuation_missing" };
+  if (valuationSource !== "market_quote") return { ok: false, reason: "market_quote_evidence_missing" };
+  if (!["REAL", "STALE"].includes(valuationAvailability) || !["REAL", "STALE"].includes(priceAvailability)) {
+    return { ok: false, reason: "market_quote_evidence_missing" };
+  }
+  if (!valuationCurrency || !costBasisCurrency) return { ok: false, reason: "currency_evidence_missing" };
+  if (valuationCurrency !== baseCurrency || costBasisCurrency !== baseCurrency) return { ok: false, reason: "currency_conversion_unavailable" };
+  return { ok: true, reason: null };
 }
 
 export function buildCanonicalInvestingPerformanceRead(args: {
@@ -335,15 +388,14 @@ export function buildCanonicalInvestingPerformanceRead(args: {
   baseCurrency?: string;
 }): CanonicalPerformanceRead {
   const asOf = args.asOf ?? null;
-  const baseCurrency = args.baseCurrency ?? "EUR";
+  const baseCurrency = currency(args.baseCurrency) ?? "EUR";
   const items = Array.isArray(args.portfolio?.items) ? args.portfolio.items : [];
   const activeItems = items.filter((item) => numberOrZero(item.qty ?? item.quantity) > 0);
-  const hasUnrealizedInputs = activeItems.length > 0 && activeItems.every((item) => {
-    const value = finiteNumber(item.valueEur ?? item.value_eur);
-    const costBasis = finiteNumber(item.costBasisEur ?? item.cost_basis_eur ?? item.cost_basis);
-    const availability = String(item.valuationAvailability ?? item.valuation_availability ?? "").toUpperCase();
-    return value !== null && costBasis !== null && costBasis >= 0 && availability !== "UNAVAILABLE";
-  });
+  const unrealizedEvidence = activeItems.map((item) => unrealizedPnlEvidence(item, baseCurrency));
+  const hasUnrealizedInputs = activeItems.length > 0 && unrealizedEvidence.every((result) => result.ok);
+  const unrealizedPnlUnavailableReason = activeItems.length === 0
+    ? "no_active_holding_evidence"
+    : unrealizedEvidence.find((result) => !result.ok)?.reason ?? "market_quote_evidence_missing";
   const unrealizedPnl = hasUnrealizedInputs
     ? activeItems.reduce((sum, item) => sum + numberOrZero(item.valueEur ?? item.value_eur) - numberOrZero(item.costBasisEur ?? item.cost_basis_eur ?? item.cost_basis), 0)
     : null;
@@ -399,37 +451,99 @@ export function buildCanonicalInvestingPerformanceRead(args: {
         source: "positions_current_cost_basis",
         method: "current_value_minus_position_cost_basis",
         asOf,
-        reason: hasUnrealizedInputs ? null : "valid_position_valuation_missing",
+        reason: hasUnrealizedInputs ? null : unrealizedPnlUnavailableReason,
         limitations: ["Limited unrealized P&L only; not total portfolio performance."],
       }),
-      fees: component({
-        availability: feeRows.length > 0 ? "REAL" : "UNAVAILABLE",
-        value: feeRows.length > 0 ? sumRows(feeRows, "amount") : null,
-        currency: baseCurrency,
+      fees: unavailableHistoricalComponent({
+        rows: feeRows,
+        baseCurrency,
         source: "investing_fees",
         method: "sum_recorded_fee_rows",
-        asOf: latestTimestamp(feeRows, "created_at") ?? asOf,
-        reason: feeRows.length > 0 ? null : "no_fee_evidence",
+        asOf,
+        emptyReason: "no_fee_evidence",
+        incompleteReason: "complete_fee_history_unproven",
       }),
-      dividends: component({
-        availability: dividendRows.length > 0 ? "REAL" : "UNAVAILABLE",
-        value: dividendRows.length > 0 ? sumRows(dividendRows, "amount") : null,
-        currency: baseCurrency,
+      dividends: unavailableHistoricalComponent({
+        rows: dividendRows,
+        baseCurrency,
         source: "investing_cash_movements",
         method: "sum_recorded_dividend_movements",
-        asOf: latestTimestamp(dividendRows, "created_at") ?? asOf,
-        reason: dividendRows.length > 0 ? null : "no_dividend_evidence",
+        asOf,
+        emptyReason: "no_dividend_evidence",
+        incompleteReason: "complete_dividend_history_unproven",
       }),
-      taxes: component({
-        availability: taxRows.length > 0 ? "REAL" : "UNAVAILABLE",
-        value: taxRows.length > 0 ? sumRows(taxRows, "amount") : null,
-        currency: baseCurrency,
+      taxes: unavailableHistoricalComponent({
+        rows: taxRows,
+        baseCurrency,
         source: "investing_cash_movements",
         method: "sum_recorded_tax_movements",
-        asOf: latestTimestamp(taxRows, "created_at") ?? asOf,
-        reason: taxRows.length > 0 ? null : "no_tax_evidence",
+        asOf,
+        emptyReason: "no_tax_evidence",
+        incompleteReason: "complete_tax_history_unproven",
       }),
     },
+  };
+}
+
+function reconciliationStatusFromRun(args: {
+  run: Row;
+  items: Row[];
+  itemsComplete: boolean;
+}): CanonicalAccountingSnapshot["reconciliation"] {
+  const latestRunId = text(args.run.id) || null;
+  const latestRunStatus = text(args.run.status).toLowerCase();
+  const completedAt = text(args.run.completed_at);
+  const asOf = completedAt || text(args.run.created_at) || null;
+
+  if (!completedAt) {
+    return {
+      availability: "UNAVAILABLE",
+      status: "INCOMPLETE",
+      source: "investing_reconciliation_runs",
+      latestRunId,
+      latestRunStatus,
+      issueCount: null,
+      asOf,
+      reason: "reconciliation_run_incomplete",
+    };
+  }
+
+  if (["failed", "failure", "warning", "warnings", "error"].includes(latestRunStatus)) {
+    return {
+      availability: "REAL",
+      status: "NOT_RECONCILED",
+      source: "investing_reconciliation_runs",
+      latestRunId,
+      latestRunStatus,
+      issueCount: args.itemsComplete ? args.items.filter((item) => text(item.resolution_status) !== "resolved").length : null,
+      asOf,
+      reason: "reconciliation_run_not_clean",
+    };
+  }
+
+  if (!args.itemsComplete) {
+    return {
+      availability: "UNAVAILABLE",
+      status: "UNAVAILABLE",
+      source: "investing_reconciliation_runs",
+      latestRunId,
+      latestRunStatus,
+      issueCount: null,
+      asOf,
+      reason: "reconciliation_item_coverage_unproven",
+    };
+  }
+
+  const issueCount = args.items.filter((item) => text(item.resolution_status) !== "resolved").length;
+  return {
+    availability: "REAL",
+    status: issueCount === 0 ? "RECONCILED" : "NOT_RECONCILED",
+    source: "investing_reconciliation_runs",
+    latestRunId,
+    latestRunStatus,
+    issueCount,
+    asOf,
+    reason: issueCount === 0 ? null : "reconciliation_items_unresolved",
   };
 }
 
@@ -450,6 +564,10 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
   fills?: Row[];
   fees?: Row[];
   asOf?: string | null;
+  ledgerComplete?: boolean;
+  reconciliationItemsComplete?: boolean;
+  corporateActionsComplete?: boolean;
+  performanceMovements?: Row[];
 }): CanonicalAccountingSnapshot {
   const cashRows = args.cashRows ?? [];
   const movementRows = args.movementRows ?? [];
@@ -473,8 +591,10 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
   const latestRunItems = latestRunId
     ? reconciliationItems.filter((item) => text(item.run_id) === latestRunId)
     : [];
-  const latestRunStatus = latestRun ? text(latestRun.status) : null;
-  const completedAt = latestRun ? text(latestRun.completed_at) : null;
+  const ledger = validateLedger({ account: args.account, transactions: ledgerTransactions, entries: ledgerEntries });
+  const ledgerTruth = ledger.availability === "REAL" && !args.ledgerComplete
+    ? { ...ledger, availability: "UNAVAILABLE" as const, balanced: null, reason: "ledger_history_coverage_unproven" }
+    : ledger;
 
   return {
     accountId: args.account.id,
@@ -490,18 +610,13 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
       reason: hasCashRow ? null : "cash_balance_row_missing",
     },
     movements: projectMovements(movementRows, args.account),
-    ledger: validateLedger({ account: args.account, transactions: ledgerTransactions, entries: ledgerEntries }),
+    ledger: ledgerTruth,
     reconciliation: latestRun
-      ? {
-          availability: completedAt ? "REAL" : "UNAVAILABLE",
-          status: completedAt ? "REAL" : "INCOMPLETE",
-          source: "investing_reconciliation_runs",
-          latestRunId,
-          latestRunStatus,
-          issueCount: completedAt ? latestRunItems.filter((item) => text(item.resolution_status) !== "resolved").length : null,
-          asOf: completedAt || text(latestRun.created_at) || null,
-          reason: completedAt ? null : "reconciliation_run_incomplete",
-        }
+      ? reconciliationStatusFromRun({
+          run: latestRun,
+          items: latestRunItems,
+          itemsComplete: Boolean(args.reconciliationItemsComplete),
+        })
       : {
           availability: "UNAVAILABLE",
           status: "NOT_RECONCILED",
@@ -513,15 +628,19 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
           reason: "no_reconciliation_runs",
         },
     corporateActions: {
-      availability: corporateActionRows.length > 0 ? "REAL" : "UNAVAILABLE",
+      availability: corporateActionRows.length > 0 && args.corporateActionsComplete ? "REAL" : "UNAVAILABLE",
       source: "investing_corporate_actions",
       count: corporateActionRows.length,
       asOf: latestTimestamp(corporateActionRows, "effective_at") ?? latestTimestamp(corporateActionRows, "created_at"),
-      reason: corporateActionRows.length > 0 ? null : "no_corporate_action_evidence",
+      reason: corporateActionRows.length === 0
+        ? "no_corporate_action_evidence"
+        : args.corporateActionsComplete
+          ? null
+          : "corporate_action_history_coverage_unproven",
     },
     performance: buildCanonicalInvestingPerformanceRead({
       portfolio: args.portfolio,
-      movements: movementRows,
+      movements: args.performanceMovements ?? movementRows,
       fills: args.fills,
       fees: args.fees,
       asOf: args.asOf ?? null,
@@ -534,6 +653,48 @@ async function resultRows(result: PromiseLike<{ data?: unknown; error?: { messag
   const resolved = await result;
   if (resolved.error) throw unavailable(code);
   return Array.isArray(resolved.data) ? resolved.data as Row[] : [];
+}
+
+function validateOrders(rows: Row[], account: InvestingAccountScope, userId: string) {
+  const ordersById = new Map<string, Row>();
+  for (const order of rows) {
+    const id = text(order.id);
+    if (
+      !id
+      || text(order.account_id) !== account.id
+      || text(order.user_id) !== userId
+      || text(order.portfolio_id) !== account.portfolioId
+      || text(order.environment) !== account.environment
+    ) {
+      throw unavailable("investing_order_scope_mismatch");
+    }
+    ordersById.set(id, order);
+  }
+  return ordersById;
+}
+
+function validateFills(rows: Row[], ordersById: Map<string, Row>) {
+  const fillsById = new Map<string, Row>();
+  for (const fill of rows) {
+    const id = text(fill.id);
+    const orderId = text(fill.order_id);
+    if (!id || !orderId || !ordersById.has(orderId)) throw unavailable("investing_fill_scope_mismatch");
+    fillsById.set(id, fill);
+  }
+  return fillsById;
+}
+
+function validateFees(rows: Row[], ordersById: Map<string, Row>, fillsById: Map<string, Row>) {
+  for (const fee of rows) {
+    const orderId = text(fee.order_id);
+    const fillId = text(fee.fill_id);
+    const fill = fillId ? fillsById.get(fillId) : null;
+    if (!orderId && !fillId) throw unavailable("investing_fee_scope_mismatch");
+    if (orderId && !ordersById.has(orderId)) throw unavailable("investing_fee_scope_mismatch");
+    if (fillId && !fill) throw unavailable("investing_fee_scope_mismatch");
+    if (orderId && fill && text(fill.order_id) !== orderId) throw unavailable("investing_fee_order_fill_mismatch");
+  }
+  return rows;
 }
 
 export async function readCanonicalInvestingAccountingForAccount(args: {
@@ -581,11 +742,13 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     resultRows(database.from("investing_reconciliation_runs").select("id,account_id,status,score,environment,started_at,completed_at,created_at").eq("account_id", account.id).order("created_at", { ascending: false }).limit(20), "investing_reconciliation_runs_read_failed"),
   ]);
 
-  const orderIds = orders.map((order) => text(order.id)).filter(Boolean);
+  const ordersById = validateOrders(orders, account, args.userId);
+  const orderIds = [...ordersById.keys()];
   const scopedFills = orderIds.length
     ? await resultRows(database.from("investing_fills").select("id,order_id,fill_id,quantity,price,gross_amount,fee_amount,tax_amount,currency,executed_at,created_at").in("order_id", orderIds).order("created_at", { ascending: false }).limit(500), "investing_fills_read_failed")
     : [];
-  const fillIds = scopedFills.map((fill) => text(fill.id)).filter(Boolean);
+  const fillsById = validateFills(scopedFills, ordersById);
+  const fillIds = [...fillsById.keys()];
   const [orderScopedFees, fillScopedFees] = await Promise.all([
     orderIds.length
       ? resultRows(database.from("investing_fees").select("id,fill_id,order_id,fee_type,amount,currency,created_at").in("order_id", orderIds).order("created_at", { ascending: false }).limit(500), "investing_fees_read_failed")
@@ -599,7 +762,7 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     const id = text(fee.id) || `${text(fee.order_id)}:${text(fee.fill_id)}:${text(fee.fee_type)}:${text(fee.amount)}`;
     feeMap.set(id, fee);
   }
-  const scopedFees = [...feeMap.values()];
+  const scopedFees = validateFees([...feeMap.values()], ordersById, fillsById);
   const runIds = reconciliationRuns.map((run) => text(run.id)).filter(Boolean);
   const reconciliationItems = runIds.length
     ? await resultRows(database.from("investing_reconciliation_items").select("id,run_id,item_type,severity,resolution_status,detected_at").in("run_id", runIds).order("detected_at", { ascending: false }).limit(500), "investing_reconciliation_items_read_failed")
@@ -617,6 +780,7 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     portfolio: args.portfolio ?? null,
     fills: scopedFills,
     fees: scopedFees,
+    performanceMovements: [],
     asOf: args.asOf ?? null,
   });
 }

@@ -189,7 +189,7 @@ describe("Investing dashboard tenant-scoped read", () => {
     vi.clearAllMocks();
     for (const rows of Object.values(db)) rows.splice(0, rows.length);
     seedTenantAFinancialRows();
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
   });
 
   it("loads transitional user-level rows directly and never calls the non-tenant-scoped compact RPC", async () => {
@@ -232,6 +232,9 @@ describe("Investing dashboard tenant-scoped read", () => {
       priceAvailability: "REAL",
       valuationSource: "market_quote",
       valuationAvailability: "REAL",
+      quoteCurrency: "EUR",
+      costBasisCurrency: "EUR",
+      valuationCurrency: "EUR",
     });
     expect(result.portfolio.totalEur).toBe(1000);
     expect(result.portfolio.valuation).toMatchObject({
@@ -699,6 +702,11 @@ describe("Investing dashboard tenant-scoped read", () => {
         unavailableMessage: "Dados indisponiveis neste momento",
       },
     });
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "market_quote_evidence_missing",
+    });
   });
 
   it("does not use the current provider quote shape as customer-visible market truth without freshness evidence", async () => {
@@ -725,6 +733,11 @@ describe("Investing dashboard tenant-scoped read", () => {
         status: "ESTIMATED",
         unavailableMessage: "Dados indisponiveis neste momento",
       },
+    });
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "market_quote_evidence_missing",
     });
     expectNoCustomerGuidance(result);
   });

@@ -273,6 +273,12 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const hasCostBasisFallback = costBasisEur > 0;
     const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : 0;
     const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
+    const quoteCurrency = typeof sourceQuote?.currency === "string" && /^[A-Z]{3}$/i.test(sourceQuote.currency)
+      ? sourceQuote.currency.toUpperCase()
+      : null;
+    const costBasisCurrency = typeof position.currency === "string" && /^[A-Z]{3}$/i.test(position.currency)
+      ? position.currency.toUpperCase()
+      : null;
     const itemValuationAvailability = valuationAvailability({
       priceAvailability,
       valuationSource: itemValuationSource,
@@ -295,6 +301,12 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       valuationAvailability: itemValuationAvailability,
       valuation_availability: itemValuationAvailability,
       currency: position.currency,
+      costBasisCurrency,
+      cost_basis_currency: costBasisCurrency,
+      quoteCurrency,
+      quote_currency: quoteCurrency,
+      valuationCurrency: itemValuationSource === "market_quote" ? quoteCurrency : null,
+      valuation_currency: itemValuationSource === "market_quote" ? quoteCurrency : null,
       valuationSource: itemValuationSource,
     };
   });

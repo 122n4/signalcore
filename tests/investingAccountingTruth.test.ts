@@ -22,7 +22,7 @@ const db: Record<string, Row[]> = {
   investing_reconciliation_runs: [],
   investing_reconciliation_items: [],
 };
-const calls: Array<{ table: string; select: string; filters: Array<[string, unknown]>; inFilters: Array<[string, unknown[]]> }> = [];
+const calls: Array<{ table: string; select: string; filters: Array<[string, unknown]>; inFilters: Array<[string, unknown[]]>; limit: number | null }> = [];
 let failTable: string | null = null;
 let rpcCalls = 0;
 let writes = 0;
@@ -64,7 +64,7 @@ class QueryBuilder {
   }
 
   private rows() {
-    calls.push({ table: this.table, select: this.selected, filters: [...this.filters], inFilters: [...this.inFilters] });
+    calls.push({ table: this.table, select: this.selected, filters: [...this.filters], inFilters: [...this.inFilters], limit: this.rowLimit });
     if (failTable === this.table) return null;
     let rows = (db[this.table] ?? []).filter((row) =>
       this.filters.every(([column, value]) => row[column] === value)
@@ -303,6 +303,7 @@ describe("canonical Investing accounting truth", () => {
 
     const balanced = buildCanonicalInvestingAccountingSnapshot({
       ...base,
+      ledgerComplete: true,
       ledgerEntries: [
         { id: "e-1", transaction_id: "tx-1", account_id: "11111111-1111-4111-8111-111111111111", account_code: "cash", side: "debit", amount: 100, currency: "EUR" },
         { id: "e-2", transaction_id: "tx-1", account_id: "11111111-1111-4111-8111-111111111111", account_code: "equity", side: "credit", amount: 100, currency: "EUR" },
@@ -350,7 +351,17 @@ describe("canonical Investing accounting truth", () => {
       portfolio: {
         totalEur: 1000,
         valuationAvailability: "REAL",
-        items: [{ symbol: "VWCE", qty: 3, valueEur: 300, costBasisEur: 250, valuationAvailability: "REAL" }],
+        items: [{
+          symbol: "VWCE",
+          qty: 3,
+          valueEur: 300,
+          costBasisEur: 250,
+          valuationAvailability: "REAL",
+          priceAvailability: "REAL",
+          valuationSource: "market_quote",
+          valuationCurrency: "EUR",
+          costBasisCurrency: "EUR",
+        }],
       },
       asOf: "2026-08-12T12:00:00.000Z",
     });
@@ -367,17 +378,83 @@ describe("canonical Investing accounting truth", () => {
 
     const unavailable = buildCanonicalInvestingPerformanceRead({
       portfolio: {
-        items: [{ symbol: "VWCE", qty: 3, valueEur: 300, costBasisEur: 250, valuationAvailability: "UNAVAILABLE" }],
+        items: [{ symbol: "VWCE", qty: 3, valueEur: 250, costBasisEur: 250, valuationAvailability: "ESTIMATED", priceAvailability: "UNAVAILABLE", valuationSource: "cost_basis_fallback", valuationCurrency: null, costBasisCurrency: "EUR" }],
       },
     });
     expect(unavailable.components.unrealizedPnl).toMatchObject({
       availability: "UNAVAILABLE",
       value: null,
-      reason: "valid_position_valuation_missing",
+      reason: "market_quote_evidence_missing",
     });
   });
 
-  it("scopes fees through canonical account orders and fills without broad fee reads", async () => {
+  it("requires current base-currency market evidence for limited unrealized P&L", () => {
+    const usdQuote = buildCanonicalInvestingPerformanceRead({
+      baseCurrency: "EUR",
+      portfolio: {
+        items: [{ symbol: "VUSA", qty: 1, valueEur: 100, costBasisEur: 90, valuationAvailability: "REAL", priceAvailability: "REAL", valuationSource: "market_quote", valuationCurrency: "USD", costBasisCurrency: "EUR" }],
+      },
+    });
+    expect(usdQuote.components.unrealizedPnl).toMatchObject({ availability: "UNAVAILABLE", value: null, reason: "currency_conversion_unavailable" });
+
+    const missingCurrency = buildCanonicalInvestingPerformanceRead({
+      baseCurrency: "EUR",
+      portfolio: {
+        items: [{ symbol: "VWCE", qty: 1, valueEur: 100, costBasisEur: 90, valuationAvailability: "REAL", priceAvailability: "REAL", valuationSource: "market_quote", valuationCurrency: null, costBasisCurrency: "EUR" }],
+      },
+    });
+    expect(missingCurrency.components.unrealizedPnl).toMatchObject({ availability: "UNAVAILABLE", value: null, reason: "currency_evidence_missing" });
+
+    const oneMissing = buildCanonicalInvestingPerformanceRead({
+      baseCurrency: "EUR",
+      portfolio: {
+        items: [
+          { symbol: "VWCE", qty: 1, valueEur: 100, costBasisEur: 90, valuationAvailability: "REAL", priceAvailability: "REAL", valuationSource: "market_quote", valuationCurrency: "EUR", costBasisCurrency: "EUR" },
+          { symbol: "IWDA", qty: 1, valueEur: 50, costBasisEur: 50, valuationAvailability: "ESTIMATED", priceAvailability: "UNAVAILABLE", valuationSource: "cost_basis_fallback", valuationCurrency: null, costBasisCurrency: "EUR" },
+        ],
+      },
+    });
+    expect(oneMissing.components.unrealizedPnl).toMatchObject({ availability: "UNAVAILABLE", value: null, reason: "market_quote_evidence_missing" });
+
+    const compatible = buildCanonicalInvestingPerformanceRead({
+      baseCurrency: "EUR",
+      portfolio: {
+        items: [{ symbol: "VWCE", qty: 1, valueEur: 100, costBasisEur: 90, valuationAvailability: "REAL", priceAvailability: "REAL", valuationSource: "market_quote", valuationCurrency: "EUR", costBasisCurrency: "EUR" }],
+      },
+    });
+    expect(compatible.components.unrealizedPnl).toMatchObject({ availability: "ESTIMATED", value: 10, reason: null });
+  });
+
+  it("fails closed for incomplete or cross-currency historical aggregates", () => {
+    const base = { baseCurrency: "EUR", asOf: "2026-08-12T12:00:00.000Z" };
+    const eurRows = buildCanonicalInvestingPerformanceRead({
+      ...base,
+      fees: [{ amount: 1, currency: "EUR", created_at: "2026-08-12T10:00:00.000Z" }],
+      movements: [
+        { movement_type: "dividend", amount: 2, currency: "EUR", created_at: "2026-08-12T10:00:00.000Z" },
+        { movement_type: "tax", amount: -1, currency: "EUR", created_at: "2026-08-12T11:00:00.000Z" },
+      ],
+    });
+    expect(eurRows.components.fees).toMatchObject({ availability: "UNAVAILABLE", value: null, reason: "complete_fee_history_unproven" });
+    expect(eurRows.components.dividends).toMatchObject({ availability: "UNAVAILABLE", value: null, reason: "complete_dividend_history_unproven" });
+    expect(eurRows.components.taxes).toMatchObject({ availability: "UNAVAILABLE", value: null, reason: "complete_tax_history_unproven" });
+
+    const usdRows = buildCanonicalInvestingPerformanceRead({
+      ...base,
+      fees: [{ amount: 1, currency: "USD", created_at: "2026-08-12T10:00:00.000Z" }],
+      movements: [
+        { movement_type: "dividend", amount: 2, currency: "EUR", created_at: "2026-08-12T10:00:00.000Z" },
+        { movement_type: "dividend", amount: 3, currency: "USD", created_at: "2026-08-12T10:01:00.000Z" },
+        { movement_type: "tax", amount: -1, currency: "EUR", created_at: "2026-08-12T11:00:00.000Z" },
+        { movement_type: "tax", amount: -2, currency: "USD", created_at: "2026-08-12T11:01:00.000Z" },
+      ],
+    });
+    expect(usdRows.components.fees.reason).toBe("currency_conversion_unavailable");
+    expect(usdRows.components.dividends.reason).toBe("currency_conversion_unavailable");
+    expect(usdRows.components.taxes.reason).toBe("currency_conversion_unavailable");
+  });
+
+  it("scopes fees through canonical account orders and fills without broad fee reads or complete fee totals", async () => {
     db.investing_orders.push({
       id: "order-1",
       account_id: "11111111-1111-4111-8111-111111111111",
@@ -417,14 +494,115 @@ describe("canonical Investing accounting truth", () => {
     });
 
     expect(result.performance.components.fees).toMatchObject({
-      availability: "REAL",
-      value: 1.5,
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "complete_fee_history_unproven",
       source: "investing_fees",
     });
     expect(calls.filter((call) => call.table === "investing_fees").map((call) => call.inFilters)).toEqual([
       [["order_id", ["order-1"]]],
       [["fill_id", ["fill-1"]]],
     ]);
+  });
+
+  it("keeps performance independent from presentation movement pagination", async () => {
+    db.investing_cash_movements.push(
+      { id: "movement-1", account_id: "11111111-1111-4111-8111-111111111111", movement_type: "dividend", amount: 10, currency: "EUR", source_type: "broker", created_at: "2026-08-12T10:00:00.000Z" },
+      { id: "movement-2", account_id: "11111111-1111-4111-8111-111111111111", movement_type: "dividend", amount: 20, currency: "EUR", source_type: "broker", created_at: "2026-08-12T11:00:00.000Z" },
+    );
+
+    const limitOne = await readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+      movementLimit: 1,
+    });
+    const limitMany = await readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+      movementLimit: 200,
+    });
+
+    expect(limitOne.movements).toHaveLength(1);
+    expect(limitMany.movements).toHaveLength(2);
+    expect(limitOne.performance).toEqual(limitMany.performance);
+  });
+
+  it("does not label bounded ledger or corporate-action reads as complete REAL truth", () => {
+    const snapshot = buildCanonicalInvestingAccountingSnapshot({
+      account: accountScope(),
+      ledgerTransactions: [{ id: "tx-1", account_id: "11111111-1111-4111-8111-111111111111", currency: "EUR" }],
+      ledgerEntries: [
+        { id: "e-1", transaction_id: "tx-1", account_id: "11111111-1111-4111-8111-111111111111", account_code: "cash", side: "debit", amount: 100, currency: "EUR" },
+        { id: "e-2", transaction_id: "tx-1", account_id: "11111111-1111-4111-8111-111111111111", account_code: "equity", side: "credit", amount: 100, currency: "EUR" },
+      ],
+      corporateActionRows: [{ id: "ca-1", account_id: "11111111-1111-4111-8111-111111111111", action_type: "split", effective_at: "2026-08-12T10:00:00.000Z" }],
+    });
+
+    expect(snapshot.ledger).toMatchObject({ availability: "UNAVAILABLE", balanced: null, reason: "ledger_history_coverage_unproven" });
+    expect(snapshot.corporateActions).toMatchObject({ availability: "UNAVAILABLE", count: 1, reason: "corporate_action_history_coverage_unproven" });
+  });
+
+  it("fails closed on order, fill and fee scope mismatches", async () => {
+    db.investing_orders.push({ id: "bad-portfolio", account_id: "11111111-1111-4111-8111-111111111111", user_id: "user_a", portfolio_id: "secondary", environment: "paper", created_at: "2026-08-12T09:00:00.000Z" });
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({ code: "investing_order_scope_mismatch" });
+
+    db.investing_orders.splice(0, db.investing_orders.length, { id: "bad-env", account_id: "11111111-1111-4111-8111-111111111111", user_id: "user_a", portfolio_id: "primary", environment: "live", created_at: "2026-08-12T09:00:00.000Z" });
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({ code: "investing_order_scope_mismatch" });
+
+    db.investing_orders.splice(0, db.investing_orders.length, { id: "order-1", account_id: "11111111-1111-4111-8111-111111111111", user_id: "user_a", portfolio_id: "primary", environment: "paper", created_at: "2026-08-12T09:00:00.000Z" });
+    db.investing_fills.splice(0, db.investing_fills.length, { id: "fill-1", order_id: "order-1", currency: "EUR", created_at: "2026-08-12T09:01:00.000Z" });
+    db.investing_fees.splice(0, db.investing_fees.length, { id: "fee-1", order_id: "order-1", fill_id: "missing-fill", amount: 1, currency: "EUR", created_at: "2026-08-12T09:02:00.000Z" });
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({ code: "investing_fee_scope_mismatch" });
+
+    db.investing_fills.splice(0, db.investing_fills.length,
+      { id: "fill-1", order_id: "order-1", currency: "EUR", created_at: "2026-08-12T09:01:00.000Z" },
+      { id: "fill-2", order_id: "order-1", currency: "EUR", created_at: "2026-08-12T09:01:30.000Z" },
+    );
+    db.investing_fees.splice(0, db.investing_fees.length, { id: "fee-2", order_id: "other-order", fill_id: "fill-2", amount: 1, currency: "EUR", created_at: "2026-08-12T09:02:00.000Z" });
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({ code: "investing_fee_scope_mismatch" });
+  });
+
+  it("does not report failed or warning reconciliation runs as reconciled", () => {
+    const warning = buildCanonicalInvestingAccountingSnapshot({
+      account: accountScope(),
+      reconciliationRuns: [{ id: "run-1", account_id: "11111111-1111-4111-8111-111111111111", status: "warning", completed_at: "2026-08-12T10:00:00.000Z", created_at: "2026-08-12T09:00:00.000Z" }],
+    });
+    expect(warning.reconciliation).toMatchObject({
+      availability: "REAL",
+      status: "NOT_RECONCILED",
+      issueCount: null,
+      reason: "reconciliation_run_not_clean",
+    });
   });
 
   it("does not treat zero reconciliation runs as reconciled or zero issues", async () => {
