@@ -238,6 +238,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const positions = scopedFinancialRows.positions;
 
   const accountId = account?.id ? String(account.id) : null;
+  const accountBaseCurrency =
+    typeof account?.base_currency === "string" && /^[A-Z]{3}$/i.test(account.base_currency)
+      ? account.base_currency.toUpperCase()
+      : "EUR";
 
   const universe = getCanonicalInvestingInstrumentMaster();
   const positionRows = positions.filter((position: any) => number(position.quantity) > 0);
@@ -253,7 +257,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     snapshot: canonicalMarketSnapshot,
     persisted: false,
   });
-  const eurCashRows = cash.filter((row: any) => row.currency === "EUR");
+  const eurCashRows = accountBaseCurrency === "EUR" ? cash.filter((row: any) => row.currency === "EUR") : [];
   const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0);
   const cashEur = eurCashRows.reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
   const cashTruth = {
@@ -269,16 +273,18 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const price = number(quote?.price);
     const costBasisEur = number(position.cost_basis);
     const priceAvailability = priceAvailabilityFromQuote(sourceQuote, price);
-    const hasUsableMarketPrice = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
-    const hasCostBasisFallback = costBasisEur > 0;
-    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : 0;
-    const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
     const quoteCurrency = typeof sourceQuote?.currency === "string" && /^[A-Z]{3}$/i.test(sourceQuote.currency)
       ? sourceQuote.currency.toUpperCase()
       : null;
     const costBasisCurrency = typeof position.currency === "string" && /^[A-Z]{3}$/i.test(position.currency)
       ? position.currency.toUpperCase()
       : null;
+    const hasMarketEvidence = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
+    const hasUsableMarketPrice = hasMarketEvidence && quoteCurrency === accountBaseCurrency && accountBaseCurrency === "EUR";
+    const hasCurrencyBlockedQuote = hasMarketEvidence && (!quoteCurrency || quoteCurrency !== accountBaseCurrency || accountBaseCurrency !== "EUR");
+    const hasCostBasisFallback = costBasisEur > 0 && costBasisCurrency === "EUR" && !hasCurrencyBlockedQuote;
+    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : 0;
+    const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
     const itemValuationAvailability = valuationAvailability({
       priceAvailability,
       valuationSource: itemValuationSource,
@@ -311,7 +317,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     };
   });
   const unprovenPriceSymbols = items
-    .filter((item: any) => item.priceAvailability !== "REAL")
+    .filter((item: any) => item.priceAvailability !== "REAL" || item.valuationSource !== "market_quote" || item.valuationCurrency !== "EUR")
     .map((item: any) => String(item.symbol || "").toUpperCase())
     .filter(Boolean);
   const isCashOnlyPortfolio = hasCanonicalCashBalance && items.length === 0;

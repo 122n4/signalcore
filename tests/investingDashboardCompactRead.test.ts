@@ -277,6 +277,86 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect((result.derived as any).reportSummary).toBeUndefined();
   });
 
+  it("does not label a USD quote as EUR portfolio value without FX lineage", async () => {
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "USD", source: "verified_fresh_test" } });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.items[0]).toMatchObject({
+      symbol: "VWCE",
+      price: 100,
+      quoteCurrency: "USD",
+      valueEur: 0,
+      valuationSource: "unavailable",
+      valuationAvailability: "UNAVAILABLE",
+    });
+    expect(result.portfolio.totalEur).toBe(700);
+    expect(result.portfolio.totalEur).not.toBe(1000);
+    expect(result.portfolio.valuation).toMatchObject({
+      source: "unavailable",
+      availability: "UNAVAILABLE",
+      coveragePct: 0,
+      missingPriceSymbols: ["VWCE"],
+    });
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+    });
+  });
+
+  it("does not default a missing quote currency to EUR for portfolio valuation", async () => {
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "verified_fresh_test" } });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.items[0]).toMatchObject({
+      symbol: "VWCE",
+      quoteCurrency: null,
+      valueEur: 0,
+      valuationSource: "unavailable",
+      valuationAvailability: "UNAVAILABLE",
+    });
+    expect(result.portfolio.totalEur).toBe(700);
+    expect(result.portfolio.valuation.availability).toBe("UNAVAILABLE");
+    expect(result.portfolio.performance.components.unrealizedPnl.availability).toBe("UNAVAILABLE");
+  });
+
+  it("does not represent a partial EUR valuation as complete when one holding has a USD quote", async () => {
+    db.investing_positions.push({
+      account_id: "account-a",
+      symbol: "IWDA",
+      quantity: 2,
+      cost_basis: 80,
+      currency: "EUR",
+    });
+    mocks.getQuotes.mockResolvedValue({
+      VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" },
+      IWDA: { price: 50, currency: "USD", source: "verified_fresh_test" },
+    });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.items).toHaveLength(2);
+    expect(result.portfolio.items.find((item: any) => item.symbol === "VWCE")).toMatchObject({
+      valueEur: 300,
+      valuationSource: "market_quote",
+      valuationAvailability: "REAL",
+    });
+    expect(result.portfolio.items.find((item: any) => item.symbol === "IWDA")).toMatchObject({
+      valueEur: 0,
+      quoteCurrency: "USD",
+      valuationSource: "unavailable",
+      valuationAvailability: "UNAVAILABLE",
+    });
+    expect(result.portfolio.totalEur).toBe(1000);
+    expect(result.portfolio.totalEur).not.toBe(1100);
+    expect(result.portfolio.valuation).toMatchObject({
+      availability: "UNAVAILABLE",
+      missingPriceSymbols: ["IWDA"],
+    });
+    expect(result.portfolio.performance.components.unrealizedPnl.availability).toBe("UNAVAILABLE");
+  });
+
   it("uses canonical active plan selection instead of newest draft fallback", async () => {
     db.plans.push({
       id: "plan-newer-draft",
@@ -769,7 +849,7 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("marks stale quote evidence as STALE, not REAL", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "last_known_good" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "last_known_good" } });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 

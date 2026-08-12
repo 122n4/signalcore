@@ -12,6 +12,8 @@ Movement responses are sanitized. They expose only movement type, amount, curren
 
 ## Performance Truth
 
+Customer-visible portfolio valuation is currency-safe. A quote may contribute to a field named `valueEur` or `totalEur` only when the quote currency is explicitly present, valid, and equal to EUR/account valuation currency. R4 does not default missing quote currency to EUR and does not relabel foreign-currency prices as EUR.
+
 Cost-basis fallback cannot create unrealized P&L. If a holding does not have usable current market evidence, the unrealized P&L component is UNAVAILABLE. It must not be displayed as EUR 0, 0%, or no gain/loss.
 
 Unrealized P&L requires every active positive-quantity holding included in the portfolio to have:

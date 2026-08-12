@@ -509,6 +509,7 @@ describe("canonical Investing accounting truth", () => {
     db.investing_cash_movements.push(
       { id: "movement-1", account_id: "11111111-1111-4111-8111-111111111111", movement_type: "dividend", amount: 10, currency: "EUR", source_type: "broker", created_at: "2026-08-12T10:00:00.000Z" },
       { id: "movement-2", account_id: "11111111-1111-4111-8111-111111111111", movement_type: "dividend", amount: 20, currency: "EUR", source_type: "broker", created_at: "2026-08-12T11:00:00.000Z" },
+      { id: "movement-3", account_id: "11111111-1111-4111-8111-111111111111", movement_type: "tax", amount: -3, currency: "EUR", source_type: "broker", created_at: "2026-08-12T12:00:00.000Z" },
     );
 
     const limitOne = await readCanonicalInvestingAccountingForAccount({
@@ -529,8 +530,18 @@ describe("canonical Investing accounting truth", () => {
     });
 
     expect(limitOne.movements).toHaveLength(1);
-    expect(limitMany.movements).toHaveLength(2);
+    expect(limitMany.movements).toHaveLength(3);
     expect(limitOne.performance).toEqual(limitMany.performance);
+    expect(limitOne.performance.components.dividends).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "complete_dividend_history_unproven",
+    });
+    expect(limitOne.performance.components.taxes).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "complete_tax_history_unproven",
+    });
   });
 
   it("does not label bounded ledger or corporate-action reads as complete REAL truth", () => {

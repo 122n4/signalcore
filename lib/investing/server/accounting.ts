@@ -382,6 +382,7 @@ export function buildCanonicalInvestingPerformanceRead(args: {
     items?: Row[];
   } | null;
   movements?: Row[];
+  performanceMovementEvidenceRows?: Row[];
   fills?: Row[];
   fees?: Row[];
   asOf?: string | null;
@@ -401,8 +402,9 @@ export function buildCanonicalInvestingPerformanceRead(args: {
     : null;
   const feeRows = Array.isArray(args.fees) ? args.fees : [];
   const movementRows = Array.isArray(args.movements) ? args.movements : [];
-  const dividendRows = movementRows.filter((row) => text(row.movement_type) === "dividend");
-  const taxRows = movementRows.filter((row) => text(row.movement_type) === "tax");
+  const observedMovementRows = Array.isArray(args.performanceMovementEvidenceRows) ? args.performanceMovementEvidenceRows : movementRows;
+  const dividendRows = observedMovementRows.filter((row) => text(row.movement_type) === "dividend");
+  const taxRows = observedMovementRows.filter((row) => text(row.movement_type) === "tax");
 
   return {
     availability: "UNAVAILABLE",
@@ -568,6 +570,7 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
   reconciliationItemsComplete?: boolean;
   corporateActionsComplete?: boolean;
   performanceMovements?: Row[];
+  performanceMovementEvidenceRows?: Row[];
 }): CanonicalAccountingSnapshot {
   const cashRows = args.cashRows ?? [];
   const movementRows = args.movementRows ?? [];
@@ -578,6 +581,7 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
   const corporateActionRows = args.corporateActionRows ?? [];
   validateRowsAccountScoped(cashRows, args.account, "investing_cash_balances");
   validateRowsAccountScoped(movementRows, args.account, "investing_cash_movements");
+  validateRowsAccountScoped(args.performanceMovementEvidenceRows ?? [], args.account, "investing_cash_movements");
   validateRowsAccountScoped(ledgerTransactions, args.account, "investing_ledger_transactions");
   validateRowsAccountScoped(reconciliationRuns, args.account, "investing_reconciliation_runs");
   validateRowsAccountScoped(corporateActionRows, args.account, "investing_corporate_actions");
@@ -641,6 +645,7 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
     performance: buildCanonicalInvestingPerformanceRead({
       portfolio: args.portfolio,
       movements: args.performanceMovements ?? movementRows,
+      performanceMovementEvidenceRows: args.performanceMovementEvidenceRows,
       fills: args.fills,
       fees: args.fees,
       asOf: args.asOf ?? null,
@@ -732,6 +737,8 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     orders,
     corporateActionRows,
     reconciliationRuns,
+    dividendEvidenceRows,
+    taxEvidenceRows,
   ] = await Promise.all([
     resultRows(database.from("investing_cash_balances").select("account_id,currency,available_amount,settled_amount,reserved_amount,as_of,version").eq("account_id", account.id), "investing_cash_balances_read_failed"),
     resultRows(database.from("investing_cash_movements").select("id,account_id,movement_type,amount,currency,source_type,reversal_of,created_at").eq("account_id", account.id).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(movementLimit), "investing_cash_movements_read_failed"),
@@ -740,6 +747,8 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     resultRows(database.from("investing_orders").select("id,account_id,user_id,portfolio_id,environment,status,side,currency,created_at,terminal_at").eq("user_id", args.userId).eq("account_id", account.id).order("created_at", { ascending: false }).limit(500), "investing_orders_read_failed"),
     resultRows(database.from("investing_corporate_actions").select("id,account_id,action_type,symbol,status,effective_at,created_at").eq("account_id", account.id).order("effective_at", { ascending: false }).limit(500), "investing_corporate_actions_read_failed"),
     resultRows(database.from("investing_reconciliation_runs").select("id,account_id,status,score,environment,started_at,completed_at,created_at").eq("account_id", account.id).order("created_at", { ascending: false }).limit(20), "investing_reconciliation_runs_read_failed"),
+    resultRows(database.from("investing_cash_movements").select("id,account_id,movement_type,amount,currency,source_type,reversal_of,created_at").eq("account_id", account.id).eq("movement_type", "dividend").order("created_at", { ascending: false }).limit(1), "investing_cash_movements_read_failed"),
+    resultRows(database.from("investing_cash_movements").select("id,account_id,movement_type,amount,currency,source_type,reversal_of,created_at").eq("account_id", account.id).eq("movement_type", "tax").order("created_at", { ascending: false }).limit(1), "investing_cash_movements_read_failed"),
   ]);
 
   const ordersById = validateOrders(orders, account, args.userId);
@@ -781,6 +790,7 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     fills: scopedFills,
     fees: scopedFees,
     performanceMovements: [],
+    performanceMovementEvidenceRows: [...dividendEvidenceRows, ...taxEvidenceRows],
     asOf: args.asOf ?? null,
   });
 }
