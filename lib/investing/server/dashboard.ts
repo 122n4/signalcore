@@ -80,6 +80,14 @@ function firstRow(result: { data?: unknown }) {
   return Array.isArray(result.data) ? result.data[0] ?? null : null;
 }
 
+function latestTimestamp(rows: Record<string, any>[], key: string) {
+  return rows
+    .map((row) => (row?.[key] ? String(row[key]) : ""))
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? null;
+}
+
 type DashboardLoadArgs = {
   userId: string;
   tenantId: string;
@@ -232,7 +240,13 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     persisted: false,
   });
   const eurCashRows = cash.filter((row: any) => row.currency === "EUR");
+  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0);
   const cashEur = eurCashRows.reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
+  const cashTruth = {
+    amountEur: cashEur,
+    availability: (hasCanonicalCashBalance ? "REAL" : "UNAVAILABLE") as AvailabilityStatus,
+    asOf: hasCanonicalCashBalance ? latestTimestamp(eurCashRows, "as_of") : null,
+  };
   const items = positionRows.map((position: any) => {
     const symbol = String(position.symbol || "").toUpperCase();
     const qty = number(position.quantity);
@@ -274,7 +288,6 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     .filter((item: any) => item.priceAvailability !== "REAL")
     .map((item: any) => String(item.symbol || "").toUpperCase())
     .filter(Boolean);
-  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0);
   const isCashOnlyPortfolio = hasCanonicalCashBalance && items.length === 0;
   const pricingCoveragePct = items.length ? Math.round(((items.length - unprovenPriceSymbols.length) / items.length) * 100) : 100;
   const valuationSource =
@@ -368,6 +381,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       environment: account?.environment ? String(account.environment) : null,
       accountStatus: account?.status ? String(account.status) : null,
       cashEur,
+      cash: cashTruth,
       totalEur,
       items,
       valuation: {

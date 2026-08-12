@@ -28,7 +28,9 @@ function asNavItem(key: ViewKey, label: string, locked: boolean): ShellNavItem {
   return locked ? { key, label, locked: true } : { key, label };
 }
 
-const INVESTING_VIEWS: ViewKey[] = ["daily", "portfolio", "planning", "research", "reports", "autonomy", "settings"];
+export const INVESTING_PRIMARY_VIEW_KEYS: ViewKey[] = ["daily", "portfolio", "planning", "research"];
+const INVESTING_COMPATIBILITY_VIEWS: ViewKey[] = ["reports", "autonomy", "settings"];
+const INVESTING_VIEWS: ViewKey[] = [...INVESTING_PRIMARY_VIEW_KEYS, ...INVESTING_COMPATIBILITY_VIEWS];
 const TRADING_VIEWS: ViewKey[] = ["trading", "alerts", "journal"];
 const LEGACY_TRADING_VIEWS: ViewKey[] = ["opportunities", "execution", "risk"];
 
@@ -161,12 +163,12 @@ export function buildModeAwareNavItems(args: {
     asNavItem(
       "daily",
       pickByLang(args.lang, {
-        en: "Today",
-        pt: "Hoje",
-        es: "Hoy",
-        fr: "Aujourd hui",
-        de: "Heute",
-        it: "Oggi",
+        en: "Overview",
+        pt: "Overview",
+        es: "Overview",
+        fr: "Overview",
+        de: "Overview",
+        it: "Overview",
       }),
       locked.has("daily"),
     ),
@@ -197,50 +199,14 @@ export function buildModeAwareNavItems(args: {
     asNavItem(
       "research",
       pickByLang(args.lang, {
-        en: "Research",
-        pt: "Research",
-        es: "Research",
-        fr: "Research",
-        de: "Research",
-        it: "Research",
+        en: "Insights",
+        pt: "Insights",
+        es: "Insights",
+        fr: "Insights",
+        de: "Insights",
+        it: "Insights",
       }),
       locked.has("research"),
-    ),
-    asNavItem(
-      "reports",
-      pickByLang(args.lang, {
-        en: "Reports",
-        pt: "Reports",
-        es: "Reports",
-        fr: "Reports",
-        de: "Reports",
-        it: "Reports",
-      }),
-      locked.has("reports"),
-    ),
-    asNavItem(
-      "autonomy",
-      pickByLang(args.lang, {
-        en: "Autonomy",
-        pt: "Autonomia",
-        es: "Autonomia",
-        fr: "Autonomie",
-        de: "Autonomie",
-        it: "Autonomia",
-      }),
-      locked.has("autonomy"),
-    ),
-    asNavItem(
-      "settings",
-      pickByLang(args.lang, {
-        en: "Settings",
-        pt: "Settings",
-        es: "Settings",
-        fr: "Settings",
-        de: "Settings",
-        it: "Settings",
-      }),
-      locked.has("settings"),
     ),
   ];
 }
@@ -357,8 +323,15 @@ export function buildShellCopy(args: {
 
   if (args.view === "research") {
     return {
-      title: "Investing Research",
-      subtitle: "Validation-oriented instrument research, benchmark relative checks, and review notes.",
+      title: "Investing Insights",
+      subtitle: "Decision evidence, market data quality, and Research validation state.",
+    };
+  }
+
+  if (args.view === "daily") {
+    return {
+      title: "Investing Overview",
+      subtitle: "Canonical account, portfolio truth, and decision state.",
     };
   }
 
