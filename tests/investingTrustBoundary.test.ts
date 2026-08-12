@@ -13,6 +13,8 @@ const db = {
   calls: [] as Array<{ table: string; filters: Array<[string, unknown]> }>,
 };
 
+const OWNER_PERMISSIONS = ["investing:read", "investing:create", "investing:verify", "investing:replay"];
+
 class QueryBuilder {
   private filters: Array<[string, unknown]> = [];
   private inFilters: Array<[string, unknown[]]> = [];
@@ -97,12 +99,12 @@ function seedFixtures() {
   db.investing_tenants.splice(0, db.investing_tenants.length,
     { id: "tenant_a", owner_user_id: "user_a", kind: "personal", status: "active" },
     { id: "tenant_b", owner_user_id: "user_b", kind: "personal", status: "active" },
-    { id: "tenant_inactive", owner_user_id: "user_c", kind: "personal", status: "disabled" },
+    { id: "tenant_inactive", owner_user_id: "user_c", kind: "personal", status: "inactive" },
   );
   db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
-    { id: "membership_a", tenant_id: "tenant_a", user_id: "user_a", role: "owner", permissions: ["investing:*"], status: "active", revoked_at: null },
-    { id: "membership_b", tenant_id: "tenant_b", user_id: "user_b", role: "owner", permissions: ["investing:*"], status: "active", revoked_at: null },
-    { id: "membership_c", tenant_id: "tenant_inactive", user_id: "user_c", role: "owner", permissions: ["investing:*"], status: "active", revoked_at: null },
+    { id: "membership_a", tenant_id: "tenant_a", user_id: "user_a", role: "owner", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null },
+    { id: "membership_b", tenant_id: "tenant_b", user_id: "user_b", role: "owner", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null },
+    { id: "membership_c", tenant_id: "tenant_inactive", user_id: "user_c", role: "owner", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null },
   );
   db.investing_accounts.splice(0, db.investing_accounts.length,
     { id: "account_a", user_id: "user_a", owner_user_id: "user_a", tenant_id: "tenant_a", portfolio_id: "primary", environment: "paper", status: "active", base_currency: "EUR" },
@@ -146,28 +148,87 @@ describe("Investing trust boundary", () => {
     expect(context).toMatchObject({ userId: "user_a", tenantId: "tenant_a", membershipId: "membership_a" });
   });
 
-  it("fails closed for missing, inactive and ambiguous tenant memberships", async () => {
+  it("fails closed for missing tenant memberships", async () => {
     authState.userId = "missing_user";
     await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
       code: "investing_tenant_not_authorized",
       status: 403,
     });
+  });
 
+  it("fails closed for malformed cross-owner membership", async () => {
+    db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
+      { id: "membership_cross_owner", tenant_id: "tenant_b", user_id: "user_a", role: "owner", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null },
+    );
+    await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
+      code: "investing_tenant_not_authorized",
+      status: 403,
+    });
+  });
+
+  it("fails closed for non-owner membership", async () => {
+    db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
+      { id: "membership_member", tenant_id: "tenant_a", user_id: "user_a", role: "member", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null },
+    );
+    await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
+      code: "investing_tenant_not_authorized",
+      status: 403,
+    });
+  });
+
+  it("fails closed for membership without investing read permission", async () => {
+    db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
+      { id: "membership_without_read", tenant_id: "tenant_a", user_id: "user_a", role: "owner", permissions: ["investing:create", "investing:verify", "investing:replay"], status: "active", revoked_at: null },
+    );
+    await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
+      code: "investing_tenant_not_authorized",
+      status: 403,
+    });
+  });
+
+  it("fails closed for inactive membership", async () => {
+    db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
+      { id: "membership_inactive", tenant_id: "tenant_a", user_id: "user_a", role: "owner", permissions: OWNER_PERMISSIONS, status: "inactive", revoked_at: null },
+    );
+    await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
+      code: "investing_tenant_not_authorized",
+      status: 403,
+    });
+  });
+
+  it("fails closed for revoked membership", async () => {
+    db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
+      { id: "membership_revoked", tenant_id: "tenant_a", user_id: "user_a", role: "owner", permissions: OWNER_PERMISSIONS, status: "revoked", revoked_at: "2026-08-01T00:00:00.000Z" },
+    );
+    await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
+      code: "investing_tenant_not_authorized",
+      status: 403,
+    });
+  });
+
+  it("fails closed for inactive tenant", async () => {
     authState.userId = "user_c";
     await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
       code: "investing_tenant_not_authorized",
       status: 403,
     });
+  });
 
-    authState.userId = "revoked_user";
-    db.investing_tenant_memberships.push({ id: "membership_revoked", tenant_id: "tenant_a", user_id: "revoked_user", role: "owner", permissions: ["investing:*"], status: "active", revoked_at: "2026-08-01T00:00:00.000Z" });
+  it("fails closed for non-personal tenant fixture", async () => {
+    db.investing_tenants.splice(0, db.investing_tenants.length,
+      { id: "tenant_corrupt", owner_user_id: "user_a", kind: "workspace", status: "active" },
+    );
+    db.investing_tenant_memberships.splice(0, db.investing_tenant_memberships.length,
+      { id: "membership_corrupt_tenant", tenant_id: "tenant_corrupt", user_id: "user_a", role: "owner", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null },
+    );
     await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
       code: "investing_tenant_not_authorized",
       status: 403,
     });
+  });
 
-    authState.userId = "user_a";
-    db.investing_tenant_memberships.push({ id: "membership_a2", tenant_id: "tenant_b", user_id: "user_a", role: "member", permissions: [], status: "active", revoked_at: null });
+  it("fails closed with ambiguity for two active memberships", async () => {
+    db.investing_tenant_memberships.push({ id: "membership_a2", tenant_id: "tenant_b", user_id: "user_a", role: "owner", permissions: OWNER_PERMISSIONS, status: "active", revoked_at: null });
     await expect(requireInvestingRequestContext(new Request("http://localhost/api/investing/dashboard"))).rejects.toMatchObject({
       code: "investing_tenant_ambiguous",
       status: 409,

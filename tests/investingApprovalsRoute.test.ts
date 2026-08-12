@@ -61,7 +61,7 @@ vi.mock("@/lib/investing/server/authz", () => ({
   assertInvestingPortfolioScope: authzMocks.assertInvestingPortfolioScope,
   requireInvestingRequestContext: vi.fn(async () => {
     if (!authState.userId) throw { status: 401, code: "unauthorized", publicError: "unauthorized" };
-    return { userId: authState.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: [] };
+    return { userId: authState.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: ["investing:read", "investing:create", "investing:verify", "investing:replay"] };
   }),
   listInvestingAccountIdsForTenant: vi.fn(async () => authzMocks.accountIds),
   requireInvestingQueueAccess: authzMocks.requireInvestingQueueAccess,
