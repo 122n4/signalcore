@@ -154,11 +154,43 @@ describe("InvestingExperience", () => {
 
   it("renders plan and insights without fake progress or actionable unavailable decisions", () => {
     const planHtml = renderToStaticMarkup(
-      <InvestingExperienceStateView screen="plan" state={{ status: "ready", error: null, data: { plan: { goal: "Long-term plan" } } }} />,
+      <InvestingExperienceStateView
+        screen="plan"
+        state={{
+          status: "ready",
+          error: null,
+          data: {
+            plan: {
+              availability: "AVAILABLE",
+              value: {
+                id: "plan-a",
+                mode: "investing",
+                status: "active",
+                version: 1,
+                summary: "Long-term plan",
+                structured: { availability: "UNAVAILABLE", schemaVersion: null, reason: "structured_plan_missing" },
+              },
+            },
+          },
+        }}
+      />,
     );
     expect(planHtml).toContain("Plan target not yet available");
     expect(planHtml).not.toContain("€50");
     expect(planHtml).not.toContain("0%");
+
+    const ambiguousPlanHtml = renderToStaticMarkup(
+      <InvestingExperienceStateView
+        screen="plan"
+        state={{
+          status: "ready",
+          error: null,
+          data: { plan: { availability: "UNAVAILABLE", reason: "investing_plan_ambiguous", value: null } },
+        }}
+      />,
+    );
+    expect(ambiguousPlanHtml).toContain("Plan unavailable");
+    expect(ambiguousPlanHtml).toContain("Plan target not yet available");
 
     const insightsHtml = renderToStaticMarkup(
       <InvestingExperienceStateView

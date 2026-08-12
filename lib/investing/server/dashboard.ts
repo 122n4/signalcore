@@ -5,6 +5,7 @@ import { buildInvestingExecutionPlan } from "@/lib/investing/execution";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import type { InvestingEnvironment } from "@/lib/investing/server/authz";
+import { readCanonicalInvestingPlanForUser } from "@/lib/investing/server/plan";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
 import {
   buildCanonicalMarketSnapshotFromQuotes,
@@ -96,6 +97,14 @@ type DashboardLoadArgs = {
 };
 
 const DEFAULT_DASHBOARD_ENVIRONMENTS: InvestingEnvironment[] = ["paper", "simulation"];
+const CANONICAL_MANDATE_UNAVAILABLE_SOURCE = "canonical_mandate_unavailable";
+
+function hasAcceptedCanonicalDecisionAuthority(plan: Record<string, any>) {
+  void plan;
+  // R3 can read/display canonical structured plan fields, but it does not yet
+  // define an accepted canonical plan -> engine mandate adapter.
+  return false;
+}
 
 function selectCanonicalAccount(rows: Record<string, any>[], environments: InvestingEnvironment[]) {
   for (const environment of environments) {
@@ -182,25 +191,14 @@ async function readTenantScopedFinancialRows(database: any, args: Required<Omit<
 }
 
 async function readUserLevelTransitionRows(database: any, userId: string) {
-  const [settingsResult, planResult] = await Promise.all([
-    database
-      .from("user_settings")
-      .select("user_id,active_mode,goal_type,goal_amount,goal_target_value,monthly_contribution,goal_timeframe_months,risk_profile,horizon,setup_status,setup_mode,modes,broker_connection,guardrails,plan_v1,plan_active,updated_at,created_at")
-      .eq("user_id", userId)
-      .limit(1),
-    database
-      .from("plans")
-      .select("id,user_id,mode,goal,status,is_active,version,activated_at,archived_at,created_at,updated_at")
-      .eq("user_id", userId)
-      .eq("mode", "investing")
-      .order("created_at", { ascending: false })
-      .limit(1),
-  ]);
+  const settingsResult = await database
+    .from("user_settings")
+    .select("user_id,active_mode,goal_type,goal_amount,goal_target_value,monthly_contribution,goal_timeframe_months,risk_profile,horizon,setup_status,setup_mode,modes,broker_connection,guardrails,plan_v1,plan_active,updated_at,created_at")
+    .eq("user_id", userId)
+    .limit(1);
   assert(settingsResult.error, "investing_dashboard_settings_failed");
-  assert(planResult.error, "investing_dashboard_plan_failed");
   return {
     settings: firstRow(settingsResult),
-    plan: firstRow(planResult),
   };
 }
 
@@ -212,9 +210,21 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const database = getInvestingSupabaseAdmin() as any;
   const asOf = new Date().toISOString();
   const today = asOf.slice(0, 10);
-  const transitionRows = await readUserLevelTransitionRows(database, userId);
+  const [transitionRows, canonicalPlanResult] = await Promise.all([
+    readUserLevelTransitionRows(database, userId),
+    readCanonicalInvestingPlanForUser({ userId, database }),
+  ]);
   const settings = transitionRows.settings;
-  const plan = transitionRows.plan;
+  const plan = canonicalPlanResult.state;
+  const hasCanonicalDecisionAuthority = hasAcceptedCanonicalDecisionAuthority(plan);
+  const planForRuntime = plan.value
+    ? {
+        id: plan.value.id,
+        mode: plan.value.mode,
+        status: plan.value.status,
+        version: plan.value.version,
+      }
+    : null;
   const scopedFinancialRows = await readTenantScopedFinancialRows(database, { userId, tenantId, portfolioId, environments });
   const account = scopedFinancialRows.account;
   const cycles = scopedFinancialRows.cycles;
@@ -301,57 +311,68 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
           ? "cost_basis_fallback"
           : "unavailable";
   const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
-  const runtime = buildInvestingRuntimeSnapshot({
-    referenceTotalEur: totalEur,
-    userSettings: settings,
-    plan,
-    portfolioItems: items,
-    valuation: { cashEur },
-    quotes: snapshotQuotes,
-    starterPriceHints: universe.map((instrument) => ({
-      symbol: instrument.symbol,
-      name: instrument.name,
-      price: snapshotQuotes[instrument.symbol]?.price ?? null,
-      price_source: snapshotQuotes[instrument.symbol]?.source ?? null,
-    })),
-  });
+  const runtime = hasCanonicalDecisionAuthority
+    ? buildInvestingRuntimeSnapshot({
+        referenceTotalEur: totalEur,
+        userSettings: settings,
+        plan: planForRuntime,
+        portfolioItems: items,
+        valuation: { cashEur },
+        quotes: snapshotQuotes,
+        starterPriceHints: universe.map((instrument) => ({
+          symbol: instrument.symbol,
+          name: instrument.name,
+          price: snapshotQuotes[instrument.symbol]?.price ?? null,
+          price_source: snapshotQuotes[instrument.symbol]?.source ?? null,
+        })),
+      })
+    : null;
   const cycleRows = cycles;
   const latestQueue = queue[0] ?? null;
   const latestOrder = orders[0] ?? null;
-  const executionPlan = runtime ? buildInvestingExecutionPlan({ engine: runtime as any, totalEur, cashEur, asOf }) : null;
-  const engineV1Bridge = buildInvestingEngineV1CustomerBridge({
-    userId,
-    portfolioId,
-    asOf,
-    account,
-    settings,
-    plan,
-    cash,
-    positions: positionRows,
-    orders,
-    runtime,
-    marketSnapshot: canonicalMarketSnapshot,
-  });
-  const customerDecision = buildCustomerDecisionProjection({
-    asOf,
-    plan,
-    runtime,
-    executionPlan,
-    portfolio: { totalEur, cashEur, items },
-    quotes: snapshotQuotes,
-    marketSnapshot: customerMarketSnapshot,
-    engineV1Bridge,
-  });
+  const executionPlan = hasCanonicalDecisionAuthority && runtime ? buildInvestingExecutionPlan({ engine: runtime as any, totalEur, cashEur, asOf }) : null;
+  const engineV1Bridge = hasCanonicalDecisionAuthority && runtime
+    ? buildInvestingEngineV1CustomerBridge({
+        userId,
+        portfolioId,
+        asOf,
+        account,
+        settings,
+        plan: planForRuntime,
+        cash,
+        positions: positionRows,
+        orders,
+        runtime,
+        marketSnapshot: canonicalMarketSnapshot,
+      })
+    : null;
+  const customerDecision = hasCanonicalDecisionAuthority && runtime && executionPlan
+    ? buildCustomerDecisionProjection({
+        asOf,
+        plan: planForRuntime,
+        runtime,
+        executionPlan,
+        portfolio: { totalEur, cashEur, items },
+        quotes: snapshotQuotes,
+        marketSnapshot: customerMarketSnapshot,
+        engineV1Bridge,
+      })
+    : null;
   const latestPersistedCanonicalResult =
     cycleRows[0]?.canonical_result && typeof cycleRows[0].canonical_result === "object" ? cycleRows[0].canonical_result : null;
   const persistedCustomerDecision =
-    latestPersistedCanonicalResult?.customerDecision
+    hasCanonicalDecisionAuthority
+      && latestPersistedCanonicalResult?.customerDecision
       && typeof latestPersistedCanonicalResult.customerDecision === "object"
       && latestPersistedCanonicalResult.customerDecision.contractVersion === "investing-customer-decision-projection/v1"
       ? latestPersistedCanonicalResult.customerDecision
       : null;
   const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
-  const customerDecisionSource = persistedCustomerDecision ? "persisted_daily_cycle" : "volatile_runtime_adapter";
+  const customerDecisionSource = !hasCanonicalDecisionAuthority
+    ? CANONICAL_MANDATE_UNAVAILABLE_SOURCE
+    : persistedCustomerDecision
+      ? "persisted_daily_cycle"
+      : "volatile_runtime_adapter";
   const portfolioValuationAvailability: AvailabilityStatus =
     isCashOnlyPortfolio
       ? "REAL"
@@ -366,7 +387,9 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
             : "REAL";
   const hasUnavailableMarketEvidence = items.some((item: any) => item.priceAvailability === "UNAVAILABLE");
   const visibleDecisionAvailability =
-    customerDecisionSource === "volatile_runtime_adapter" && hasUnavailableMarketEvidence
+    !hasCanonicalDecisionAuthority || !visibleCustomerDecision
+      ? "UNAVAILABLE"
+      : customerDecisionSource === "volatile_runtime_adapter" && (!runtime || !executionPlan || hasUnavailableMarketEvidence)
       ? "UNAVAILABLE"
       : decisionAvailability(customerDecisionSource, visibleCustomerDecision);
 
@@ -402,14 +425,14 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     daily: {
       investingEngine: runtime,
       customerDecision: visibleCustomerDecision,
-      starterPack: runtime?.starterPackItems ?? [],
-      starterPackMeta: runtime?.starterPackMeta ?? null,
+      starterPack: hasCanonicalDecisionAuthority ? runtime?.starterPackItems ?? [] : [],
+      starterPackMeta: hasCanonicalDecisionAuthority ? runtime?.starterPackMeta ?? null : null,
       opportunities: [],
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
-      execution: { queue: latestQueue, order: latestOrder },
+      execution: hasCanonicalDecisionAuthority ? { queue: latestQueue, order: latestOrder } : { queue: null, order: null },
     },
     derived: {
-      hasPlan: Boolean(plan),
+      hasPlan: plan.availability === "AVAILABLE" && Boolean(plan.value),
       hasHoldings: items.length > 0,
       doneToday: cycleRows.some((row: any) => row.day_key === today),
       receiptsCount: cycleRows.length,
@@ -425,10 +448,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
         source: customerDecisionSource,
         unavailableMessage: visibleDecisionAvailability === "REAL" ? null : FINANCIAL_DATA_UNAVAILABLE,
       },
-      marketSnapshot: visibleCustomerDecision.marketSnapshot,
-      engineV1Bridge: visibleCustomerDecision.source.engineV1Bridge,
-      researchPublication: visibleCustomerDecision.researchPublication,
-      performanceAttribution: visibleCustomerDecision.performanceAttribution,
+      marketSnapshot: visibleCustomerDecision?.marketSnapshot ?? null,
+      engineV1Bridge: visibleCustomerDecision?.source?.engineV1Bridge ?? null,
+      researchPublication: visibleCustomerDecision?.researchPublication ?? null,
+      performanceAttribution: visibleCustomerDecision?.performanceAttribution ?? null,
     },
   };
 }

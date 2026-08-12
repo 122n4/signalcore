@@ -1,4 +1,5 @@
 export type FinancialAvailability = "REAL" | "STALE" | "ESTIMATED" | "UNAVAILABLE";
+export type PlanAvailability = "AVAILABLE" | "UNAVAILABLE";
 
 export type InvestingExperienceScreen = "overview" | "portfolio" | "plan" | "insights";
 
@@ -12,7 +13,32 @@ export type ValueDisplay = {
 export type InvestingDashboardPayload = {
   ok?: boolean;
   asOf?: string | null;
-  plan?: Record<string, any> | null;
+  plan?: {
+    availability?: PlanAvailability | string | null;
+    reason?: string | null;
+    value?: {
+      id?: string;
+      mode?: "investing" | string;
+      status?: "active" | string;
+      version?: number | null;
+      label?: string | null;
+      intent?: string | null;
+      summary?: string | null;
+      structured?: {
+        availability?: PlanAvailability | string | null;
+        schemaVersion?: number | null;
+        reason?: string | null;
+        objective?: {
+          type?: string;
+          targetAmount?: { amount?: number | null; currency?: string | null };
+          timeframeMonths?: number | null;
+          monthlyContribution?: { amount?: number | null; currency?: string | null };
+        } | null;
+        risk?: { profile?: string | null } | null;
+        guardrails?: { maxSinglePositionPct?: number | null; maxTop5Pct?: number | null } | null;
+      } | null;
+    } | null;
+  } | null;
   portfolio?: {
     accountId?: string | null;
     environment?: string | null;
@@ -53,6 +79,7 @@ export type InvestingDashboardPayload = {
       source?: string | null;
       unavailableMessage?: string | null;
     } | null;
+    customerDecisionSource?: string | null;
     customerDecision?: Record<string, any> | null;
     performanceAttribution?: Record<string, any> | null;
   } | null;
@@ -72,6 +99,19 @@ export function normalizeFinancialAvailability(value: unknown): FinancialAvailab
     return normalized;
   }
   return "UNAVAILABLE";
+}
+
+export function normalizePlanAvailability(value: unknown): PlanAvailability {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return normalized === "AVAILABLE" ? "AVAILABLE" : "UNAVAILABLE";
+}
+
+function hasAcceptedDecisionAuthority(source: unknown, decision: unknown) {
+  void source;
+  void decision;
+  // R3 has no accepted server decision-authority source yet. Plan display is
+  // separate from customer-facing mandate guidance.
+  return false;
 }
 
 export function formatEur(value: number): string {
@@ -143,13 +183,43 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
     const quantity = finiteNumber(item.quantity ?? item.qty);
     return quantity !== null && quantity > 0;
   });
-  const decisionAvailability = normalizeFinancialAvailability(
+  const rawDecisionAvailability = normalizeFinancialAvailability(
     payload?.derived?.decisionAvailability ?? payload?.derived?.decisionProvenance?.status,
   );
-  const decision = payload?.derived?.customerDecision ?? payload?.daily?.customerDecision ?? null;
-  const hasPlan = Boolean(payload?.plan || payload?.derived?.hasPlan);
-  const rawPlanTarget = payload?.plan?.targetAmountEur ?? payload?.plan?.goal_target_value ?? payload?.plan?.goal_amount;
-  const planTarget = finiteNumber(rawPlanTarget);
+  const planEnvelope = payload?.plan ?? null;
+  const planAvailability = normalizePlanAvailability(planEnvelope?.availability);
+  const planValue = planAvailability === "AVAILABLE" ? planEnvelope?.value ?? null : null;
+  const hasPlan = Boolean(planValue);
+  const rawDecision = payload?.derived?.customerDecision ?? payload?.daily?.customerDecision ?? null;
+  const decisionSource = payload?.derived?.customerDecisionSource ?? payload?.derived?.decisionProvenance?.source;
+  const hasDecisionAuthority = hasPlan && hasAcceptedDecisionAuthority(decisionSource, rawDecision);
+  const decisionAvailability = hasDecisionAuthority ? rawDecisionAvailability : "UNAVAILABLE";
+  const decision = hasDecisionAuthority ? rawDecision : null;
+  const planStructured = planValue?.structured ?? null;
+  const structuredAvailability = normalizePlanAvailability(planStructured?.availability);
+  const rawPlanTarget = planStructured?.objective?.targetAmount?.amount;
+  const planTarget = structuredAvailability === "AVAILABLE" ? finiteNumber(rawPlanTarget) : null;
+  const planCurrency = typeof planStructured?.objective?.targetAmount?.currency === "string" ? planStructured.objective.targetAmount.currency : "EUR";
+  const planDetails: Array<{ label: string; value: string }> = [];
+  if (hasPlan && typeof planValue?.version === "number") planDetails.push({ label: "Version", value: String(planValue.version) });
+  if (structuredAvailability === "AVAILABLE") {
+    if (planStructured?.objective?.type) planDetails.push({ label: "Objective", value: String(planStructured.objective.type) });
+    if (planStructured?.objective?.timeframeMonths) {
+      planDetails.push({ label: "Timeframe", value: `${planStructured.objective.timeframeMonths} months` });
+    }
+    if (planStructured?.objective?.monthlyContribution?.amount !== undefined) {
+      const contribution = finiteNumber(planStructured.objective.monthlyContribution.amount);
+      const currency = String(planStructured.objective.monthlyContribution.currency || "EUR");
+      if (contribution !== null) planDetails.push({ label: "Monthly contribution", value: `${currency} ${contribution}` });
+    }
+    if (planStructured?.risk?.profile) planDetails.push({ label: "Risk", value: String(planStructured.risk.profile) });
+    if (planStructured?.guardrails?.maxSinglePositionPct !== undefined) {
+      planDetails.push({ label: "Max single position", value: `${planStructured.guardrails.maxSinglePositionPct}%` });
+    }
+    if (planStructured?.guardrails?.maxTop5Pct !== undefined) {
+      planDetails.push({ label: "Max top 5", value: `${planStructured.guardrails.maxTop5Pct}%` });
+    }
+  }
 
   return {
     asOf: payload?.asOf ?? null,
@@ -157,9 +227,23 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
     environment: environmentLabel(portfolio?.environment, hasAccount),
     accountStatus: portfolio?.accountStatus ? String(portfolio.accountStatus) : hasAccount ? "active" : "unavailable",
     hasPlan,
-    planName: payload?.plan?.goal ? String(payload.plan.goal) : hasPlan ? "Plan available" : "Plan not available",
-    planTarget: planTarget === null ? PLAN_TARGET_UNAVAILABLE : formatEur(planTarget),
+    planAvailability,
+    planUnavailableReason: planEnvelope?.reason ?? null,
+    planName: hasPlan
+      ? String(planValue?.summary ?? planValue?.label ?? planValue?.intent ?? `Plan v${planValue?.version ?? ""}`).trim()
+      : planEnvelope?.reason === "investing_plan_ambiguous"
+        ? "Plan unavailable"
+        : "Plan not available",
+    planStructuredAvailability: structuredAvailability,
+    planStructuredReason: planStructured?.reason ?? null,
+    planTarget:
+      planTarget === null
+        ? PLAN_TARGET_UNAVAILABLE
+        : planCurrency === "EUR"
+          ? formatEur(planTarget)
+          : `${planCurrency} ${planTarget}`,
     planTargetAvailable: planTarget !== null,
+    planDetails,
     performanceText: PERFORMANCE_UNAVAILABLE,
     portfolioValue: buildFinancialDisplay({
       value: portfolio?.totalEur ?? valuation?.totalEur,
@@ -206,9 +290,11 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
     nextStep:
       !hasAccount
         ? "No active account"
-        : valuationAvailability === "UNAVAILABLE" || decisionAvailability === "UNAVAILABLE"
-          ? "Refresh required"
-          : hasPlan
+        : !hasPlan
+          ? "Plan not available"
+          : valuationAvailability === "UNAVAILABLE" || decisionAvailability === "UNAVAILABLE"
+            ? "Refresh required"
+            : hasPlan
             ? "Review insights"
             : "Plan not available",
   };

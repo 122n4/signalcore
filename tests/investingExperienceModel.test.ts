@@ -47,13 +47,81 @@ describe("investing experience model", () => {
     expect(buildFinancialDisplay({ value: 10, availability: "ESTIMATED" })).toMatchObject({ text: formatEur(10), label: "Estimated" });
   });
 
-  it("does not invent plan targets or performance", () => {
-    const model = buildInvestingExperienceModel({ plan: { id: "plan-a", goal: "Long-term plan" } });
+  it("does not invent plan targets or performance from non-canonical legacy plan fields", () => {
+    const model = buildInvestingExperienceModel({ plan: { value: null } });
 
     expect(model.planTarget).toBe("Plan target not yet available");
     expect(model.planTarget).not.toContain("50");
+    expect(model.hasPlan).toBe(false);
     expect(model.performanceText).toBe("Performance not yet available");
     expect(model.performanceText).not.toBe("0%");
+  });
+
+  it("renders missing and ambiguous canonical plan states without a selected target", () => {
+    const missing = buildInvestingExperienceModel({ plan: { availability: "UNAVAILABLE", reason: "plan_missing", value: null } });
+    const ambiguous = buildInvestingExperienceModel({
+      plan: { availability: "UNAVAILABLE", reason: "investing_plan_ambiguous", value: null },
+    });
+
+    expect(missing.planName).toBe("Plan not available");
+    expect(missing.planTargetAvailable).toBe(false);
+    expect(ambiguous.planName).toBe("Plan unavailable");
+    expect(ambiguous.planTargetAvailable).toBe(false);
+  });
+
+  it("shows legacy text goal only as summary and keeps structured target unavailable", () => {
+    const model = buildInvestingExperienceModel({
+      plan: {
+        availability: "AVAILABLE",
+        value: {
+          id: "plan-a",
+          mode: "investing",
+          status: "active",
+          version: 1,
+          summary: "Long-term plan",
+          structured: { availability: "UNAVAILABLE", schemaVersion: null, reason: "structured_plan_missing" },
+        },
+      },
+    });
+
+    expect(model.hasPlan).toBe(true);
+    expect(model.planName).toBe("Long-term plan");
+    expect(model.planTarget).toBe("Plan target not yet available");
+    expect(model.planDetails).toEqual([{ label: "Version", value: "1" }]);
+  });
+
+  it("displays only present structured v1 plan fields", () => {
+    const model = buildInvestingExperienceModel({
+      plan: {
+        availability: "AVAILABLE",
+        value: {
+          id: "plan-a",
+          mode: "investing",
+          status: "active",
+          version: 2,
+          label: "Core plan",
+          structured: {
+            availability: "AVAILABLE",
+            schemaVersion: 1,
+            reason: null,
+            objective: {
+              targetAmount: { amount: 75000, currency: "EUR" },
+              timeframeMonths: 120,
+            },
+            risk: { profile: "Balanced" },
+          },
+        },
+      },
+    });
+
+    expect(model.planName).toBe("Core plan");
+    expect(model.planTarget).toBe(formatEur(75000));
+    expect(model.planDetails).toEqual([
+      { label: "Version", value: "2" },
+      { label: "Timeframe", value: "120 months" },
+      { label: "Risk", value: "Balanced" },
+    ]);
+    expect(JSON.stringify(model.planDetails)).not.toContain("Long");
   });
 
   it("does not present unavailable decisions as recommendations", () => {
@@ -66,14 +134,98 @@ describe("investing experience model", () => {
     expect(model.decision.text).not.toContain("Buy now");
   });
 
-  it("marks estimated decision guidance explicitly", () => {
+  it("does not let an estimated legacy decision bypass unavailable canonical plan truth", () => {
     const model = buildInvestingExperienceModel({
+      plan: { availability: "UNAVAILABLE", reason: "plan_missing", value: null },
       derived: { decisionAvailability: "ESTIMATED", customerDecision: { summary: { title: "Review allocation" } } },
     });
 
-    expect(model.decision.actionable).toBe(true);
-    expect(model.decision.label).toBe("Estimated");
-    expect(model.decision.text).toBe("Estimated guidance only");
+    expect(model.decision.actionable).toBe(false);
+    expect(model.decision.label).toBe("Unavailable");
+    expect(model.decision.text).toBe("Decision data unavailable. Refresh required.");
+    expect(model.decision.text).not.toContain("Review allocation");
+  });
+
+  it("does not make estimated volatile runtime guidance actionable from plan row availability alone", () => {
+    const model = buildInvestingExperienceModel({
+      plan: {
+        availability: "AVAILABLE",
+        value: {
+          id: "plan-a",
+          mode: "investing",
+          status: "active",
+          version: 1,
+          structured: {
+            availability: "AVAILABLE",
+            schemaVersion: 1,
+            reason: null,
+            objective: { targetAmount: { amount: 75000, currency: "EUR" } },
+            risk: { profile: "Balanced" },
+          },
+        },
+      },
+      derived: {
+        customerDecisionSource: "volatile_runtime_adapter",
+        decisionAvailability: "ESTIMATED",
+        customerDecision: { summary: { title: "Review allocation" } },
+      },
+    });
+
+    expect(model.planTarget).toBe(formatEur(75000));
+    expect(model.decision.actionable).toBe(false);
+    expect(model.decision.label).toBe("Unavailable");
+    expect(model.decision.text).toBe("Decision data unavailable. Refresh required.");
+    expect(model.decision.text).not.toContain("Review allocation");
+  });
+
+  it("treats structured available with runtime-null decision evidence as unavailable", () => {
+    const model = buildInvestingExperienceModel({
+      plan: {
+        availability: "AVAILABLE",
+        value: {
+          id: "plan-a",
+          mode: "investing",
+          status: "active",
+          version: 1,
+          structured: {
+            availability: "AVAILABLE",
+            schemaVersion: 1,
+            reason: null,
+            objective: { targetAmount: { amount: 100000, currency: "EUR" }, timeframeMonths: 120 },
+            risk: { profile: "Balanced" },
+          },
+        },
+      },
+      derived: { decisionAvailability: "ESTIMATED", customerDecision: null },
+    });
+
+    expect(model.planTarget).toBe(formatEur(100000));
+    expect(model.decision.actionable).toBe(false);
+    expect(model.decision.label).toBe("Unavailable");
+  });
+
+  it("does not treat unbound persisted decisions as current plan guidance", () => {
+    const model = buildInvestingExperienceModel({
+      plan: {
+        availability: "AVAILABLE",
+        value: {
+          id: "plan-a",
+          mode: "investing",
+          status: "active",
+          version: 1,
+          structured: { availability: "AVAILABLE", schemaVersion: 1, reason: null, risk: { profile: "Balanced" } },
+        },
+      },
+      derived: {
+        customerDecisionSource: "persisted_daily_cycle",
+        decisionAvailability: "REAL",
+        customerDecision: { summary: { title: "Old persisted buy guidance" } },
+      },
+    });
+
+    expect(model.decision.actionable).toBe(false);
+    expect(model.decision.label).toBe("Unavailable");
+    expect(model.decision.text).not.toContain("Old persisted buy guidance");
   });
 
   it("uses account environment labels without treating no-account as paper active", () => {
