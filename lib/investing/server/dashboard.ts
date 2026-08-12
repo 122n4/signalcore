@@ -5,6 +5,7 @@ import { buildInvestingExecutionPlan } from "@/lib/investing/execution";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import type { InvestingEnvironment } from "@/lib/investing/server/authz";
+import { readCanonicalInvestingPlanForUser } from "@/lib/investing/server/plan";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
 import {
   buildCanonicalMarketSnapshotFromQuotes,
@@ -182,25 +183,14 @@ async function readTenantScopedFinancialRows(database: any, args: Required<Omit<
 }
 
 async function readUserLevelTransitionRows(database: any, userId: string) {
-  const [settingsResult, planResult] = await Promise.all([
-    database
-      .from("user_settings")
-      .select("user_id,active_mode,goal_type,goal_amount,goal_target_value,monthly_contribution,goal_timeframe_months,risk_profile,horizon,setup_status,setup_mode,modes,broker_connection,guardrails,plan_v1,plan_active,updated_at,created_at")
-      .eq("user_id", userId)
-      .limit(1),
-    database
-      .from("plans")
-      .select("id,user_id,mode,goal,status,is_active,version,activated_at,archived_at,created_at,updated_at")
-      .eq("user_id", userId)
-      .eq("mode", "investing")
-      .order("created_at", { ascending: false })
-      .limit(1),
-  ]);
+  const settingsResult = await database
+    .from("user_settings")
+    .select("user_id,active_mode,goal_type,goal_amount,goal_target_value,monthly_contribution,goal_timeframe_months,risk_profile,horizon,setup_status,setup_mode,modes,broker_connection,guardrails,plan_v1,plan_active,updated_at,created_at")
+    .eq("user_id", userId)
+    .limit(1);
   assert(settingsResult.error, "investing_dashboard_settings_failed");
-  assert(planResult.error, "investing_dashboard_plan_failed");
   return {
     settings: firstRow(settingsResult),
-    plan: firstRow(planResult),
   };
 }
 
@@ -212,9 +202,20 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const database = getInvestingSupabaseAdmin() as any;
   const asOf = new Date().toISOString();
   const today = asOf.slice(0, 10);
-  const transitionRows = await readUserLevelTransitionRows(database, userId);
+  const [transitionRows, canonicalPlanResult] = await Promise.all([
+    readUserLevelTransitionRows(database, userId),
+    readCanonicalInvestingPlanForUser({ userId, database }),
+  ]);
   const settings = transitionRows.settings;
-  const plan = transitionRows.plan;
+  const plan = canonicalPlanResult.state;
+  const planForRuntime = plan.value
+    ? {
+        id: plan.value.id,
+        mode: plan.value.mode,
+        status: plan.value.status,
+        version: plan.value.version,
+      }
+    : null;
   const scopedFinancialRows = await readTenantScopedFinancialRows(database, { userId, tenantId, portfolioId, environments });
   const account = scopedFinancialRows.account;
   const cycles = scopedFinancialRows.cycles;
@@ -304,7 +305,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const runtime = buildInvestingRuntimeSnapshot({
     referenceTotalEur: totalEur,
     userSettings: settings,
-    plan,
+    plan: planForRuntime,
     portfolioItems: items,
     valuation: { cashEur },
     quotes: snapshotQuotes,
@@ -325,7 +326,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     asOf,
     account,
     settings,
-    plan,
+    plan: planForRuntime,
     cash,
     positions: positionRows,
     orders,
@@ -334,7 +335,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   });
   const customerDecision = buildCustomerDecisionProjection({
     asOf,
-    plan,
+    plan: planForRuntime,
     runtime,
     executionPlan,
     portfolio: { totalEur, cashEur, items },
@@ -409,7 +410,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       execution: { queue: latestQueue, order: latestOrder },
     },
     derived: {
-      hasPlan: Boolean(plan),
+      hasPlan: plan.availability === "AVAILABLE" && Boolean(plan.value),
       hasHoldings: items.length > 0,
       doneToday: cycleRows.some((row: any) => row.day_key === today),
       receiptsCount: cycleRows.length,

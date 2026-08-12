@@ -157,15 +157,29 @@ function Portfolio({ data }: { data: InvestingDashboardPayload | null }) {
 function Plan({ data }: { data: InvestingDashboardPayload | null }) {
   const model = buildInvestingExperienceModel(data);
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <Metric icon={<Target className="h-4 w-4" />} label="Plan" value={model.planName} tone={model.hasPlan ? "info" : "warn"} />
-      <Metric
-        icon={<BarChart3 className="h-4 w-4" />}
-        label="Target"
-        value={model.planTarget}
-        tone={model.planTargetAvailable ? "info" : "warn"}
-      />
-    </div>
+    <>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Metric icon={<Target className="h-4 w-4" />} label="Plan" value={model.planName} tone={model.hasPlan ? "info" : "warn"} />
+        <Metric
+          icon={<BarChart3 className="h-4 w-4" />}
+          label="Target"
+          value={model.planTarget}
+          tone={model.planTargetAvailable ? "info" : "warn"}
+        />
+      </div>
+      {model.planDetails.length ? (
+        <Section title="Plan details" right={<StatusBadge label={model.planStructuredAvailability} tone={model.planTargetAvailable ? "info" : "warn"} />}>
+          <dl className="grid gap-3 text-sm md:grid-cols-2">
+            {model.planDetails.map((detail) => (
+              <div key={detail.label}>
+                <dt className="font-semibold text-slate-400">{detail.label}</dt>
+                <dd className="mt-1 text-white">{detail.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Section>
+      ) : null}
+    </>
   );
 }
 

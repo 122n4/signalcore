@@ -99,8 +99,16 @@ function seedTenantAFinancialRows() {
     id: "plan-1",
     user_id: "owner-1",
     mode: "investing",
+    status: "active",
+    is_active: true,
+    version: 1,
+    label: "Core plan",
+    intent: "Build wealth",
     goal: "Growth with controlled risk",
+    payload: {},
+    activated_at: "2026-08-01T00:00:00.000Z",
     created_at: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-02T00:00:00.000Z",
   });
   db.investing_accounts.splice(0, db.investing_accounts.length,
     {
@@ -152,7 +160,22 @@ describe("Investing dashboard tenant-scoped read", () => {
 
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(result.ok).toBe(true);
-    expect(result.plan).toMatchObject({ id: "plan-1", goal: "Growth with controlled risk" });
+    expect(result.plan).toMatchObject({
+      availability: "AVAILABLE",
+      value: {
+        id: "plan-1",
+        mode: "investing",
+        status: "active",
+        version: 1,
+        summary: "Growth with controlled risk",
+        structured: {
+          availability: "UNAVAILABLE",
+          reason: "structured_plan_missing",
+        },
+      },
+    });
+    expect(JSON.stringify(result.plan)).not.toContain("user_id");
+    expect(JSON.stringify(result.plan)).not.toContain("payload");
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.cashEur).toBe(700);
     expect(result.portfolio.cash).toEqual({
@@ -186,6 +209,7 @@ describe("Investing dashboard tenant-scoped read", () => {
       },
     });
     expect(result.derived.doneToday).toBe(true);
+    expect(result.derived.hasPlan).toBe(true);
     expect(result.derived.customerDecisionSource).toBe("volatile_runtime_adapter");
     expect(result.derived.decisionProvenance).toMatchObject({
       status: "ESTIMATED",
@@ -204,6 +228,57 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.daily.opportunities).toEqual([]);
     expect((result.derived as any).reportSummary).toBeUndefined();
     expect(result.daily.customerDecision.projectionId).toBe(result.derived.customerDecision.projectionId);
+  });
+
+  it("uses canonical active plan selection instead of newest draft fallback", async () => {
+    db.plans.push({
+      id: "plan-newer-draft",
+      user_id: "owner-1",
+      mode: "investing",
+      status: "draft",
+      is_active: false,
+      version: 1,
+      goal: "Draft should not win",
+      payload: { schemaVersion: 1, objective: { targetAmount: { amount: 50000, currency: "EUR" } }, risk: { profile: "Balanced" } },
+      created_at: "2026-08-10T00:00:00.000Z",
+      updated_at: "2026-08-10T00:00:00.000Z",
+    });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.plan.value.id).toBe("plan-1");
+    expect(JSON.stringify(result.plan)).not.toContain("Draft should not win");
+    expect(JSON.stringify(result.plan)).not.toContain("50000");
+  });
+
+  it("does not select duplicate active plans or fabricate a goal while portfolio truth remains available", async () => {
+    db.plans.push({
+      id: "plan-duplicate",
+      user_id: "owner-1",
+      mode: "investing",
+      status: "active",
+      is_active: true,
+      version: 1,
+      goal: "Duplicate active plan",
+      payload: { schemaVersion: 1, objective: { targetAmount: { amount: 50000, currency: "EUR" } }, risk: { profile: "Balanced" } },
+      created_at: "2026-08-11T00:00:00.000Z",
+      updated_at: "2026-08-11T00:00:00.000Z",
+    });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.plan).toEqual({
+      availability: "UNAVAILABLE",
+      reason: "investing_plan_ambiguous",
+      value: null,
+    });
+    expect(result.derived.hasPlan).toBe(false);
+    expect(result.portfolio.accountId).toBe("account-a");
+    expect(result.portfolio.totalEur).toBe(1000);
+    expect(JSON.stringify(result.plan)).not.toContain("Duplicate active plan");
+    expect(JSON.stringify(result.plan)).not.toContain("50000");
+    expect(JSON.stringify(result.plan)).not.toContain("Balanced");
+    expect(JSON.stringify(result.plan)).not.toContain("Long");
   });
 
   it("treats an active tenant-scoped cash-only account as a real known portfolio value", async () => {
