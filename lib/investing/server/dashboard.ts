@@ -5,6 +5,10 @@ import { buildInvestingExecutionPlan } from "@/lib/investing/execution";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import type { InvestingEnvironment } from "@/lib/investing/server/authz";
+import {
+  buildCanonicalInvestingPerformanceRead,
+  readCanonicalInvestingAccountingForAccount,
+} from "@/lib/investing/server/accounting";
 import { readCanonicalInvestingPlanForUser } from "@/lib/investing/server/plan";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
 import {
@@ -392,6 +396,28 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       : customerDecisionSource === "volatile_runtime_adapter" && (!runtime || !executionPlan || hasUnavailableMarketEvidence)
       ? "UNAVAILABLE"
       : decisionAvailability(customerDecisionSource, visibleCustomerDecision);
+  const portfolioForAccounting = {
+    totalEur,
+    valuationAvailability: portfolioValuationAvailability,
+    items,
+  };
+  const accounting = accountId
+    ? await readCanonicalInvestingAccountingForAccount({
+        userId,
+        tenantId,
+        accountId,
+        portfolio: portfolioForAccounting,
+        environment: account?.environment ? String(account.environment) as InvestingEnvironment : null,
+        database,
+        asOf,
+        route: "/api/investing/dashboard",
+      })
+    : null;
+  const performance = accounting?.performance ?? buildCanonicalInvestingPerformanceRead({
+    portfolio: portfolioForAccounting,
+    asOf,
+    baseCurrency: account?.base_currency ? String(account.base_currency) : "EUR",
+  });
 
   return {
     ok: true,
@@ -407,6 +433,15 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       cash: cashTruth,
       totalEur,
       items,
+      accounting: accounting
+        ? {
+            cash: accounting.cash,
+            ledger: accounting.ledger,
+            reconciliation: accounting.reconciliation,
+            corporateActions: accounting.corporateActions,
+          }
+        : null,
+      performance,
       valuation: {
         cashEur,
         totalEur,
@@ -452,6 +487,17 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       engineV1Bridge: visibleCustomerDecision?.source?.engineV1Bridge ?? null,
       researchPublication: visibleCustomerDecision?.researchPublication ?? null,
       performanceAttribution: visibleCustomerDecision?.performanceAttribution ?? null,
+      performance,
+      reconciliation: accounting?.reconciliation ?? {
+        availability: "UNAVAILABLE",
+        status: "NOT_RECONCILED",
+        source: "investing_reconciliation_runs",
+        latestRunId: null,
+        latestRunStatus: null,
+        issueCount: null,
+        asOf: null,
+        reason: "no_account",
+      },
     },
   };
 }

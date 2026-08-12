@@ -89,7 +89,8 @@ function SummaryMetrics({ data }: { data: InvestingDashboardPayload | null }) {
         icon={<Activity className="h-4 w-4" />}
         label="Performance"
         value={model.performanceText}
-        tone="warn"
+        detail={model.performance.label}
+        tone={model.performance.tone}
       />
     </div>
   );

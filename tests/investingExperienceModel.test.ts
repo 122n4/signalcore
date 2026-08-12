@@ -57,6 +57,27 @@ describe("investing experience model", () => {
     expect(model.performanceText).not.toBe("0%");
   });
 
+  it("does not show total performance as zero when only limited unrealized P&L is available", () => {
+    const model = buildInvestingExperienceModel({
+      portfolio: {
+        accountId: "account-a",
+        environment: "paper",
+        performance: {
+          availability: "UNAVAILABLE",
+          components: {
+            totalReturn: { availability: "UNAVAILABLE", value: null },
+            unrealizedPnl: { availability: "ESTIMATED", value: 50 },
+          },
+        },
+      },
+    });
+
+    expect(model.performanceText).toBe(`Unrealized P&L ${formatEur(50)}`);
+    expect(model.performance.label).toBe("Estimated - limited current holdings");
+    expect(model.performanceText).not.toBe("0%");
+    expect(model.performanceText).not.toContain("Total");
+  });
+
   it("renders missing and ambiguous canonical plan states without a selected target", () => {
     const missing = buildInvestingExperienceModel({ plan: { availability: "UNAVAILABLE", reason: "plan_missing", value: null } });
     const ambiguous = buildInvestingExperienceModel({

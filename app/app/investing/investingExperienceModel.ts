@@ -64,6 +64,7 @@ export type InvestingDashboardPayload = {
       } | null;
       missingPriceSymbols?: string[] | null;
     } | null;
+    performance?: Record<string, any> | null;
   } | null;
   daily?: {
     customerDecision?: Record<string, any> | null;
@@ -82,6 +83,7 @@ export type InvestingDashboardPayload = {
     customerDecisionSource?: string | null;
     customerDecision?: Record<string, any> | null;
     performanceAttribution?: Record<string, any> | null;
+    performance?: Record<string, any> | null;
   } | null;
 };
 
@@ -136,6 +138,39 @@ function availabilityTone(availability: FinancialAvailability): ValueDisplay["to
   return "bad";
 }
 
+function buildPerformanceDisplay(performance: Record<string, any> | null): ValueDisplay {
+  const totalReturn = performance?.components?.totalReturn;
+  const totalReturnAvailability = normalizeFinancialAvailability(totalReturn?.availability);
+  const totalReturnValue = finiteNumber(totalReturn?.value);
+  if (totalReturnAvailability !== "UNAVAILABLE" && totalReturnValue !== null) {
+    return {
+      kind: "value",
+      text: `${totalReturnValue.toFixed(2)}%`,
+      label: availabilityLabel(totalReturnAvailability),
+      tone: availabilityTone(totalReturnAvailability),
+    };
+  }
+
+  const unrealized = performance?.components?.unrealizedPnl;
+  const unrealizedAvailability = normalizeFinancialAvailability(unrealized?.availability);
+  const unrealizedValue = finiteNumber(unrealized?.value);
+  if (unrealizedAvailability !== "UNAVAILABLE" && unrealizedValue !== null) {
+    return {
+      kind: "value",
+      text: `Unrealized P&L ${formatEur(unrealizedValue)}`,
+      label: `${availabilityLabel(unrealizedAvailability)} - limited current holdings`,
+      tone: availabilityTone(unrealizedAvailability),
+    };
+  }
+
+  return {
+    kind: "unavailable",
+    text: PERFORMANCE_UNAVAILABLE,
+    label: "Unavailable",
+    tone: "warn",
+  };
+}
+
 export function buildFinancialDisplay(args: {
   value: unknown;
   availability: unknown;
@@ -174,6 +209,7 @@ export function environmentLabel(environment: unknown, hasAccount: boolean) {
 export function buildInvestingExperienceModel(payload: InvestingDashboardPayload | null) {
   const portfolio = payload?.portfolio ?? null;
   const valuation = portfolio?.valuation ?? null;
+  const performance = portfolio?.performance ?? payload?.derived?.performance ?? null;
   const valuationAvailability = normalizeFinancialAvailability(valuation?.availability ?? valuation?.provenance?.status);
   const valuationSource = valuation?.source ?? valuation?.provenance?.source ?? null;
   const cashAvailability = normalizeFinancialAvailability(portfolio?.cash?.availability);
@@ -220,6 +256,7 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
       planDetails.push({ label: "Max top 5", value: `${planStructured.guardrails.maxTop5Pct}%` });
     }
   }
+  const performanceDisplay = buildPerformanceDisplay(performance);
 
   return {
     asOf: payload?.asOf ?? null,
@@ -244,7 +281,8 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
           : `${planCurrency} ${planTarget}`,
     planTargetAvailable: planTarget !== null,
     planDetails,
-    performanceText: PERFORMANCE_UNAVAILABLE,
+    performance: performanceDisplay,
+    performanceText: performanceDisplay.text,
     portfolioValue: buildFinancialDisplay({
       value: portfolio?.totalEur ?? valuation?.totalEur,
       availability: valuationAvailability,

@@ -16,6 +16,14 @@ const db = {
   investing_daily_cycles: [] as Row[],
   investing_execution_queue: [] as Row[],
   investing_orders: [] as Row[],
+  investing_cash_movements: [] as Row[],
+  investing_ledger_transactions: [] as Row[],
+  investing_ledger_entries: [] as Row[],
+  investing_fills: [] as Row[],
+  investing_fees: [] as Row[],
+  investing_corporate_actions: [] as Row[],
+  investing_reconciliation_runs: [] as Row[],
+  investing_reconciliation_items: [] as Row[],
 };
 
 class SelectBuilder {
@@ -73,6 +81,10 @@ class SelectBuilder {
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ) {
     return Promise.resolve({ data: this.rows(), error: null }).then(onfulfilled, onrejected);
+  }
+
+  maybeSingle() {
+    return Promise.resolve({ data: this.rows()[0] ?? null, error: null });
   }
 }
 
@@ -232,6 +244,27 @@ describe("Investing dashboard tenant-scoped read", () => {
         source: "market_quotes",
         unavailableMessage: null,
       },
+    });
+    expect(result.portfolio.performance.components.totalReturn).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "complete_performance_evidence_missing",
+    });
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "ESTIMATED",
+      value: 50,
+      method: "current_value_minus_position_cost_basis",
+    });
+    expect(result.derived.reconciliation).toMatchObject({
+      availability: "UNAVAILABLE",
+      status: "NOT_RECONCILED",
+      issueCount: null,
+      reason: "no_reconciliation_runs",
+    });
+    expect(result.portfolio.accounting.corporateActions).toMatchObject({
+      availability: "UNAVAILABLE",
+      count: 0,
+      reason: "no_corporate_action_evidence",
     });
     expect(result.derived.doneToday).toBe(true);
     expect(result.derived.hasPlan).toBe(true);
