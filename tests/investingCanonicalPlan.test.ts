@@ -195,6 +195,19 @@ describe("canonical Investing plan service", () => {
     expect(result.state.value).toBeNull();
   });
 
+  it("fails closed for invalid material created or archived timestamps", async () => {
+    rows.push(plan({ created_at: "not-a-date" }));
+
+    const invalidCreated = await readCanonicalInvestingPlanForUser({ userId: "user_a", database: database() });
+    expect(invalidCreated.status).toBe(503);
+    expect(invalidCreated.error).toBe("investing_plan_invalid");
+
+    rows.splice(0, rows.length, plan({ archived_at: "not-a-date" }));
+    const invalidArchived = await readCanonicalInvestingPlanForUser({ userId: "user_a", database: database() });
+    expect(invalidArchived.status).toBe(503);
+    expect(invalidArchived.error).toBe("investing_plan_invalid");
+  });
+
   it("keeps an empty payload as structured unavailable without fake target or risk", async () => {
     rows.push(plan({ payload: {} }));
 

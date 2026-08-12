@@ -174,14 +174,15 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
     const quantity = finiteNumber(item.quantity ?? item.qty);
     return quantity !== null && quantity > 0;
   });
-  const decisionAvailability = normalizeFinancialAvailability(
+  const rawDecisionAvailability = normalizeFinancialAvailability(
     payload?.derived?.decisionAvailability ?? payload?.derived?.decisionProvenance?.status,
   );
-  const decision = payload?.derived?.customerDecision ?? payload?.daily?.customerDecision ?? null;
   const planEnvelope = payload?.plan ?? null;
   const planAvailability = normalizePlanAvailability(planEnvelope?.availability);
   const planValue = planAvailability === "AVAILABLE" ? planEnvelope?.value ?? null : null;
   const hasPlan = Boolean(planValue);
+  const decisionAvailability = hasPlan ? rawDecisionAvailability : "UNAVAILABLE";
+  const decision = hasPlan ? payload?.derived?.customerDecision ?? payload?.daily?.customerDecision ?? null : null;
   const planStructured = planValue?.structured ?? null;
   const structuredAvailability = normalizePlanAvailability(planStructured?.availability);
   const rawPlanTarget = planStructured?.objective?.targetAmount?.amount;
@@ -277,9 +278,11 @@ export function buildInvestingExperienceModel(payload: InvestingDashboardPayload
     nextStep:
       !hasAccount
         ? "No active account"
-        : valuationAvailability === "UNAVAILABLE" || decisionAvailability === "UNAVAILABLE"
-          ? "Refresh required"
-          : hasPlan
+        : !hasPlan
+          ? "Plan not available"
+          : valuationAvailability === "UNAVAILABLE" || decisionAvailability === "UNAVAILABLE"
+            ? "Refresh required"
+            : hasPlan
             ? "Review insights"
             : "Plan not available",
   };

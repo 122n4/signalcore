@@ -248,13 +248,15 @@ function projectPlan(row: PlanRow, userId: string): CanonicalInvestingPlanReadRe
   const version = positiveInteger(row.version);
   const updatedAt = parseIsoString(row.updated_at);
   const activatedAt = row.activated_at == null ? null : parseIsoString(row.activated_at);
+  const createdAt = parseIsoString(row.created_at);
+  const archivedAt = row.archived_at == null ? null : parseIsoString(row.archived_at);
 
   if (!id) return unavailable("investing_plan_invalid", 503);
   if (row.user_id !== userId) return unavailable("investing_plan_identity_mismatch", 503);
   if (row.mode !== "investing" || row.status !== "active" || row.is_active !== true) {
     return unavailable("investing_plan_not_canonical_active", 503);
   }
-  if (!version || !updatedAt || (row.activated_at != null && !activatedAt)) {
+  if (!version || !updatedAt || !createdAt || (row.activated_at != null && !activatedAt) || (row.archived_at != null && !archivedAt)) {
     return unavailable("investing_plan_invalid", 503);
   }
   if (row.payload != null && !isPlainRecord(row.payload)) {

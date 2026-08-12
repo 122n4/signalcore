@@ -134,8 +134,36 @@ describe("investing experience model", () => {
     expect(model.decision.text).not.toContain("Buy now");
   });
 
-  it("marks estimated decision guidance explicitly", () => {
+  it("does not let an estimated legacy decision bypass unavailable canonical plan truth", () => {
     const model = buildInvestingExperienceModel({
+      plan: { availability: "UNAVAILABLE", reason: "plan_missing", value: null },
+      derived: { decisionAvailability: "ESTIMATED", customerDecision: { summary: { title: "Review allocation" } } },
+    });
+
+    expect(model.decision.actionable).toBe(false);
+    expect(model.decision.label).toBe("Unavailable");
+    expect(model.decision.text).toBe("Decision data unavailable. Refresh required.");
+    expect(model.decision.text).not.toContain("Review allocation");
+  });
+
+  it("marks estimated decision guidance explicitly only with a canonical plan", () => {
+    const model = buildInvestingExperienceModel({
+      plan: {
+        availability: "AVAILABLE",
+        value: {
+          id: "plan-a",
+          mode: "investing",
+          status: "active",
+          version: 1,
+          structured: {
+            availability: "AVAILABLE",
+            schemaVersion: 1,
+            reason: null,
+            objective: { targetAmount: { amount: 75000, currency: "EUR" } },
+            risk: { profile: "Balanced" },
+          },
+        },
+      },
       derived: { decisionAvailability: "ESTIMATED", customerDecision: { summary: { title: "Review allocation" } } },
     });
 

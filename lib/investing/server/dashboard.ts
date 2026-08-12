@@ -97,6 +97,7 @@ type DashboardLoadArgs = {
 };
 
 const DEFAULT_DASHBOARD_ENVIRONMENTS: InvestingEnvironment[] = ["paper", "simulation"];
+const PLAN_DECISION_UNAVAILABLE_SOURCE = "canonical_plan_unavailable";
 
 function selectCanonicalAccount(rows: Record<string, any>[], environments: InvestingEnvironment[]) {
   for (const environment of environments) {
@@ -208,6 +209,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   ]);
   const settings = transitionRows.settings;
   const plan = canonicalPlanResult.state;
+  const hasCanonicalDecisionPlan = plan.availability === "AVAILABLE" && plan.value?.structured?.availability === "AVAILABLE";
   const planForRuntime = plan.value
     ? {
         id: plan.value.id,
@@ -302,57 +304,68 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
           ? "cost_basis_fallback"
           : "unavailable";
   const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
-  const runtime = buildInvestingRuntimeSnapshot({
-    referenceTotalEur: totalEur,
-    userSettings: settings,
-    plan: planForRuntime,
-    portfolioItems: items,
-    valuation: { cashEur },
-    quotes: snapshotQuotes,
-    starterPriceHints: universe.map((instrument) => ({
-      symbol: instrument.symbol,
-      name: instrument.name,
-      price: snapshotQuotes[instrument.symbol]?.price ?? null,
-      price_source: snapshotQuotes[instrument.symbol]?.source ?? null,
-    })),
-  });
+  const runtime = hasCanonicalDecisionPlan
+    ? buildInvestingRuntimeSnapshot({
+        referenceTotalEur: totalEur,
+        userSettings: settings,
+        plan: planForRuntime,
+        portfolioItems: items,
+        valuation: { cashEur },
+        quotes: snapshotQuotes,
+        starterPriceHints: universe.map((instrument) => ({
+          symbol: instrument.symbol,
+          name: instrument.name,
+          price: snapshotQuotes[instrument.symbol]?.price ?? null,
+          price_source: snapshotQuotes[instrument.symbol]?.source ?? null,
+        })),
+      })
+    : null;
   const cycleRows = cycles;
   const latestQueue = queue[0] ?? null;
   const latestOrder = orders[0] ?? null;
-  const executionPlan = runtime ? buildInvestingExecutionPlan({ engine: runtime as any, totalEur, cashEur, asOf }) : null;
-  const engineV1Bridge = buildInvestingEngineV1CustomerBridge({
-    userId,
-    portfolioId,
-    asOf,
-    account,
-    settings,
-    plan: planForRuntime,
-    cash,
-    positions: positionRows,
-    orders,
-    runtime,
-    marketSnapshot: canonicalMarketSnapshot,
-  });
-  const customerDecision = buildCustomerDecisionProjection({
-    asOf,
-    plan: planForRuntime,
-    runtime,
-    executionPlan,
-    portfolio: { totalEur, cashEur, items },
-    quotes: snapshotQuotes,
-    marketSnapshot: customerMarketSnapshot,
-    engineV1Bridge,
-  });
+  const executionPlan = hasCanonicalDecisionPlan && runtime ? buildInvestingExecutionPlan({ engine: runtime as any, totalEur, cashEur, asOf }) : null;
+  const engineV1Bridge = hasCanonicalDecisionPlan
+    ? buildInvestingEngineV1CustomerBridge({
+        userId,
+        portfolioId,
+        asOf,
+        account,
+        settings,
+        plan: planForRuntime,
+        cash,
+        positions: positionRows,
+        orders,
+        runtime,
+        marketSnapshot: canonicalMarketSnapshot,
+      })
+    : null;
+  const customerDecision = hasCanonicalDecisionPlan
+    ? buildCustomerDecisionProjection({
+        asOf,
+        plan: planForRuntime,
+        runtime,
+        executionPlan,
+        portfolio: { totalEur, cashEur, items },
+        quotes: snapshotQuotes,
+        marketSnapshot: customerMarketSnapshot,
+        engineV1Bridge,
+      })
+    : null;
   const latestPersistedCanonicalResult =
     cycleRows[0]?.canonical_result && typeof cycleRows[0].canonical_result === "object" ? cycleRows[0].canonical_result : null;
   const persistedCustomerDecision =
-    latestPersistedCanonicalResult?.customerDecision
+    hasCanonicalDecisionPlan
+      && latestPersistedCanonicalResult?.customerDecision
       && typeof latestPersistedCanonicalResult.customerDecision === "object"
       && latestPersistedCanonicalResult.customerDecision.contractVersion === "investing-customer-decision-projection/v1"
       ? latestPersistedCanonicalResult.customerDecision
       : null;
   const visibleCustomerDecision = persistedCustomerDecision ?? customerDecision;
-  const customerDecisionSource = persistedCustomerDecision ? "persisted_daily_cycle" : "volatile_runtime_adapter";
+  const customerDecisionSource = !hasCanonicalDecisionPlan
+    ? PLAN_DECISION_UNAVAILABLE_SOURCE
+    : persistedCustomerDecision
+      ? "persisted_daily_cycle"
+      : "volatile_runtime_adapter";
   const portfolioValuationAvailability: AvailabilityStatus =
     isCashOnlyPortfolio
       ? "REAL"
@@ -367,7 +380,9 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
             : "REAL";
   const hasUnavailableMarketEvidence = items.some((item: any) => item.priceAvailability === "UNAVAILABLE");
   const visibleDecisionAvailability =
-    customerDecisionSource === "volatile_runtime_adapter" && hasUnavailableMarketEvidence
+    !hasCanonicalDecisionPlan
+      ? "UNAVAILABLE"
+      : customerDecisionSource === "volatile_runtime_adapter" && hasUnavailableMarketEvidence
       ? "UNAVAILABLE"
       : decisionAvailability(customerDecisionSource, visibleCustomerDecision);
 
@@ -403,11 +418,11 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     daily: {
       investingEngine: runtime,
       customerDecision: visibleCustomerDecision,
-      starterPack: runtime?.starterPackItems ?? [],
-      starterPackMeta: runtime?.starterPackMeta ?? null,
+      starterPack: hasCanonicalDecisionPlan ? runtime?.starterPackItems ?? [] : [],
+      starterPackMeta: hasCanonicalDecisionPlan ? runtime?.starterPackMeta ?? null : null,
       opportunities: [],
       lastSnapshotAt: cycleRows[0]?.created_at ?? null,
-      execution: { queue: latestQueue, order: latestOrder },
+      execution: hasCanonicalDecisionPlan ? { queue: latestQueue, order: latestOrder } : { queue: null, order: null },
     },
     derived: {
       hasPlan: plan.availability === "AVAILABLE" && Boolean(plan.value),
@@ -426,10 +441,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
         source: customerDecisionSource,
         unavailableMessage: visibleDecisionAvailability === "REAL" ? null : FINANCIAL_DATA_UNAVAILABLE,
       },
-      marketSnapshot: visibleCustomerDecision.marketSnapshot,
-      engineV1Bridge: visibleCustomerDecision.source.engineV1Bridge,
-      researchPublication: visibleCustomerDecision.researchPublication,
-      performanceAttribution: visibleCustomerDecision.performanceAttribution,
+      marketSnapshot: visibleCustomerDecision?.marketSnapshot ?? null,
+      engineV1Bridge: visibleCustomerDecision?.source?.engineV1Bridge ?? null,
+      researchPublication: visibleCustomerDecision?.researchPublication ?? null,
+      performanceAttribution: visibleCustomerDecision?.performanceAttribution ?? null,
     },
   };
 }

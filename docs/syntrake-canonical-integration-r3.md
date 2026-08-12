@@ -80,6 +80,8 @@ Dead recovered RPC names remain banned from the canonical path.
 
 The dashboard no longer selects plan truth by newest `plans.created_at`. It reuses the canonical active-plan selector and returns the same minimal projection used by `/api/investing/plan`.
 
+Customer-facing decision authority is gated by canonical plan truth. If the plan is missing, ambiguous, invalid, or has no accepted structured payload, the dashboard preserves independent portfolio/cash truth but suppresses runtime guidance, persisted customer decisions, starter-pack target allocation, rebalance output, and execution/approval proposals. Legacy `user_settings` fields may remain compatibility inputs internally, but they cannot make the customer-facing decision available or actionable without canonical plan authority.
+
 The Investing Plan screen consumes the canonical plan envelope:
 
 - Missing plan: `Plan not available`, no target.

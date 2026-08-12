@@ -105,7 +105,16 @@ function seedTenantAFinancialRows() {
     label: "Core plan",
     intent: "Build wealth",
     goal: "Growth with controlled risk",
-    payload: {},
+    payload: {
+      schemaVersion: 1,
+      objective: {
+        type: "growth",
+        targetAmount: { amount: 10000, currency: "EUR" },
+        timeframeMonths: 120,
+      },
+      risk: { profile: "Balanced" },
+      guardrails: { maxSinglePositionPct: 20, maxTop5Pct: 60 },
+    },
     activated_at: "2026-08-01T00:00:00.000Z",
     created_at: "2026-08-01T00:00:00.000Z",
     updated_at: "2026-08-02T00:00:00.000Z",
@@ -169,8 +178,8 @@ describe("Investing dashboard tenant-scoped read", () => {
         version: 1,
         summary: "Growth with controlled risk",
         structured: {
-          availability: "UNAVAILABLE",
-          reason: "structured_plan_missing",
+          availability: "AVAILABLE",
+          reason: null,
         },
       },
     });
@@ -273,12 +282,111 @@ describe("Investing dashboard tenant-scoped read", () => {
       value: null,
     });
     expect(result.derived.hasPlan).toBe(false);
+    expect(result.derived.decisionAvailability).toBe("UNAVAILABLE");
+    expect(result.derived.customerDecision).toBeNull();
+    expect(result.daily.customerDecision).toBeNull();
+    expect(result.daily.investingEngine).toBeNull();
+    expect(result.daily.starterPack).toEqual([]);
+    expect(result.daily.execution).toEqual({ queue: null, order: null });
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.totalEur).toBe(1000);
     expect(JSON.stringify(result.plan)).not.toContain("Duplicate active plan");
     expect(JSON.stringify(result.plan)).not.toContain("50000");
     expect(JSON.stringify(result.plan)).not.toContain("Balanced");
     expect(JSON.stringify(result.plan)).not.toContain("Long");
+    expect(JSON.stringify(result.derived.customerDecision)).not.toContain("targetAllocations");
+    expect(JSON.stringify(result.daily)).not.toContain("rebalance");
+    expect(JSON.stringify(result.daily)).not.toContain("approval");
+  });
+
+  it("does not let missing canonical plan truth be bypassed by populated legacy user_settings", async () => {
+    db.plans.splice(0, db.plans.length);
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.plan).toEqual({
+      availability: "UNAVAILABLE",
+      reason: "plan_missing",
+      value: null,
+    });
+    expect(result.portfolio.accountId).toBe("account-a");
+    expect(result.portfolio.totalEur).toBe(1000);
+    expect(result.derived.hasPlan).toBe(false);
+    expect(result.derived.decisionAvailability).toBe("UNAVAILABLE");
+    expect(result.derived.decisionProvenance).toMatchObject({
+      status: "UNAVAILABLE",
+      source: "canonical_plan_unavailable",
+    });
+    expect(result.derived.customerDecision).toBeNull();
+    expect(result.daily.customerDecision).toBeNull();
+    expect(result.daily.investingEngine).toBeNull();
+    expect(result.daily.starterPack).toEqual([]);
+    expect(result.daily.execution).toEqual({ queue: null, order: null });
+    expect(JSON.stringify(result.daily)).not.toContain("targetAllocations");
+    expect(JSON.stringify(result.daily)).not.toContain("rebalance");
+    expect(JSON.stringify(result.daily)).not.toContain("approval");
+  });
+
+  it("suppresses old persisted customer decisions when canonical plan authority is unavailable", async () => {
+    db.plans.splice(0, db.plans.length);
+    db.investing_daily_cycles[0].canonical_result = {
+      customerDecision: {
+        contractVersion: "investing-customer-decision-projection/v1",
+        projectionId: "old_decision",
+        summary: { title: "Old persisted buy guidance" },
+        marketSnapshot: { snapshotId: "old_market" },
+        source: { engineV1Bridge: { status: "phase3f_shadow_connected" } },
+        researchPublication: { status: "heuristic_validation_only" },
+        performanceAttribution: { status: "unavailable" },
+        decisionProvenance: { status: "REAL" },
+      },
+    };
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.totalEur).toBe(1000);
+    expect(result.derived.customerDecisionSource).toBe("canonical_plan_unavailable");
+    expect(result.derived.decisionAvailability).toBe("UNAVAILABLE");
+    expect(result.daily.customerDecision).toBeNull();
+    expect(result.derived.customerDecision).toBeNull();
+    expect(JSON.stringify(result)).not.toContain("old_decision");
+    expect(JSON.stringify(result)).not.toContain("Old persisted buy guidance");
+  });
+
+  it("does not use text-only or structured-unavailable plans as customer decision authority", async () => {
+    db.plans.splice(0, db.plans.length, {
+      id: "plan-text-only",
+      user_id: "owner-1",
+      mode: "investing",
+      status: "active",
+      is_active: true,
+      version: 1,
+      label: "Text plan",
+      intent: "Stored text intent",
+      goal: "Growth with controlled risk",
+      payload: {},
+      activated_at: "2026-08-01T00:00:00.000Z",
+      created_at: "2026-08-01T00:00:00.000Z",
+      updated_at: "2026-08-02T00:00:00.000Z",
+    });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.plan).toMatchObject({
+      availability: "AVAILABLE",
+      value: {
+        id: "plan-text-only",
+        structured: {
+          availability: "UNAVAILABLE",
+          reason: "structured_plan_missing",
+        },
+      },
+    });
+    expect(result.derived.hasPlan).toBe(true);
+    expect(result.derived.decisionAvailability).toBe("UNAVAILABLE");
+    expect(result.derived.customerDecision).toBeNull();
+    expect(result.daily.investingEngine).toBeNull();
+    expect(JSON.stringify(result.daily)).not.toContain("targetAllocations");
   });
 
   it("treats an active tenant-scoped cash-only account as a real known portfolio value", async () => {
