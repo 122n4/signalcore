@@ -119,6 +119,7 @@ function seedTenantAFinancialRows() {
     account_id: "account-a",
     currency: "EUR",
     available_amount: 700,
+    as_of: "2026-08-02T09:30:00.000Z",
   });
   db.investing_positions.splice(0, db.investing_positions.length, {
     account_id: "account-a",
@@ -154,6 +155,11 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.plan).toMatchObject({ id: "plan-1", goal: "Growth with controlled risk" });
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.cashEur).toBe(700);
+    expect(result.portfolio.cash).toEqual({
+      amountEur: 700,
+      availability: "REAL",
+      asOf: "2026-08-02T09:30:00.000Z",
+    });
     expect(result.portfolio.environment).toBe("paper");
     expect(result.portfolio.accountStatus).toBe("active");
     expect(result.portfolio.items).toHaveLength(1);
@@ -205,6 +211,7 @@ describe("Investing dashboard tenant-scoped read", () => {
       account_id: "account-a",
       currency: "EUR",
       available_amount: 700,
+      as_of: "2026-08-02T09:30:00.000Z",
     });
     db.investing_positions.splice(0, db.investing_positions.length);
 
@@ -215,6 +222,11 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.ok).toBe(true);
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.cashEur).toBe(700);
+    expect(result.portfolio.cash).toEqual({
+      amountEur: 700,
+      availability: "REAL",
+      asOf: "2026-08-02T09:30:00.000Z",
+    });
     expect(result.portfolio.items).toEqual([]);
     expect(result.portfolio.totalEur).toBe(700);
     expect(result.portfolio.valuation).toMatchObject({
@@ -233,11 +245,58 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.portfolio.valuation.availability).not.toBe("UNAVAILABLE");
   });
 
+  it("treats an explicit zero EUR cash row as real financial truth", async () => {
+    db.investing_cash_balances.splice(0, db.investing_cash_balances.length, {
+      account_id: "account-a",
+      currency: "EUR",
+      available_amount: 0,
+      as_of: "2026-08-02T09:30:00.000Z",
+    });
+    db.investing_positions.splice(0, db.investing_positions.length);
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.getQuotes).not.toHaveBeenCalled();
+    expect(result.portfolio.cashEur).toBe(0);
+    expect(result.portfolio.cash).toEqual({
+      amountEur: 0,
+      availability: "REAL",
+      asOf: "2026-08-02T09:30:00.000Z",
+    });
+    expect(result.portfolio.valuation).toMatchObject({
+      totalEur: 0,
+      source: "cash_only",
+      availability: "REAL",
+    });
+  });
+
+  it("does not infer zero cash when the canonical EUR cash row is missing", async () => {
+    db.investing_cash_balances.splice(0, db.investing_cash_balances.length);
+    db.investing_positions.splice(0, db.investing_positions.length);
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.getQuotes).not.toHaveBeenCalled();
+    expect(result.portfolio.cashEur).toBe(0);
+    expect(result.portfolio.cash).toEqual({
+      amountEur: 0,
+      availability: "UNAVAILABLE",
+      asOf: null,
+    });
+    expect(result.portfolio.valuation).toMatchObject({
+      source: "empty",
+      availability: "UNAVAILABLE",
+    });
+  });
+
   it("does not treat zero-quantity positions as customer-visible active holdings", async () => {
     db.investing_cash_balances.splice(0, db.investing_cash_balances.length, {
       account_id: "account-a",
       currency: "EUR",
       available_amount: 700,
+      as_of: "2026-08-02T09:30:00.000Z",
     });
     db.investing_positions.splice(0, db.investing_positions.length, {
       account_id: "account-a",
@@ -256,6 +315,7 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.portfolio.accountId).toBe("account-a");
     expect(result.portfolio.cashEur).toBe(700);
     expect(result.portfolio.items).toEqual([]);
+    expect((result.portfolio as any).positions).toBeUndefined();
     expect(result.portfolio.totalEur).toBe(700);
     expect(result.portfolio.valuation).toMatchObject({
       cashEur: 700,

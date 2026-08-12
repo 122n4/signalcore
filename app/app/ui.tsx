@@ -22,6 +22,7 @@ import { deriveFirstValueRailState, deriveSetupProgress, type FirstValueSetupKey
 
 import TradingTab from "@/app/app/tabs/TradingTab";
 import InvestingDashboardSurface from "@/app/app/tabs/InvestingDashboardSurface";
+import InvestingExperience from "@/app/app/investing/InvestingExperience";
 import JournalTab from "@/app/app/tabs/JournalTab";
 import AlertsTab from "@/app/app/tabs/AlertsTab";
 import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
@@ -752,12 +753,12 @@ export default function AppUI() {
                 (welcomeSetupRequested || offlineSetupRequested ? (
                   <OfflineSetupClient />
                 ) : (
-                  <InvestingDashboardSurface page="planning" />
+                  <InvestingExperience screen="plan" />
                 ))}
-              {view === "daily" && <InvestingDashboardSurface page="daily" />}
-              {view === "advisor" && <InvestingDashboardSurface page="research" />}
-              {view === "research" && <InvestingDashboardSurface page="research" />}
-              {view === "portfolio" && <InvestingDashboardSurface page="portfolio" />}
+              {view === "daily" && <InvestingExperience screen="overview" />}
+              {view === "advisor" && <InvestingExperience screen="insights" />}
+              {view === "research" && <InvestingExperience screen="insights" />}
+              {view === "portfolio" && <InvestingExperience screen="portfolio" />}
               {view === "reports" && <InvestingDashboardSurface page="reports" />}
               {view === "settings" && <InvestingDashboardSurface page="settings" />}
               {view === "autonomy" && <InvestingDashboardSurface page="autonomy" />}

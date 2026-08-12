@@ -11,13 +11,10 @@ import {
 describe("app navigation model", () => {
   it("keeps investing and trading as separate workspaces", () => {
     expect(buildModeAwareNavItems({ mode: "investing", lang: "en" })).toEqual([
-      { key: "daily", label: "Today" },
+      { key: "daily", label: "Overview" },
       { key: "portfolio", label: "Portfolio" },
       { key: "planning", label: "Plan" },
-      { key: "research", label: "Research" },
-      { key: "reports", label: "Reports" },
-      { key: "autonomy", label: "Autonomy" },
-      { key: "settings", label: "Settings" },
+      { key: "research", label: "Insights" },
     ]);
 
     expect(buildModeAwareNavItems({ mode: "trading", lang: "en" })).toEqual([
@@ -69,6 +66,14 @@ describe("app navigation model", () => {
     expect(buildShellCopy({ mode: "investing", view: "planning", lang: "en" })).toEqual({
       title: "Investing Plan",
       subtitle: "Translate goals, risk, and horizon into a capital plan that the daily loop can actually enforce.",
+    });
+    expect(buildShellCopy({ mode: "investing", view: "daily", lang: "en" })).toEqual({
+      title: "Investing Overview",
+      subtitle: "Canonical account, portfolio truth, and decision state.",
+    });
+    expect(buildShellCopy({ mode: "investing", view: "research", lang: "en" })).toEqual({
+      title: "Investing Insights",
+      subtitle: "Decision evidence, market data quality, and Research validation state.",
     });
     expect(buildShellCopy({ mode: "trading", view: "execution", lang: "en" })).toEqual({
       title: "Trading Execution",
