@@ -11,7 +11,7 @@ vi.mock("@/lib/auth/requestUser", () => ({
 vi.mock("@/lib/investing/server/authz", () => ({
   requireInvestingRequestContext: vi.fn(async () => {
     if (!auth.userId) throw { status: 401, code: "unauthorized", publicError: "unauthorized" };
-    return { userId: auth.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: [] };
+    return { userId: auth.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: ["investing:read", "investing:create", "investing:verify", "investing:replay"] };
   }),
   requireInvestingAccountAccess: vi.fn(async () => ({ id: "11111111-1111-4111-8111-111111111111" })),
   investingAuthzResponse: vi.fn((error: any) =>

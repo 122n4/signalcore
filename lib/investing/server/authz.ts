@@ -5,6 +5,7 @@ import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 
 const FINANCIAL_DATA_UNAVAILABLE = "Dados indisponiveis neste momento";
 const SAFE_PORTFOLIO_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const REQUIRED_INVESTING_READ_PERMISSION = "investing:read";
 
 export type InvestingEnvironment = "paper" | "simulation" | "live";
 
@@ -113,6 +114,19 @@ function routeFromRequest(req?: Request | null) {
   }
 }
 
+function isNonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function readPermissions(value: unknown) {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function throwTenantDenied(route: string | null | undefined, reason: string, details: Record<string, unknown> = {}) {
+  logInvestingAuthzEvent("tenant_resolution_failed", { route, reason, ...details });
+  throw deny(403, "investing_tenant_not_authorized");
+}
+
 export function logInvestingAuthzEvent(event: AuthzLogEvent, details: Record<string, unknown> = {}) {
   const safeDetails = Object.fromEntries(
     Object.entries(details).filter(([key, value]) => {
@@ -187,10 +201,35 @@ export async function resolveInvestingTenantContext(args: {
 
   const row = rows[0] as Record<string, unknown>;
   const tenantId = String(row.tenant_id || "");
+  const membershipId = String(row.id || "");
+  const role = String(row.role || "");
+  const permissions = readPermissions(row.permissions);
+
+  if (row.user_id !== args.userId) {
+    throwTenantDenied(args.route, "membership_user_mismatch", { membershipId });
+  }
+  if (row.status !== "active") {
+    throwTenantDenied(args.route, "membership_inactive", { membershipId });
+  }
+  if (row.revoked_at != null) {
+    throwTenantDenied(args.route, "membership_revoked", { membershipId });
+  }
+  if (role !== "owner") {
+    throwTenantDenied(args.route, "membership_not_owner", { membershipId });
+  }
+  if (!permissions.includes(REQUIRED_INVESTING_READ_PERMISSION)) {
+    throwTenantDenied(args.route, "membership_missing_read_permission", { membershipId });
+  }
+  if (!isNonEmptyString(tenantId)) {
+    throwTenantDenied(args.route, "membership_tenant_missing", { membershipId });
+  }
+
   const tenant = await database
     .from("investing_tenants")
     .select("id,owner_user_id,kind,status")
     .eq("id", tenantId)
+    .eq("owner_user_id", args.userId)
+    .eq("kind", "personal")
     .eq("status", "active")
     .maybeSingle();
 
@@ -208,12 +247,17 @@ export async function resolveInvestingTenantContext(args: {
     throw deny(403, "investing_tenant_not_authorized");
   }
 
+  const tenantRow = tenant.data as Record<string, unknown>;
+  if (tenantRow.id !== tenantId || tenantRow.owner_user_id !== args.userId || tenantRow.kind !== "personal" || tenantRow.status !== "active") {
+    throwTenantDenied(args.route, "tenant_material_binding_mismatch", { tenantId });
+  }
+
   return {
     userId: args.userId,
     tenantId,
-    membershipId: String(row.id || ""),
-    role: String(row.role || ""),
-    permissions: Array.isArray(row.permissions) ? row.permissions.map(String) : [],
+    membershipId,
+    role,
+    permissions,
   };
 }
 
