@@ -176,6 +176,20 @@ function validateRowsAccountScoped(rows: Row[], account: InvestingAccountScope, 
   }
 }
 
+function validateReconciliationRuns(rows: Row[], account: InvestingAccountScope) {
+  for (const row of rows) {
+    if (
+      !text(row.id)
+      || text(row.account_id) !== account.id
+      || text(row.user_id) !== account.userId
+      || text(row.portfolio_id) !== account.portfolioId
+      || text(row.environment) !== account.environment
+    ) {
+      throw unavailable("investing_reconciliation_run_scope_mismatch");
+    }
+  }
+}
+
 function sortMovementRows(rows: Row[]) {
   return [...rows].sort((left, right) => {
     const byCreated = text(right.created_at).localeCompare(text(left.created_at));
@@ -583,7 +597,7 @@ export function buildCanonicalInvestingAccountingSnapshot(args: {
   validateRowsAccountScoped(movementRows, args.account, "investing_cash_movements");
   validateRowsAccountScoped(args.performanceMovementEvidenceRows ?? [], args.account, "investing_cash_movements");
   validateRowsAccountScoped(ledgerTransactions, args.account, "investing_ledger_transactions");
-  validateRowsAccountScoped(reconciliationRuns, args.account, "investing_reconciliation_runs");
+  validateReconciliationRuns(reconciliationRuns, args.account);
   validateRowsAccountScoped(corporateActionRows, args.account, "investing_corporate_actions");
 
   const baseCashRows = cashRows.filter((row) => text(row.currency).toUpperCase() === args.account.baseCurrency);
@@ -746,7 +760,7 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     resultRows(database.from("investing_ledger_entries").select("id,transaction_id,account_id,account_code,side,amount,currency,created_at").eq("account_id", account.id).order("created_at", { ascending: false }).limit(1000), "investing_ledger_entries_read_failed"),
     resultRows(database.from("investing_orders").select("id,account_id,user_id,portfolio_id,environment,status,side,currency,created_at,terminal_at").eq("user_id", args.userId).eq("account_id", account.id).order("created_at", { ascending: false }).limit(500), "investing_orders_read_failed"),
     resultRows(database.from("investing_corporate_actions").select("id,account_id,action_type,symbol,status,effective_at,created_at").eq("account_id", account.id).order("effective_at", { ascending: false }).limit(500), "investing_corporate_actions_read_failed"),
-    resultRows(database.from("investing_reconciliation_runs").select("id,account_id,status,score,environment,started_at,completed_at,created_at").eq("account_id", account.id).order("created_at", { ascending: false }).limit(20), "investing_reconciliation_runs_read_failed"),
+    resultRows(database.from("investing_reconciliation_runs").select("id,user_id,portfolio_id,account_id,status,score,environment,started_at,completed_at,created_at").eq("account_id", account.id).order("created_at", { ascending: false }).limit(20), "investing_reconciliation_runs_read_failed"),
     resultRows(database.from("investing_cash_movements").select("id,account_id,movement_type,amount,currency,source_type,reversal_of,created_at").eq("account_id", account.id).eq("movement_type", "dividend").order("created_at", { ascending: false }).limit(1), "investing_cash_movements_read_failed"),
     resultRows(database.from("investing_cash_movements").select("id,account_id,movement_type,amount,currency,source_type,reversal_of,created_at").eq("account_id", account.id).eq("movement_type", "tax").order("created_at", { ascending: false }).limit(1), "investing_cash_movements_read_failed"),
   ]);
@@ -772,6 +786,7 @@ export async function readCanonicalInvestingAccountingForAccount(args: {
     feeMap.set(id, fee);
   }
   const scopedFees = validateFees([...feeMap.values()], ordersById, fillsById);
+  validateReconciliationRuns(reconciliationRuns, account);
   const runIds = reconciliationRuns.map((run) => text(run.id)).filter(Boolean);
   const reconciliationItems = runIds.length
     ? await resultRows(database.from("investing_reconciliation_items").select("id,run_id,item_type,severity,resolution_status,detected_at").in("run_id", runIds).order("detected_at", { ascending: false }).limit(500), "investing_reconciliation_items_read_failed")

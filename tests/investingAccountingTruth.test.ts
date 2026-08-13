@@ -145,6 +145,20 @@ function accountScope(overrides: Row = {}) {
   };
 }
 
+function reconciliationRun(overrides: Row = {}) {
+  return {
+    id: "run-1",
+    account_id: "11111111-1111-4111-8111-111111111111",
+    user_id: "user_a",
+    portfolio_id: "primary",
+    environment: "paper",
+    status: "passed",
+    completed_at: "2026-08-12T10:00:00.000Z",
+    created_at: "2026-08-12T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   for (const rows of Object.values(db)) rows.splice(0, rows.length);
   calls.length = 0;
@@ -606,13 +620,130 @@ describe("canonical Investing accounting truth", () => {
   it("does not report failed or warning reconciliation runs as reconciled", () => {
     const warning = buildCanonicalInvestingAccountingSnapshot({
       account: accountScope(),
-      reconciliationRuns: [{ id: "run-1", account_id: "11111111-1111-4111-8111-111111111111", status: "warning", completed_at: "2026-08-12T10:00:00.000Z", created_at: "2026-08-12T09:00:00.000Z" }],
+      reconciliationRuns: [reconciliationRun({ status: "warning" })],
     });
     expect(warning.reconciliation).toMatchObject({
       availability: "REAL",
       status: "NOT_RECONCILED",
       issueCount: null,
       reason: "reconciliation_run_not_clean",
+    });
+  });
+
+  it("fails closed on reconciliation runs with wrong user scope", async () => {
+    db.investing_reconciliation_runs.push(reconciliationRun({ user_id: "user_b" }));
+
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({
+      code: "investing_reconciliation_run_scope_mismatch",
+      publicError: "financial_data_unavailable",
+    });
+
+    expect(calls.find((call) => call.table === "investing_reconciliation_runs")?.select).toContain("user_id");
+    expect(calls.some((call) => call.table === "investing_reconciliation_items")).toBe(false);
+  });
+
+  it("fails closed on reconciliation runs with wrong portfolio scope", async () => {
+    db.investing_reconciliation_runs.push(reconciliationRun({ portfolio_id: "secondary" }));
+
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({
+      code: "investing_reconciliation_run_scope_mismatch",
+      publicError: "financial_data_unavailable",
+    });
+
+    expect(calls.some((call) => call.table === "investing_reconciliation_items")).toBe(false);
+  });
+
+  it("fails closed on reconciliation runs with wrong environment scope", async () => {
+    db.investing_reconciliation_runs.push(reconciliationRun({ environment: "live" }));
+
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({
+      code: "investing_reconciliation_run_scope_mismatch",
+      publicError: "financial_data_unavailable",
+    });
+
+    expect(calls.some((call) => call.table === "investing_reconciliation_items")).toBe(false);
+  });
+
+  it("consumes reconciliation runs only when account, user, portfolio and environment all match", async () => {
+    db.investing_reconciliation_runs.push(reconciliationRun());
+
+    const result = await readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    });
+
+    expect(result.reconciliation).toMatchObject({
+      availability: "UNAVAILABLE",
+      status: "UNAVAILABLE",
+      latestRunId: "run-1",
+      issueCount: null,
+      reason: "reconciliation_item_coverage_unproven",
+    });
+    expect(calls.find((call) => call.table === "investing_reconciliation_items")?.inFilters).toEqual([
+      ["run_id", ["run-1"]],
+    ]);
+  });
+
+  it("uses reconciliation items only through validated reconciliation runs", async () => {
+    db.investing_reconciliation_runs.push(reconciliationRun());
+    db.investing_reconciliation_items.push(
+      { id: "item-1", run_id: "run-1", severity: "high", resolution_status: "open", detected_at: "2026-08-12T10:01:00.000Z" },
+      { id: "foreign-item", run_id: "foreign-run", severity: "high", resolution_status: "open", detected_at: "2026-08-12T10:02:00.000Z" },
+    );
+
+    const result = await readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    });
+
+    expect(result.reconciliation).toMatchObject({
+      availability: "UNAVAILABLE",
+      status: "UNAVAILABLE",
+      issueCount: null,
+      reason: "reconciliation_item_coverage_unproven",
+    });
+    expect(calls.find((call) => call.table === "investing_reconciliation_items")?.inFilters).toEqual([
+      ["run_id", ["run-1"]],
+    ]);
+
+    const completeSnapshot = buildCanonicalInvestingAccountingSnapshot({
+      account: accountScope(),
+      reconciliationRuns: [reconciliationRun()],
+      reconciliationItems: [
+        { id: "item-1", run_id: "run-1", severity: "high", resolution_status: "open", detected_at: "2026-08-12T10:01:00.000Z" },
+        { id: "foreign-item", run_id: "foreign-run", severity: "high", resolution_status: "open", detected_at: "2026-08-12T10:02:00.000Z" },
+      ],
+      reconciliationItemsComplete: true,
+    });
+    expect(completeSnapshot.reconciliation).toMatchObject({
+      availability: "REAL",
+      status: "NOT_RECONCILED",
+      issueCount: 1,
+      reason: "reconciliation_items_unresolved",
     });
   });
 
