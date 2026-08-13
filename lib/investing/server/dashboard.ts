@@ -22,6 +22,12 @@ function number(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 type AvailabilityStatus = "REAL" | "STALE" | "ESTIMATED" | "UNAVAILABLE";
 
 const FINANCIAL_DATA_UNAVAILABLE = "Dados indisponiveis neste momento";
@@ -258,8 +264,9 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     persisted: false,
   });
   const eurCashRows = accountBaseCurrency === "EUR" ? cash.filter((row: any) => row.currency === "EUR") : [];
-  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0);
-  const cashEur = eurCashRows.reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
+  const cashAmounts = eurCashRows.map((row: any) => finiteNumber(row.available_amount));
+  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0 && cashAmounts.every((amount) => amount !== null));
+  const cashEur = hasCanonicalCashBalance ? cashAmounts.reduce((sum: number, amount) => sum + (amount ?? 0), 0) : null;
   const cashTruth = {
     amountEur: cashEur,
     availability: (hasCanonicalCashBalance ? "REAL" : "UNAVAILABLE") as AvailabilityStatus,
@@ -271,7 +278,6 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const quote = snapshotQuotes[symbol] ?? {};
     const sourceQuote = quotes?.[symbol] && typeof quotes[symbol] === "object" ? quotes[symbol] : quote;
     const price = number(quote?.price);
-    const costBasisEur = number(position.cost_basis);
     const priceAvailability = priceAvailabilityFromQuote(sourceQuote, price);
     const quoteCurrency = typeof sourceQuote?.currency === "string" && /^[A-Z]{3}$/i.test(sourceQuote.currency)
       ? sourceQuote.currency.toUpperCase()
@@ -279,11 +285,13 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const costBasisCurrency = typeof position.currency === "string" && /^[A-Z]{3}$/i.test(position.currency)
       ? position.currency.toUpperCase()
       : null;
+    const rawCostBasis = finiteNumber(position.cost_basis);
+    const costBasisEur = costBasisCurrency === "EUR" ? rawCostBasis : null;
     const hasMarketEvidence = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
     const hasUsableMarketPrice = hasMarketEvidence && quoteCurrency === accountBaseCurrency && accountBaseCurrency === "EUR";
     const hasCurrencyBlockedQuote = hasMarketEvidence && (!quoteCurrency || quoteCurrency !== accountBaseCurrency || accountBaseCurrency !== "EUR");
-    const hasCostBasisFallback = costBasisEur > 0 && costBasisCurrency === "EUR" && !hasCurrencyBlockedQuote;
-    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : 0;
+    const hasCostBasisFallback = costBasisEur !== null && costBasisEur > 0 && !hasCurrencyBlockedQuote;
+    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : null;
     const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
     const itemValuationAvailability = valuationAvailability({
       priceAvailability,
@@ -332,7 +340,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
         : items.some((item: any) => item.valuationSource === "cost_basis_fallback")
           ? "cost_basis_fallback"
           : "unavailable";
-  const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
+  const allActiveHoldingsValuedInEur = items.every((item: any) => finiteNumber(item.valueEur ?? item.value_eur) !== null);
+  const totalEur = hasCanonicalCashBalance && allActiveHoldingsValuedInEur
+    ? (cashEur ?? 0) + items.reduce((sum: number, item: any) => sum + (finiteNumber(item.valueEur ?? item.value_eur) ?? 0), 0)
+    : null;
   const runtime = hasCanonicalDecisionAuthority
     ? buildInvestingRuntimeSnapshot({
         referenceTotalEur: totalEur,

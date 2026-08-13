@@ -286,13 +286,16 @@ describe("Investing dashboard tenant-scoped read", () => {
       symbol: "VWCE",
       price: 100,
       quoteCurrency: "USD",
-      valueEur: 0,
+      valueEur: null,
+      value_eur: null,
       valuationSource: "unavailable",
       valuationAvailability: "UNAVAILABLE",
     });
-    expect(result.portfolio.totalEur).toBe(700);
+    expect(result.portfolio.cash).toMatchObject({ amountEur: 700, availability: "REAL" });
+    expect(result.portfolio.totalEur).toBeNull();
     expect(result.portfolio.totalEur).not.toBe(1000);
     expect(result.portfolio.valuation).toMatchObject({
+      totalEur: null,
       source: "unavailable",
       availability: "UNAVAILABLE",
       coveragePct: 0,
@@ -312,11 +315,14 @@ describe("Investing dashboard tenant-scoped read", () => {
     expect(result.portfolio.items[0]).toMatchObject({
       symbol: "VWCE",
       quoteCurrency: null,
-      valueEur: 0,
+      valueEur: null,
+      value_eur: null,
       valuationSource: "unavailable",
       valuationAvailability: "UNAVAILABLE",
     });
-    expect(result.portfolio.totalEur).toBe(700);
+    expect(result.portfolio.cash).toMatchObject({ amountEur: 700, availability: "REAL" });
+    expect(result.portfolio.totalEur).toBeNull();
+    expect(result.portfolio.valuation.totalEur).toBeNull();
     expect(result.portfolio.valuation.availability).toBe("UNAVAILABLE");
     expect(result.portfolio.performance.components.unrealizedPnl.availability).toBe("UNAVAILABLE");
   });
@@ -343,18 +349,44 @@ describe("Investing dashboard tenant-scoped read", () => {
       valuationAvailability: "REAL",
     });
     expect(result.portfolio.items.find((item: any) => item.symbol === "IWDA")).toMatchObject({
-      valueEur: 0,
+      valueEur: null,
+      value_eur: null,
       quoteCurrency: "USD",
       valuationSource: "unavailable",
       valuationAvailability: "UNAVAILABLE",
     });
-    expect(result.portfolio.totalEur).toBe(1000);
+    expect(result.portfolio.totalEur).toBeNull();
     expect(result.portfolio.totalEur).not.toBe(1100);
     expect(result.portfolio.valuation).toMatchObject({
+      totalEur: null,
       availability: "UNAVAILABLE",
       missingPriceSymbols: ["IWDA"],
     });
     expect(result.portfolio.performance.components.unrealizedPnl.availability).toBe("UNAVAILABLE");
+  });
+
+  it("does not relabel a foreign-currency position cost basis as EUR", async () => {
+    db.investing_positions[0].currency = "USD";
+    db.investing_positions[0].cost_basis = 250;
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.items[0]).toMatchObject({
+      symbol: "VWCE",
+      valueEur: 300,
+      costBasisEur: null,
+      cost_basis_eur: null,
+      costBasisCurrency: "USD",
+      valuationSource: "market_quote",
+      valuationAvailability: "REAL",
+    });
+    expect(result.portfolio.totalEur).toBe(1000);
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "valid_position_valuation_missing",
+    });
   });
 
   it("uses canonical active plan selection instead of newest draft fallback", async () => {
@@ -618,13 +650,15 @@ describe("Investing dashboard tenant-scoped read", () => {
 
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.getQuotes).not.toHaveBeenCalled();
-    expect(result.portfolio.cashEur).toBe(0);
+    expect(result.portfolio.cashEur).toBeNull();
     expect(result.portfolio.cash).toEqual({
-      amountEur: 0,
+      amountEur: null,
       availability: "UNAVAILABLE",
       asOf: null,
     });
     expect(result.portfolio.valuation).toMatchObject({
+      cashEur: null,
+      totalEur: null,
       source: "empty",
       availability: "UNAVAILABLE",
     });
