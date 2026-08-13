@@ -17,10 +17,15 @@ export const dynamic = "force-dynamic";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/;
 const MONEY = /^\d{1,10}(?:\.\d{1,8})?$/;
+const CURRENCY = /^[A-Z]{3}$/;
 const reply = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, {
   status,
   headers: { "Cache-Control": "no-store" },
 });
+
+function hasOwn(row: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(row, key);
+}
 
 export async function GET(req: Request, context: { params: Promise<{ accountId: string }> }) {
   try {
@@ -66,7 +71,7 @@ export async function POST(req: Request, context: { params: Promise<{ accountId:
     if (String(body?.environment || "paper").toLowerCase() === "live") {
       return reply({ ok: false, error: "investing_live_execution_blocked" }, 403);
     }
-    await requireInvestingAccountAccess({
+    const account = await requireInvestingAccountAccess({
       userId: authz.userId,
       tenantId: authz.tenantId,
       accountId,
@@ -74,6 +79,10 @@ export async function POST(req: Request, context: { params: Promise<{ accountId:
       requireActive: true,
       route: "/api/investing/paper/accounts/[accountId]/movements",
     });
+    const accountBaseCurrency = String(account.baseCurrency || "").trim().toUpperCase();
+    if (!CURRENCY.test(accountBaseCurrency)) {
+      return reply({ ok: false, error: "investing_account_currency_unavailable" }, 409);
+    }
 
     const action = String(body?.action || "");
     const clientRequestId = String(body?.clientRequestId || "").trim();
@@ -88,9 +97,20 @@ export async function POST(req: Request, context: { params: Promise<{ accountId:
       return reply({ ok: false, error: "invalid_cash_movement_action" }, 400);
     }
     const amount = String(body?.amount || "");
-    const currency = String(body?.currency || "EUR").toUpperCase();
+    const command = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+    const hasClientCurrency = hasOwn(command, "currency");
+    const clientCurrency = hasClientCurrency && command.currency != null
+      ? String(command.currency).trim().toUpperCase()
+      : null;
+    if (hasClientCurrency && (!clientCurrency || !CURRENCY.test(clientCurrency))) {
+      return reply({ ok: false, error: "invalid_cash_movement_command" }, 400);
+    }
+    if (clientCurrency && clientCurrency !== accountBaseCurrency) {
+      return reply({ ok: false, error: "investing_cash_movement_currency_mismatch" }, 409);
+    }
+    const currency = accountBaseCurrency;
     const symbol = body?.symbol == null ? null : String(body.symbol).toUpperCase();
-    if (!MONEY.test(amount) || !/^[A-Z]{3}$/.test(currency) || (action === "dividend" && !/^[A-Z0-9._-]{1,24}$/.test(symbol || ""))) {
+    if (!MONEY.test(amount) || (action === "dividend" && !/^[A-Z0-9._-]{1,24}$/.test(symbol || ""))) {
       return reply({ ok: false, error: "invalid_cash_movement_command" }, 400);
     }
     return reply({ ok: true, result: await recordPersistentPaperCashMovement({

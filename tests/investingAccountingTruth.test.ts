@@ -415,6 +415,7 @@ describe("canonical Investing accounting truth", () => {
           costBasisCurrency: "EUR",
         }],
       },
+      baseCurrency: "EUR",
       asOf: "2026-08-12T12:00:00.000Z",
     });
 
@@ -432,6 +433,7 @@ describe("canonical Investing accounting truth", () => {
       portfolio: {
         items: [{ symbol: "VWCE", qty: 3, valueEur: 250, costBasisEur: 250, valuationAvailability: "ESTIMATED", priceAvailability: "UNAVAILABLE", valuationSource: "cost_basis_fallback", valuationCurrency: null, costBasisCurrency: "EUR" }],
       },
+      baseCurrency: "EUR",
     });
     expect(unavailable.components.unrealizedPnl).toMatchObject({
       availability: "UNAVAILABLE",

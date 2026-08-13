@@ -244,10 +244,13 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const positions = scopedFinancialRows.positions;
 
   const accountId = account?.id ? String(account.id) : null;
-  const accountBaseCurrency =
-    typeof account?.base_currency === "string" && /^[A-Z]{3}$/i.test(account.base_currency)
-      ? account.base_currency.toUpperCase()
-      : "EUR";
+  const normalizedAccountBaseCurrency =
+    typeof account?.base_currency === "string"
+      ? account.base_currency.trim().toUpperCase()
+      : "";
+  const accountBaseCurrency = /^[A-Z]{3}$/.test(normalizedAccountBaseCurrency)
+    ? normalizedAccountBaseCurrency
+    : null;
 
   const universe = getCanonicalInvestingInstrumentMaster();
   const positionRows = positions.filter((position: any) => number(position.quantity) > 0);
@@ -289,7 +292,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const costBasisEur = costBasisCurrency === "EUR" ? rawCostBasis : null;
     const hasMarketEvidence = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
     const hasUsableMarketPrice = hasMarketEvidence && quoteCurrency === accountBaseCurrency && accountBaseCurrency === "EUR";
-    const hasCurrencyBlockedQuote = hasMarketEvidence && (!quoteCurrency || quoteCurrency !== accountBaseCurrency || accountBaseCurrency !== "EUR");
+    const hasCurrencyBlockedQuote = hasMarketEvidence && (!accountBaseCurrency || !quoteCurrency || quoteCurrency !== accountBaseCurrency || accountBaseCurrency !== "EUR");
     const hasCostBasisFallback = costBasisEur !== null && costBasisEur > 0 && !hasCurrencyBlockedQuote;
     const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : null;
     const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
@@ -445,7 +448,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const performance = accounting?.performance ?? buildCanonicalInvestingPerformanceRead({
     portfolio: portfolioForAccounting,
     asOf,
-    baseCurrency: account?.base_currency ? String(account.base_currency) : "EUR",
+    baseCurrency: accountBaseCurrency,
   });
 
   return {
@@ -458,6 +461,8 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       portfolioId,
       environment: account?.environment ? String(account.environment) : null,
       accountStatus: account?.status ? String(account.status) : null,
+      baseCurrency: accountBaseCurrency,
+      base_currency: accountBaseCurrency,
       cashEur,
       cash: cashTruth,
       totalEur,
