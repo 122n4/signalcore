@@ -4,6 +4,9 @@ import { getQuotes } from "@/lib/market/quotes";
 import { multiplyMoney, subtractMoney } from "@/lib/investing/money/decimal";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { readInvestingPaperConfig } from "@/lib/investing/server/config";
+import { requireInvestingAccountAccess, requireInvestingQueueAccess } from "@/lib/investing/server/authz";
+
+const CURRENCY = /^[A-Z]{3}$/;
 
 function databaseError(error: { message?: string } | null, fallback: string) {
   if (error) throw new Error(String(error.message || fallback).split("\n", 1)[0]);
@@ -11,6 +14,7 @@ function databaseError(error: { message?: string } | null, fallback: string) {
 
 export async function submitPersistentPaperOrder(args: {
   userId: string;
+  tenantId: string;
   queueId: string;
   expectedQueueVersion: number;
   symbol: string;
@@ -18,9 +22,33 @@ export async function submitPersistentPaperOrder(args: {
 }) {
   readInvestingPaperConfig();
   const symbol = args.symbol.trim().toUpperCase();
+  const database = getInvestingSupabaseAdmin() as any;
+  const queue = await requireInvestingQueueAccess({
+    userId: args.userId,
+    tenantId: args.tenantId,
+    queueId: args.queueId,
+    mode: "investing",
+    expectedVersion: args.expectedQueueVersion,
+    database,
+    route: "/api/investing/paper/orders",
+  });
+  if (!queue.accountId) throw new Error("investing_queue_scope_incomplete");
+  const account = await requireInvestingAccountAccess({
+    userId: args.userId,
+    tenantId: args.tenantId,
+    accountId: queue.accountId,
+    portfolioId: queue.portfolioId,
+    environment: "paper",
+    requireActive: false,
+    database,
+    route: "/api/investing/paper/orders",
+  });
   const quote = (await getQuotes({ symbols: [symbol], ttlSec: 30 }))[symbol];
   if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) throw new Error("investing_market_quote_unavailable");
-  const database = getInvestingSupabaseAdmin() as any;
+  const accountBaseCurrency = account.baseCurrency.trim().toUpperCase();
+  if (!CURRENCY.test(accountBaseCurrency)) throw new Error("investing_account_currency_unavailable");
+  const quoteCurrency = typeof quote.currency === "string" ? quote.currency.trim().toUpperCase() : "";
+  if (!quoteCurrency || quoteCurrency !== accountBaseCurrency) throw new Error("investing_market_quote_currency_unavailable");
   const correlationId = `investing_submit_${randomUUID()}`;
   const submitted = await database.rpc("investing_submit_paper_order_v2", {
     p_actor_user_id: args.userId,

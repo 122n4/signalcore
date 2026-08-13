@@ -11,9 +11,16 @@ const authzMocks = vi.hoisted(() => ({
     if (args.portfolioId !== "primary") throw { status: 403, code: "investing_portfolio_not_authorized", publicError: "investing_portfolio_not_authorized" };
     return { portfolioId: args.portfolioId, accountId: "account_a" };
   }),
-  requireInvestingQueueAccess: vi.fn(async (args: { queueId: string }) => {
-    if (args.queueId !== "11111111-1111-4111-8111-111111111111") {
+  requireInvestingQueueAccess: vi.fn(async (args: { queueId: string; userId: string; expectedVersion?: number }) => {
+    const row = queueRows.find((entry) => entry.id === args.queueId && entry.user_id === args.userId);
+    if (!row) {
       throw { status: 404, code: "investing_queue_not_found_or_forbidden", publicError: "investing_queue_not_found_or_forbidden" };
+    }
+    if (row.account_id && !authzMocks.accountIds.includes(row.account_id)) {
+      throw { status: 404, code: "investing_queue_not_found_or_forbidden", publicError: "investing_queue_not_found_or_forbidden" };
+    }
+    if (args.expectedVersion != null && row.version !== args.expectedVersion) {
+      throw { status: 409, code: "investing_queue_state_conflict", publicError: "investing_queue_state_conflict" };
     }
     return { id: args.queueId, accountId: "account_a" };
   }),
@@ -200,7 +207,7 @@ describe("investing approvals route", () => {
     expect(payload.history.map((row: Record<string, unknown>) => row.decision_fingerprint)).toEqual(["decision_a"]);
   });
 
-  it("updates approval status by queue identity and optimistic version", async () => {
+  it("blocks owner self-approval after queue scope validation and before the service-role RPC", async () => {
     const response = await POST(
       new Request("http://localhost/api/ops/investing/approvals", {
         method: "POST",
@@ -216,22 +223,41 @@ describe("investing approvals route", () => {
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(payload.ok).toBe(true);
-    expect(queueRows[0]?.approval_status).toBe("approved");
-    expect(queueRows[0]?.version).toBe(2);
-    expect(approvalHistoryRows).toHaveLength(1);
-    expect(approvalHistoryRows[0]?.override_applied).toBe(false);
-    expect(rpcCalls[0]).toMatchObject({
-      name: "investing_record_approval_v2",
-      args: {
-        p_actor_user_id: "owner_1",
-        p_queue_id: "11111111-1111-4111-8111-111111111111",
-        p_expected_status: "pending",
-        p_expected_version: 1,
-        p_decision: "approved",
-      },
-    });
+    expect(response.status).toBe(403);
+    expect(payload).toMatchObject({ ok: false, error: "investing_supervised_approval_authority_unavailable" });
+    expect(authzMocks.requireInvestingQueueAccess).toHaveBeenCalledWith(expect.objectContaining({
+      userId: "owner_1",
+      tenantId: "tenant_test",
+      queueId: "11111111-1111-4111-8111-111111111111",
+      expectedVersion: 1,
+    }));
+    expect(queueRows[0]?.approval_status).toBe("pending");
+    expect(queueRows[0]?.version).toBe(1);
+    expect(approvalHistoryRows).toHaveLength(0);
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("does not let a client-supplied supervisor role authorize approval", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/ops/investing/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          queueId: "11111111-1111-4111-8111-111111111111",
+          expectedStatus: "pending",
+          expectedVersion: 1,
+          decision: "approved",
+          actorRole: "supervisor",
+          approver_type: "supervisor",
+          note: "validated",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error).toBe("investing_supervised_approval_authority_unavailable");
+    expect(queueRows[0]?.approval_status).toBe("pending");
+    expect(rpcCalls).toEqual([]);
   });
 
   it("does not call the service-role approval RPC when authz rejects the queue", async () => {
@@ -310,5 +336,26 @@ describe("investing approvals route", () => {
     authState.userId = "other_user";
     const response = await GET(new Request("http://localhost/api/ops/investing/approvals?mode=investing"));
     expect((await response.json()).approvals).toEqual([]);
+  });
+
+  it("does not let another authenticated user approve a queue owned by the customer", async () => {
+    authState.userId = "other_user";
+    const response = await POST(
+      new Request("http://localhost/api/ops/investing/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          queueId: "11111111-1111-4111-8111-111111111111",
+          expectedStatus: "pending",
+          expectedVersion: 1,
+          decision: "approved",
+          note: "cross user",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect((await response.json()).error).toBe("investing_queue_not_found_or_forbidden");
+    expect(rpcCalls).toEqual([]);
   });
 });

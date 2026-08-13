@@ -65,7 +65,7 @@ export async function POST(req: Request) {
       expectedVersion: expectedQueueVersion,
       route: "/api/investing/paper/orders",
     });
-    const order = await submitPersistentPaperOrder({ userId: authz.userId, queueId, expectedQueueVersion, symbol, clientRequestId });
+    const order = await submitPersistentPaperOrder({ userId: authz.userId, tenantId: authz.tenantId, queueId, expectedQueueVersion, symbol, clientRequestId });
     return reply({ ok: true, order });
   } catch (error: unknown) {
     const authzResponse = investingAuthzResponse(error);
