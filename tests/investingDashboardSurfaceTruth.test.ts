@@ -65,7 +65,7 @@ describe("InvestingDashboardSurface customer truth", () => {
     });
   });
 
-  it("preserves normal weights for a complete EUR-valued portfolio", () => {
+  it("preserves current weights while suppressing target and drift without decision authority", () => {
     const vm = buildInvestingDashboardSurfaceViewModel({
       portfolio: {
         cash: { amountEur: 700, availability: "REAL" },
@@ -90,6 +90,48 @@ describe("InvestingDashboardSurface customer truth", () => {
     });
     expect(vm.allocationRows.find((row) => row.asset === "equity")).toMatchObject({
       currentWeight: 30,
+      targetWeight: null,
+      drift: null,
+    });
+    expect(vm.allocationRows.find((row) => row.asset === "equity")?.targetWeight).not.toBe(0);
+  });
+
+  it("preserves target and drift when customer decision authorizes target allocations", () => {
+    const vm = buildInvestingDashboardSurfaceViewModel({
+      portfolio: {
+        cash: { amountEur: 700, availability: "REAL" },
+        totalEur: 1000,
+        valuation: { totalEur: 1000, availability: "REAL", source: "market_quotes" },
+        items: [
+          {
+            symbol: "VWCE",
+            valueEur: 300,
+            valuationAvailability: "REAL",
+            priceAvailability: "REAL",
+          },
+        ],
+      },
+      daily: {
+        customerDecision: {
+          portfolio: {
+            targetAllocations: [
+              { symbol: "VWCE", assetClass: "equity", targetWeightPct: 60 },
+              { symbol: "EUR", assetClass: "cash", targetWeightPct: 40 },
+            ],
+          },
+        },
+      },
+      derived: { decisionAvailability: "REAL" },
+    });
+
+    expect(vm.allocationRows.find((row) => row.asset === "equity")).toMatchObject({
+      currentWeight: 30,
+      targetWeight: 60,
+      drift: -30,
+    });
+    expect(vm.allocationRows.find((row) => row.asset === "cash")).toMatchObject({
+      currentWeight: 70,
+      targetWeight: 40,
       drift: 30,
     });
   });
