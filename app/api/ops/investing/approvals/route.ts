@@ -143,7 +143,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "note_too_long" }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
-    // TODO: move this user-scoped approval endpoint out of /ops or add an explicit operator-only variant.
     await requireInvestingQueueAccess({
       userId: authz.userId,
       tenantId: authz.tenantId,
@@ -153,39 +152,9 @@ export async function POST(req: Request) {
       route: ROUTE,
     });
 
-    const sb = getInvestingSupabaseAdmin() as any;
-    const correlationId = `investing_approval_${crypto.randomUUID()}`;
-    const result = await sb.rpc("investing_record_approval_v2", {
-      p_actor_user_id: authz.userId,
-      p_queue_id: queueId,
-      p_expected_status: expectedStatus,
-      p_expected_version: expectedVersion,
-      p_decision: approvalStatus,
-      p_note: note,
-      p_correlation_id: correlationId,
-    } as any);
-
-    if (result.error) {
-      const message = String(result.error.message || "investing_approval_rpc_failed");
-      const code = message.includes("not_found_or_forbidden")
-        ? "investing_approval_not_found_or_forbidden"
-        : message.includes("expired")
-          ? "investing_approval_expired"
-          : "investing_approval_state_conflict";
-      const status = code.includes("not_found") ? 404 : 409;
-      return NextResponse.json({ ok: false, error: code }, { status, headers: { "Cache-Control": "no-store" } });
-    }
-
     return NextResponse.json(
-      {
-        ok: true,
-        mode: "investing",
-        queueId,
-        approvalStatus,
-        version: result.data?.version ?? expectedVersion + 1,
-        correlationId,
-      },
-      { headers: { "Cache-Control": "no-store" } },
+      { ok: false, error: "investing_supervised_approval_authority_unavailable" },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error: unknown) {
     const authzResponse = investingAuthzResponse(error);

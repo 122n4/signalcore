@@ -292,6 +292,44 @@ describe("canonical Investing accounting truth", () => {
     expect(JSON.stringify(result.movements)).not.toContain("secret-correlation");
   });
 
+  it("fails closed instead of normalizing deposit and withdrawal sign mismatches", async () => {
+    db.investing_cash_movements.push({
+      id: "negative-deposit",
+      account_id: "11111111-1111-4111-8111-111111111111",
+      movement_type: "deposit",
+      amount: -100,
+      currency: "EUR",
+      source_type: "manual_deposit",
+      created_at: "2026-08-12T09:00:00.000Z",
+    });
+
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({ code: "investing_cash_movement_semantic_mismatch" });
+
+    db.investing_cash_movements.splice(0, db.investing_cash_movements.length, {
+      id: "positive-withdrawal",
+      account_id: "11111111-1111-4111-8111-111111111111",
+      movement_type: "withdrawal",
+      amount: 100,
+      currency: "EUR",
+      source_type: "manual_withdrawal",
+      created_at: "2026-08-12T10:00:00.000Z",
+    });
+
+    await expect(readCanonicalInvestingAccountingForAccount({
+      userId: "user_a",
+      tenantId: "tenant_a",
+      accountId: "11111111-1111-4111-8111-111111111111",
+      environment: "paper",
+      database: database(),
+    })).rejects.toMatchObject({ code: "investing_cash_movement_semantic_mismatch" });
+  });
+
   it("does not convert deposits into return or withdrawals into negative performance", () => {
     const performance = buildCanonicalInvestingPerformanceRead({
       movements: [

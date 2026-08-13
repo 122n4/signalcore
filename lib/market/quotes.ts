@@ -1,10 +1,14 @@
 import { getCandles, getQuote as getNormalizedQuote } from "@/lib/market/marketClient";
+import type { MarketCacheState } from "@/lib/market/types";
 
 export type MarketQuote = {
   price: number;
-  ts: number;
+  ts: number | null;
   source: string;
   currency?: string | null;
+  cacheState?: MarketCacheState | null;
+  servedFromFallback?: boolean | null;
+  state?: "fresh" | "last_known_good" | null;
   prevClose?: number | null;
   open?: number | null;
   high?: number | null;
@@ -50,14 +54,22 @@ function setCache(key: string, quote: MarketQuote) {
   MEM_CACHE.set(key, { at: nowSeconds(), quote });
 }
 
+function timestampSeconds(value: unknown) {
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) && timestamp > 0 ? Math.floor(timestamp / 1000) : null;
+}
+
 async function normalizedQuote(symbol: string): Promise<MarketQuote | null> {
   try {
     const quote = await getNormalizedQuote(symbol, "twelvedata");
     return {
       price: quote.price,
-      ts: Math.floor((quote.timestamp ?? Date.now()) / 1000),
+      ts: timestampSeconds(quote.timestamp),
       source: quote.provider,
       currency: quote.currency ?? null,
+      cacheState: quote.cacheState ?? null,
+      servedFromFallback: quote.cacheState?.servedFromFallback ?? null,
+      state: quote.cacheState?.state ?? null,
       prevClose: quote.prevClose ?? null,
       open: quote.open ?? null,
       high: quote.high ?? null,
@@ -74,11 +86,16 @@ async function normalizedQuote(symbol: string): Promise<MarketQuote | null> {
       const candles = await getCandles(symbol, { interval: "5min", points: 2 }, "auto");
       const last = Array.isArray(candles) && candles.length ? candles[candles.length - 1] : null;
       if (!last || !Number.isFinite(last.c) || last.c <= 0) return null;
+      const ts = timestampSeconds(last.t);
+      if (ts === null) return null;
       return {
         price: last.c,
-        ts: Math.floor((last.t ?? Date.now()) / 1000),
+        ts,
         source: "market-client-candle-fallback",
         currency: null,
+        cacheState: candles.cacheState ?? null,
+        servedFromFallback: candles.cacheState?.servedFromFallback ?? null,
+        state: candles.cacheState?.state ?? null,
         prevClose: null,
         open: Number.isFinite(last.o) ? last.o : null,
         high: Number.isFinite(last.h) ? last.h : null,

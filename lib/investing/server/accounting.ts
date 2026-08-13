@@ -208,6 +208,9 @@ function projectMovements(rows: Row[], account: InvestingAccountScope): Canonica
     if (!id || !type || amount === null || amount === 0 || !CURRENCY.test(currency) || !occurredAt) {
       throw unavailable("investing_cash_movement_invalid");
     }
+    if ((type === "deposit" && amount <= 0) || (type === "withdrawal" && amount >= 0)) {
+      throw unavailable("investing_cash_movement_semantic_mismatch");
+    }
     return {
       id,
       type,

@@ -39,6 +39,10 @@ Position P&L is not total portfolio performance. A limited unrealized P&L compon
 
 TWR and MWR remain unavailable without complete valuation and cash-flow series.
 
+## Operational DB Contract Debt
+
+The app layer must not call `investing_record_daily_cycle_v2` with ambiguous financial truth. The currently recovered remote RPC contract still contains dangerous defaults for totals, cash, deployable capital and base currency. Until a forward migration explicitly removes or hardens those defaults, daily-cycle writes fail closed before the RPC whenever canonical plan authority, cash truth, quote currency, base currency, valuation, or execution authority is not proven.
+
 ## Scope Limits
 
 Paper is not LIVE. R4 preserves environment-aware account scope and does not imply live execution readiness.
