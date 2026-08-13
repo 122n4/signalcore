@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const auth = { userId: "cash_user" as string | null };
+const accountScope = {
+  result: { id: "11111111-1111-4111-8111-111111111111", baseCurrency: "EUR" } as Record<string, unknown>,
+  error: null as any,
+};
 const cashCalls: Array<Record<string, unknown>> = [];
 const reversalCalls: Array<Record<string, unknown>> = [];
 const readCalls: Array<Record<string, unknown>> = [];
@@ -14,7 +18,10 @@ vi.mock("@/lib/investing/server/authz", () => ({
     if (!auth.userId) throw { status: 401, code: "unauthorized", publicError: "unauthorized" };
     return { userId: auth.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: ["investing:read", "investing:create", "investing:verify", "investing:replay"] };
   }),
-  requireInvestingAccountAccess: vi.fn(async () => ({ id: "11111111-1111-4111-8111-111111111111" })),
+  requireInvestingAccountAccess: vi.fn(async () => {
+    if (accountScope.error) throw accountScope.error;
+    return accountScope.result;
+  }),
   investingAuthzResponse: vi.fn((error: any) =>
     error?.status ? Response.json({ ok: false, error: error.publicError ?? error.code, code: error.code }, { status: error.status }) : null,
   ),
@@ -65,6 +72,8 @@ const context = { params: Promise.resolve({ accountId }) };
 
 beforeEach(() => {
   auth.userId = "cash_user";
+  accountScope.result = { id: "11111111-1111-4111-8111-111111111111", baseCurrency: "EUR" };
+  accountScope.error = null;
   cashCalls.length = 0;
   reversalCalls.length = 0;
   readCalls.length = 0;
@@ -93,6 +102,119 @@ describe("Investing Paper cash and corporate-action route", () => {
       symbol: null,
       clientRequestId: "deposit-request-1",
     }]);
+  });
+
+  it("derives EUR cash movement currency from the authorized account when the client omits currency", async () => {
+    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "deposit",
+        amount: "25.50",
+        clientRequestId: "deposit-request-1",
+      }),
+    }), context);
+
+    expect(response.status).toBe(200);
+    expect(cashCalls).toEqual([expect.objectContaining({ currency: "EUR" })]);
+  });
+
+  it("derives USD cash movement currency from a USD authorized account without defaulting to EUR", async () => {
+    accountScope.result = { id: accountId, baseCurrency: "USD" };
+
+    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "deposit",
+        amount: "25.50",
+        clientRequestId: "deposit-request-usd",
+      }),
+    }), context);
+
+    expect(response.status).toBe(200);
+    expect(cashCalls).toEqual([expect.objectContaining({
+      currency: "USD",
+      clientRequestId: "deposit-request-usd",
+    })]);
+  });
+
+  it("blocks client currency mismatches against the authorized account currency", async () => {
+    accountScope.result = { id: accountId, baseCurrency: "USD" };
+
+    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "deposit",
+        amount: "25.50",
+        currency: "EUR",
+        clientRequestId: "deposit-request-mismatch",
+      }),
+    }), context);
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe("investing_cash_movement_currency_mismatch");
+    expect(cashCalls).toHaveLength(0);
+    expect(reversalCalls).toHaveLength(0);
+  });
+
+  it("blocks cash movements when the authorized account base currency is missing or invalid", async () => {
+    for (const baseCurrency of [null, "", "EURO"]) {
+      accountScope.result = { id: accountId, baseCurrency };
+      const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "deposit",
+          amount: "25.50",
+          clientRequestId: `deposit-request-${String(baseCurrency || "missing")}`,
+        }),
+      }), context);
+
+      expect(response.status).toBe(409);
+    }
+
+    expect(cashCalls).toHaveLength(0);
+    expect(reversalCalls).toHaveLength(0);
+  });
+
+  it("blocks foreign account scope before recording a movement", async () => {
+    accountScope.error = { status: 404, code: "investing_account_not_found_or_forbidden", publicError: "investing_account_not_found_or_forbidden" };
+
+    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "deposit",
+        amount: "25.50",
+        currency: "EUR",
+        clientRequestId: "deposit-request-foreign",
+      }),
+    }), context);
+
+    expect(response.status).toBe(404);
+    expect(cashCalls).toHaveLength(0);
+    expect(reversalCalls).toHaveLength(0);
+  });
+
+  it("blocks foreign tenant scope before recording a movement", async () => {
+    accountScope.error = { status: 403, code: "investing_tenant_forbidden", publicError: "investing_tenant_forbidden" };
+
+    const response = await POST(new Request("http://localhost/api/investing/paper/accounts/x/movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "withdrawal",
+        amount: "1",
+        currency: "EUR",
+        clientRequestId: "withdraw-request-foreign-tenant",
+      }),
+    }), context);
+
+    expect(response.status).toBe(403);
+    expect(cashCalls).toHaveLength(0);
+    expect(reversalCalls).toHaveLength(0);
   });
 
   it("blocks Live before calling financial code", async () => {
