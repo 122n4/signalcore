@@ -222,6 +222,8 @@ describe("Investing dashboard tenant-scoped read", () => {
     });
     expect(result.portfolio.environment).toBe("paper");
     expect(result.portfolio.accountStatus).toBe("active");
+    expect(result.portfolio.baseCurrency).toBe("EUR");
+    expect(result.portfolio.base_currency).toBe("EUR");
     expect(result.portfolio.items).toHaveLength(1);
     expect(result.portfolio.items[0]).toMatchObject({
       symbol: "VWCE",
@@ -305,6 +307,89 @@ describe("Investing dashboard tenant-scoped read", () => {
       availability: "UNAVAILABLE",
       value: null,
     });
+  });
+
+  it("preserves an explicit USD account base currency without inventing EUR valuation truth", async () => {
+    db.investing_accounts[0].base_currency = "USD";
+    db.investing_cash_balances.splice(0, db.investing_cash_balances.length, {
+      account_id: "account-a",
+      currency: "USD",
+      available_amount: 700,
+      as_of: "2026-08-02T09:30:00.000Z",
+    });
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "USD", source: "verified_fresh_test" } });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.accountId).toBe("account-a");
+    expect(result.portfolio.baseCurrency).toBe("USD");
+    expect(result.portfolio.base_currency).toBe("USD");
+    expect(result.portfolio.cashEur).toBeNull();
+    expect(result.portfolio.cash).toMatchObject({
+      amountEur: null,
+      availability: "UNAVAILABLE",
+      asOf: null,
+    });
+    expect(result.portfolio.items[0]).toMatchObject({
+      symbol: "VWCE",
+      quoteCurrency: "USD",
+      valueEur: null,
+      value_eur: null,
+      valuationSource: "unavailable",
+      valuationAvailability: "UNAVAILABLE",
+    });
+    expect(result.portfolio.totalEur).toBeNull();
+    expect(result.portfolio.valuation).toMatchObject({
+      cashEur: null,
+      totalEur: null,
+      source: "unavailable",
+      availability: "UNAVAILABLE",
+    });
+  });
+
+  it("does not default a missing account base currency to EUR", async () => {
+    delete db.investing_accounts[0].base_currency;
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.baseCurrency).toBeNull();
+    expect(result.portfolio.base_currency).toBeNull();
+    expect(result.portfolio.cashEur).toBeNull();
+    expect(result.portfolio.cash).toMatchObject({
+      amountEur: null,
+      availability: "UNAVAILABLE",
+      asOf: null,
+    });
+    expect(result.portfolio.items[0]).toMatchObject({
+      quoteCurrency: "EUR",
+      valueEur: null,
+      value_eur: null,
+      valuationSource: "unavailable",
+      valuationAvailability: "UNAVAILABLE",
+    });
+    expect(result.portfolio.totalEur).toBeNull();
+    expect(result.portfolio.valuation.availability).toBe("UNAVAILABLE");
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+      reason: "base_currency_unavailable",
+    });
+  });
+
+  it("does not default a null or invalid account base currency to EUR", async () => {
+    for (const baseCurrency of [null, "EURO"]) {
+      db.investing_accounts[0].base_currency = baseCurrency;
+      mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+
+      const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+      expect(result.portfolio.baseCurrency).toBeNull();
+      expect(result.portfolio.cashEur).toBeNull();
+      expect(result.portfolio.items[0].valueEur).toBeNull();
+      expect(result.portfolio.totalEur).toBeNull();
+      expect(result.portfolio.valuation.availability).toBe("UNAVAILABLE");
+    }
   });
 
   it("does not label stale USD quote evidence as a stale EUR valuation without FX lineage", async () => {

@@ -340,14 +340,15 @@ function validateLedger(args: {
   };
 }
 
-function rowCurrenciesAreBase(rows: Row[], baseCurrency: string) {
+function rowCurrenciesAreBase(rows: Row[], baseCurrency: string | null) {
+  if (!baseCurrency) return false;
   if (rows.length === 0) return true;
   return rows.every((row) => currency(row.currency) === baseCurrency);
 }
 
 function unavailableHistoricalComponent(args: {
   rows: Row[];
-  baseCurrency: string;
+  baseCurrency: string | null;
   source: string;
   method: string;
   asOf: string | null;
@@ -403,15 +404,17 @@ export function buildCanonicalInvestingPerformanceRead(args: {
   fills?: Row[];
   fees?: Row[];
   asOf?: string | null;
-  baseCurrency?: string;
+  baseCurrency?: string | null;
 }): CanonicalPerformanceRead {
   const asOf = args.asOf ?? null;
-  const baseCurrency = currency(args.baseCurrency) ?? "EUR";
+  const baseCurrency = currency(args.baseCurrency);
   const items = Array.isArray(args.portfolio?.items) ? args.portfolio.items : [];
   const activeItems = items.filter((item) => numberOrZero(item.qty ?? item.quantity) > 0);
-  const unrealizedEvidence = activeItems.map((item) => unrealizedPnlEvidence(item, baseCurrency));
-  const hasUnrealizedInputs = activeItems.length > 0 && unrealizedEvidence.every((result) => result.ok);
-  const unrealizedPnlUnavailableReason = activeItems.length === 0
+  const unrealizedEvidence = baseCurrency ? activeItems.map((item) => unrealizedPnlEvidence(item, baseCurrency)) : [];
+  const hasUnrealizedInputs = Boolean(baseCurrency) && activeItems.length > 0 && unrealizedEvidence.every((result) => result.ok);
+  const unrealizedPnlUnavailableReason = !baseCurrency
+    ? "base_currency_unavailable"
+    : activeItems.length === 0
     ? "no_active_holding_evidence"
     : unrealizedEvidence.find((result) => !result.ok)?.reason ?? "market_quote_evidence_missing";
   const unrealizedPnl = hasUnrealizedInputs
