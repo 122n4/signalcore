@@ -12,7 +12,25 @@ import { readInvestingPaperConfig } from "@/lib/investing/server/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const CURRENCY = /^[A-Z]{3}$/;
+const MONEY = /^\d{1,10}(?:\.\d{1,8})?$/;
 const reply = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
+
+function hasOwn(row: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(row, key);
+}
+
+function explicitCurrency(row: Record<string, unknown>) {
+  if (!hasOwn(row, "currency") || row.currency == null) return null;
+  const value = String(row.currency).trim().toUpperCase();
+  return CURRENCY.test(value) ? value : null;
+}
+
+function explicitMoney(row: Record<string, unknown>, key: string) {
+  if (!hasOwn(row, key) || row[key] == null) return null;
+  const value = String(row[key]).trim();
+  return MONEY.test(value) ? value : null;
+}
 
 export async function GET(req: Request) {
   try {
@@ -42,12 +60,17 @@ export async function POST(req: Request) {
     if (Number(req.headers.get("content-length") || 0) > 16_384) return reply({ ok: false, error: "request_too_large" }, 413);
     readInvestingPaperConfig();
     const body = await req.json().catch(() => null);
-    const portfolioId = String(body?.portfolioId || "").trim();
-    const clientRequestId = String(body?.clientRequestId || "").trim();
-    const currency = String(body?.currency || "EUR").trim().toUpperCase();
-    const environment = String(body?.environment || "paper").trim().toLowerCase();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return reply({ ok: false, error: "invalid_account_command" }, 400);
+    }
+    const command = body as Record<string, unknown>;
+    const portfolioId = String(command.portfolioId || "").trim();
+    const clientRequestId = String(command.clientRequestId || "").trim();
+    const currency = explicitCurrency(command);
+    const initialDepositInput = explicitMoney(command, "initialDeposit");
+    const environment = String(command.environment || "paper").trim().toLowerCase();
     if (environment === "live") return reply({ ok: false, error: "investing_live_execution_blocked" }, 403);
-    if (environment !== "paper" || body?.action !== "open_paper_account" || !SAFE_ID.test(portfolioId) || !SAFE_ID.test(clientRequestId) || !/^[A-Z]{3}$/.test(currency)) {
+    if (environment !== "paper" || command.action !== "open_paper_account" || !SAFE_ID.test(portfolioId) || !SAFE_ID.test(clientRequestId) || !currency || !initialDepositInput) {
       return reply({ ok: false, error: "invalid_account_command" }, 400);
     }
     await assertInvestingPortfolioScope({
@@ -56,7 +79,7 @@ export async function POST(req: Request) {
       portfolioId,
       route: "/api/investing/paper/accounts",
     });
-    const initialDeposit = toMoney(String(body?.initialDeposit ?? "0"), 8);
+    const initialDeposit = toMoney(initialDepositInput, 8);
     const database = getInvestingSupabaseAdmin() as any;
     const result = await database.rpc("investing_open_paper_account_v2", {
       p_actor_user_id: authz.userId,
