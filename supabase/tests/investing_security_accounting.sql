@@ -545,8 +545,34 @@ begin
   exception when others then if sqlerrm not like '%investing_insufficient_available_cash%' then raise; end if; end;
   perform public.investing_record_cash_movement_v2('validation_user_a',account_a,'dividend',10,'EUR','VWCE','validation-dividend-a','validation-dividend-corr-a');
   select id into dividend_movement from public.investing_cash_movements where account_id=account_a and source_id='validation-dividend-a';
-  perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a',now());
-  perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',0.5,'reverse_split','validation-rsplit-a','validation-rsplit-corr-a',now());
+  begin
+    perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-null-split','validation-null-split-corr',null);
+    raise exception 'split_null_effective_at_accepted';
+  exception when others then if sqlerrm not like '%investing_split_effective_at_required%' then raise; end if; end;
+  begin
+    perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-future-split','validation-future-split-corr',statement_timestamp()+interval '6 minutes');
+    raise exception 'split_future_effective_at_accepted';
+  exception when others then if sqlerrm not like '%investing_split_effective_at_future%' then raise; end if; end;
+  begin
+    perform public.investing_apply_split_v2('validation_user_a',account_b,'VWCE',2,'split','validation-cross-split','validation-cross-split-corr',timestamptz '2026-08-12T10:00:00Z');
+    raise exception 'cross_owner_split_accepted';
+  exception when others then if sqlerrm not like '%not_found_or_forbidden%' then raise; end if; end;
+  result:=public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a',timestamptz '2026-08-12T10:00:00Z');
+  if (result->>'replayed')::boolean then raise exception 'split_first_apply_marked_replayed'; end if;
+  result:=public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a-replay',timestamptz '2026-08-12T12:00:00+02:00');
+  if not (result->>'replayed')::boolean then raise exception 'split_replay_not_idempotent'; end if;
+  if (select count(*) from public.investing_corporate_actions where account_id=account_a and correlation_id='validation-split-a')<>1 then
+    raise exception 'split_replay_double_mutated';
+  end if;
+  if not exists(
+    select 1 from public.investing_corporate_actions
+    where account_id=account_a and correlation_id='validation-split-a' and effective_at=timestamptz '2026-08-12T10:00:00Z'
+  ) then raise exception 'split_effective_at_not_persisted'; end if;
+  begin
+    perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a-mismatch',timestamptz '2026-08-12T10:00:01Z');
+    raise exception 'split_effective_at_idempotency_mismatch_accepted';
+  exception when others then if sqlerrm not like '%investing_idempotency_payload_mismatch%' then raise; end if; end;
+  perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',0.5,'reverse_split','validation-rsplit-a','validation-rsplit-corr-a',timestamptz '2026-08-12T10:01:00Z');
   perform public.investing_reverse_cash_movement_v2('validation_user_a',account_a,dividend_movement,'validation-reversal-a','validation-reversal-corr-a','validation reversal');
   result:=public.investing_reverse_cash_movement_v2('validation_user_a',account_a,dividend_movement,'validation-reversal-a','validation-reversal-replay-a','validation reversal');
   if not (result->>'replayed')::boolean then raise exception 'reversal_replay_not_idempotent'; end if;

@@ -4,9 +4,30 @@ import { toMoney } from "@/lib/investing/money/decimal";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { readInvestingPaperConfig } from "@/lib/investing/server/config";
 
+export const INVESTING_CORPORATE_ACTION_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const ISO_WITH_EXPLICIT_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
 function resultOrThrow(result: { data?: unknown; error?: { message?: string } | null }, fallback: string) {
   if (result.error) throw new Error(String(result.error.message || fallback).split("\n", 1)[0]);
   return result.data;
+}
+
+export function validateInvestingCorporateActionEffectiveAt(value: unknown, nowMs = Date.now()) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return { ok: false as const, error: "investing_corporate_action_effective_at_required" };
+  }
+  const raw = value.trim();
+  if (!ISO_WITH_EXPLICIT_ZONE.test(raw)) {
+    return { ok: false as const, error: "investing_corporate_action_effective_at_invalid" };
+  }
+  const parsedMs = Date.parse(raw);
+  if (!Number.isFinite(parsedMs)) {
+    return { ok: false as const, error: "investing_corporate_action_effective_at_invalid" };
+  }
+  if (parsedMs > nowMs + INVESTING_CORPORATE_ACTION_MAX_FUTURE_SKEW_MS) {
+    return { ok: false as const, error: "investing_corporate_action_effective_at_future" };
+  }
+  return { ok: true as const, effectiveAt: new Date(parsedMs).toISOString() };
 }
 
 export async function recordPersistentPaperCashMovement(args: {
@@ -58,9 +79,11 @@ export async function applyPersistentPaperSplit(args: {
   ratio: string;
   action: "split" | "reverse_split";
   clientRequestId: string;
-  effectiveAt?: string | null;
+  effectiveAt: string;
 }) {
   readInvestingPaperConfig();
+  const effectiveAt = validateInvestingCorporateActionEffectiveAt(args.effectiveAt);
+  if (!effectiveAt.ok) throw new Error(effectiveAt.error);
   const database = getInvestingSupabaseAdmin() as any;
   return resultOrThrow(await database.rpc("investing_apply_split_v2", {
     p_actor_user_id: args.userId,
@@ -70,6 +93,6 @@ export async function applyPersistentPaperSplit(args: {
     p_action_type: args.action,
     p_idempotency_key: args.clientRequestId,
     p_correlation_id: `investing_corporate_action_${randomUUID()}`,
-    p_effective_at: args.effectiveAt || new Date().toISOString(),
+    p_effective_at: effectiveAt.effectiveAt,
   }), "investing_corporate_action_failed");
 }
