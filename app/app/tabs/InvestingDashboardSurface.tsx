@@ -315,7 +315,7 @@ function buildViewModel(data: any) {
   const canShowCashValue = cashAvailability !== "UNAVAILABLE" && cashEurRaw !== null;
   const cashEur = cashEurRaw ?? 0;
   const decisionAvailability = normalizeAvailability(data?.derived?.decisionAvailability ?? data?.derived?.decisionProvenance?.status);
-  const hasAuthorizedTargetAllocations = decisionAvailability !== "UNAVAILABLE" && Array.isArray(decision?.portfolio?.targetAllocations);
+  const hasAuthorizedTargetAllocations = decisionAvailability !== "UNAVAILABLE" && Array.isArray(decision?.portfolio?.targetAllocations) && decision.portfolio.targetAllocations.length > 0;
   const targetRows = hasAuthorizedTargetAllocations ? decision.portfolio.targetAllocations : [];
   const actionRows = Array.isArray(decision?.portfolio?.actions) ? decision.portfolio.actions : [];
   const targetBySymbol = new Map<string, string>();
@@ -340,7 +340,7 @@ function buildViewModel(data: any) {
   const allocationRows = assets.map((asset) => {
     const currentValueEur = currentByAsset.get(asset) || 0;
     const currentWeight = totalEur !== null && totalEur > 0 ? (currentValueEur / totalEur) * 100 : null;
-    const targetWeight = hasAuthorizedTargetAllocations ? targetByAsset.get(asset) ?? 0 : null;
+    const targetWeight = hasAuthorizedTargetAllocations && targetByAsset.has(asset) ? targetByAsset.get(asset)! : null;
     const drift = currentWeight === null || targetWeight === null ? null : currentWeight - targetWeight;
     return {
       asset,
