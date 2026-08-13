@@ -71,6 +71,11 @@ function fmtPct(value: unknown, digits = 1) {
   return `${sign}${n.toFixed(digits)}%`;
 }
 
+function fmtNullablePct(value: unknown, digits = 1) {
+  const n = nullableNum(value);
+  return n === null ? "Unavailable" : `${n.toFixed(digits)}%`;
+}
+
 function fmtDateTime(value?: string | null) {
   if (!value) return "Unavailable";
   const date = new Date(value);
@@ -331,15 +336,18 @@ function buildViewModel(data: any) {
   }
   const assets = Array.from(new Set(["equity", "bonds", "commodity", "cash", ...Array.from(currentByAsset.keys()), ...Array.from(targetByAsset.keys())]));
   const allocationRows = assets.map((asset) => {
-    const currentWeight = totalEur !== null && totalEur > 0 ? ((currentByAsset.get(asset) || 0) / totalEur) * 100 : 0;
+    const currentValueEur = currentByAsset.get(asset) || 0;
+    const currentWeight = totalEur !== null && totalEur > 0 ? (currentValueEur / totalEur) * 100 : null;
     const targetWeight = targetByAsset.get(asset) || 0;
+    const drift = currentWeight === null ? null : currentWeight - targetWeight;
     return {
       asset,
       label: assetLabel(asset),
       color: assetColors[asset] || "#64748b",
+      currentValueEur,
       currentWeight,
       targetWeight,
-      drift: currentWeight - targetWeight,
+      drift,
     };
   });
   const coveragePct = num(portfolio?.valuation?.coveragePct ?? decision?.dataQuality?.pricingCoveragePct, items.length ? 0 : 100);
@@ -354,12 +362,29 @@ function buildViewModel(data: any) {
   const valuationLabel = valuationSource === "cash_only"
     ? `${availabilityLabel(valuationAvailability)} - cash only`
     : `${availabilityLabel(valuationAvailability)} - ${coveragePct}% proven price coverage`;
+  const holdingRows = items.map((item: any) => {
+    const value = nullableNum(item.valueEur ?? item.value_eur);
+    const weightPct = value !== null && totalEur !== null && totalEur > 0 ? (value / totalEur) * 100 : null;
+    const itemValuationAvailability = normalizeAvailability(item.valuationAvailability ?? item.valuation_availability);
+    const itemPriceAvailability = normalizeAvailability(item.priceAvailability ?? item.price_availability);
+    return {
+      item,
+      symbol: String(item.symbol || "").toUpperCase(),
+      value,
+      valueText: itemValuationAvailability === "UNAVAILABLE" || value === null ? FINANCIAL_DATA_UNAVAILABLE : fmtEUR(value),
+      weightPct,
+      weightText: fmtNullablePct(weightPct),
+      valuationAvailability: itemValuationAvailability,
+      priceAvailability: itemPriceAvailability,
+    };
+  });
   return {
     decision,
     runtime,
     plan: data?.plan ?? null,
     portfolio,
     items,
+    holdingRows,
     totalEur,
     cashEur,
     cashAvailability,
@@ -387,6 +412,8 @@ function buildViewModel(data: any) {
     lastSnapshotAt: data?.derived?.lastSnapshotAt ?? data?.daily?.lastSnapshotAt ?? null,
   };
 }
+
+export const buildInvestingDashboardSurfaceViewModel = buildViewModel;
 
 function StatusRow({ label, value, tone = "neutral" }: { label: string; value: React.ReactNode; tone?: Tone }) {
   return (
@@ -483,8 +510,8 @@ function TopMetrics({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
   );
 }
 
-function AllocationPanel({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
-  const rows = vm.allocationRows.filter((row) => row.currentWeight > 0 || row.targetWeight > 0);
+function AllocationPanel({ vm }: { vm: ReturnType<typeof buildInvestingDashboardSurfaceViewModel> }) {
+  const rows = vm.allocationRows.filter((row) => row.currentValueEur > 0 || (row.currentWeight ?? 0) > 0 || row.targetWeight > 0);
   return (
     <Panel title="Current vs Target Allocation" subtitle="Canonical Paper portfolio compared with mandate policy" right={<Badge tone={stateTone(vm.decision?.researchPublication?.validationStatus)}> {vm.decision?.researchPublication?.validationStatus || "unavailable"} </Badge>}>
       {rows.length ? (
@@ -504,9 +531,9 @@ function AllocationPanel({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
                 {rows.map((row) => (
                   <tr key={row.asset}>
                     <td className="py-2 font-semibold text-white"><span className="mr-2 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: row.color }} />{row.label}</td>
-                    <td className="py-2 text-right text-[#dbe7f8]">{row.currentWeight.toFixed(1)}%</td>
+                    <td className="py-2 text-right text-[#dbe7f8]">{fmtNullablePct(row.currentWeight)}</td>
                     <td className="py-2 text-right text-[#dbe7f8]">{row.targetWeight.toFixed(1)}%</td>
-                    <td className={clsx("py-2 text-right font-bold", Math.abs(row.drift) <= 1 ? "text-emerald-300" : row.drift > 0 ? "text-rose-300" : "text-emerald-300")}>{fmtPct(row.drift)}</td>
+                    <td className={clsx("py-2 text-right font-bold", row.drift === null ? "text-[#8fa2bf]" : Math.abs(row.drift) <= 1 ? "text-emerald-300" : row.drift > 0 ? "text-rose-300" : "text-emerald-300")}>{row.drift === null ? "Unavailable" : fmtPct(row.drift)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -569,17 +596,13 @@ function PortfolioSnapshot({ vm, compact = false }: { vm: ReturnType<typeof buil
           <table className="w-full text-left text-xs">
             <thead className="text-[#7f91ad]"><tr><th className="py-2">Symbol</th><th className="py-2 text-right">Value</th><th className="py-2 text-right">Weight</th><th className="py-2 text-right">Coverage</th></tr></thead>
             <tbody className="divide-y divide-[#22314d]">
-              {vm.items.slice(0, compact ? 5 : 12).map((item: any) => {
-                const value = nullableNum(item.valueEur ?? item.value_eur);
-                const weight = value !== null && vm.totalEur !== null && vm.totalEur > 0 ? (value / vm.totalEur) * 100 : 0;
-                const itemValuationAvailability = normalizeAvailability(item.valuationAvailability ?? item.valuation_availability);
-                const itemPriceAvailability = normalizeAvailability(item.priceAvailability ?? item.price_availability);
+              {vm.holdingRows.slice(0, compact ? 5 : 12).map((row) => {
                 return (
-                  <tr key={String(item.symbol)}>
-                    <td className="py-2 font-bold text-white">{String(item.symbol || "").toUpperCase()}</td>
-                    <td className="py-2 text-right text-[#dbe7f8]">{itemValuationAvailability === "UNAVAILABLE" || value === null ? FINANCIAL_DATA_UNAVAILABLE : fmtEUR(value)}</td>
-                    <td className="py-2 text-right text-[#dbe7f8]">{weight.toFixed(1)}%</td>
-                    <td className="py-2 text-right"><Badge tone={availabilityTone(itemPriceAvailability)}>{availabilityLabel(itemPriceAvailability)}</Badge></td>
+                  <tr key={row.symbol}>
+                    <td className="py-2 font-bold text-white">{row.symbol}</td>
+                    <td className="py-2 text-right text-[#dbe7f8]">{row.valueText}</td>
+                    <td className="py-2 text-right text-[#dbe7f8]">{row.weightText}</td>
+                    <td className="py-2 text-right"><Badge tone={availabilityTone(row.priceAvailability)}>{availabilityLabel(row.priceAvailability)}</Badge></td>
                   </tr>
                 );
               })}
@@ -946,14 +969,14 @@ function ReportsPage({ vm }: { vm: ReturnType<typeof buildViewModel> }) {
         </Panel>
         <Panel title="Allocation & Drift Report" subtitle="By asset class">
           <div className="space-y-2">
-            {vm.allocationRows.filter((row) => row.currentWeight > 0 || row.targetWeight > 0).map((row) => (
+            {vm.allocationRows.filter((row) => row.currentValueEur > 0 || (row.currentWeight ?? 0) > 0 || row.targetWeight > 0).map((row) => (
               <div key={row.asset} className="flex items-center justify-between gap-3 border-b border-[#22314d] py-2 text-sm last:border-0">
                 <span className="inline-flex items-center gap-2 font-bold text-white">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: row.color }} />
                   {row.label}
                 </span>
-                <span className="text-right text-[#dbe7f8]">{row.currentWeight.toFixed(1)}% / {row.targetWeight.toFixed(1)}%</span>
-                <span className={clsx("text-right font-bold", Math.abs(row.drift) <= 1 ? "text-emerald-300" : "text-amber-300")}>{fmtPct(row.drift)}</span>
+                <span className="text-right text-[#dbe7f8]">{fmtNullablePct(row.currentWeight)} / {row.targetWeight.toFixed(1)}%</span>
+                <span className={clsx("text-right font-bold", row.drift === null ? "text-[#8fa2bf]" : Math.abs(row.drift) <= 1 ? "text-emerald-300" : "text-amber-300")}>{row.drift === null ? "Unavailable" : fmtPct(row.drift)}</span>
               </div>
             ))}
           </div>

@@ -16,6 +16,8 @@ Customer-visible portfolio valuation is currency-safe. A quote may contribute to
 
 Unavailable EUR values are represented as `null`, never synthetic zero. If any material active holding lacks a provable EUR valuation, `portfolio.totalEur` and `portfolio.valuation.totalEur` are `null`; canonical cash remains independently available through `portfolio.cash.amountEur`.
 
+Customer-visible portfolio weights derived from `totalEur` are also nullable. Unknown holding weight or current allocation weight is displayed as unavailable, never `0%`.
+
 Cost-basis fallback cannot create unrealized P&L. If a holding does not have usable current market evidence, the unrealized P&L component is UNAVAILABLE. It must not be displayed as EUR 0, 0%, or no gain/loss.
 
 Unrealized P&L requires every active positive-quantity holding included in the portfolio to have:

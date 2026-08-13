@@ -63,7 +63,7 @@ function priceAvailabilityFromQuote(quote: Record<string, unknown>, price: numbe
 
 function valuationAvailability(args: { priceAvailability: AvailabilityStatus; valuationSource: string }): AvailabilityStatus {
   if (args.valuationSource === "market_quote" && args.priceAvailability === "REAL") return "REAL";
-  if (args.priceAvailability === "STALE") return "STALE";
+  if (args.valuationSource === "market_quote" && args.priceAvailability === "STALE") return "STALE";
   if (args.valuationSource === "cost_basis_fallback") return "ESTIMATED";
   return "UNAVAILABLE";
 }

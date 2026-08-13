@@ -307,6 +307,33 @@ describe("Investing dashboard tenant-scoped read", () => {
     });
   });
 
+  it("does not label stale USD quote evidence as a stale EUR valuation without FX lineage", async () => {
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "USD", source: "last_known_good" } });
+
+    const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
+
+    expect(result.portfolio.items[0]).toMatchObject({
+      symbol: "VWCE",
+      price: 100,
+      priceAvailability: "STALE",
+      quoteCurrency: "USD",
+      valueEur: null,
+      value_eur: null,
+      valuationSource: "unavailable",
+      valuationAvailability: "UNAVAILABLE",
+    });
+    expect(result.portfolio.totalEur).toBeNull();
+    expect(result.portfolio.valuation).toMatchObject({
+      totalEur: null,
+      availability: "UNAVAILABLE",
+      missingPriceSymbols: ["VWCE"],
+    });
+    expect(result.portfolio.performance.components.unrealizedPnl).toMatchObject({
+      availability: "UNAVAILABLE",
+      value: null,
+    });
+  });
+
   it("does not default a missing quote currency to EUR for portfolio valuation", async () => {
     mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "verified_fresh_test" } });
 
