@@ -1,15 +1,61 @@
 import { randomUUID } from "node:crypto";
 
-import { getQuotes } from "@/lib/market/quotes";
+import { getQuotes, type MarketQuote } from "@/lib/market/quotes";
 import { multiplyMoney, subtractMoney } from "@/lib/investing/money/decimal";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { readInvestingPaperConfig } from "@/lib/investing/server/config";
 import { requireInvestingAccountAccess, requireInvestingQueueAccess } from "@/lib/investing/server/authz";
 
 const CURRENCY = /^[A-Z]{3}$/;
+const PAPER_EXECUTION_QUOTE_MAX_AGE_MS = 15 * 60_000;
+const PAPER_EXECUTION_QUOTE_MAX_FUTURE_MS = 60_000;
 
 function databaseError(error: { message?: string } | null, fallback: string) {
   if (error) throw new Error(String(error.message || fallback).split("\n", 1)[0]);
+}
+
+function validatePaperExecutionQuote(quote: MarketQuote | undefined, accountBaseCurrency: string) {
+  if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) {
+    throw new Error("investing_market_quote_unavailable");
+  }
+
+  const quoteCurrency = typeof quote.currency === "string" ? quote.currency.trim().toUpperCase() : "";
+  if (!quoteCurrency || quoteCurrency !== accountBaseCurrency) {
+    throw new Error("investing_market_quote_currency_unavailable");
+  }
+
+  const timestampSeconds = Number(quote.ts);
+  if (!Number.isFinite(timestampSeconds) || timestampSeconds <= 0) {
+    throw new Error("investing_market_quote_timestamp_unavailable");
+  }
+
+  const cacheState = quote.cacheState ?? null;
+  if (!cacheState) {
+    throw new Error("investing_market_quote_provenance_unavailable");
+  }
+  if (cacheState.stale) {
+    throw new Error("investing_market_quote_stale");
+  }
+  if (cacheState.servedFromFallback || quote.servedFromFallback) {
+    throw new Error("investing_market_quote_provenance_unavailable");
+  }
+  if (cacheState.state === "last_known_good" || quote.state === "last_known_good") {
+    throw new Error("investing_market_quote_provenance_unavailable");
+  }
+
+  const timestampMs = timestampSeconds * 1_000;
+  const nowMs = Date.now();
+  if (timestampMs > nowMs + PAPER_EXECUTION_QUOTE_MAX_FUTURE_MS) {
+    throw new Error("investing_market_quote_future_timestamp");
+  }
+  if (timestampMs < nowMs - PAPER_EXECUTION_QUOTE_MAX_AGE_MS) {
+    throw new Error("investing_market_quote_stale");
+  }
+
+  return {
+    price: quote.price,
+    marketDataAsOf: new Date(timestampMs).toISOString(),
+  };
 }
 
 export async function submitPersistentPaperOrder(args: {
@@ -43,20 +89,18 @@ export async function submitPersistentPaperOrder(args: {
     database,
     route: "/api/investing/paper/orders",
   });
-  const quote = (await getQuotes({ symbols: [symbol], ttlSec: 30 }))[symbol];
-  if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) throw new Error("investing_market_quote_unavailable");
   const accountBaseCurrency = account.baseCurrency.trim().toUpperCase();
   if (!CURRENCY.test(accountBaseCurrency)) throw new Error("investing_account_currency_unavailable");
-  const quoteCurrency = typeof quote.currency === "string" ? quote.currency.trim().toUpperCase() : "";
-  if (!quoteCurrency || quoteCurrency !== accountBaseCurrency) throw new Error("investing_market_quote_currency_unavailable");
+  const quote = (await getQuotes({ symbols: [symbol], ttlSec: 30 }))[symbol];
+  const validatedQuote = validatePaperExecutionQuote(quote, accountBaseCurrency);
   const correlationId = `investing_submit_${randomUUID()}`;
   const submitted = await database.rpc("investing_submit_paper_order_v2", {
     p_actor_user_id: args.userId,
     p_queue_id: args.queueId,
     p_expected_queue_version: args.expectedQueueVersion,
     p_symbol: symbol,
-    p_market_price: quote.price,
-    p_market_data_as_of: new Date(quote.ts * 1_000).toISOString(),
+    p_market_price: validatedQuote.price,
+    p_market_data_as_of: validatedQuote.marketDataAsOf,
     p_client_order_id: args.clientRequestId,
     p_idempotency_key: args.clientRequestId,
     p_correlation_id: correlationId,

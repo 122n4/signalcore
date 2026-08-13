@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = Record<string, any>;
 
@@ -10,8 +10,23 @@ const rows: Record<string, Row[]> = {
 };
 const calls: Array<{ table: string; filters: Array<[string, unknown]>; limit: number | null }> = [];
 const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+type TestMarketQuote = {
+  price: number;
+  ts: number | null;
+  source: string;
+  currency?: string | null;
+  cacheState?: {
+    stale: boolean;
+    servedFromFallback: boolean;
+    state: "fresh" | "last_known_good";
+    lastGoodAt: number | null;
+  } | null;
+  servedFromFallback?: boolean | null;
+  state?: "fresh" | "last_known_good" | null;
+};
+
 const quoteState = vi.hoisted(() => ({
-  quotes: {} as Record<string, { price: number; ts: number; source: string; currency?: string | null }>,
+  quotes: {} as Record<string, TestMarketQuote>,
   calls: [] as Array<{ symbols: string[]; ttlSec?: number }>,
 }));
 
@@ -161,7 +176,36 @@ function dailyCommand() {
   };
 }
 
+function paperOrderCommand(clientRequestId = "paper-1") {
+  return {
+    userId: "user_a",
+    tenantId: "tenant_a",
+    queueId: "11111111-1111-4111-8111-111111111111",
+    expectedQueueVersion: 1,
+    symbol: "VWCE",
+    clientRequestId,
+  };
+}
+
+function freshQuote(overrides: Partial<TestMarketQuote> = {}): TestMarketQuote {
+  return {
+    price: 100,
+    ts: Math.floor(Date.parse("2026-08-13T11:59:30.000Z") / 1_000),
+    source: "test",
+    currency: "EUR",
+    cacheState: {
+      stale: false,
+      servedFromFallback: false,
+      state: "fresh",
+      lastGoodAt: null,
+    },
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-13T12:00:00.000Z"));
   for (const tableRows of Object.values(rows)) tableRows.splice(0, tableRows.length);
   rows.investing_accounts.push(activeAccount());
   rows.user_settings.push({
@@ -174,6 +218,10 @@ beforeEach(() => {
   rpcCalls.length = 0;
   quoteState.calls.length = 0;
   quoteState.quotes = {};
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("canonical cross-slice Investing safety", () => {
@@ -229,68 +277,95 @@ describe("canonical cross-slice Investing safety", () => {
 
   it("allows persistent Paper order submission only when quote currency matches the authorized account base currency", async () => {
     rows.investing_execution_queue.push(queue());
-    quoteState.quotes = { VWCE: { price: 100, ts: 1_786_000_000, source: "test", currency: "EUR" } };
+    quoteState.quotes = { VWCE: freshQuote() };
 
     const result = await submitPersistentPaperOrder({
-      userId: "user_a",
-      tenantId: "tenant_a",
-      queueId: "11111111-1111-4111-8111-111111111111",
-      expectedQueueVersion: 1,
-      symbol: "VWCE",
-      clientRequestId: "paper-1",
+      ...paperOrderCommand("paper-1"),
     });
 
     expect(result).toMatchObject({ id: "order-1", status: "submitted" });
     expect(rpcCalls.map((call) => call.name)).toEqual(["investing_submit_paper_order_v2", "investing_ack_paper_order_v2"]);
+    expect(rpcCalls[0]?.args.p_market_data_as_of).toBe("2026-08-13T11:59:30.000Z");
   });
 
   it("blocks USD, unknown, missing-currency, and client-implied currency overrides before Paper order RPCs", async () => {
     rows.investing_execution_queue.push(queue());
-    quoteState.quotes = { VWCE: { price: 100, ts: 1_786_000_000, source: "test", currency: "USD" } };
+    quoteState.quotes = { VWCE: freshQuote({ currency: "USD" }) };
 
     await expect(submitPersistentPaperOrder({
-      userId: "user_a",
-      tenantId: "tenant_a",
-      queueId: "11111111-1111-4111-8111-111111111111",
-      expectedQueueVersion: 1,
-      symbol: "VWCE",
-      clientRequestId: "paper-usd",
+      ...paperOrderCommand("paper-usd"),
     })).rejects.toThrow("investing_market_quote_currency_unavailable");
 
-    quoteState.quotes = { VWCE: { price: 100, ts: 1_786_000_000, source: "test", currency: null } };
+    quoteState.quotes = { VWCE: freshQuote({ currency: null }) };
     await expect(submitPersistentPaperOrder({
-      userId: "user_a",
-      tenantId: "tenant_a",
-      queueId: "11111111-1111-4111-8111-111111111111",
-      expectedQueueVersion: 1,
-      symbol: "VWCE",
-      clientRequestId: "paper-missing-currency",
+      ...paperOrderCommand("paper-missing-currency"),
     })).rejects.toThrow("investing_market_quote_currency_unavailable");
 
-    quoteState.quotes = { VWCE: { price: 100, ts: 1_786_000_000, source: "test", currency: "ZZZ" } };
+    quoteState.quotes = { VWCE: freshQuote({ currency: "ZZZ" }) };
     await expect(submitPersistentPaperOrder({
-      userId: "user_a",
-      tenantId: "tenant_a",
-      queueId: "11111111-1111-4111-8111-111111111111",
-      expectedQueueVersion: 1,
-      symbol: "VWCE",
-      clientRequestId: "paper-unknown-currency",
+      ...paperOrderCommand("paper-unknown-currency"),
     })).rejects.toThrow("investing_market_quote_currency_unavailable");
+
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("blocks Paper order quotes without fresh explicit timestamp provenance before RPCs", async () => {
+    rows.investing_execution_queue.push(queue());
+    const staleCacheState = {
+      stale: true,
+      servedFromFallback: false,
+      state: "fresh" as const,
+      lastGoodAt: null,
+    };
+    const fallbackCacheState = {
+      stale: false,
+      servedFromFallback: true,
+      state: "last_known_good" as const,
+      lastGoodAt: Date.parse("2026-08-13T11:50:00.000Z"),
+    };
+    const cases: Array<[string, TestMarketQuote, string]> = [
+      ["missing timestamp", freshQuote({ ts: null }), "investing_market_quote_timestamp_unavailable"],
+      ["NaN timestamp", freshQuote({ ts: Number.NaN }), "investing_market_quote_timestamp_unavailable"],
+      [
+        "old timestamp",
+        freshQuote({ ts: Math.floor(Date.parse("2026-08-13T11:44:59.000Z") / 1_000) }),
+        "investing_market_quote_stale",
+      ],
+      [
+        "future timestamp",
+        freshQuote({ ts: Math.floor(Date.parse("2026-08-13T12:01:01.000Z") / 1_000) }),
+        "investing_market_quote_future_timestamp",
+      ],
+      ["stale cache state", freshQuote({ cacheState: staleCacheState }), "investing_market_quote_stale"],
+      [
+        "served from fallback",
+        freshQuote({ cacheState: fallbackCacheState, servedFromFallback: true }),
+        "investing_market_quote_provenance_unavailable",
+      ],
+      [
+        "last known good",
+        freshQuote({ cacheState: fallbackCacheState, state: "last_known_good" }),
+        "investing_market_quote_provenance_unavailable",
+      ],
+      ["missing cache state", freshQuote({ cacheState: null }), "investing_market_quote_provenance_unavailable"],
+    ];
+
+    for (const [name, quote, error] of cases) {
+      quoteState.quotes = { VWCE: quote };
+      await expect(submitPersistentPaperOrder({
+        ...paperOrderCommand(`paper-${name.replace(/\W+/g, "-")}`),
+      })).rejects.toThrow(error);
+    }
 
     expect(rpcCalls).toEqual([]);
   });
 
   it("keeps cross-tenant and cross-account queue IDs denied before quote reads or order RPCs", async () => {
     rows.investing_execution_queue.push(queue({ account_id: "foreign-account" }));
-    quoteState.quotes = { VWCE: { price: 100, ts: 1_786_000_000, source: "test", currency: "EUR" } };
+    quoteState.quotes = { VWCE: freshQuote() };
 
     await expect(submitPersistentPaperOrder({
-      userId: "user_a",
-      tenantId: "tenant_a",
-      queueId: "11111111-1111-4111-8111-111111111111",
-      expectedQueueVersion: 1,
-      symbol: "VWCE",
-      clientRequestId: "paper-cross",
+      ...paperOrderCommand("paper-cross"),
     })).rejects.toMatchObject({ code: "investing_account_not_found_or_forbidden" });
 
     expect(quoteState.calls).toEqual([]);
