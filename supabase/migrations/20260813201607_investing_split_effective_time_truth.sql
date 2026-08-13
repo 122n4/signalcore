@@ -21,6 +21,7 @@ declare
   v_tx_id uuid;
   v_new_quantity numeric(38,12);
   v_new_reserved numeric(38,12);
+  v_ratio_canonical numeric;
   v_hash text;
   v_effective_at_canonical text;
 begin
@@ -29,9 +30,11 @@ begin
   if coalesce(length(trim(p_idempotency_key)),0)<8 then raise exception 'investing_idempotency_key_invalid'; end if;
   if coalesce(length(trim(p_correlation_id)),0)<8 then raise exception 'investing_invalid_correlation_id'; end if;
   if p_effective_at is null then raise exception 'investing_split_effective_at_required'; end if;
+  if not pg_catalog.isfinite(p_effective_at) then raise exception 'investing_split_effective_at_invalid'; end if;
   if p_effective_at>statement_timestamp()+interval '5 minutes' then raise exception 'investing_split_effective_at_future'; end if;
 
   v_effective_at_canonical:=to_char(p_effective_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
+  v_ratio_canonical:=pg_catalog.trim_scale(p_ratio);
 
   select * into v_account from public.investing_accounts
   where id=p_account_id and user_id=p_actor_user_id and environment='paper' and status='active' for update;
@@ -46,7 +49,7 @@ begin
   v_hash:=encode(extensions.digest(convert_to(jsonb_build_object(
     'account_id',p_account_id,
     'symbol',upper(p_symbol),
-    'ratio',p_ratio,
+    'ratio',v_ratio_canonical,
     'action_type',p_action_type,
     'effective_at',v_effective_at_canonical
   )::text,'UTF8'),'sha256'),'hex');

@@ -51,6 +51,62 @@ describe("Investing corporate-action effective-time truth", () => {
     });
   });
 
+  it("rejects impossible calendar dates instead of accepting Date.parse normalization", async () => {
+    for (const effectiveAt of [
+      "2026-02-31T20:00:00Z",
+      "2026-04-31T20:00:00Z",
+      "2025-02-29T20:00:00Z",
+      "2026-13-01T20:00:00Z",
+      "2026-08-13T24:00:00Z",
+      "2026-08-13T20:60:00Z",
+      "2026-08-13T20:00:60Z",
+    ]) {
+      await expect(applyPersistentPaperSplit({
+        ...command,
+        effectiveAt,
+      })).rejects.toThrow("investing_corporate_action_effective_at_invalid");
+    }
+
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+
+  it("accepts valid leap-day timestamps after strict calendar validation", () => {
+    expect(validateInvestingCorporateActionEffectiveAt("2024-02-29T20:00:00Z")).toEqual({
+      ok: true,
+      effectiveAt: "2024-02-29T20:00:00.000Z",
+    });
+  });
+
+  it("rejects fractional precision the JavaScript boundary cannot preserve losslessly", async () => {
+    for (const effectiveAt of [
+      "2026-08-13T20:00:00.1234Z",
+      "2026-08-13T20:00:00.123456Z",
+      "2026-08-13T20:00:00.123456789Z",
+    ]) {
+      await expect(applyPersistentPaperSplit({
+        ...command,
+        effectiveAt,
+      })).rejects.toThrow("investing_corporate_action_effective_at_invalid");
+    }
+
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+
+  it("accepts fractional precision that can be preserved at the app boundary", () => {
+    expect(validateInvestingCorporateActionEffectiveAt("2026-08-13T20:00:00.1Z")).toEqual({
+      ok: true,
+      effectiveAt: "2026-08-13T20:00:00.100Z",
+    });
+    expect(validateInvestingCorporateActionEffectiveAt("2026-08-13T20:00:00.12Z")).toEqual({
+      ok: true,
+      effectiveAt: "2026-08-13T20:00:00.120Z",
+    });
+    expect(validateInvestingCorporateActionEffectiveAt("2026-08-13T20:00:00.123Z")).toEqual({
+      ok: true,
+      effectiveAt: "2026-08-13T20:00:00.123Z",
+    });
+  });
+
   it("sends only the validated explicit effective instant to the split RPC", async () => {
     await applyPersistentPaperSplit({
       ...command,

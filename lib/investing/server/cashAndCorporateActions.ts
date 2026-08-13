@@ -5,7 +5,7 @@ import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import { readInvestingPaperConfig } from "@/lib/investing/server/config";
 
 export const INVESTING_CORPORATE_ACTION_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
-const ISO_WITH_EXPLICIT_ZONE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const ISO_WITH_EXPLICIT_ZONE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/;
 
 function resultOrThrow(result: { data?: unknown; error?: { message?: string } | null }, fallback: string) {
   if (result.error) throw new Error(String(result.error.message || fallback).split("\n", 1)[0]);
@@ -17,7 +17,30 @@ export function validateInvestingCorporateActionEffectiveAt(value: unknown, nowM
     return { ok: false as const, error: "investing_corporate_action_effective_at_required" };
   }
   const raw = value.trim();
-  if (!ISO_WITH_EXPLICIT_ZONE.test(raw)) {
+  const match = ISO_WITH_EXPLICIT_ZONE.exec(raw);
+  if (!match) {
+    return { ok: false as const, error: "investing_corporate_action_effective_at_invalid" };
+  }
+  const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw, secondRaw, , zoneRaw] = match;
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  const second = Number(secondRaw);
+  const offsetHour = zoneRaw === "Z" ? 0 : Number(zoneRaw.slice(1, 3));
+  const offsetMinute = zoneRaw === "Z" ? 0 : Number(zoneRaw.slice(4, 6));
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1] ?? 0;
+  if (
+    month < 1 || month > 12
+    || day < 1 || day > daysInMonth
+    || hour > 23
+    || minute > 59
+    || second > 59
+    || offsetHour > 23
+    || offsetMinute > 59
+  ) {
     return { ok: false as const, error: "investing_corporate_action_effective_at_invalid" };
   }
   const parsedMs = Date.parse(raw);
