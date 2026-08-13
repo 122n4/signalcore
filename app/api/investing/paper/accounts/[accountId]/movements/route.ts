@@ -5,6 +5,7 @@ import {
   requireInvestingAccountAccess,
   requireInvestingRequestContext,
 } from "@/lib/investing/server/authz";
+import { readCanonicalInvestingAccountingForAccount } from "@/lib/investing/server/accounting";
 import {
   recordPersistentPaperCashMovement,
   reversePersistentPaperCashMovement,
@@ -20,6 +21,40 @@ const reply = (body: Record<string, unknown>, status = 200) => NextResponse.json
   status,
   headers: { "Cache-Control": "no-store" },
 });
+
+export async function GET(req: Request, context: { params: Promise<{ accountId: string }> }) {
+  try {
+    const authz = await requireInvestingRequestContext(req);
+    const { accountId } = await context.params;
+    if (!UUID.test(accountId)) return reply({ ok: false, error: "invalid_account_id" }, 400);
+    const url = new URL(req.url);
+    const limit = Number(url.searchParams.get("limit") || 100);
+    const accounting = await readCanonicalInvestingAccountingForAccount({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      accountId,
+      environment: "paper",
+      movementLimit: Number.isFinite(limit) ? limit : 100,
+      route: "/api/investing/paper/accounts/[accountId]/movements",
+    });
+    return reply({
+      ok: true,
+      accountId: accounting.accountId,
+      portfolioId: accounting.portfolioId,
+      environment: accounting.environment,
+      movements: accounting.movements,
+      cash: accounting.cash,
+      ledger: accounting.ledger,
+      reconciliation: accounting.reconciliation,
+      corporateActions: accounting.corporateActions,
+      performance: accounting.performance,
+    });
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
+    return reply({ ok: false, error: "investing_account_movements_read_failed" }, 500);
+  }
+}
 
 export async function POST(req: Request, context: { params: Promise<{ accountId: string }> }) {
   try {

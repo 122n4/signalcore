@@ -5,6 +5,10 @@ import { buildInvestingExecutionPlan } from "@/lib/investing/execution";
 import { getCanonicalInvestingInstrumentMaster } from "@/lib/investing/instrumentMaster";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
 import type { InvestingEnvironment } from "@/lib/investing/server/authz";
+import {
+  buildCanonicalInvestingPerformanceRead,
+  readCanonicalInvestingAccountingForAccount,
+} from "@/lib/investing/server/accounting";
 import { readCanonicalInvestingPlanForUser } from "@/lib/investing/server/plan";
 import { buildInvestingRuntimeSnapshot } from "@/lib/investing/runtimeAdapter";
 import {
@@ -16,6 +20,12 @@ import {
 function number(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function finiteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 type AvailabilityStatus = "REAL" | "STALE" | "ESTIMATED" | "UNAVAILABLE";
@@ -53,7 +63,7 @@ function priceAvailabilityFromQuote(quote: Record<string, unknown>, price: numbe
 
 function valuationAvailability(args: { priceAvailability: AvailabilityStatus; valuationSource: string }): AvailabilityStatus {
   if (args.valuationSource === "market_quote" && args.priceAvailability === "REAL") return "REAL";
-  if (args.priceAvailability === "STALE") return "STALE";
+  if (args.valuationSource === "market_quote" && args.priceAvailability === "STALE") return "STALE";
   if (args.valuationSource === "cost_basis_fallback") return "ESTIMATED";
   return "UNAVAILABLE";
 }
@@ -234,6 +244,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
   const positions = scopedFinancialRows.positions;
 
   const accountId = account?.id ? String(account.id) : null;
+  const accountBaseCurrency =
+    typeof account?.base_currency === "string" && /^[A-Z]{3}$/i.test(account.base_currency)
+      ? account.base_currency.toUpperCase()
+      : "EUR";
 
   const universe = getCanonicalInvestingInstrumentMaster();
   const positionRows = positions.filter((position: any) => number(position.quantity) > 0);
@@ -249,9 +263,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     snapshot: canonicalMarketSnapshot,
     persisted: false,
   });
-  const eurCashRows = cash.filter((row: any) => row.currency === "EUR");
-  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0);
-  const cashEur = eurCashRows.reduce((sum: number, row: any) => sum + number(row.available_amount), 0);
+  const eurCashRows = accountBaseCurrency === "EUR" ? cash.filter((row: any) => row.currency === "EUR") : [];
+  const cashAmounts = eurCashRows.map((row: any) => finiteNumber(row.available_amount));
+  const hasCanonicalCashBalance = Boolean(accountId && eurCashRows.length > 0 && cashAmounts.every((amount) => amount !== null));
+  const cashEur = hasCanonicalCashBalance ? cashAmounts.reduce((sum: number, amount) => sum + (amount ?? 0), 0) : null;
   const cashTruth = {
     amountEur: cashEur,
     availability: (hasCanonicalCashBalance ? "REAL" : "UNAVAILABLE") as AvailabilityStatus,
@@ -263,11 +278,20 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const quote = snapshotQuotes[symbol] ?? {};
     const sourceQuote = quotes?.[symbol] && typeof quotes[symbol] === "object" ? quotes[symbol] : quote;
     const price = number(quote?.price);
-    const costBasisEur = number(position.cost_basis);
     const priceAvailability = priceAvailabilityFromQuote(sourceQuote, price);
-    const hasUsableMarketPrice = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
-    const hasCostBasisFallback = costBasisEur > 0;
-    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : 0;
+    const quoteCurrency = typeof sourceQuote?.currency === "string" && /^[A-Z]{3}$/i.test(sourceQuote.currency)
+      ? sourceQuote.currency.toUpperCase()
+      : null;
+    const costBasisCurrency = typeof position.currency === "string" && /^[A-Z]{3}$/i.test(position.currency)
+      ? position.currency.toUpperCase()
+      : null;
+    const rawCostBasis = finiteNumber(position.cost_basis);
+    const costBasisEur = costBasisCurrency === "EUR" ? rawCostBasis : null;
+    const hasMarketEvidence = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
+    const hasUsableMarketPrice = hasMarketEvidence && quoteCurrency === accountBaseCurrency && accountBaseCurrency === "EUR";
+    const hasCurrencyBlockedQuote = hasMarketEvidence && (!quoteCurrency || quoteCurrency !== accountBaseCurrency || accountBaseCurrency !== "EUR");
+    const hasCostBasisFallback = costBasisEur !== null && costBasisEur > 0 && !hasCurrencyBlockedQuote;
+    const valueEur = hasUsableMarketPrice ? qty * price : hasCostBasisFallback ? costBasisEur : null;
     const itemValuationSource = hasUsableMarketPrice ? "market_quote" : hasCostBasisFallback ? "cost_basis_fallback" : "unavailable";
     const itemValuationAvailability = valuationAvailability({
       priceAvailability,
@@ -291,11 +315,17 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       valuationAvailability: itemValuationAvailability,
       valuation_availability: itemValuationAvailability,
       currency: position.currency,
+      costBasisCurrency,
+      cost_basis_currency: costBasisCurrency,
+      quoteCurrency,
+      quote_currency: quoteCurrency,
+      valuationCurrency: itemValuationSource === "market_quote" ? quoteCurrency : null,
+      valuation_currency: itemValuationSource === "market_quote" ? quoteCurrency : null,
       valuationSource: itemValuationSource,
     };
   });
   const unprovenPriceSymbols = items
-    .filter((item: any) => item.priceAvailability !== "REAL")
+    .filter((item: any) => item.priceAvailability !== "REAL" || item.valuationSource !== "market_quote" || item.valuationCurrency !== "EUR")
     .map((item: any) => String(item.symbol || "").toUpperCase())
     .filter(Boolean);
   const isCashOnlyPortfolio = hasCanonicalCashBalance && items.length === 0;
@@ -310,7 +340,10 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
         : items.some((item: any) => item.valuationSource === "cost_basis_fallback")
           ? "cost_basis_fallback"
           : "unavailable";
-  const totalEur = cashEur + items.reduce((sum: number, item: any) => sum + number(item.valueEur), 0);
+  const allActiveHoldingsValuedInEur = items.every((item: any) => finiteNumber(item.valueEur ?? item.value_eur) !== null);
+  const totalEur = hasCanonicalCashBalance && allActiveHoldingsValuedInEur
+    ? (cashEur ?? 0) + items.reduce((sum: number, item: any) => sum + (finiteNumber(item.valueEur ?? item.value_eur) ?? 0), 0)
+    : null;
   const runtime = hasCanonicalDecisionAuthority
     ? buildInvestingRuntimeSnapshot({
         referenceTotalEur: totalEur,
@@ -392,6 +425,28 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       : customerDecisionSource === "volatile_runtime_adapter" && (!runtime || !executionPlan || hasUnavailableMarketEvidence)
       ? "UNAVAILABLE"
       : decisionAvailability(customerDecisionSource, visibleCustomerDecision);
+  const portfolioForAccounting = {
+    totalEur,
+    valuationAvailability: portfolioValuationAvailability,
+    items,
+  };
+  const accounting = accountId
+    ? await readCanonicalInvestingAccountingForAccount({
+        userId,
+        tenantId,
+        accountId,
+        portfolio: portfolioForAccounting,
+        environment: account?.environment ? String(account.environment) as InvestingEnvironment : null,
+        database,
+        asOf,
+        route: "/api/investing/dashboard",
+      })
+    : null;
+  const performance = accounting?.performance ?? buildCanonicalInvestingPerformanceRead({
+    portfolio: portfolioForAccounting,
+    asOf,
+    baseCurrency: account?.base_currency ? String(account.base_currency) : "EUR",
+  });
 
   return {
     ok: true,
@@ -407,6 +462,15 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       cash: cashTruth,
       totalEur,
       items,
+      accounting: accounting
+        ? {
+            cash: accounting.cash,
+            ledger: accounting.ledger,
+            reconciliation: accounting.reconciliation,
+            corporateActions: accounting.corporateActions,
+          }
+        : null,
+      performance,
       valuation: {
         cashEur,
         totalEur,
@@ -452,6 +516,17 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       engineV1Bridge: visibleCustomerDecision?.source?.engineV1Bridge ?? null,
       researchPublication: visibleCustomerDecision?.researchPublication ?? null,
       performanceAttribution: visibleCustomerDecision?.performanceAttribution ?? null,
+      performance,
+      reconciliation: accounting?.reconciliation ?? {
+        availability: "UNAVAILABLE",
+        status: "NOT_RECONCILED",
+        source: "investing_reconciliation_runs",
+        latestRunId: null,
+        latestRunStatus: null,
+        issueCount: null,
+        asOf: null,
+        reason: "no_account",
+      },
     },
   };
 }
