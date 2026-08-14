@@ -631,11 +631,15 @@ begin
   select count(*) into split_ledger_after from public.investing_ledger_transactions where account_id=account_a;
   select count(*) into split_entries_after from public.investing_ledger_entries where account_id=account_a;
   select count(*) into split_events_after from public.investing_execution_events where account_id=account_a;
+  raise notice 'split_first_apply replayed=% corporate_action_id=% actions=% ledger_tx=% ledger_entries=% execution_events=%',
+    result->>'replayed',split_action_id,split_actions_after,split_ledger_after,split_entries_after,split_events_after;
 
   select quantity,reserved_quantity,version
     into depleted_quantity,depleted_reserved,depleted_version
   from pg_temp.investing_test_set_position_state(account_a,'VWCE',0,0,true);
   if depleted_quantity<>0 then raise exception 'split_replay_fixture_position_not_depleted'; end if;
+  raise notice 'split_position_depleted quantity=% reserved_quantity=% version=%',
+    depleted_quantity,depleted_reserved,depleted_version;
 
   result:=public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2.000000000000,'split','validation-split-a','validation-split-corr-a-replay',timestamptz '2026-08-12T12:00:00+02:00');
   if not (result->>'replayed')::boolean then raise exception 'split_replay_not_idempotent'; end if;
@@ -662,6 +666,15 @@ begin
   if (select version from public.investing_positions where account_id=account_a and symbol='VWCE')<>depleted_version then
     raise exception 'split_replay_changed_depleted_version';
   end if;
+  raise notice 'split_exact_replay replayed=% corporate_action_id=% actions=% ledger_tx=% ledger_entries=% execution_events=% quantity=% reserved_quantity=% version=%',
+    result->>'replayed',replay_action_id,
+    (select count(*) from public.investing_corporate_actions where account_id=account_a),
+    (select count(*) from public.investing_ledger_transactions where account_id=account_a),
+    (select count(*) from public.investing_ledger_entries where account_id=account_a),
+    (select count(*) from public.investing_execution_events where account_id=account_a),
+    (select quantity from public.investing_positions where account_id=account_a and symbol='VWCE'),
+    (select reserved_quantity from public.investing_positions where account_id=account_a and symbol='VWCE'),
+    (select version from public.investing_positions where account_id=account_a and symbol='VWCE');
   if (select count(*) from public.investing_corporate_actions where account_id=account_a and correlation_id='validation-split-a')<>1 then
     raise exception 'split_replay_double_mutated';
   end if;
