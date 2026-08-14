@@ -220,7 +220,7 @@ begin
   -- A correctly persisted split changes the expected quantity and remains clean.
   perform public.investing_apply_split_v2(
     'reconciliation_validation_user',v_account,'VWCE',2,'split',
-    'reconciliation-real-split','reconciliation-real-split-correlation',now()
+    'reconciliation-real-split','reconciliation-real-split-correlation',statement_timestamp()
   );
   perform public.investing_start_paper_reconciliation_v2(
     'reconciliation_validation_user',v_order,'rec-start-clean-after-split'
