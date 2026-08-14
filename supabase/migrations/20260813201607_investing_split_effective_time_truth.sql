@@ -39,13 +39,7 @@ begin
   select * into v_account from public.investing_accounts
   where id=p_account_id and user_id=p_actor_user_id and environment='paper' and status='active' for update;
   if not found then raise exception 'investing_account_not_found_or_forbidden'; end if;
-  select * into v_position from public.investing_positions
-  where account_id=p_account_id and symbol=upper(p_symbol) and quantity>0 for update;
-  if not found then raise exception 'investing_position_not_found_or_forbidden'; end if;
 
-  v_new_quantity:=round(v_position.quantity*p_ratio,12);
-  v_new_reserved:=round(v_position.reserved_quantity*p_ratio,12);
-  if v_new_quantity<=0 or v_new_reserved>v_new_quantity then raise exception 'investing_split_result_invalid'; end if;
   v_hash:=encode(extensions.digest(convert_to(jsonb_build_object(
     'account_id',p_account_id,
     'symbol',upper(p_symbol),
@@ -65,6 +59,14 @@ begin
     end if;
     return jsonb_build_object('ok',true,'replayed',true,'corporate_action_id',v_existing.id);
   end if;
+
+  select * into v_position from public.investing_positions
+  where account_id=p_account_id and symbol=upper(p_symbol) and quantity>0 for update;
+  if not found then raise exception 'investing_position_not_found_or_forbidden'; end if;
+
+  v_new_quantity:=round(v_position.quantity*p_ratio,12);
+  v_new_reserved:=round(v_position.reserved_quantity*p_ratio,12);
+  if v_new_quantity<=0 or v_new_reserved>v_new_quantity then raise exception 'investing_split_result_invalid'; end if;
 
   insert into public.investing_corporate_actions(
     account_id,action_type,symbol,payload,status,effective_at,correlation_id

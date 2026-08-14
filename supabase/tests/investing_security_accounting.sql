@@ -496,6 +496,8 @@ declare
   account_a uuid; account_b uuid; queue_a uuid; queue_b uuid; order_a uuid; order_b uuid;
   approval_b uuid; run_a uuid; run_b uuid; item_a uuid; item_b uuid; dividend_movement uuid; result jsonb; cash_before numeric; financial_before bigint;
   quantity_before numeric; actions_before bigint; ledger_before bigint;
+  split_action_id uuid; replay_action_id uuid; split_actions_after bigint; split_ledger_after bigint; split_entries_after bigint; split_events_after bigint;
+  depleted_quantity numeric; depleted_reserved numeric; depleted_version bigint;
 begin
   select id into account_a from public.investing_accounts where user_id='validation_user_a';
   select id into account_b from public.investing_accounts where user_id='validation_user_b';
@@ -593,13 +595,52 @@ begin
   exception when others then if sqlerrm not like '%not_found_or_forbidden%' then raise; end if; end;
   result:=public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a',timestamptz '2026-08-12T10:00:00Z');
   if (result->>'replayed')::boolean then raise exception 'split_first_apply_marked_replayed'; end if;
+  split_action_id:=(result->>'corporate_action_id')::uuid;
+  select count(*) into split_actions_after from public.investing_corporate_actions where account_id=account_a;
+  select count(*) into split_ledger_after from public.investing_ledger_transactions where account_id=account_a;
+  select count(*) into split_entries_after from public.investing_ledger_entries where account_id=account_a;
+  select count(*) into split_events_after from public.investing_execution_events where account_id=account_a;
+
+  update public.investing_positions
+  set quantity=0,
+      reserved_quantity=0,
+      closed_at=statement_timestamp(),
+      version=version+1,
+      updated_at=statement_timestamp()
+  where account_id=account_a and symbol='VWCE';
+  select quantity,reserved_quantity,version
+    into depleted_quantity,depleted_reserved,depleted_version
+  from public.investing_positions
+  where account_id=account_a and symbol='VWCE';
+  if depleted_quantity<>0 then raise exception 'split_replay_fixture_position_not_depleted'; end if;
+
   result:=public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2.000000000000,'split','validation-split-a','validation-split-corr-a-replay',timestamptz '2026-08-12T12:00:00+02:00');
   if not (result->>'replayed')::boolean then raise exception 'split_replay_not_idempotent'; end if;
+  replay_action_id:=(result->>'corporate_action_id')::uuid;
+  if replay_action_id<>split_action_id then raise exception 'split_replay_returned_wrong_action'; end if;
+  if (select count(*) from public.investing_corporate_actions where account_id=account_a)<>split_actions_after then
+    raise exception 'split_replay_inserted_corporate_action_after_depletion';
+  end if;
+  if (select count(*) from public.investing_ledger_transactions where account_id=account_a)<>split_ledger_after then
+    raise exception 'split_replay_inserted_ledger_after_depletion';
+  end if;
+  if (select count(*) from public.investing_ledger_entries where account_id=account_a)<>split_entries_after then
+    raise exception 'split_replay_inserted_ledger_entry_after_depletion';
+  end if;
+  if (select count(*) from public.investing_execution_events where account_id=account_a)<>split_events_after then
+    raise exception 'split_replay_inserted_execution_event_after_depletion';
+  end if;
+  if (select quantity from public.investing_positions where account_id=account_a and symbol='VWCE')<>depleted_quantity then
+    raise exception 'split_replay_changed_depleted_quantity';
+  end if;
+  if (select reserved_quantity from public.investing_positions where account_id=account_a and symbol='VWCE')<>depleted_reserved then
+    raise exception 'split_replay_changed_depleted_reserved_quantity';
+  end if;
+  if (select version from public.investing_positions where account_id=account_a and symbol='VWCE')<>depleted_version then
+    raise exception 'split_replay_changed_depleted_version';
+  end if;
   if (select count(*) from public.investing_corporate_actions where account_id=account_a and correlation_id='validation-split-a')<>1 then
     raise exception 'split_replay_double_mutated';
-  end if;
-  if (select quantity from public.investing_positions where account_id=account_a and symbol='VWCE')<>2 then
-    raise exception 'split_replay_mutated_position_again';
   end if;
   if (select count(*) from public.investing_ledger_transactions where account_id=account_a and idempotency_key='corporate-action:validation-split-a')<>1 then
     raise exception 'split_replay_duplicated_ledger';
@@ -612,6 +653,28 @@ begin
     perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a-mismatch',timestamptz '2026-08-12T10:00:01Z');
     raise exception 'split_effective_at_idempotency_mismatch_accepted';
   exception when others then if sqlerrm not like '%investing_idempotency_payload_mismatch%' then raise; end if; end;
+  begin
+    perform public.investing_apply_split_v2('validation_user_b',account_a,'VWCE',2,'split','validation-split-a','validation-split-corr-a-cross-user',timestamptz '2026-08-12T10:00:00Z');
+    raise exception 'split_cross_user_replay_accepted';
+  exception when others then if sqlerrm not like '%not_found_or_forbidden%' then raise; end if; end;
+  begin
+    perform public.investing_apply_split_v2('validation_user_a',account_b,'VWCE',2,'split','validation-split-a','validation-split-corr-a-cross-account',timestamptz '2026-08-12T10:00:00Z');
+    raise exception 'split_cross_account_replay_accepted';
+  exception when others then if sqlerrm not like '%not_found_or_forbidden%' then raise; end if; end;
+  if (select count(*) from public.investing_corporate_actions where account_id=account_a)<>split_actions_after then
+    raise exception 'split_failed_replay_changed_action_count';
+  end if;
+  if (select count(*) from public.investing_ledger_transactions where account_id=account_a)<>split_ledger_after then
+    raise exception 'split_failed_replay_changed_ledger_count';
+  end if;
+
+  update public.investing_positions
+  set quantity=2,
+      reserved_quantity=0,
+      closed_at=null,
+      version=version+1,
+      updated_at=statement_timestamp()
+  where account_id=account_a and symbol='VWCE';
   perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',0.5,'reverse_split','validation-rsplit-a','validation-rsplit-corr-a',timestamptz '2026-08-12T10:01:00Z');
   perform public.investing_reverse_cash_movement_v2('validation_user_a',account_a,dividend_movement,'validation-reversal-a','validation-reversal-corr-a','validation reversal');
   result:=public.investing_reverse_cash_movement_v2('validation_user_a',account_a,dividend_movement,'validation-reversal-a','validation-reversal-replay-a','validation reversal');
