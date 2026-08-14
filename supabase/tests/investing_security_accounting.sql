@@ -506,7 +506,7 @@ begin
   set quantity=p_quantity,
       reserved_quantity=p_reserved_quantity,
       closed_at=case when p_closed then statement_timestamp() else null end,
-      version=version+1,
+      version=public.investing_positions.version+1,
       updated_at=statement_timestamp()
   where account_id=p_account_id and symbol=upper(p_symbol)
   returning investing_positions.quantity, investing_positions.reserved_quantity, investing_positions.version
