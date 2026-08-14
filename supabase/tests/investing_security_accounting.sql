@@ -489,6 +489,37 @@ do $$ begin
 end $$;
 reset role;
 
+create or replace function pg_temp.investing_test_set_position_state(
+  p_account_id uuid,
+  p_symbol text,
+  p_quantity numeric,
+  p_reserved_quantity numeric,
+  p_closed boolean
+)
+returns table(quantity numeric, reserved_quantity numeric, version bigint)
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  update public.investing_positions
+  set quantity=p_quantity,
+      reserved_quantity=p_reserved_quantity,
+      closed_at=case when p_closed then statement_timestamp() else null end,
+      version=version+1,
+      updated_at=statement_timestamp()
+  where account_id=p_account_id and symbol=upper(p_symbol)
+  returning investing_positions.quantity, investing_positions.reserved_quantity, investing_positions.version
+  into quantity, reserved_quantity, version;
+
+  if quantity is null then
+    raise exception 'investing_test_position_fixture_missing';
+  end if;
+
+  return next;
+end;
+$$;
+
 set local role service_role;
 
 do $$
@@ -601,17 +632,9 @@ begin
   select count(*) into split_entries_after from public.investing_ledger_entries where account_id=account_a;
   select count(*) into split_events_after from public.investing_execution_events where account_id=account_a;
 
-  update public.investing_positions
-  set quantity=0,
-      reserved_quantity=0,
-      closed_at=statement_timestamp(),
-      version=version+1,
-      updated_at=statement_timestamp()
-  where account_id=account_a and symbol='VWCE';
   select quantity,reserved_quantity,version
     into depleted_quantity,depleted_reserved,depleted_version
-  from public.investing_positions
-  where account_id=account_a and symbol='VWCE';
+  from pg_temp.investing_test_set_position_state(account_a,'VWCE',0,0,true);
   if depleted_quantity<>0 then raise exception 'split_replay_fixture_position_not_depleted'; end if;
 
   result:=public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',2.000000000000,'split','validation-split-a','validation-split-corr-a-replay',timestamptz '2026-08-12T12:00:00+02:00');
@@ -668,13 +691,7 @@ begin
     raise exception 'split_failed_replay_changed_ledger_count';
   end if;
 
-  update public.investing_positions
-  set quantity=2,
-      reserved_quantity=0,
-      closed_at=null,
-      version=version+1,
-      updated_at=statement_timestamp()
-  where account_id=account_a and symbol='VWCE';
+  perform pg_temp.investing_test_set_position_state(account_a,'VWCE',2,0,false);
   perform public.investing_apply_split_v2('validation_user_a',account_a,'VWCE',0.5,'reverse_split','validation-rsplit-a','validation-rsplit-corr-a',timestamptz '2026-08-12T10:01:00Z');
   perform public.investing_reverse_cash_movement_v2('validation_user_a',account_a,dividend_movement,'validation-reversal-a','validation-reversal-corr-a','validation reversal');
   result:=public.investing_reverse_cash_movement_v2('validation_user_a',account_a,dividend_movement,'validation-reversal-a','validation-reversal-replay-a','validation reversal');
