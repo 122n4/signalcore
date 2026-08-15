@@ -6,6 +6,7 @@ import {
   CANONICAL_PLAN_TO_MANDATE_TRANSLATION_CONTRACT_VERSION,
   CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES,
   assessCanonicalPlanToMandateTranslationV1,
+  hashCanonicalPlanToMandateTranslationAssessmentV1,
   hashCanonicalPlanSemanticsForMandateTranslationV1,
   type CanonicalPlanToMandateTranslationReasonCodeV1,
 } from "@/lib/investing/authority/planToMandateTranslation";
@@ -96,6 +97,7 @@ describe("canonical Plan to mandate translation boundary", () => {
     expect(first.contractVersion).toBe(CANONICAL_PLAN_TO_MANDATE_TRANSLATION_CONTRACT_VERSION);
     expect(first.sourcePlan.semanticFingerprint).toMatch(/^[a-f0-9]{64}$/);
     expect(first.translationFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.translationFingerprint).toBe(hashCanonicalPlanToMandateTranslationAssessmentV1(first));
     expect(second.sourcePlan.semanticFingerprint).toBe(first.sourcePlan.semanticFingerprint);
     expect(second.translationFingerprint).toBe(first.translationFingerprint);
     expect(first.availability).toBe("UNAVAILABLE");
