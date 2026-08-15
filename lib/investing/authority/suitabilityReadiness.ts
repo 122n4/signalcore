@@ -192,6 +192,7 @@ function assertClosedDataRecord(
 
 function assertClosedDataArray(value: unknown, code: string): asserts value is readonly unknown[] {
   assert(Array.isArray(value), code);
+  assert(Object.getPrototypeOf(value) === Array.prototype, code);
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
   assert(Boolean(lengthDescriptor) && "value" in lengthDescriptor && lengthDescriptor.enumerable === false, code);
@@ -247,10 +248,17 @@ function assertSafePositiveVersion(value: unknown): asserts value is number {
 
 function materializeStringArray(value: unknown, code: string) {
   assertClosedDataArray(value, code);
-  return value.map((entry) => {
+  // This boundary assumes inputs have already crossed a JSON/plain-data layer;
+  // Proxy traps on reflective operations are outside this slice's guarantees.
+  const output: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    assert(Boolean(descriptor) && descriptor.enumerable === true && "value" in descriptor, code);
+    const entry = descriptor.value;
     assert(typeof entry === "string", code);
-    return entry;
-  });
+    output.push(entry);
+  }
+  return output;
 }
 
 function materializeAuthority(value: unknown, codePrefix: string) {

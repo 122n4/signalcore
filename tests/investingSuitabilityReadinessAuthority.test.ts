@@ -124,6 +124,13 @@ function recomputePolicyAssessmentFingerprint(assessment: any) {
   assessment.assessmentFingerprint = hashCanonicalInvestingPolicyMethodologyAssessmentV1(assessment);
 }
 
+function expectMethodologyReasonCodesRejected(reasonCodes: unknown, pattern: RegExp = /methodology_reason_codes_invalid/) {
+  const intent = genuineIntent();
+  const assessment = clone(genuinePolicyAssessment(intent)) as any;
+  assessment.methodology.reasonCodes = reasonCodes;
+  expect(() => readiness(intent, assessment)).toThrow(pattern);
+}
+
 function assertFrozenClosed(value: unknown, path = "$", seen = new WeakSet<object>()) {
   if (!value || typeof value !== "object" || seen.has(value)) return;
   seen.add(value);
@@ -294,6 +301,94 @@ describe("canonical suitability readiness authority boundary", () => {
       classification: "TECHNICAL_ENGINE_POLICY",
       financialAuthority: "NOT_ACCEPTED",
     });
+  });
+
+  it("rejects non-canonical reason-code arrays without dispatching caller-controlled map behavior", () => {
+    const validReasons = [...genuinePolicyAssessment().methodology.reasonCodes];
+
+    class EvilArray extends Array<string> {}
+    expectMethodologyReasonCodesRejected(new EvilArray(...validReasons));
+
+    let subclassMapCalls = 0;
+    class EvilMapArray extends Array<string> {
+      override map<U>(callbackfn: (value: string, index: number, array: string[]) => U, thisArg?: unknown): U[] {
+        subclassMapCalls += 1;
+        return super.map(callbackfn, thisArg);
+      }
+    }
+    expectMethodologyReasonCodesRejected(new EvilMapArray(...validReasons));
+    expect(subclassMapCalls).toBe(0);
+
+    const alteredPrototypeArray = [...validReasons];
+    Object.setPrototypeOf(alteredPrototypeArray, Object.create(Array.prototype));
+    expectMethodologyReasonCodesRejected(alteredPrototypeArray);
+
+    let prototypeMapCalls = 0;
+    const mapPrototype = Object.create(Array.prototype);
+    mapPrototype.map = () => {
+      prototypeMapCalls += 1;
+      throw new Error("should_not_execute");
+    };
+    const prototypeMapArray = [...validReasons];
+    Object.setPrototypeOf(prototypeMapArray, mapPrototype);
+    let prototypeMapError: unknown;
+    try {
+      expectMethodologyReasonCodesRejected(prototypeMapArray);
+    } catch (error) {
+      prototypeMapError = error;
+    }
+    expect(prototypeMapError).toBeUndefined();
+    expect(prototypeMapCalls).toBe(0);
+
+    let prototypeGetterCalls = 0;
+    const getterPrototype = Object.create(Array.prototype);
+    Object.defineProperty(getterPrototype, "map", {
+      get() {
+        prototypeGetterCalls += 1;
+        throw new Error("getter_should_not_execute");
+      },
+    });
+    const getterPrototypeArray = [...validReasons];
+    Object.setPrototypeOf(getterPrototypeArray, getterPrototype);
+    expectMethodologyReasonCodesRejected(getterPrototypeArray);
+    expect(prototypeGetterCalls).toBe(0);
+
+    const intent = genuineIntent();
+    const canonicalAssessment = clone(genuinePolicyAssessment(intent)) as any;
+    canonicalAssessment.methodology.reasonCodes = [...validReasons];
+    expect(() => readiness(intent, canonicalAssessment)).not.toThrow();
+  });
+
+  it("continues to reject sparse, accessor and extra-property reason-code arrays without invoking accessors", () => {
+    const validReasons = [...genuinePolicyAssessment().methodology.reasonCodes];
+
+    const sparse = new Array(validReasons.length);
+    sparse[0] = validReasons[0];
+    sparse[2] = validReasons[2];
+    expectMethodologyReasonCodesRejected(sparse);
+
+    let indexGetterCalls = 0;
+    const accessorIndex = [...validReasons];
+    Object.defineProperty(accessorIndex, "0", {
+      enumerable: true,
+      get() {
+        indexGetterCalls += 1;
+        return validReasons[0];
+      },
+    });
+    expectMethodologyReasonCodesRejected(accessorIndex);
+    expect(indexGetterCalls).toBe(0);
+
+    const symbolExtra = [...validReasons] as any;
+    symbolExtra[Symbol("hidden")] = "X";
+    expectMethodologyReasonCodesRejected(symbolExtra);
+
+    const nonEnumerableExtra = [...validReasons];
+    Object.defineProperty(nonEnumerableExtra, "hidden", {
+      value: "X",
+      enumerable: false,
+    });
+    expectMethodologyReasonCodesRejected(nonEnumerableExtra);
   });
 
   it("enforces explicit normalized temporal lineage and accepts equality", () => {
