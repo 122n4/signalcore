@@ -3560,6 +3560,7 @@ function suppressInvestingAuthorityFields(node: unknown): unknown {
   const next = { ...(node as Record<string, any>) };
 
   next.authorityBoundary = INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY;
+  next.decisionEnvelope = null;
   next.daily_decision = null;
   next.decision_confidence = null;
   next.operationalAction = null;
@@ -3567,9 +3568,12 @@ function suppressInvestingAuthorityFields(node: unknown): unknown {
   next.investingEngine = null;
   next.nba = null;
   next.nextBestAction = null;
+  next.nextBestActionPreview = null;
+  next.scores = null;
   next.opportunities = [];
   next.top_opportunities = [];
   next.opportunities_dashboard = [];
+  next.opportunityQueue = unavailableInvestingAuthorityNode("opportunity_queue");
   next.starterPack = [];
   next.starterPackMeta = unavailableInvestingAuthorityNode("starter_pack");
   next.actionGate = {
@@ -3582,6 +3586,20 @@ function suppressInvestingAuthorityFields(node: unknown): unknown {
   next.approval = unavailableInvestingAuthorityNode("approval");
   next.approvals = unavailableInvestingAuthorityNode("approvals");
   next.decisionGovernance = null;
+  next.preTradeSafetyCheck = unavailableInvestingAuthorityNode("pre_trade_safety_check");
+  next.preExecutionSimulation = unavailableInvestingAuthorityNode("pre_execution_simulation");
+  next.cashDeploymentPolicy = unavailableInvestingAuthorityNode("cash_deployment_policy");
+  next.riskEnvelope = unavailableInvestingAuthorityNode("risk_envelope");
+  next.decisionSources = unavailableInvestingAuthorityNode("decision_sources");
+  next.daily_briefing = null;
+  next.whyNow = null;
+  next.engineV4 = null;
+  next.engineV5 = null;
+  next.syntrakeStack = null;
+  next.perfectLoop = null;
+  next.suitability = unavailableInvestingAuthorityNode("suitability");
+  next.followUp = unavailableInvestingAuthorityNode("follow_up");
+  next.executionCoach = unavailableInvestingAuthorityNode("execution_coach");
   next.targetAllocation = null;
   next.targetAllocations = [];
   next.allocation = null;
