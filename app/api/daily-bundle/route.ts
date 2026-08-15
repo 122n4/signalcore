@@ -3536,6 +3536,80 @@ function buildDataRefreshAccessSnapshot(args: {
   };
 }
 
+export const INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY = {
+  contractVersion: "investing-compatibility-authority-boundary/v1",
+  mode: "investing",
+  source: "legacy_compatibility",
+  canonicalDecisionAuthority: false,
+  mandateAuthority: false,
+  executionAuthority: false,
+} as const;
+
+const INVESTING_AUTHORITY_UNAVAILABLE_REASON = "legacy_investing_compatibility_authority_unavailable";
+
+function unavailableInvestingAuthorityNode(kind: string) {
+  return {
+    availability: "UNAVAILABLE",
+    reason: INVESTING_AUTHORITY_UNAVAILABLE_REASON,
+    kind,
+  };
+}
+
+function suppressInvestingAuthorityFields(node: unknown): unknown {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return node;
+  const next = { ...(node as Record<string, any>) };
+
+  next.authorityBoundary = INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY;
+  next.daily_decision = null;
+  next.decision_confidence = null;
+  next.operationalAction = null;
+  next.riskPolicy = null;
+  next.investingEngine = null;
+  next.nba = null;
+  next.nextBestAction = null;
+  next.opportunities = [];
+  next.top_opportunities = [];
+  next.opportunities_dashboard = [];
+  next.starterPack = [];
+  next.starterPackMeta = unavailableInvestingAuthorityNode("starter_pack");
+  next.actionGate = {
+    availability: "UNAVAILABLE",
+    reason: INVESTING_AUTHORITY_UNAVAILABLE_REASON,
+    status: "blocked",
+    allowExecution: false,
+  };
+  next.execution = unavailableInvestingAuthorityNode("execution");
+  next.approval = unavailableInvestingAuthorityNode("approval");
+  next.approvals = unavailableInvestingAuthorityNode("approvals");
+  next.decisionGovernance = null;
+  next.targetAllocation = null;
+  next.targetAllocations = [];
+  next.allocation = null;
+  next.allocations = [];
+  next.rebalance = null;
+  next.rebalanceRecommendations = [];
+  next.executionRecommendations = [];
+
+  return next;
+}
+
+export function isolateInvestingCompatibilityAuthorityResponse<
+  T extends { daily?: Record<string, any> | null; derived?: Record<string, any> | null },
+>(response: T): T & { authorityBoundary: typeof INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY } {
+  return {
+    ...response,
+    authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
+    daily: suppressInvestingAuthorityFields(response.daily ?? {}) as Record<string, any>,
+    ...(Object.prototype.hasOwnProperty.call(response, "derived")
+      ? {
+          derived: response.derived
+            ? suppressInvestingAuthorityFields(response.derived) as Record<string, any>
+            : response.derived,
+        }
+      : {}),
+  };
+}
+
 export function attachDecisionEnvelopeToDailyBundleRouteResponse<
   T extends {
     mode: AutopilotMode;
@@ -3553,7 +3627,7 @@ export function attachDecisionEnvelopeToDailyBundleRouteResponse<
   return buildDailyDecisionPayload(args).response;
 }
 
-function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; derived?: Record<string, any> | null }>(
+export function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; derived?: Record<string, any> | null }>(
   response: T,
   args?: {
     mode: AutopilotMode;
@@ -3583,12 +3657,16 @@ function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; de
       } as T)
     : response;
 
-  return applyDailyBundleEntitlements(responseWithDataAccess, {
+  const entitled = applyDailyBundleEntitlements(responseWithDataAccess, {
     mode: args.mode,
     tier: args.accessTier,
     entitlements: getEntitlementsForTier(args.accessTier),
     asOf: args.asOf,
   });
+
+  return args.mode === "investing"
+    ? isolateInvestingCompatibilityAuthorityResponse(entitled) as T
+    : entitled;
 }
 
 function normalizeActionKey(x: unknown) {
