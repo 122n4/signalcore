@@ -34,6 +34,76 @@ const readyDailyNode = {
   },
 };
 
+const decisionBearingCompatibilityFields = [
+  "decisionEnvelope",
+  "daily_decision",
+  "decision_confidence",
+  "operationalAction",
+  "riskPolicy",
+  "investingEngine",
+  "nba",
+  "nextBestAction",
+  "nextBestActionPreview",
+  "scores",
+  "opportunities",
+  "top_opportunities",
+  "opportunities_dashboard",
+  "opportunityQueue",
+  "starterPack",
+  "starterPackMeta",
+  "actionGate",
+  "execution",
+  "approval",
+  "approvals",
+  "decisionGovernance",
+  "preTradeSafetyCheck",
+  "preExecutionSimulation",
+  "cashDeploymentPolicy",
+  "riskEnvelope",
+  "decisionSources",
+  "daily_briefing",
+  "whyNow",
+  "engineV4",
+  "engineV5",
+  "syntrakeStack",
+  "perfectLoop",
+  "suitability",
+  "followUp",
+  "executionCoach",
+  "targetAllocation",
+  "targetAllocations",
+  "allocation",
+  "allocations",
+  "rebalance",
+  "rebalanceRecommendations",
+  "executionRecommendations",
+  "killSwitch",
+  "actionGateAlert",
+  "capitalProtectionSummary",
+  "priorityNotifications",
+  "portfolio_risk",
+  "growthReadiness",
+  "weeklyValue",
+  "weeklyPremiumReport",
+  "antiChurn",
+  "portfolioScore",
+  "proof",
+  "activation",
+  "trends",
+  "narrative",
+  "continuitySignals",
+  "planTrack",
+  "executionEvidence",
+  "starterWarmup",
+  "futureLegacyDecisionNode",
+] as const;
+
+function expectAbsentFields(node: Record<string, any>, fields = decisionBearingCompatibilityFields) {
+  for (const field of fields) {
+    expect(Object.prototype.hasOwnProperty.call(node, field), field).toBe(false);
+  }
+}
+
 describe("daily bundle mode isolation", () => {
   it("does not load trading scanner inputs for investing mode", () => {
     expect(shouldLoadTradingWatchlistForDailyBundle("investing")).toBe(false);
@@ -87,11 +157,17 @@ describe("daily bundle mode isolation", () => {
     expect(state.paywall.continuityPolicy).toBe("continuity_first");
   });
 
-  it("structurally suppresses legacy investing decision authority fields", () => {
+  it("projects investing compatibility responses through an authority allowlist", () => {
     const isolated = isolateInvestingCompatibilityAuthorityResponse({
       mode: "investing" as const,
       asOf: "2026-05-10T12:00:00.000Z",
+      plan: { id: "legacy-active-plan", status: "active" },
+      portfolio: { items: [{ symbol: "ABC", targetAllocation: 0.4 }] },
       daily: {
+        billing: { plan: "free", source: "test" },
+        paywall: { show: false, continuityPolicy: "investing_free_forever" },
+        unlockedMode: "investing",
+        lastSnapshotAt: "2026-05-10T11:00:00.000Z",
         daily_decision: { decision: "BUY", recommended_position_pct: 12 },
         decision_confidence: 0.93,
         operationalAction: { type: "ENTER", symbol: "ABC" },
@@ -126,8 +202,37 @@ describe("daily bundle mode isolation", () => {
         suitability: { decision: "BUY" },
         followUp: { nextAction: "ENTER" },
         executionCoach: { todayRule: "Execute the buy" },
+        killSwitch: {
+          allowNewRisk: true,
+          state: "clear",
+          reason: "Policy and gate are clear.",
+          trigger: "none",
+          releaseRule: "Syntrake allows only reduced-risk actions.",
+        },
+        actionGateAlert: { triggered: false, nextStep: "Execute" },
+        capitalProtectionSummary: { summary: "New risk is allowed.", killSwitchState: "clear" },
+        priorityNotifications: [{ title: "Buy ABC", detail: "Execute now" }],
+        portfolio_risk: { riskBandwidth: "open" },
+        growthReadiness: { nextFocus: "Deploy cash" },
+        weeklyValue: { summary: "Ready to invest" },
+        weeklyPremiumReport: { focusNextWeek: ["BUY"] },
+        antiChurn: { interventions: [{ detail: "Take action" }] },
+        portfolioScore: { ready: true },
+        proof: { whatChanged: ["Action ready"] },
+        activation: { decisionPreviewState: { decisionPrepared: true } },
+        trends: { decisionConfidence: { direction: "up" } },
+        narrative: "BUY is ready.",
+        continuitySignals: { continuity: { decisionPrepared: true } },
+        planTrack: { microStep: "Execute" },
+        executionEvidence: { latestAt: "2026-05-10T10:00:00.000Z" },
+        starterWarmup: { active: true },
+        futureLegacyDecisionNode: { allowNewRisk: true, decision: "BUY" },
       },
       derived: {
+        hasPlan: true,
+        hasHoldings: true,
+        receiptsCount: 2,
+        doneToday: false,
         daily_decision: { decision: "SELL" },
         decision_confidence: 0.88,
         operationalAction: { type: "REDUCE" },
@@ -135,6 +240,9 @@ describe("daily bundle mode isolation", () => {
         investingEngine: { rebalance: { actions: [{ action: "sell", symbol: "XYZ" }] } },
         targetAllocations: [{ symbol: "XYZ", weight: 1 }],
         executionRecommendations: [{ symbol: "XYZ", side: "SELL" }],
+        killSwitch: { allowNewRisk: true, state: "clear" },
+        actionGateAlert: { message: "Syntrake allows only reduced-risk actions." },
+        futureLegacyDecisionNode: { allowNewRisk: true, decision: "BUY" },
       },
     });
 
@@ -144,37 +252,35 @@ describe("daily bundle mode isolation", () => {
       mandateAuthority: false,
       executionAuthority: false,
     });
-    expect(isolated.daily.daily_decision).toBeNull();
-    expect(isolated.daily.decision_confidence).toBeNull();
-    expect(isolated.daily.operationalAction).toBeNull();
-    expect(isolated.daily.riskPolicy).toBeNull();
-    expect(isolated.daily.investingEngine).toBeNull();
-    expect(isolated.daily.opportunities).toEqual([]);
-    expect(isolated.daily.top_opportunities).toEqual([]);
-    expect(isolated.daily.opportunities_dashboard).toEqual([]);
-    expect(isolated.daily.starterPack).toEqual([]);
-    expect(isolated.daily.actionGate.allowExecution).toBe(false);
-    expect((isolated.daily.execution as any).availability).toBe("UNAVAILABLE");
-    expect(isolated.daily.nextBestActionPreview).toBeNull();
-    expect(isolated.daily.scores).toBeNull();
-    expect((isolated.daily.opportunityQueue as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.preTradeSafetyCheck as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.preExecutionSimulation as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.cashDeploymentPolicy as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.riskEnvelope as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.decisionSources as any).availability).toBe("UNAVAILABLE");
-    expect(isolated.daily.daily_briefing).toBeNull();
-    expect(isolated.daily.whyNow).toBeNull();
-    expect(isolated.daily.engineV4).toBeNull();
-    expect(isolated.daily.engineV5).toBeNull();
-    expect(isolated.daily.syntrakeStack).toBeNull();
-    expect(isolated.daily.perfectLoop).toBeNull();
-    expect((isolated.daily.suitability as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.followUp as any).availability).toBe("UNAVAILABLE");
-    expect((isolated.daily.executionCoach as any).availability).toBe("UNAVAILABLE");
-    expect(isolated.derived?.daily_decision).toBeNull();
-    expect(isolated.derived?.targetAllocations).toEqual([]);
+    expect((isolated as any).plan).toBeUndefined();
+    expect((isolated as any).portfolio).toBeUndefined();
+    expect(isolated.daily).toMatchObject({
+      authorityBoundary: {
+        canonicalDecisionAuthority: false,
+        mandateAuthority: false,
+        executionAuthority: false,
+      },
+      billing: { plan: "free", source: "test" },
+      paywall: { show: false, continuityPolicy: "investing_free_forever" },
+      unlockedMode: "investing",
+      lastSnapshotAt: "2026-05-10T11:00:00.000Z",
+    });
+    expect(isolated.derived).toMatchObject({
+      authorityBoundary: {
+        canonicalDecisionAuthority: false,
+        mandateAuthority: false,
+        executionAuthority: false,
+      },
+      hasPlan: true,
+      hasHoldings: true,
+      receiptsCount: 2,
+      doneToday: false,
+    });
+    expectAbsentFields(isolated.daily);
+    expectAbsentFields(isolated.derived ?? {});
+    expect(JSON.stringify(isolated)).not.toContain("allowNewRisk");
     expect(JSON.stringify(isolated)).not.toContain("recommended_position_pct");
+    expect(JSON.stringify(isolated)).not.toContain("Policy and gate are clear");
   });
 
   it("suppresses an attached decision envelope from investing compatibility responses", () => {
@@ -261,14 +367,8 @@ describe("daily bundle mode isolation", () => {
     }) as any;
 
     expect(finalized.authorityBoundary.canonicalDecisionAuthority).toBe(false);
-    expect(finalized.daily.decisionEnvelope).toBeNull();
-    expect(finalized.daily.daily_decision).toBeNull();
-    expect(finalized.daily.operationalAction).toBeNull();
-    expect(finalized.daily.nextBestAction).toBeNull();
-    expect(finalized.daily.nextBestActionPreview).toBeNull();
-    expect(finalized.daily.scores).toBeNull();
-    expect(finalized.derived.daily_decision).toBeNull();
-    expect(finalized.derived.operationalAction).toBeNull();
+    expectAbsentFields(finalized.daily);
+    expectAbsentFields(finalized.derived);
 
     const serialized = JSON.stringify(finalized);
     expect(serialized).not.toContain("workflowDecision");
@@ -299,11 +399,10 @@ describe("daily bundle mode isolation", () => {
         },
       });
 
-      expect(isolated.plan).toBe(plan);
+      expect((isolated as any).plan).toBeUndefined();
       expect(isolated.authorityBoundary.canonicalDecisionAuthority).toBe(false);
-      expect(isolated.daily.daily_decision).toBeNull();
-      expect(isolated.daily.investingEngine).toBeNull();
-      expect(isolated.derived?.daily_decision).toBeNull();
+      expectAbsentFields(isolated.daily);
+      expectAbsentFields(isolated.derived ?? {});
     }
   });
 

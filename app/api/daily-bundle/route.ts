@@ -3545,87 +3545,69 @@ export const INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY = {
   executionAuthority: false,
 } as const;
 
-const INVESTING_AUTHORITY_UNAVAILABLE_REASON = "legacy_investing_compatibility_authority_unavailable";
+const INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS = [
+  "ok",
+  "degraded",
+  "degradedReason",
+  "mode",
+  "asOf",
+] as const;
 
-function unavailableInvestingAuthorityNode(kind: string) {
-  return {
-    availability: "UNAVAILABLE",
-    reason: INVESTING_AUTHORITY_UNAVAILABLE_REASON,
-    kind,
-  };
+const INVESTING_COMPATIBILITY_NODE_FIELDS = [
+  "billing",
+  "paywall",
+  "unlockedMode",
+  "dataRefreshAccess",
+  "hasPlan",
+  "hasHoldings",
+  "receiptsCount",
+  "doneToday",
+  "streak",
+  "lastSnapshotAt",
+] as const;
+
+function copyAllowedFields(
+  source: Record<string, any>,
+  allowed: readonly string[],
+  target: Record<string, any>,
+) {
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      target[key] = source[key];
+    }
+  }
 }
 
-function suppressInvestingAuthorityFields(node: unknown): unknown {
-  if (!node || typeof node !== "object" || Array.isArray(node)) return node;
-  const next = { ...(node as Record<string, any>) };
-
-  next.authorityBoundary = INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY;
-  next.decisionEnvelope = null;
-  next.daily_decision = null;
-  next.decision_confidence = null;
-  next.operationalAction = null;
-  next.riskPolicy = null;
-  next.investingEngine = null;
-  next.nba = null;
-  next.nextBestAction = null;
-  next.nextBestActionPreview = null;
-  next.scores = null;
-  next.opportunities = [];
-  next.top_opportunities = [];
-  next.opportunities_dashboard = [];
-  next.opportunityQueue = unavailableInvestingAuthorityNode("opportunity_queue");
-  next.starterPack = [];
-  next.starterPackMeta = unavailableInvestingAuthorityNode("starter_pack");
-  next.actionGate = {
-    availability: "UNAVAILABLE",
-    reason: INVESTING_AUTHORITY_UNAVAILABLE_REASON,
-    status: "blocked",
-    allowExecution: false,
+function projectInvestingCompatibilityNode(node: unknown): Record<string, any> {
+  const source = node && typeof node === "object" && !Array.isArray(node)
+    ? node as Record<string, any>
+    : {};
+  const projected: Record<string, any> = {
+    authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
   };
-  next.execution = unavailableInvestingAuthorityNode("execution");
-  next.approval = unavailableInvestingAuthorityNode("approval");
-  next.approvals = unavailableInvestingAuthorityNode("approvals");
-  next.decisionGovernance = null;
-  next.preTradeSafetyCheck = unavailableInvestingAuthorityNode("pre_trade_safety_check");
-  next.preExecutionSimulation = unavailableInvestingAuthorityNode("pre_execution_simulation");
-  next.cashDeploymentPolicy = unavailableInvestingAuthorityNode("cash_deployment_policy");
-  next.riskEnvelope = unavailableInvestingAuthorityNode("risk_envelope");
-  next.decisionSources = unavailableInvestingAuthorityNode("decision_sources");
-  next.daily_briefing = null;
-  next.whyNow = null;
-  next.engineV4 = null;
-  next.engineV5 = null;
-  next.syntrakeStack = null;
-  next.perfectLoop = null;
-  next.suitability = unavailableInvestingAuthorityNode("suitability");
-  next.followUp = unavailableInvestingAuthorityNode("follow_up");
-  next.executionCoach = unavailableInvestingAuthorityNode("execution_coach");
-  next.targetAllocation = null;
-  next.targetAllocations = [];
-  next.allocation = null;
-  next.allocations = [];
-  next.rebalance = null;
-  next.rebalanceRecommendations = [];
-  next.executionRecommendations = [];
 
-  return next;
+  copyAllowedFields(source, INVESTING_COMPATIBILITY_NODE_FIELDS, projected);
+  return projected;
 }
 
 export function isolateInvestingCompatibilityAuthorityResponse<
   T extends { daily?: Record<string, any> | null; derived?: Record<string, any> | null },
 >(response: T): T & { authorityBoundary: typeof INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY } {
-  return {
-    ...response,
+  const source = response && typeof response === "object" ? response as Record<string, any> : {};
+  const projected: Record<string, any> = {
     authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
-    daily: suppressInvestingAuthorityFields(response.daily ?? {}) as Record<string, any>,
-    ...(Object.prototype.hasOwnProperty.call(response, "derived")
-      ? {
-          derived: response.derived
-            ? suppressInvestingAuthorityFields(response.derived) as Record<string, any>
-            : response.derived,
-        }
-      : {}),
   };
+
+  copyAllowedFields(source, INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS, projected);
+  projected.daily = projectInvestingCompatibilityNode(response.daily ?? {});
+
+  if (Object.prototype.hasOwnProperty.call(response, "derived")) {
+    projected.derived = response.derived == null
+      ? response.derived
+      : projectInvestingCompatibilityNode(response.derived);
+  }
+
+  return projected as T & { authorityBoundary: typeof INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY };
 }
 
 export function attachDecisionEnvelopeToDailyBundleRouteResponse<
