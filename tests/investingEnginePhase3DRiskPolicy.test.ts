@@ -22,6 +22,7 @@ import {
   INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
   TECHNICAL_INVESTING_POLICY_DEFINITION_V1,
   TECHNICAL_INVESTING_POLICY_VERSION_V1,
+  type TechnicalInvestingPolicyDefinitionV1,
   type RiskPolicyEvaluationContextV1,
 } from "@/lib/investing/engine/v1/phase3d";
 
@@ -187,6 +188,30 @@ function reseal(input: CanonicalInvestingInputV1, changes: Partial<CanonicalInve
   return sealCanonicalInvestingInputV1(draft as never);
 }
 
+function cloneTechnicalPolicyDefinitionV1(): TechnicalInvestingPolicyDefinitionV1 {
+  return JSON.parse(JSON.stringify(TECHNICAL_INVESTING_POLICY_DEFINITION_V1)) as TechnicalInvestingPolicyDefinitionV1;
+}
+
+function mutableBalancedInstrumentLimit(definition: TechnicalInvestingPolicyDefinitionV1) {
+  const riskProfile = definition.riskProfiles.find((entry) => entry.riskProfile === "Balanced");
+  const limit = riskProfile?.declarations.find((entry) => entry.code === "maximum_instrument_weight");
+  if (!limit) throw new Error("balanced_maximum_instrument_weight_fixture_missing");
+  return limit as {
+    value: ReturnType<typeof d>;
+    kind: "hard" | "soft";
+    scope: "instrument" | "asset_class" | "currency" | "cash" | "total_exposure" | "risk_score";
+  };
+}
+
+function assertRecursivelyFrozen(value: unknown, path = "$", seen = new WeakSet<object>()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  expect(Object.isFrozen(value), path).toBe(true);
+  for (const key of Reflect.ownKeys(value)) {
+    assertRecursivelyFrozen((value as Record<PropertyKey, unknown>)[key], `${path}.${String(key)}`, seen);
+  }
+}
+
 describe("FASE 3D Risk, Policy and Constraints Engine", () => {
   it("binds risk-policy/v1 to the immutable current technical definition", () => {
     expect(TECHNICAL_INVESTING_POLICY_VERSION_V1).toBe("risk-policy/v1");
@@ -231,6 +256,58 @@ describe("FASE 3D Risk, Policy and Constraints Engine", () => {
         ],
       },
     ]);
+  });
+
+  it("changes the definition hash when a v1 declaration value changes", () => {
+    const mutated = cloneTechnicalPolicyDefinitionV1();
+    const limit = mutableBalancedInstrumentLimit(mutated);
+
+    expect(mutated.policyVersion).toBe("risk-policy/v1");
+    expect(limit.value).toBe(d("0.35"));
+    limit.value = d("0.36");
+
+    expect(hashInvestingTechnicalPolicyDefinitionV1(mutated)).not.toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+  });
+
+  it("changes the definition hash when a v1 declaration kind changes", () => {
+    const mutated = cloneTechnicalPolicyDefinitionV1();
+    const limit = mutableBalancedInstrumentLimit(mutated);
+
+    expect(mutated.policyVersion).toBe("risk-policy/v1");
+    expect(limit.kind).toBe("hard");
+    limit.kind = "soft";
+
+    expect(hashInvestingTechnicalPolicyDefinitionV1(mutated)).not.toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+  });
+
+  it("changes the definition hash when a v1 declaration scope changes", () => {
+    const mutated = cloneTechnicalPolicyDefinitionV1();
+    const limit = mutableBalancedInstrumentLimit(mutated);
+
+    expect(mutated.policyVersion).toBe("risk-policy/v1");
+    expect(limit.scope).toBe("instrument");
+    limit.scope = "asset_class";
+
+    expect(hashInvestingTechnicalPolicyDefinitionV1(mutated)).not.toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+  });
+
+  it("freezes the exported v1 technical definition recursively", () => {
+    assertRecursivelyFrozen(TECHNICAL_INVESTING_POLICY_DEFINITION_V1);
   });
 
   it.each(["foo/v9", "investing_policy_v2", "risk-policy/v2", "risk-policy/V1", "arbitrary-valid/version"])(
