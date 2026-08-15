@@ -96,6 +96,11 @@ const decisionBearingCompatibilityFields = [
   "executionEvidence",
   "starterWarmup",
   "futureLegacyDecisionNode",
+  "futureDecisionNode",
+  "futureAuthorityNode",
+  "futureActionNode",
+  "decisionExposure",
+  "day0OperationalAllowed",
 ] as const;
 
 function expectAbsentFields(node: Record<string, any>, fields = decisionBearingCompatibilityFields) {
@@ -158,14 +163,49 @@ describe("daily bundle mode isolation", () => {
   });
 
   it("projects investing compatibility responses through an authority allowlist", () => {
+    const dangerousDataRefreshAccess = {
+      tier: "free",
+      tradingLiveRefresh: {
+        requested: true,
+        allowed: false,
+        sharedSnapshotOnly: true,
+        dailyLimit: 1,
+        cooldownSeconds: 900,
+        usedToday: 0,
+        remainingToday: 1,
+        resetAt: null,
+        blockedReason: null,
+        retryAfterSeconds: null,
+        trackingReady: true,
+        futureActionNode: { recommendedPositionPct: 50 },
+      },
+      futureActionNode: { recommendedPositionPct: 50 },
+    };
+
     const isolated = isolateInvestingCompatibilityAuthorityResponse({
       mode: "investing" as const,
       asOf: "2026-05-10T12:00:00.000Z",
       plan: { id: "legacy-active-plan", status: "active" },
       portfolio: { items: [{ symbol: "ABC", targetAllocation: 0.4 }] },
       daily: {
-        billing: { plan: "free", source: "test" },
-        paywall: { show: false, continuityPolicy: "investing_free_forever" },
+        billing: {
+          plan: "free",
+          source: "test",
+          futureAuthorityNode: { allowNewRisk: true },
+        },
+        paywall: {
+          show: false,
+          cta: "START_TRIAL",
+          continuityPolicy: "investing_free_forever",
+          decisionExposure: "FULL",
+          day0OperationalAllowed: true,
+          copy: {
+            title: "Investing stays open.",
+            subtitle: "Daily investing decisions stay visible without requiring a paid trading subscription.",
+          },
+          futureDecisionNode: { decision: "BUY", allowExecution: true },
+        },
+        dataRefreshAccess: dangerousDataRefreshAccess,
         unlockedMode: "investing",
         lastSnapshotAt: "2026-05-10T11:00:00.000Z",
         daily_decision: { decision: "BUY", recommended_position_pct: 12 },
@@ -229,6 +269,23 @@ describe("daily bundle mode isolation", () => {
         futureLegacyDecisionNode: { allowNewRisk: true, decision: "BUY" },
       },
       derived: {
+        billing: {
+          plan: "pro",
+          source: "derived-test",
+          futureAuthorityNode: { allowNewRisk: true },
+        },
+        paywall: {
+          show: true,
+          cta: "UPGRADE",
+          continuityPolicy: "continuity_first",
+          decisionExposure: "FULL",
+          day0OperationalAllowed: true,
+          copy: {
+            subtitle: "Activate Pro to receive continuous daily decisions.",
+          },
+          futureDecisionNode: { decision: "SELL", allowExecution: true },
+        },
+        dataRefreshAccess: dangerousDataRefreshAccess,
         hasPlan: true,
         hasHoldings: true,
         receiptsCount: 2,
@@ -261,7 +318,23 @@ describe("daily bundle mode isolation", () => {
         executionAuthority: false,
       },
       billing: { plan: "free", source: "test" },
-      paywall: { show: false, continuityPolicy: "investing_free_forever" },
+      paywall: { show: false, cta: "START_TRIAL", continuityPolicy: "investing_free_forever" },
+      dataRefreshAccess: {
+        tier: "free",
+        tradingLiveRefresh: {
+          requested: true,
+          allowed: false,
+          sharedSnapshotOnly: true,
+          dailyLimit: 1,
+          cooldownSeconds: 900,
+          usedToday: 0,
+          remainingToday: 1,
+          resetAt: null,
+          blockedReason: null,
+          retryAfterSeconds: null,
+          trackingReady: true,
+        },
+      },
       unlockedMode: "investing",
       lastSnapshotAt: "2026-05-10T11:00:00.000Z",
     });
@@ -275,12 +348,29 @@ describe("daily bundle mode isolation", () => {
       hasHoldings: true,
       receiptsCount: 2,
       doneToday: false,
+      billing: { plan: "pro", source: "derived-test" },
+      paywall: { show: true, cta: "UPGRADE", continuityPolicy: "continuity_first" },
     });
     expectAbsentFields(isolated.daily);
     expectAbsentFields(isolated.derived ?? {});
-    expect(JSON.stringify(isolated)).not.toContain("allowNewRisk");
-    expect(JSON.stringify(isolated)).not.toContain("recommended_position_pct");
-    expect(JSON.stringify(isolated)).not.toContain("Policy and gate are clear");
+    const serialized = JSON.stringify(isolated);
+    expect(serialized).not.toContain("allowExecution");
+    expect(serialized).not.toContain("allowNewRisk");
+    expect(serialized).not.toContain("recommendedPositionPct");
+    expect(serialized).not.toContain("recommended_position_pct");
+    expect(serialized).not.toContain("decisionExposure");
+    expect(serialized).not.toContain("day0OperationalAllowed");
+    expect(serialized).not.toContain("Daily investing decisions stay visible");
+    expect(serialized).not.toContain("continuous daily decisions");
+    expect(serialized).not.toContain("Policy and gate are clear");
+    expect(serialized).not.toContain("BUY");
+    expect(serialized).not.toContain("SELL");
+    expect(serialized).not.toContain("ENTER");
+    expect(serialized).not.toContain("REDUCE");
+    expect(serialized).not.toContain('"decision":"BUY"');
+    expect(serialized).not.toContain('"decision":"SELL"');
+    expect(serialized).not.toContain('"type":"ENTER"');
+    expect(serialized).not.toContain('"type":"REDUCE"');
   });
 
   it("suppresses an attached decision envelope from investing compatibility responses", () => {
@@ -363,7 +453,24 @@ describe("daily bundle mode isolation", () => {
       mode: "investing",
       asOf,
       accessTier: "free",
-      dataRefreshAccess: null,
+      dataRefreshAccess: {
+        tier: "free",
+        tradingLiveRefresh: {
+          requested: true,
+          allowed: false,
+          sharedSnapshotOnly: true,
+          dailyLimit: 1,
+          cooldownSeconds: 900,
+          usedToday: 0,
+          remainingToday: 1,
+          resetAt: null,
+          blockedReason: null,
+          retryAfterSeconds: null,
+          trackingReady: true,
+          futureActionNode: { recommendedPositionPct: 50 },
+        },
+        futureActionNode: { recommendedPositionPct: 50 },
+      } as any,
     }) as any;
 
     expect(finalized.authorityBoundary.canonicalDecisionAuthority).toBe(false);
@@ -377,7 +484,12 @@ describe("daily bundle mode isolation", () => {
     expect(serialized).not.toContain("recommendedPositionPct");
     expect(serialized).not.toContain("recommended_position_pct");
     expect(serialized).not.toContain("Route market BUY");
+    expect(serialized).not.toContain("BUY");
+    expect(serialized).not.toContain("SELL");
+    expect(serialized).not.toContain("ENTER");
+    expect(serialized).not.toContain("REDUCE");
     expect(serialized).not.toContain('"allowExecution":true');
+    expect(serialized).not.toContain("futureActionNode");
   });
 
   it("does not let legacy active or id-only plan fallback grant R5 authority", () => {
@@ -407,10 +519,45 @@ describe("daily bundle mode isolation", () => {
   });
 
   it("does not apply the investing compatibility boundary to trading-shaped responses", () => {
+    const tradingBilling = {
+      plan: "free",
+      source: "test",
+      futureAuthorityNode: { allowNewRisk: true },
+    };
+    const tradingPaywall = {
+      show: false,
+      continuityPolicy: "investing_free_forever",
+      decisionExposure: "FULL",
+      day0OperationalAllowed: true,
+      copy: {
+        subtitle: "Daily investing decisions stay visible without requiring a paid trading subscription.",
+      },
+      futureDecisionNode: { decision: "BUY", allowExecution: true },
+    };
+    const tradingDataRefreshAccess = {
+      tier: "free",
+      tradingLiveRefresh: {
+        requested: true,
+        allowed: true,
+        sharedSnapshotOnly: false,
+        dailyLimit: 3,
+        cooldownSeconds: 0,
+        usedToday: 1,
+        remainingToday: 2,
+        resetAt: null,
+        blockedReason: null,
+        retryAfterSeconds: null,
+        trackingReady: true,
+      },
+      futureActionNode: { recommendedPositionPct: 50 },
+    };
     const tradingResponse = finalizeDailyBundleResponse({
       mode: "trading" as const,
       asOf: "2026-05-10T12:00:00.000Z",
       daily: {
+        billing: tradingBilling,
+        paywall: tradingPaywall,
+        dataRefreshAccess: tradingDataRefreshAccess,
         daily_decision: { decision: "BUY" },
         decision_confidence: 0.72,
         operationalAction: { type: "ENTER" },
@@ -425,6 +572,9 @@ describe("daily bundle mode isolation", () => {
     expect(tradingResponse.daily.daily_decision).toEqual({ decision: "BUY" });
     expect(tradingResponse.daily.decision_confidence).toBe(0.72);
     expect(tradingResponse.daily.operationalAction).toEqual({ type: "ENTER" });
+    expect(tradingResponse.daily.billing).toEqual(tradingBilling);
+    expect(tradingResponse.daily.paywall).toEqual(tradingPaywall);
+    expect(tradingResponse.daily.dataRefreshAccess).toEqual(tradingDataRefreshAccess);
     expect((tradingResponse as any).authorityBoundary).toBeUndefined();
     expect((tradingResponse.daily as any).authorityBoundary).toBeUndefined();
   });

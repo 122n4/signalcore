@@ -3554,10 +3554,7 @@ const INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS = [
 ] as const;
 
 const INVESTING_COMPATIBILITY_NODE_FIELDS = [
-  "billing",
-  "paywall",
   "unlockedMode",
-  "dataRefreshAccess",
   "hasPlan",
   "hasHoldings",
   "receiptsCount",
@@ -3566,16 +3563,98 @@ const INVESTING_COMPATIBILITY_NODE_FIELDS = [
   "lastSnapshotAt",
 ] as const;
 
-function copyAllowedFields(
+function isInvestingCompatibilityPrimitive(value: unknown) {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
+}
+
+function copyAllowedPrimitiveFields(
   source: Record<string, any>,
   allowed: readonly string[],
   target: Record<string, any>,
 ) {
   for (const key of allowed) {
-    if (Object.prototype.hasOwnProperty.call(source, key)) {
+    if (
+      Object.prototype.hasOwnProperty.call(source, key) &&
+      isInvestingCompatibilityPrimitive(source[key])
+    ) {
       target[key] = source[key];
     }
   }
+}
+
+function projectInvestingBillingMetadata(value: unknown): Record<string, any> | null {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
+  if (!source) return null;
+
+  const projected: Record<string, any> = {};
+  copyAllowedPrimitiveFields(source, [
+    "plan",
+    "trialActive",
+    "trialEndsAt",
+    "proActive",
+    "trialStarted",
+    "trialExpired",
+    "source",
+  ], projected);
+
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+function projectInvestingPaywallMetadata(value: unknown): Record<string, any> | null {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
+  if (!source) return null;
+
+  const projected: Record<string, any> = {};
+  copyAllowedPrimitiveFields(source, [
+    "show",
+    "cta",
+    "continuityPolicy",
+  ], projected);
+
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+function projectInvestingDataRefreshAccessMetadata(value: unknown): Record<string, any> | null {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
+  if (!source) return null;
+
+  const projected: Record<string, any> = {};
+  copyAllowedPrimitiveFields(source, ["tier"], projected);
+
+  const tradingLiveRefresh = source.tradingLiveRefresh &&
+    typeof source.tradingLiveRefresh === "object" &&
+    !Array.isArray(source.tradingLiveRefresh)
+    ? source.tradingLiveRefresh as Record<string, any>
+    : null;
+
+  if (tradingLiveRefresh) {
+    const projectedTradingLiveRefresh: Record<string, any> = {};
+    copyAllowedPrimitiveFields(tradingLiveRefresh, [
+      "requested",
+      "allowed",
+      "sharedSnapshotOnly",
+      "dailyLimit",
+      "cooldownSeconds",
+      "usedToday",
+      "remainingToday",
+      "resetAt",
+      "blockedReason",
+      "retryAfterSeconds",
+      "trackingReady",
+    ], projectedTradingLiveRefresh);
+
+    if (Object.keys(projectedTradingLiveRefresh).length > 0) {
+      projected.tradingLiveRefresh = projectedTradingLiveRefresh;
+    }
+  }
+
+  return Object.keys(projected).length > 0 ? projected : null;
 }
 
 function projectInvestingCompatibilityNode(node: unknown): Record<string, any> {
@@ -3586,7 +3665,17 @@ function projectInvestingCompatibilityNode(node: unknown): Record<string, any> {
     authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
   };
 
-  copyAllowedFields(source, INVESTING_COMPATIBILITY_NODE_FIELDS, projected);
+  copyAllowedPrimitiveFields(source, INVESTING_COMPATIBILITY_NODE_FIELDS, projected);
+
+  const billing = projectInvestingBillingMetadata(source.billing);
+  if (billing) projected.billing = billing;
+
+  const paywall = projectInvestingPaywallMetadata(source.paywall);
+  if (paywall) projected.paywall = paywall;
+
+  const dataRefreshAccess = projectInvestingDataRefreshAccessMetadata(source.dataRefreshAccess);
+  if (dataRefreshAccess) projected.dataRefreshAccess = dataRefreshAccess;
+
   return projected;
 }
 
@@ -3598,7 +3687,7 @@ export function isolateInvestingCompatibilityAuthorityResponse<
     authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
   };
 
-  copyAllowedFields(source, INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS, projected);
+  copyAllowedPrimitiveFields(source, INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS, projected);
   projected.daily = projectInvestingCompatibilityNode(response.daily ?? {});
 
   if (Object.prototype.hasOwnProperty.call(response, "derived")) {
