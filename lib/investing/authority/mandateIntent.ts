@@ -1,6 +1,7 @@
 import {
   CANONICAL_PLAN_TO_MANDATE_TRANSLATION_CONTRACT_VERSION,
   CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES,
+  hashCanonicalPlanToMandateTranslationAssessmentV1,
   type CanonicalPlanToMandateTranslationAssessmentV1,
   type CanonicalPlanToMandateTranslationReasonCodeV1,
 } from "@/lib/investing/authority/planToMandateTranslation";
@@ -34,6 +35,7 @@ export type CanonicalInvestingMandateIntentExplicitInputV1 = {
 };
 
 export type CanonicalInvestingMandateIntentInputV1 = {
+  // Future production callers must re-resolve this server-side; role and permissions are never client input.
   readonly tenant: InvestingTenantContext;
   readonly account: InvestingAccountScope;
   readonly planAssessment: CanonicalPlanToMandateTranslationAssessmentV1;
@@ -242,7 +244,8 @@ function materializeTenant(value: unknown) {
   assertId(tenant.userId, "investing_mandate_intent_user_id_invalid");
   assertId(tenant.tenantId, "investing_mandate_intent_tenant_id_invalid");
   assertId(tenant.membershipId, "investing_mandate_intent_membership_id_invalid");
-  assert(typeof tenant.role === "string" && tenant.role.length > 0, "investing_mandate_intent_role_invalid");
+  assert(tenant.role === "owner", "investing_mandate_intent_tenant_role_unauthorized");
+  assert(tenant.permissions.includes("investing:read"), "investing_mandate_intent_tenant_permission_unauthorized");
   return tenant;
 }
 
@@ -338,6 +341,19 @@ function materializePlanAssessment(value: unknown) {
 
   const reasonCodes = materializeStringArray(readDataField(value, "reasonCodes"), "investing_mandate_intent_reason_codes_invalid");
   const knownReasons = new Set(CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES);
+  assert(new Set(reasonCodes).size === reasonCodes.length, "investing_mandate_intent_reason_codes_not_unique");
+  const canonicalReasonCodes = CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES.filter((reason) =>
+    reasonCodes.includes(reason),
+  );
+  assert(
+    canonicalReasonCodes.length === reasonCodes.length &&
+      canonicalReasonCodes.every((reason, index) => reasonCodes[index] === reason),
+    "investing_mandate_intent_reason_codes_not_canonical",
+  );
+  assert(
+    reasonCodes.includes("HORIZON_EXPLICIT_AUTHORING_REQUIRED"),
+    "investing_mandate_intent_horizon_explicit_reason_required",
+  );
   for (const reason of reasonCodes) {
     assert(knownReasons.has(reason as CanonicalPlanToMandateTranslationReasonCodeV1), "investing_mandate_intent_reason_code_unknown");
     assert(
@@ -345,8 +361,10 @@ function materializePlanAssessment(value: unknown) {
       `investing_mandate_intent_plan_assessment_blocked:${reason}`,
     );
   }
+  const typedReasonCodes = reasonCodes as readonly CanonicalPlanToMandateTranslationReasonCodeV1[];
 
-  return {
+  const assessment = {
+    contractVersion: CANONICAL_PLAN_TO_MANDATE_TRANSLATION_CONTRACT_VERSION,
     sourcePlan: sourcePlanMaterialized as {
       planId: string;
       planVersion: number;
@@ -355,14 +373,31 @@ function materializePlanAssessment(value: unknown) {
       structuredSchemaVersion: 1;
       semanticFingerprint: string;
     },
-    accountBaseCurrency: assessmentBaseCurrency,
-    compatible: compatible as {
+    account: {
+      baseCurrency: assessmentBaseCurrency,
+    },
+    availability: "UNAVAILABLE",
+    reasonCodes: typedReasonCodes,
+    compatibleSemantics: compatible as {
       objective: CanonicalInvestingMandateIntentObjectiveV1;
       riskProfile: CanonicalInvestingMandateIntentRiskProfileV1;
       horizon: null;
       baseCurrency: string;
       constraints: null;
     },
+    mandate: null,
+    translationFingerprint: readDataField(value, "translationFingerprint") as string,
+  } satisfies CanonicalPlanToMandateTranslationAssessmentV1;
+
+  assert(
+    hashCanonicalPlanToMandateTranslationAssessmentV1(assessment) === assessment.translationFingerprint,
+    "investing_mandate_intent_translation_fingerprint_mismatch",
+  );
+
+  return {
+    sourcePlan: assessment.sourcePlan,
+    accountBaseCurrency: assessmentBaseCurrency,
+    compatible: assessment.compatibleSemantics,
   };
 }
 

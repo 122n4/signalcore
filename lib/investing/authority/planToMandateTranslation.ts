@@ -171,6 +171,14 @@ function translationFingerprintInput(
   };
 }
 
+export function hashCanonicalPlanToMandateTranslationAssessmentV1(
+  assessment:
+    | Omit<CanonicalPlanToMandateTranslationAssessmentV1, "translationFingerprint">
+    | CanonicalPlanToMandateTranslationAssessmentV1,
+) {
+  return canonicalSha256(translationFingerprintInput(assessment));
+}
+
 function hasGuardrail(plan: CanonicalInvestingPlan, key: "maxSinglePositionPct" | "maxTop5Pct") {
   return typeof plan.structured.guardrails?.[key] === "number";
 }
@@ -268,6 +276,6 @@ export function assessCanonicalPlanToMandateTranslationV1(
 
   return deepFreezeCanonical({
     ...assessmentWithoutFingerprint,
-    translationFingerprint: canonicalSha256(translationFingerprintInput(assessmentWithoutFingerprint)),
+    translationFingerprint: hashCanonicalPlanToMandateTranslationAssessmentV1(assessmentWithoutFingerprint),
   }) as CanonicalPlanToMandateTranslationAssessmentV1;
 }

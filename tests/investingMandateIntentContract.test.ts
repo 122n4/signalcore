@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   assessCanonicalPlanToMandateTranslationV1,
+  hashCanonicalPlanToMandateTranslationAssessmentV1,
   hashCanonicalPlanSemanticsForMandateTranslationV1,
 } from "@/lib/investing/authority/planToMandateTranslation";
 import {
@@ -105,6 +106,10 @@ function expectFingerprintChange(mutator: (input: any) => void) {
   expect(changed.lineage.intentFingerprint).not.toBe(base.lineage.intentFingerprint);
 }
 
+function recomputeAssessmentFingerprint(input: any) {
+  input.planAssessment.translationFingerprint = hashCanonicalPlanToMandateTranslationAssessmentV1(input.planAssessment);
+}
+
 function assertFrozenClosed(value: unknown, path = "$", seen = new WeakSet<object>()) {
   if (!value || typeof value !== "object" || seen.has(value)) return;
   seen.add(value);
@@ -159,8 +164,7 @@ describe("canonical mandate intent contract", () => {
       ["environment", (input) => { input.account.environment = "simulation"; }],
       ["accountBaseCurrency", (input) => {
         input.account.baseCurrency = "USD";
-        input.planAssessment.account.baseCurrency = "USD";
-        input.planAssessment.compatibleSemantics.baseCurrency = "USD";
+        input.planAssessment = planAssessment(canonicalPlan(), { currency: "USD" });
       }],
     ];
 
@@ -171,12 +175,25 @@ describe("canonical mandate intent contract", () => {
 
   it("changes the fingerprint for every material Plan lineage and intent field", () => {
     const changes: Array<[string, (input: any) => void]> = [
-      ["planId", (input) => { input.planAssessment.sourcePlan.planId = "plan_changed"; }],
-      ["planVersion", (input) => { input.planAssessment.sourcePlan.planVersion = 8; }],
-      ["activatedAt", (input) => { input.planAssessment.sourcePlan.activatedAt = "2026-05-10T10:01:00.000Z"; }],
-      ["updatedAt", (input) => { input.planAssessment.sourcePlan.updatedAt = "2026-05-10T11:01:00.000Z"; }],
-      ["schema", (input) => { input.planAssessment.sourcePlan.structuredSchemaVersion = 1; input.planAssessment.sourcePlan.planId = "schema_context_changed"; }],
-      ["semantic", (input) => { input.planAssessment.sourcePlan.semanticFingerprint = "0".repeat(64); }],
+      ["planId", (input) => { input.planAssessment = planAssessment(canonicalPlan({ id: "plan_changed" })); }],
+      ["planVersion", (input) => { input.planAssessment = planAssessment(canonicalPlan({ version: 8 })); }],
+      ["activatedAt", (input) => {
+        input.planAssessment = planAssessment(canonicalPlan({ activatedAt: "2026-05-10T10:01:00.000Z" }));
+      }],
+      ["updatedAt", (input) => {
+        input.planAssessment = planAssessment(canonicalPlan({ updatedAt: "2026-05-10T11:01:00.000Z" }));
+      }],
+      ["semantic", (input) => {
+        input.planAssessment = planAssessment(canonicalPlan({
+          structured: {
+            ...canonicalPlan().structured,
+            objective: {
+              ...canonicalPlan().structured.objective,
+              monthlyContribution: { amount: 300, currency: "EUR" },
+            },
+          },
+        }));
+      }],
       ["objective", (input) => {
         const assessment = planAssessment(canonicalPlan({ structured: { ...canonicalPlan().structured, objective: { type: "income" } } }));
         input.planAssessment = assessment;
@@ -194,6 +211,81 @@ describe("canonical mandate intent contract", () => {
     for (const [label, mutate] of changes) {
       expect(() => expectFingerprintChange(mutate), label).not.toThrow();
     }
+  });
+
+  it("verifies the supplied A2.3A assessment fingerprint against the closed assessment material", () => {
+    expect(() => sealCanonicalInvestingMandateIntentV1(validInput())).not.toThrow();
+    expect(planAssessment().translationFingerprint).toBe(
+      hashCanonicalPlanToMandateTranslationAssessmentV1(planAssessment()),
+    );
+
+    const tamperCases: Array<[string, (assessment: any) => void]> = [
+      ["sourcePlan.planId", (assessment) => { assessment.sourcePlan.planId = "plan_tampered"; }],
+      ["sourcePlan.planVersion", (assessment) => { assessment.sourcePlan.planVersion = 8; }],
+      ["sourcePlan.activatedAt", (assessment) => { assessment.sourcePlan.activatedAt = "2026-05-10T10:01:00.000Z"; }],
+      ["sourcePlan.updatedAt", (assessment) => { assessment.sourcePlan.updatedAt = "2026-05-10T11:01:00.000Z"; }],
+      ["sourcePlan.structuredSchemaVersion", (assessment) => { assessment.sourcePlan.structuredSchemaVersion = 2; }],
+      ["sourcePlan.semanticFingerprint", (assessment) => { assessment.sourcePlan.semanticFingerprint = "0".repeat(64); }],
+      ["account.baseCurrency", (assessment) => { assessment.account.baseCurrency = "USD"; }],
+      ["compatibleSemantics.objective", (assessment) => { assessment.compatibleSemantics.objective = "income"; }],
+      ["compatibleSemantics.riskProfile", (assessment) => { assessment.compatibleSemantics.riskProfile = "Aggressive"; }],
+      ["reasonCodes", (assessment) => { assessment.reasonCodes = ["HORIZON_EXPLICIT_AUTHORING_REQUIRED", "GUARDRAIL_SEMANTICS_UNSUPPORTED"]; }],
+      ["availability", (assessment) => { assessment.availability = "AVAILABLE"; }],
+      ["mandate", (assessment) => { assessment.mandate = { objective: "growth" }; }],
+      ["translationFingerprint", (assessment) => { assessment.translationFingerprint = "0".repeat(64); }],
+    ];
+
+    for (const [label, mutate] of tamperCases) {
+      const input = clone(validInput()) as any;
+      mutate(input.planAssessment);
+      expect(() => sealCanonicalInvestingMandateIntentV1(input), label).toThrow();
+    }
+  });
+
+  it("requires unique canonical A2.3A reason ordering and the explicit horizon reason", () => {
+    expectRejected((input) => {
+      input.planAssessment.reasonCodes = [
+        "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+        "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+      ];
+      recomputeAssessmentFingerprint(input);
+    }, /reason_codes_not_unique/);
+
+    expectRejected((input) => {
+      input.planAssessment.reasonCodes = [
+        "GUARDRAIL_SEMANTICS_UNSUPPORTED",
+        "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+      ];
+      recomputeAssessmentFingerprint(input);
+    }, /reason_codes_not_canonical/);
+
+    expectRejected((input) => {
+      input.planAssessment.reasonCodes = [];
+      recomputeAssessmentFingerprint(input);
+    }, /horizon_explicit_reason_required/);
+
+    expectRejected((input) => {
+      input.planAssessment.reasonCodes = [
+        "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+        "PLAN_SOURCE_CHANGED",
+      ];
+      recomputeAssessmentFingerprint(input);
+    }, /plan_assessment_blocked:PLAN_SOURCE_CHANGED/);
+
+    const guardrailUnavailable = planAssessment(canonicalPlan({
+      structured: {
+        ...canonicalPlan().structured,
+        guardrails: { maxSinglePositionPct: 20, maxTop5Pct: 60 },
+      },
+    }));
+    expect(guardrailUnavailable.reasonCodes).toEqual([
+      "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+      "GUARDRAIL_SEMANTICS_UNSUPPORTED",
+      "GUARDRAIL_ENGINE_SUPPORT_UNAVAILABLE",
+    ]);
+    expect(() => sealCanonicalInvestingMandateIntentV1(validInput({
+      planAssessment: guardrailUnavailable,
+    }))).not.toThrow();
   });
 
   it("requires exact objective compatibility with the A2.3A Plan semantics", () => {
@@ -292,19 +384,40 @@ describe("canonical mandate intent contract", () => {
     }))).not.toThrow();
   });
 
-  it("enforces normalized temporal lineage and allows timestamp equality", () => {
+  it("requires owner role and investing read permission from server-resolved tenant context", () => {
+    expectRejected((input) => { input.tenant.role = "viewer"; }, /tenant_role_unauthorized/);
+    expectRejected((input) => { input.tenant.permissions = []; }, /tenant_permission_unauthorized/);
+    expectRejected((input) => { input.tenant.permissions = ["billing:read"]; }, /tenant_permission_unauthorized/);
+    expectRejected((input) => {
+      input.tenant.role = "viewer";
+      input.tenant.permissions = ["investing:read"];
+    }, /tenant_role_unauthorized/);
+
     expect(() => sealCanonicalInvestingMandateIntentV1(validInput({
-      planAssessment: {
-        ...planAssessment(),
-        sourcePlan: {
-          ...planAssessment().sourcePlan,
-          updatedAt: "2026-05-10T10:00:00.000Z",
-        },
+      tenant: {
+        ...validInput().tenant,
+        role: "owner",
+        permissions: ["billing:read", "investing:read"],
       },
+    }))).not.toThrow();
+  });
+
+  it("enforces normalized temporal lineage and allows timestamp equality", () => {
+    const equalityPlan = canonicalPlan({
+      activatedAt: "2026-05-10T10:00:00.000Z",
+      updatedAt: "2026-05-10T10:00:00.000Z",
+    });
+    expect(() => sealCanonicalInvestingMandateIntentV1(validInput({
+      planAssessment: planAssessment(equalityPlan),
       authoredAt: "2026-05-10T10:00:00.000Z",
     }))).not.toThrow();
 
-    expectRejected((input) => { input.planAssessment.sourcePlan.activatedAt = "2026-05-10T11:00:00.001Z"; }, /temporal_lineage_invalid/);
+    expect(() => sealCanonicalInvestingMandateIntentV1(validInput({
+      planAssessment: planAssessment(canonicalPlan({
+        activatedAt: "2026-05-10T11:00:00.001Z",
+        updatedAt: "2026-05-10T11:00:00.000Z",
+      })),
+    }))).toThrow(/temporal_lineage_invalid/);
     expectRejected((input) => { input.authoredAt = "2026-05-10T10:59:59.999Z"; }, /temporal_lineage_invalid/);
     expectRejected((input) => { input.authoredAt = "2026-05-10T12:00:00+01:00"; }, /authored_at_invalid/);
   });
@@ -364,6 +477,7 @@ describe("canonical mandate intent contract", () => {
 
     expect(source).toContain("InvestingTenantContext");
     expect(source).toContain("InvestingAccountScope");
+    expect(source).toContain("role and permissions are never client input");
     for (const forbidden of [
       "@/lib/investing/mandate",
       "lib/investing/mandate",
