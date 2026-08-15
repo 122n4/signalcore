@@ -18,6 +18,11 @@ import {
 } from "@/lib/investing/engine/v1/phase3c";
 import {
   evaluateInvestingRiskPolicyV1,
+  hashInvestingTechnicalPolicyDefinitionV1,
+  INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+  TECHNICAL_INVESTING_POLICY_DEFINITION_V1,
+  TECHNICAL_INVESTING_POLICY_VERSION_V1,
+  type TechnicalInvestingPolicyDefinitionV1,
   type RiskPolicyEvaluationContextV1,
 } from "@/lib/investing/engine/v1/phase3d";
 
@@ -143,6 +148,7 @@ function buildInput(args: {
   constraints?: readonly InvestingConstraintEvaluationV1[];
   riskProfile?: "Conservative" | "Balanced" | "Aggressive";
   market?: CanonicalMarketSnapshotV1;
+  policyVersion?: string;
 } = {}) {
   const snapshot = args.market ?? market();
   return buildCanonicalInvestingInputFromSourcesV1({
@@ -156,7 +162,7 @@ function buildInput(args: {
       versions: {
         contractVersion: INVESTING_ENGINE_INPUT_CONTRACT_VERSION,
         engineVersion: "engine/v1.2.0-phase3d",
-        policyVersion: "risk-policy/v1",
+        policyVersion: args.policyVersion ?? "risk-policy/v1",
         modelVersion: "risk-model/v1",
         instrumentCatalogVersion: catalog.version,
         marketDataSchemaVersion: snapshot.schemaVersion,
@@ -182,7 +188,148 @@ function reseal(input: CanonicalInvestingInputV1, changes: Partial<CanonicalInve
   return sealCanonicalInvestingInputV1(draft as never);
 }
 
+function cloneTechnicalPolicyDefinitionV1(): TechnicalInvestingPolicyDefinitionV1 {
+  return JSON.parse(JSON.stringify(TECHNICAL_INVESTING_POLICY_DEFINITION_V1)) as TechnicalInvestingPolicyDefinitionV1;
+}
+
+function mutableBalancedInstrumentLimit(definition: TechnicalInvestingPolicyDefinitionV1) {
+  const riskProfile = definition.riskProfiles.find((entry) => entry.riskProfile === "Balanced");
+  const limit = riskProfile?.declarations.find((entry) => entry.code === "maximum_instrument_weight");
+  if (!limit) throw new Error("balanced_maximum_instrument_weight_fixture_missing");
+  return limit as {
+    value: ReturnType<typeof d>;
+    kind: "hard" | "soft";
+    scope: "instrument" | "asset_class" | "currency" | "cash" | "total_exposure" | "risk_score";
+  };
+}
+
+function assertRecursivelyFrozen(value: unknown, path = "$", seen = new WeakSet<object>()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  expect(Object.isFrozen(value), path).toBe(true);
+  for (const key of Reflect.ownKeys(value)) {
+    assertRecursivelyFrozen((value as Record<PropertyKey, unknown>)[key], `${path}.${String(key)}`, seen);
+  }
+}
+
 describe("FASE 3D Risk, Policy and Constraints Engine", () => {
+  it("binds risk-policy/v1 to the immutable current technical definition", () => {
+    expect(TECHNICAL_INVESTING_POLICY_VERSION_V1).toBe("risk-policy/v1");
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+    expect(hashInvestingTechnicalPolicyDefinitionV1(TECHNICAL_INVESTING_POLICY_DEFINITION_V1)).toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(TECHNICAL_INVESTING_POLICY_DEFINITION_V1.riskProfiles).toEqual([
+      {
+        riskProfile: "Conservative",
+        declarations: [
+          { code: "maximum_instrument_weight", scope: "instrument", subject: null, kind: "hard", value: d("0.25") },
+          { code: "maximum_asset_class_weight", scope: "asset_class", subject: null, kind: "hard", value: d("0.60") },
+          { code: "maximum_currency_weight", scope: "currency", subject: null, kind: "soft", value: d("0.40") },
+          { code: "minimum_cash_weight", scope: "cash", subject: null, kind: "hard", value: d("0.10") },
+          { code: "maximum_total_exposure", scope: "total_exposure", subject: null, kind: "hard", value: d("0.90") },
+          { code: "maximum_risk_score", scope: "risk_score", subject: null, kind: "soft", value: d("0.35") },
+        ],
+      },
+      {
+        riskProfile: "Balanced",
+        declarations: [
+          { code: "maximum_instrument_weight", scope: "instrument", subject: null, kind: "hard", value: d("0.35") },
+          { code: "maximum_asset_class_weight", scope: "asset_class", subject: null, kind: "hard", value: d("0.75") },
+          { code: "maximum_currency_weight", scope: "currency", subject: null, kind: "soft", value: d("0.60") },
+          { code: "minimum_cash_weight", scope: "cash", subject: null, kind: "hard", value: d("0.05") },
+          { code: "maximum_total_exposure", scope: "total_exposure", subject: null, kind: "hard", value: d("0.95") },
+          { code: "maximum_risk_score", scope: "risk_score", subject: null, kind: "soft", value: d("0.50") },
+        ],
+      },
+      {
+        riskProfile: "Aggressive",
+        declarations: [
+          { code: "maximum_instrument_weight", scope: "instrument", subject: null, kind: "hard", value: d("0.50") },
+          { code: "maximum_asset_class_weight", scope: "asset_class", subject: null, kind: "hard", value: d("0.90") },
+          { code: "maximum_currency_weight", scope: "currency", subject: null, kind: "soft", value: d("0.80") },
+          { code: "minimum_cash_weight", scope: "cash", subject: null, kind: "hard", value: d("0.02") },
+          { code: "maximum_total_exposure", scope: "total_exposure", subject: null, kind: "hard", value: d("0.98") },
+          { code: "maximum_risk_score", scope: "risk_score", subject: null, kind: "soft", value: d("0.70") },
+        ],
+      },
+    ]);
+  });
+
+  it("changes the definition hash when a v1 declaration value changes", () => {
+    const mutated = cloneTechnicalPolicyDefinitionV1();
+    const limit = mutableBalancedInstrumentLimit(mutated);
+
+    expect(mutated.policyVersion).toBe("risk-policy/v1");
+    expect(limit.value).toBe(d("0.35"));
+    limit.value = d("0.36");
+
+    expect(hashInvestingTechnicalPolicyDefinitionV1(mutated)).not.toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+  });
+
+  it("changes the definition hash when a v1 declaration kind changes", () => {
+    const mutated = cloneTechnicalPolicyDefinitionV1();
+    const limit = mutableBalancedInstrumentLimit(mutated);
+
+    expect(mutated.policyVersion).toBe("risk-policy/v1");
+    expect(limit.kind).toBe("hard");
+    limit.kind = "soft";
+
+    expect(hashInvestingTechnicalPolicyDefinitionV1(mutated)).not.toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+  });
+
+  it("changes the definition hash when a v1 declaration scope changes", () => {
+    const mutated = cloneTechnicalPolicyDefinitionV1();
+    const limit = mutableBalancedInstrumentLimit(mutated);
+
+    expect(mutated.policyVersion).toBe("risk-policy/v1");
+    expect(limit.scope).toBe("instrument");
+    limit.scope = "asset_class";
+
+    expect(hashInvestingTechnicalPolicyDefinitionV1(mutated)).not.toBe(
+      INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1,
+    );
+    expect(INVESTING_TECHNICAL_POLICY_DEFINITION_HASH_V1).toBe(
+      "5eb795d99220cdd038bd5d82113b40a94de80b4226098553631418bf9c02851a",
+    );
+  });
+
+  it("freezes the exported v1 technical definition recursively", () => {
+    assertRecursivelyFrozen(TECHNICAL_INVESTING_POLICY_DEFINITION_V1);
+  });
+
+  it.each(["foo/v9", "investing_policy_v2", "risk-policy/v2", "risk-policy/V1", "arbitrary-valid/version"])(
+    "fails closed instead of running v1 under caller-supplied policy version %s",
+    (policyVersion) => {
+      expect(() => evaluate(buildInput({ policyVersion }))).toThrow("investing_policy_version_unsupported");
+    },
+  );
+
+  it("preserves current v1 policy output and source strings", () => {
+    const result = evaluate(buildInput());
+    expect(result.policy.policyVersion).toBe("risk-policy/v1");
+    expect(result.policy.limits).toEqual([
+      { code: "maximum_asset_class_weight", scope: "asset_class", subject: null, kind: "hard", value: d("0.75"), source: "policy_defaults:Balanced:v1" },
+      { code: "minimum_cash_weight", scope: "cash", subject: null, kind: "hard", value: d("0.05"), source: "policy_defaults:Balanced:v1" },
+      { code: "maximum_currency_weight", scope: "currency", subject: null, kind: "soft", value: d("0.60"), source: "policy_defaults:Balanced:v1" },
+      { code: "maximum_instrument_weight", scope: "instrument", subject: null, kind: "hard", value: d("0.35"), source: "policy_defaults:Balanced:v1" },
+      { code: "maximum_risk_score", scope: "risk_score", subject: null, kind: "soft", value: d("0.50"), source: "policy_defaults:Balanced:v1" },
+      { code: "maximum_total_exposure", scope: "total_exposure", subject: null, kind: "hard", value: d("0.95"), source: "policy_defaults:Balanced:v1" },
+    ]);
+  });
+
   it("allows a known empty portfolio without inventing risk data", () => {
     const result = evaluate(buildInput({ cash: "0" }));
     expect(result.status).toBe("allowed");

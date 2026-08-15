@@ -137,6 +137,7 @@ export type Phase3FFixtureArgs = {
   userId?: string;
   accountId?: string;
   runId?: string;
+  policyVersion?: string;
   cash?: string;
   positions?: readonly InvestingPositionSourceV1[];
   orders?: readonly InvestingOrderSourceV1[];
@@ -227,7 +228,7 @@ export function buildPhase3FSources(args: Phase3FFixtureArgs = {}): InvestingEng
       versions: {
         contractVersion: INVESTING_ENGINE_INPUT_CONTRACT_VERSION,
         engineVersion: "engine/v1.3.0-phase3f",
-        policyVersion: "risk-policy/v1",
+        policyVersion: args.policyVersion ?? "risk-policy/v1",
         modelVersion: "construction-model/v1",
         instrumentCatalogVersion: catalog.version,
         marketDataSchemaVersion: snapshot.schemaVersion,
