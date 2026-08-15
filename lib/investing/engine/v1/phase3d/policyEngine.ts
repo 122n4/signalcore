@@ -1,11 +1,14 @@
 import {
-  canonicalDecimalFromString,
   canonicalSha256,
   deepFreezeCanonical,
   type CanonicalDecimal,
 } from "@/lib/investing/engine/v1/canonical";
 import type { CanonicalInvestingInputV1 } from "@/lib/investing/engine/v1/contracts";
 import { DECIMAL_ONE, DECIMAL_ZERO, decimalCompare, decimalEquals } from "@/lib/investing/engine/v1/phase3d/decimalMath";
+import {
+  assertSupportedInvestingTechnicalPolicyVersionV1,
+  getTechnicalInvestingPolicyDeclarationsForRiskProfileV1,
+} from "@/lib/investing/engine/v1/policyDefinition";
 import {
   POLICY_EVALUATION_CONTRACT_VERSION,
   type PolicyEvaluationV1,
@@ -25,25 +28,11 @@ const LIMIT_PREFIXES: Readonly<Record<string, { scope: PolicyLimitScopeV1; code:
   maximum_risk_score: { scope: "risk_score", code: "maximum_risk_score" },
 };
 
-function d(value: string) {
-  return canonicalDecimalFromString(value);
-}
-
 function defaultLimits(input: CanonicalInvestingInputV1): LimitDefinition[] {
+  assertSupportedInvestingTechnicalPolicyVersionV1(input.versions.policyVersion);
   const source = `policy_defaults:${input.mandate.riskProfile}:v1`;
-  const values = input.mandate.riskProfile === "Conservative"
-    ? ["0.25", "0.6", "0.4", "0.1", "0.9", "0.35"]
-    : input.mandate.riskProfile === "Balanced"
-      ? ["0.35", "0.75", "0.6", "0.05", "0.95", "0.5"]
-      : ["0.5", "0.9", "0.8", "0.02", "0.98", "0.7"];
-  return [
-    { code: "maximum_instrument_weight", scope: "instrument", subject: null, kind: "hard", value: d(values[0]), source },
-    { code: "maximum_asset_class_weight", scope: "asset_class", subject: null, kind: "hard", value: d(values[1]), source },
-    { code: "maximum_currency_weight", scope: "currency", subject: null, kind: "soft", value: d(values[2]), source },
-    { code: "minimum_cash_weight", scope: "cash", subject: null, kind: "hard", value: d(values[3]), source },
-    { code: "maximum_total_exposure", scope: "total_exposure", subject: null, kind: "hard", value: d(values[4]), source },
-    { code: "maximum_risk_score", scope: "risk_score", subject: null, kind: "soft", value: d(values[5]), source },
-  ];
+  return getTechnicalInvestingPolicyDeclarationsForRiskProfileV1(input.mandate.riskProfile)
+    .map((limit) => ({ ...limit, source }));
 }
 
 function limitKey(limit: Pick<PolicyLimitV1, "scope" | "subject">) {

@@ -6,6 +6,7 @@ import {
 import type { CanonicalInvestingInputV1 } from "@/lib/investing/engine/v1/contracts";
 import { assertCanonicalInvestingInputV1 } from "@/lib/investing/engine/v1/validation";
 import { evaluateInvestingConstraintsV1 } from "@/lib/investing/engine/v1/phase3d/constraintEngine";
+import { assertSupportedInvestingTechnicalPolicyVersionV1 } from "@/lib/investing/engine/v1/policyDefinition";
 import { evaluateInvestingPolicyV1 } from "@/lib/investing/engine/v1/phase3d/policyEngine";
 import { assessInvestingRiskV1 } from "@/lib/investing/engine/v1/phase3d/riskAssessment";
 import {
@@ -88,6 +89,7 @@ export function evaluateInvestingRiskPolicyV1(
   ) {
     throw new Error("investing_risk_policy_context_invalid_or_live");
   }
+  assertSupportedInvestingTechnicalPolicyVersionV1(input.versions.policyVersion);
 
   const risk = assessInvestingRiskV1(input);
   const policy = evaluateInvestingPolicyV1(input);

@@ -8,6 +8,7 @@ import {
   sealInvestingEngineRunRequestV1,
   sha256,
 } from "@/lib/investing/engine/v1/phase3f";
+import { TECHNICAL_INVESTING_POLICY_VERSION_V1 } from "@/lib/investing/engine/v1/phase3d";
 import {
   PHASE3F_AS_OF,
   buildPhase3FSources,
@@ -16,6 +17,25 @@ import {
 } from "@/tests/fixtures/investingEnginePhase3FFixture";
 
 describe("FASE 3F integrity and cross-phase coherence", () => {
+  it("carries the supported technical policy version and policy hash through Phase3D, Phase3E and Phase3F", () => {
+    const sources = buildPhase3FSources();
+    const result = runInvestingEngineV1Final(sources);
+
+    expect(sources.canonicalInput.versions.policyVersion).toBe(TECHNICAL_INVESTING_POLICY_VERSION_V1);
+    expect(sources.policy.policyVersion).toBe(TECHNICAL_INVESTING_POLICY_VERSION_V1);
+    expect(sources.request.versions.policyVersion).toBe(TECHNICAL_INVESTING_POLICY_VERSION_V1);
+    expect(sources.request.sourceHashes.policyEvaluationHash).toBe(sources.policy.policyHash);
+    expect(sources.envelope.policy.policyHash).toBe(sources.policy.policyHash);
+    expect(sources.preliminaryProposal.envelopeHash).toBe(sources.envelope.envelopeHash);
+    expect(result.auditBundle.snapshotHashes.policyEvaluationHash).toBe(sources.policy.policyHash);
+  });
+
+  it("rejects unsupported technical policy versions before producing a Phase3F artifact", () => {
+    expect(() => buildPhase3FSources({ policyVersion: "risk-policy/v2" })).toThrow(
+      "investing_policy_version_unsupported",
+    );
+  });
+
   it("rejects a tampered phase hash", () => {
     const sources = buildPhase3FSources();
     expect(() => runInvestingEngineV1Final({
