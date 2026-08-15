@@ -269,6 +269,9 @@ describe("canonical Plan to mandate translation boundary", () => {
       "RISK_PROFILE_MISSING",
       "BASE_CURRENCY_UNAVAILABLE",
     ]);
+    expect(CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES).toContain(
+      "EXPECTED_PLAN_SEMANTIC_FINGERPRINT_INVALID",
+    );
     expect(CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES).toContain("PLAN_SOURCE_CHANGED");
   });
 
@@ -294,6 +297,46 @@ describe("canonical Plan to mandate translation boundary", () => {
 
     expect(assess(base, { expectedPlanSemanticFingerprint }).reasonCodes).not.toContain("PLAN_SOURCE_CHANGED");
     expect(assess(changed, { expectedPlanSemanticFingerprint }).reasonCodes).toContain("PLAN_SOURCE_CHANGED");
+  });
+
+  it("fail-closes malformed expected Plan semantic fingerprints without disabling lineage checks", () => {
+    const base = canonicalPlan();
+    const matching = hashCanonicalPlanSemanticsForMandateTranslationV1(base);
+    const different = hashCanonicalPlanSemanticsForMandateTranslationV1(
+      canonicalPlan({ structured: { ...base.structured, objective: { type: "income" } } }),
+    );
+    const baseTranslationFingerprint = assess(base).translationFingerprint;
+    const nullExpected = assess(base, { expectedPlanSemanticFingerprint: null });
+    const matchingExpected = assess(base, { expectedPlanSemanticFingerprint: matching });
+    const differentExpected = assess(base, { expectedPlanSemanticFingerprint: different });
+
+    expect(assess(base).reasonCodes).toEqual(["HORIZON_EXPLICIT_AUTHORING_REQUIRED"]);
+    expect(nullExpected.reasonCodes).toEqual(["HORIZON_EXPLICIT_AUTHORING_REQUIRED"]);
+    expect(nullExpected.translationFingerprint).toBe(baseTranslationFingerprint);
+    expect(matchingExpected.reasonCodes).toEqual(["HORIZON_EXPLICIT_AUTHORING_REQUIRED"]);
+    expect(matchingExpected.translationFingerprint).toBe(baseTranslationFingerprint);
+    expect(differentExpected.reasonCodes).toEqual([
+      "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+      "PLAN_SOURCE_CHANGED",
+    ]);
+    expect(differentExpected.translationFingerprint).not.toBe(baseTranslationFingerprint);
+
+    for (const expectedPlanSemanticFingerprint of [
+      "",
+      " ",
+      "abc123",
+      `${"a".repeat(63)}g`,
+      matching.toUpperCase(),
+    ]) {
+      const assessment = assess(base, { expectedPlanSemanticFingerprint });
+
+      expect(assessment.reasonCodes).toEqual([
+        "HORIZON_EXPLICIT_AUTHORING_REQUIRED",
+        "EXPECTED_PLAN_SEMANTIC_FINGERPRINT_INVALID",
+      ]);
+      expect(assessment.reasonCodes).not.toContain("PLAN_SOURCE_CHANGED");
+      expect(assessment.translationFingerprint).not.toBe(baseTranslationFingerprint);
+    }
   });
 
   it("changes source Plan semantic fingerprint for every material Plan semantic field", () => {
@@ -392,6 +435,9 @@ describe("canonical Plan to mandate translation boundary", () => {
 
   it("keeps legacy authoring and defaults out of the translation boundary", () => {
     const source = readSource("lib/investing/authority/planToMandateTranslation.ts");
+
+    expect(source).toContain("server-verified Investing account scope");
+    expect(source).toContain("never client input");
 
     for (const forbidden of [
       "@/lib/investing/mandate",

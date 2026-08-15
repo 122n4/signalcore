@@ -22,6 +22,7 @@ export const CANONICAL_PLAN_TO_MANDATE_TRANSLATION_REASON_CODES = [
   "BASE_CURRENCY_UNAVAILABLE",
   "GUARDRAIL_SEMANTICS_UNSUPPORTED",
   "GUARDRAIL_ENGINE_SUPPORT_UNAVAILABLE",
+  "EXPECTED_PLAN_SEMANTIC_FINGERPRINT_INVALID",
   "PLAN_SOURCE_CHANGED",
 ] as const;
 
@@ -56,11 +57,13 @@ export type CanonicalPlanToMandateTranslationAssessmentV1 = {
 
 export type CanonicalPlanToMandateTranslationAssessmentInputV1 = {
   readonly planState: CanonicalInvestingPlanState;
+  // Future production callers must source this from server-verified Investing account scope, never client input.
   readonly accountBaseCurrency?: string | null;
   readonly expectedPlanSemanticFingerprint?: string | null;
 };
 
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+const SHA256_LOWERCASE_PATTERN = /^[a-f0-9]{64}$/;
 const COMPATIBLE_OBJECTIVES = new Set(["preservation", "growth", "income", "balanced"]);
 const RISK_PROFILES = new Set(["Conservative", "Balanced", "Aggressive"]);
 
@@ -172,6 +175,12 @@ function hasGuardrail(plan: CanonicalInvestingPlan, key: "maxSinglePositionPct" 
   return typeof plan.structured.guardrails?.[key] === "number";
 }
 
+function classifyExpectedPlanSemanticFingerprint(value: unknown) {
+  if (value === null || value === undefined) return "not_supplied" as const;
+  if (typeof value !== "string" || !SHA256_LOWERCASE_PATTERN.test(value)) return "invalid" as const;
+  return "valid" as const;
+}
+
 export function assessCanonicalPlanToMandateTranslationV1(
   input: CanonicalPlanToMandateTranslationAssessmentInputV1,
 ): CanonicalPlanToMandateTranslationAssessmentV1 {
@@ -227,8 +236,11 @@ export function assessCanonicalPlanToMandateTranslationV1(
   }
 
   if (!baseCurrency) reasons.add("BASE_CURRENCY_UNAVAILABLE");
-  if (
-    input.expectedPlanSemanticFingerprint &&
+  const expectedFingerprintStatus = classifyExpectedPlanSemanticFingerprint(input.expectedPlanSemanticFingerprint);
+  if (expectedFingerprintStatus === "invalid") {
+    reasons.add("EXPECTED_PLAN_SEMANTIC_FINGERPRINT_INVALID");
+  } else if (
+    expectedFingerprintStatus === "valid" &&
     sourcePlan.semanticFingerprint &&
     input.expectedPlanSemanticFingerprint !== sourcePlan.semanticFingerprint
   ) {
