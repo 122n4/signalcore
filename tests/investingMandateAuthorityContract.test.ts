@@ -70,8 +70,33 @@ function changedFingerprint(mutator: (draft: any) => void) {
   expect(changed.lineage.authorityFingerprint).not.toBe(base.lineage.authorityFingerprint);
 }
 
+function expectInvalidDraft(mutator: (draft: any) => void) {
+  const draft = validDraft() as any;
+  mutator(draft);
+  expect(() => sealCanonicalInvestingMandateAuthorityV1(draft)).toThrow();
+}
+
 function read(path: string) {
   return readFileSync(join(process.cwd(), path), "utf8");
+}
+
+function assertNoHiddenMutableDescendants(value: unknown, path = "$", seen = new WeakSet<object>()) {
+  if (!value || typeof value !== "object" || seen.has(value)) return;
+  seen.add(value);
+  expect(Object.isFrozen(value), path).toBe(true);
+
+  for (const key of Reflect.ownKeys(value)) {
+    expect(typeof key, path).toBe("string");
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    expect(descriptor, `${path}.${String(key)}`).toBeDefined();
+    expect("value" in descriptor!, `${path}.${String(key)}`).toBe(true);
+    if (Array.isArray(value) && key === "length") {
+      expect(descriptor!.enumerable, `${path}.length`).toBe(false);
+      continue;
+    }
+    expect(descriptor!.enumerable, `${path}.${String(key)}`).toBe(true);
+    assertNoHiddenMutableDescendants(descriptor!.value, `${path}.${String(key)}`, seen);
+  }
 }
 
 describe("canonical Investing mandate authority contract", () => {
@@ -248,6 +273,111 @@ describe("canonical Investing mandate authority contract", () => {
     }
   });
 
+  it("rejects hidden, Symbol-keyed and accessor authority fields before hashing or sealing", () => {
+    const rootSymbol = Symbol("futureAuthority");
+    const authoritySymbol = Symbol("futureAuthority");
+    const mandateSymbol = Symbol("futureAuthority");
+    const constraintSymbol = Symbol("futureAuthority");
+
+    expectInvalidDraft((draft) => {
+      draft[rootSymbol] = { allowExecution: true };
+    });
+    expectInvalidDraft((draft) => {
+      draft.authority[authoritySymbol] = { allowExecution: true };
+    });
+    expectInvalidDraft((draft) => {
+      Object.defineProperty(draft.authority, "futureAuthority", {
+        value: { allowNewRisk: true },
+        enumerable: false,
+      });
+    });
+    expectInvalidDraft((draft) => {
+      draft.mandate[mandateSymbol] = { allowExecution: true };
+    });
+    expectInvalidDraft((draft) => {
+      Object.defineProperty(draft.mandate, "futureAuthority", {
+        value: { allowNewRisk: true },
+        enumerable: false,
+      });
+    });
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0][constraintSymbol] = { decision: "BUY" };
+    });
+    expectInvalidDraft((draft) => {
+      Object.defineProperty(draft.mandate.constraints[0], "futureAuthority", {
+        value: { allowExecution: true },
+        enumerable: false,
+      });
+    });
+    expectInvalidDraft((draft) => {
+      Object.defineProperty(draft.mandate.constraints, "futureAuthority", {
+        value: { allowExecution: true },
+        enumerable: false,
+      });
+    });
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0].evidenceRefs[Symbol("futureAuthority")] = { decision: "BUY" };
+    });
+  });
+
+  it("rejects class-instance and accessor Plan objects without invoking getters", () => {
+    class PlanFixture {
+      planId = "plan_123";
+      planVersion = 7;
+      mode = "investing";
+      status = "active";
+      activatedAt = "2026-05-10T10:00:00.000Z";
+      updatedAt = "2026-05-10T11:00:00.000Z";
+      structuredSchemaVersion = 1;
+    }
+
+    expectInvalidDraft((draft) => {
+      draft.plan = new PlanFixture();
+    });
+
+    let getterCalls = 0;
+    expectInvalidDraft((draft) => {
+      Object.defineProperty(draft.plan, "planId", {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          return "plan_123";
+        },
+      });
+    });
+    expect(getterCalls).toBe(0);
+  });
+
+  it("rejects temporally incoherent Plan lineage while allowing equality and ordered lineage", () => {
+    expect(() =>
+      sealCanonicalInvestingMandateAuthorityV1(
+        validDraft({
+          plan: {
+            ...validDraft().plan,
+            activatedAt: "2026-05-10T10:00:00.000Z",
+            updatedAt: "2026-05-10T10:00:00.000Z",
+          },
+          lineage: { asOf: "2026-05-10T10:00:00.000Z" },
+        }),
+      ),
+    ).not.toThrow();
+
+    expect(() => sealCanonicalInvestingMandateAuthorityV1(validDraft())).not.toThrow();
+
+    expectInvalidDraft((draft) => {
+      draft.plan.activatedAt = "2026-05-10T11:00:00.001Z";
+      draft.plan.updatedAt = "2026-05-10T11:00:00.000Z";
+    });
+    expectInvalidDraft((draft) => {
+      draft.plan.updatedAt = "2026-05-10T12:00:00.001Z";
+      draft.lineage.asOf = "2026-05-10T12:00:00.000Z";
+    });
+    expectInvalidDraft((draft) => {
+      draft.plan.activatedAt = "2026-05-10T12:00:00.001Z";
+      draft.lineage.asOf = "2026-05-10T12:00:00.000Z";
+    });
+  });
+
   it("freezes the sealed result", () => {
     const sealed = sealCanonicalInvestingMandateAuthorityV1(validDraft());
 
@@ -258,6 +388,7 @@ describe("canonical Investing mandate authority contract", () => {
     expect(Object.isFrozen(sealed.mandate.constraints)).toBe(true);
     expect(Object.isFrozen(sealed.mandate.constraints[0])).toBe(true);
     expect(Object.isFrozen(sealed.lineage)).toBe(true);
+    assertNoHiddenMutableDescendants(sealed);
   });
 
   it("keeps market and quote observations out of durable mandate authority", () => {
