@@ -118,12 +118,28 @@ function pointQualityFromProvenance(args: {
       args.symbol,
       "market_quote_candle_fallback",
       "warning",
-      "Quote was derived through candle fallback rather than direct quote retrieval",
+      "Quote source market-client-candle-fallback was derived through candle fallback rather than direct quote retrieval",
     ));
     if (quality === "good") quality = "degraded";
   }
 
   return quality;
+}
+
+function recordCandleFallbackIssue(args: {
+  asOf: string;
+  symbol: string;
+  provider: string | null;
+  issues: InvestingQualityIssueV1[];
+}) {
+  if (args.provider !== "market-client-candle-fallback") return;
+  args.issues.push(qualityIssue(
+    args.asOf,
+    args.symbol,
+    "market_quote_candle_fallback",
+    "warning",
+    "Quote source market-client-candle-fallback was derived through candle fallback rather than direct quote retrieval",
+  ));
 }
 
 export function buildCanonicalMarketSnapshotFromQuotes(args: {
@@ -138,23 +154,26 @@ export function buildCanonicalMarketSnapshotFromQuotes(args: {
 
   for (const symbol of symbols) {
     const quote = args.quotes?.[symbol] ?? {};
+    const provider = explicitProvider(quote);
     const price = finiteNumber(quote?.price);
     if (price == null || price <= 0) {
       issues.push(qualityIssue(asOf, symbol, "market_price_missing", "error", "No positive provider price in snapshot"));
+      recordCandleFallbackIssue({ asOf, symbol, provider, issues });
       continue;
     }
 
     const currency = typeof quote?.currency === "string" ? quote.currency.trim().toUpperCase() : "";
     if (!currency) {
       issues.push(qualityIssue(asOf, symbol, "market_currency_missing", "error", "Provider currency is unavailable"));
+      recordCandleFallbackIssue({ asOf, symbol, provider, issues });
       continue;
     }
     if (!CURRENCY.test(currency)) {
       issues.push(qualityIssue(asOf, symbol, "market_currency_invalid", "error", "Provider currency is invalid"));
+      recordCandleFallbackIssue({ asOf, symbol, provider, issues });
       continue;
     }
 
-    const provider = explicitProvider(quote);
     if (!provider) {
       issues.push(qualityIssue(asOf, symbol, "market_provider_missing", "error", "Provider identity is unavailable"));
       continue;
@@ -219,29 +238,32 @@ export function toCustomerMarketSnapshot(args: {
 export function quotesFromCanonicalMarketSnapshot(snapshot: CanonicalMarketSnapshotV1): Record<string, any> {
   return Object.fromEntries(
     snapshot.points.filter((point) => point.quality !== "insufficient").map((point) => {
-      const isDegraded = point.quality === "degraded";
+      const quote = {
+        price: Number(point.price),
+        currency: point.currency,
+        source: point.provider,
+        provider: point.provider,
+        asOf: point.providerAsOf,
+        timestamp: point.providerAsOf,
+        ts: Math.floor(new Date(point.providerAsOf).getTime() / 1_000),
+        quality: point.quality,
+      };
+      if (point.quality === "degraded") return [point.symbol, quote];
       return [
         point.symbol,
         {
-          price: Number(point.price),
-          currency: point.currency,
-          source: point.provider,
-          provider: point.provider,
-          asOf: point.providerAsOf,
-          timestamp: point.providerAsOf,
-          ts: Math.floor(new Date(point.providerAsOf).getTime() / 1_000),
-          availability: isDegraded ? "STALE" : "REAL",
-          status: isDegraded ? "stale" : "fresh",
-          freshness: isDegraded ? "stale" : "fresh",
-          quality: point.quality,
+          ...quote,
+          availability: "REAL",
+          status: "fresh",
+          freshness: "fresh",
           cacheState: {
-            stale: isDegraded,
-            servedFromFallback: isDegraded,
-            state: isDegraded ? "last_known_good" : "fresh",
+            stale: false,
+            servedFromFallback: false,
+            state: "fresh",
             lastGoodAt: null,
           },
-          servedFromFallback: isDegraded,
-          state: isDegraded ? "last_known_good" : "fresh",
+          servedFromFallback: false,
+          state: "fresh",
         },
       ];
     }),

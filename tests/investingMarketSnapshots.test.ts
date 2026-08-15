@@ -38,6 +38,32 @@ function freshQuote(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function productionCandleFallbackQuote(overrides: Record<string, unknown> = {}) {
+  return {
+    price: 100,
+    ts: PROVIDER_TS,
+    source: "market-client-candle-fallback",
+    currency: null,
+    cacheState: {
+      stale: false,
+      servedFromFallback: false,
+      state: "fresh",
+      lastGoodAt: null,
+    },
+    servedFromFallback: false,
+    state: "fresh",
+    prevClose: null,
+    open: 99,
+    high: 101,
+    low: 98,
+    volume: 1000,
+    averageVolume: null,
+    isMarketOpen: null,
+    isExtendedHours: null,
+    ...overrides,
+  };
+}
+
 function snapshotFor(quote: Record<string, unknown> | undefined, symbols = ["VWCE"]) {
   return buildCanonicalMarketSnapshotFromQuotes({
     asOf: AS_OF,
@@ -155,17 +181,47 @@ describe("Investing immutable market snapshots", () => {
       code: "market_quote_stale",
       severity: "warning",
     }));
+
+    const quotes = quotesFromCanonicalMarketSnapshot(snapshot);
+    expect(quotes.VWCE).toMatchObject({
+      price: 100,
+      currency: "EUR",
+      source: "twelvedata",
+      provider: "twelvedata",
+      asOf: PROVIDER_ISO,
+      ts: PROVIDER_TS,
+      quality: "degraded",
+    });
+    expect(quotes.VWCE).not.toHaveProperty("servedFromFallback");
+    expect(quotes.VWCE).not.toHaveProperty("state");
+    expect(quotes.VWCE).not.toHaveProperty("cacheState");
+    expect(quotes.VWCE).not.toHaveProperty("freshness");
+    expect(quotes.VWCE).not.toHaveProperty("status");
+    expect(quotes.VWCE).not.toHaveProperty("availability");
   });
 
-  it("marks servedFromFallback as degraded with an explicit issue", () => {
+  it("marks real last-known-good cache fallback as degraded with explicit limited issues", () => {
     const snapshot = snapshotFor(freshQuote({
-      cacheState: { stale: false, servedFromFallback: true, state: "last_known_good", lastGoodAt: PROVIDER_TS * 1_000 },
+      cacheState: { stale: true, servedFromFallback: true, state: "last_known_good", lastGoodAt: PROVIDER_TS * 1_000 },
       servedFromFallback: true,
       state: "last_known_good",
     }));
 
     expect(snapshot.points[0]).toMatchObject({ quality: "degraded" });
     expect(snapshot.issues.map((issue) => issue.code)).toContain("market_quote_fallback");
+    expect(snapshot.issues.map((issue) => issue.code)).toContain("market_quote_stale");
+
+    const quotes = quotesFromCanonicalMarketSnapshot(snapshot);
+    expect(quotes.VWCE).toMatchObject({
+      price: 100,
+      currency: "EUR",
+      source: "twelvedata",
+      provider: "twelvedata",
+      quality: "degraded",
+    });
+    expect(quotes.VWCE).not.toHaveProperty("servedFromFallback");
+    expect(quotes.VWCE).not.toHaveProperty("state");
+    expect(quotes.VWCE).not.toHaveProperty("cacheState");
   });
 
   it("marks last_known_good cache state as degraded with an explicit issue", () => {
@@ -178,7 +234,7 @@ describe("Investing immutable market snapshots", () => {
     expect(snapshot.issues.map((issue) => issue.code)).toContain("market_quote_fallback");
   });
 
-  it("marks market-client-candle-fallback as degraded fallback truth", () => {
+  it("marks market-client-candle-fallback as degraded method fallback without cache fallback provenance", () => {
     const snapshot = snapshotFor(freshQuote({ source: "market-client-candle-fallback" }));
 
     expect(snapshot.points[0]).toMatchObject({
@@ -186,6 +242,43 @@ describe("Investing immutable market snapshots", () => {
       quality: "degraded",
     });
     expect(snapshot.issues.map((issue) => issue.code)).toContain("market_quote_candle_fallback");
+
+    const quotes = quotesFromCanonicalMarketSnapshot(snapshot);
+    expect(quotes.VWCE).toMatchObject({
+      price: 100,
+      currency: "EUR",
+      source: "market-client-candle-fallback",
+      provider: "market-client-candle-fallback",
+      quality: "degraded",
+    });
+    expect(quotes.VWCE).not.toHaveProperty("servedFromFallback");
+    expect(quotes.VWCE).not.toHaveProperty("state");
+    expect(quotes.VWCE).not.toHaveProperty("cacheState");
+    expect(quotes.VWCE).not.toMatchObject({
+      servedFromFallback: true,
+      state: "last_known_good",
+    });
+  });
+
+  it("does not emit a canonical point for production-real candle fallback without currency", () => {
+    const snapshot = snapshotFor(productionCandleFallbackQuote());
+
+    expect(snapshot.points).toEqual([]);
+    expect(snapshot.issues).toContainEqual(expect.objectContaining({
+      code: "market_currency_missing",
+      severity: "error",
+    }));
+    expect(snapshot.issues).toContainEqual(expect.objectContaining({
+      code: "market_quote_candle_fallback",
+      severity: "warning",
+    }));
+    expect(JSON.stringify(snapshot)).toContain("market-client-candle-fallback");
+    expect(JSON.stringify(snapshot)).not.toContain('"currency":"EUR"');
+
+    const quotes = quotesFromCanonicalMarketSnapshot(snapshot);
+    const customer = toCustomerMarketSnapshot({ snapshot, persisted: false });
+    expect(quotes.VWCE).toBeUndefined();
+    expect(customer.quotes).toEqual([]);
   });
 
   it("does not classify missing provenance as good", () => {
@@ -247,7 +340,7 @@ describe("Investing immutable market snapshots", () => {
     expect(JSON.stringify(snapshot)).not.toContain('"price":"0"');
   });
 
-  it("rehydrates good and degraded canonical points without making degraded data fresh", () => {
+  it("rehydrates good and degraded canonical points without fabricating degraded provenance", () => {
     const snapshot = buildCanonicalMarketSnapshotFromQuotes({
       asOf: AS_OF,
       symbols: ["GOOD", "STALE", "INSUFFICIENT"],
@@ -274,24 +367,31 @@ describe("Investing immutable market snapshots", () => {
       ts: 1786183100,
       state: "fresh",
       servedFromFallback: false,
+      availability: "REAL",
+      status: "fresh",
+      freshness: "fresh",
+      cacheState: {
+        stale: false,
+        servedFromFallback: false,
+        state: "fresh",
+        lastGoodAt: null,
+      },
     });
     expect(quotes.STALE).toMatchObject({
       price: 101,
       currency: "EUR",
       source: "twelvedata",
       provider: "twelvedata",
-      availability: "STALE",
-      status: "stale",
-      freshness: "stale",
-      state: "last_known_good",
-      servedFromFallback: true,
-      cacheState: {
-        stale: true,
-        servedFromFallback: true,
-        state: "last_known_good",
-        lastGoodAt: null,
-      },
+      asOf: "2026-08-08T09:58:30.000Z",
+      ts: 1786183110,
+      quality: "degraded",
     });
+    expect(quotes.STALE).not.toHaveProperty("availability");
+    expect(quotes.STALE).not.toHaveProperty("status");
+    expect(quotes.STALE).not.toHaveProperty("freshness");
+    expect(quotes.STALE).not.toHaveProperty("state");
+    expect(quotes.STALE).not.toHaveProperty("servedFromFallback");
+    expect(quotes.STALE).not.toHaveProperty("cacheState");
     expect(quotes.INSUFFICIENT).toBeUndefined();
   });
 
