@@ -12,20 +12,6 @@ type RealityVerdict = "realistic" | "stretch" | "unrealistic";
 type SetupMode = "offline" | "broker";
 type ModeKey = "investing";
 
-type StarterRow = {
-  symbol: string;
-  name: string | null;
-  valueEur: number;
-  qty: number | null;
-};
-
-type OpportunityRow = {
-  symbol: string;
-  side: "BUY" | "SELL" | "HOLD";
-  why: string;
-  conviction: number;
-};
-
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
 }
@@ -127,13 +113,6 @@ async function fetchJSON(url: string, opts?: RequestInit) {
   return { ok: true as const, status: res.status, data };
 }
 
-function normalizeOpportunitySide(v: unknown): "BUY" | "SELL" | "HOLD" {
-  const x = String(v || "").toUpperCase().trim();
-  if (x === "SELL") return "SELL";
-  if (x === "HOLD") return "HOLD";
-  return "BUY";
-}
-
 function verdictTone(v: RealityVerdict): "good" | "warn" | "bad" {
   if (v === "realistic") return "good";
   if (v === "stretch") return "warn";
@@ -157,11 +136,6 @@ export default function OfflineSetupClient() {
   const [monthlyContributionInput, setMonthlyContributionInput] = useState<string>("300");
   const [targetCapitalInput, setTargetCapitalInput] = useState<string>("50000");
   const [hasExistingHoldings, setHasExistingHoldings] = useState<boolean>(false);
-
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [starterPreview, setStarterPreview] = useState<StarterRow[]>([]);
-  const [opportunityPreview, setOpportunityPreview] = useState<OpportunityRow[]>([]);
-  const [previewSource, setPreviewSource] = useState<string>("local");
 
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState<string>("");
@@ -214,53 +188,6 @@ export default function OfflineSetupClient() {
       setGoalType("Investing");
     }
   }, [goalType, hasProAccess, loadingPaid]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadPreview() {
-      setPreviewLoading(true);
-      try {
-        const r = await fetchJSON(`/api/daily-bundle?mode=investing&budgetEur=${Math.max(100, Math.round(startingCapital))}`, {
-          method: "GET",
-        });
-        if (!r.ok) return;
-        if (cancelled) return;
-
-        const starterPackRaw = Array.isArray(r.data?.daily?.starterPack) ? r.data.daily.starterPack : [];
-        const starter = starterPackRaw
-          .map((x: any) => ({
-            symbol: String(x?.symbol || "").toUpperCase(),
-            name: x?.name ? String(x.name) : null,
-            valueEur: Number(x?.value_eur ?? x?.valueEur ?? 0),
-            qty: x?.qty == null ? null : Number(x.qty),
-          }))
-          .filter((x: StarterRow) => x.symbol.length > 0)
-          .slice(0, 6);
-
-        const opportunitiesRaw = Array.isArray(r.data?.daily?.opportunities) ? r.data.daily.opportunities : [];
-        const opportunities = opportunitiesRaw
-          .map((x: any) => ({
-            symbol: String(x?.symbol || "").toUpperCase(),
-            side: normalizeOpportunitySide(x?.side ?? x?.action),
-            why: x?.why ? String(x.why) : x?.title ? String(x.title) : "Opportunity from current market scan.",
-            conviction: Number(x?.score ?? x?.conviction ?? 0),
-          }))
-          .filter((x: OpportunityRow) => x.symbol.length > 0)
-          .sort((a: OpportunityRow, b: OpportunityRow) => b.conviction - a.conviction)
-          .slice(0, 3);
-
-        setStarterPreview(starter);
-        setOpportunityPreview(opportunities);
-        setPreviewSource(String(r.data?.daily?.starterPackMeta?.source || "local"));
-      } finally {
-        if (!cancelled) setPreviewLoading(false);
-      }
-    }
-    void loadPreview();
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, startingCapital]);
 
   async function completeSetup(modeValue: SetupMode) {
     const r = await fetchJSON("/api/setup/complete", {
@@ -373,7 +300,6 @@ export default function OfflineSetupClient() {
       qp.set("workspace", "simple");
       qp.set("fromSetup", "1");
       if (hasExistingHoldings) qp.set("addHoldingsNow", "1");
-      else if (shouldPrepareStarter && starterPreview.length > 0) qp.set("starterReady", "1");
       window.location.href = `/app?${qp.toString()}`;
     } catch (e: any) {
       setStatus("error");
@@ -390,7 +316,7 @@ export default function OfflineSetupClient() {
           <Link href="/app?tab=daily&mode=investing" className="text-sm font-semibold tracking-tight">
             Syntrake
           </Link>
-          <div className="text-xs text-neutral-500">Goal setup to first action</div>
+          <div className="text-xs text-neutral-500">Goal setup and portfolio readiness</div>
         </div>
       </div>
 
@@ -399,19 +325,19 @@ export default function OfflineSetupClient() {
           <section className="lg:col-span-2 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs text-neutral-700">
               <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              90-second setup to your first action
+              90-second setup to portfolio readiness
             </div>
 
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Turn a real money goal into your first Syntrake action</h1>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight">Turn a real money goal into a Syntrake setup profile</h1>
             <p className="mt-2 text-sm text-neutral-600">
-              Answer six inputs. Syntrake activates your plan, prepares your Portfolio import or Starter Pack, and then hands
-              you a clear next step in Daily.
+              Answer six inputs. Syntrake saves your setup profile and sends you to Portfolio so canonical account and
+              holdings checks can run before any recommendation is shown.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2 text-xs text-neutral-600">
               <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">1. Set goal and guardrails</div>
-              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">2. Confirm holdings or starter pack</div>
-              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">3. Land on one next best action</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">2. Confirm holdings source</div>
+              <div className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1">3. Continue to canonical portfolio checks</div>
             </div>
 
             <div className="mt-8 space-y-6">
@@ -496,7 +422,7 @@ export default function OfflineSetupClient() {
                 <div>
                   <div className="text-sm font-semibold">I already have holdings</div>
                   <div className="text-xs text-neutral-600">
-                    If checked, Syntrake will skip auto-creating a starter portfolio and guide you to import current positions.
+                    If checked, Syntrake will guide you to import current positions.
                   </div>
                 </div>
               </label>
@@ -544,49 +470,23 @@ export default function OfflineSetupClient() {
 
               <div className="mt-3 text-xs text-neutral-600">
                 {shouldPrepareStarter
-                  ? "On launch, Syntrake sends you to Portfolio where you can apply this starter allocation."
+                  ? "On launch, Syntrake sends you to Portfolio to complete canonical account and holdings checks."
                   : "On launch, Syntrake sends you to Portfolio to import your current holdings."}
               </div>
 
               <div className="mt-3 space-y-2">
-                {previewLoading ? (
-                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">Loading market opportunities...</div>
-                ) : null}
-                {!previewLoading && starterPreview.length === 0 ? (
-                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-                    No starter pack generated yet.
-                  </div>
-                ) : null}
-                {starterPreview.map((row) => (
-                  <div key={row.symbol} className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-neutral-900">{row.symbol}</span>
-                      <span className="text-neutral-700">{fmtEUR(row.valueEur)}</span>
-                    </div>
-                    <div className="mt-0.5 text-neutral-600">{row.name || "Allocation target"}</div>
-                  </div>
-                ))}
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                  Recommendation authority is unavailable during setup. Portfolio import and canonical checks happen next.
+                </div>
               </div>
-              <div className="mt-2 text-[11px] text-neutral-500">Source: {previewSource}</div>
             </div>
 
             <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold">Top opportunities now</div>
+              <div className="text-sm font-semibold">Recommendation status</div>
               <div className="mt-3 space-y-2">
-                {opportunityPreview.length === 0 ? (
-                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-                    No high-conviction opportunities right now.
-                  </div>
-                ) : null}
-                {opportunityPreview.map((o) => (
-                  <div key={`${o.symbol}-${o.side}`} className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-neutral-900">{o.symbol}</span>
-                      <Badge tone={o.side === "BUY" ? "good" : o.side === "SELL" ? "bad" : "neutral"}>{o.side}</Badge>
-                    </div>
-                    <div className="mt-1 text-neutral-700">{o.why}</div>
-                  </div>
-                ))}
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                  Unavailable until canonical mandate and decision authority are independently accepted.
+                </div>
               </div>
             </div>
           </aside>
@@ -606,7 +506,7 @@ export default function OfflineSetupClient() {
               status === "saving" ? "bg-neutral-400" : "bg-neutral-950 hover:bg-black"
             )}
           >
-            {status === "saving" ? "Launching..." : "Get my first action"}
+            {status === "saving" ? "Launching..." : "Continue to Portfolio"}
           </button>
 
           <Link
@@ -616,7 +516,7 @@ export default function OfflineSetupClient() {
             Connect broker instead
           </Link>
 
-          <div className="text-xs text-neutral-600">Plan now, Portfolio next, Daily action after that.</div>
+          <div className="text-xs text-neutral-600">Plan now, Portfolio checks next, Daily remains unavailable until authority is proven.</div>
         </div>
       </div>
     </main>

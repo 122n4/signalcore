@@ -3536,6 +3536,169 @@ function buildDataRefreshAccessSnapshot(args: {
   };
 }
 
+export const INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY = {
+  contractVersion: "investing-compatibility-authority-boundary/v1",
+  mode: "investing",
+  source: "legacy_compatibility",
+  canonicalDecisionAuthority: false,
+  mandateAuthority: false,
+  executionAuthority: false,
+} as const;
+
+const INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS = [
+  "ok",
+  "degraded",
+  "degradedReason",
+  "mode",
+  "asOf",
+] as const;
+
+const INVESTING_COMPATIBILITY_NODE_FIELDS = [
+  "unlockedMode",
+  "hasPlan",
+  "hasHoldings",
+  "receiptsCount",
+  "doneToday",
+  "streak",
+  "lastSnapshotAt",
+] as const;
+
+function isInvestingCompatibilityPrimitive(value: unknown) {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
+}
+
+function copyAllowedPrimitiveFields(
+  source: Record<string, any>,
+  allowed: readonly string[],
+  target: Record<string, any>,
+) {
+  for (const key of allowed) {
+    if (
+      Object.prototype.hasOwnProperty.call(source, key) &&
+      isInvestingCompatibilityPrimitive(source[key])
+    ) {
+      target[key] = source[key];
+    }
+  }
+}
+
+function projectInvestingBillingMetadata(value: unknown): Record<string, any> | null {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
+  if (!source) return null;
+
+  const projected: Record<string, any> = {};
+  copyAllowedPrimitiveFields(source, [
+    "plan",
+    "trialActive",
+    "trialEndsAt",
+    "proActive",
+    "trialStarted",
+    "trialExpired",
+    "source",
+  ], projected);
+
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+function projectInvestingPaywallMetadata(value: unknown): Record<string, any> | null {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
+  if (!source) return null;
+
+  const projected: Record<string, any> = {};
+  copyAllowedPrimitiveFields(source, [
+    "show",
+    "cta",
+    "continuityPolicy",
+  ], projected);
+
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+function projectInvestingDataRefreshAccessMetadata(value: unknown): Record<string, any> | null {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, any>
+    : null;
+  if (!source) return null;
+
+  const projected: Record<string, any> = {};
+  copyAllowedPrimitiveFields(source, ["tier"], projected);
+
+  const tradingLiveRefresh = source.tradingLiveRefresh &&
+    typeof source.tradingLiveRefresh === "object" &&
+    !Array.isArray(source.tradingLiveRefresh)
+    ? source.tradingLiveRefresh as Record<string, any>
+    : null;
+
+  if (tradingLiveRefresh) {
+    const projectedTradingLiveRefresh: Record<string, any> = {};
+    copyAllowedPrimitiveFields(tradingLiveRefresh, [
+      "requested",
+      "allowed",
+      "sharedSnapshotOnly",
+      "dailyLimit",
+      "cooldownSeconds",
+      "usedToday",
+      "remainingToday",
+      "resetAt",
+      "blockedReason",
+      "retryAfterSeconds",
+      "trackingReady",
+    ], projectedTradingLiveRefresh);
+
+    if (Object.keys(projectedTradingLiveRefresh).length > 0) {
+      projected.tradingLiveRefresh = projectedTradingLiveRefresh;
+    }
+  }
+
+  return Object.keys(projected).length > 0 ? projected : null;
+}
+
+function projectInvestingCompatibilityNode(node: unknown): Record<string, any> {
+  const source = node && typeof node === "object" && !Array.isArray(node)
+    ? node as Record<string, any>
+    : {};
+  const projected: Record<string, any> = {
+    authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
+  };
+
+  copyAllowedPrimitiveFields(source, INVESTING_COMPATIBILITY_NODE_FIELDS, projected);
+
+  const billing = projectInvestingBillingMetadata(source.billing);
+  if (billing) projected.billing = billing;
+
+  const paywall = projectInvestingPaywallMetadata(source.paywall);
+  if (paywall) projected.paywall = paywall;
+
+  const dataRefreshAccess = projectInvestingDataRefreshAccessMetadata(source.dataRefreshAccess);
+  if (dataRefreshAccess) projected.dataRefreshAccess = dataRefreshAccess;
+
+  return projected;
+}
+
+export function isolateInvestingCompatibilityAuthorityResponse<
+  T extends { daily?: Record<string, any> | null; derived?: Record<string, any> | null },
+>(response: T): T & { authorityBoundary: typeof INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY } {
+  const source = response && typeof response === "object" ? response as Record<string, any> : {};
+  const projected: Record<string, any> = {
+    authorityBoundary: INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY,
+  };
+
+  copyAllowedPrimitiveFields(source, INVESTING_COMPATIBILITY_TOP_LEVEL_FIELDS, projected);
+  projected.daily = projectInvestingCompatibilityNode(response.daily ?? {});
+
+  if (Object.prototype.hasOwnProperty.call(response, "derived")) {
+    projected.derived = response.derived == null
+      ? response.derived
+      : projectInvestingCompatibilityNode(response.derived);
+  }
+
+  return projected as T & { authorityBoundary: typeof INVESTING_COMPATIBILITY_AUTHORITY_BOUNDARY };
+}
+
 export function attachDecisionEnvelopeToDailyBundleRouteResponse<
   T extends {
     mode: AutopilotMode;
@@ -3553,7 +3716,7 @@ export function attachDecisionEnvelopeToDailyBundleRouteResponse<
   return buildDailyDecisionPayload(args).response;
 }
 
-function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; derived?: Record<string, any> | null }>(
+export function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; derived?: Record<string, any> | null }>(
   response: T,
   args?: {
     mode: AutopilotMode;
@@ -3583,12 +3746,16 @@ function finalizeDailyBundleResponse<T extends { daily?: Record<string, any>; de
       } as T)
     : response;
 
-  return applyDailyBundleEntitlements(responseWithDataAccess, {
+  const entitled = applyDailyBundleEntitlements(responseWithDataAccess, {
     mode: args.mode,
     tier: args.accessTier,
     entitlements: getEntitlementsForTier(args.accessTier),
     asOf: args.asOf,
   });
+
+  return args.mode === "investing"
+    ? isolateInvestingCompatibilityAuthorityResponse(entitled) as T
+    : entitled;
 }
 
 function normalizeActionKey(x: unknown) {
