@@ -7,6 +7,41 @@ const mocks = vi.hoisted(() => ({
 
 type Row = Record<string, any>;
 
+const PROVIDER_TS = 1786183140;
+
+function freshDashboardQuote(overrides: Record<string, unknown> = {}) {
+  return {
+    price: 100,
+    currency: "EUR",
+    source: "verified_fresh_test",
+    ts: PROVIDER_TS,
+    cacheState: {
+      stale: false,
+      servedFromFallback: false,
+      state: "fresh",
+      lastGoodAt: null,
+    },
+    servedFromFallback: false,
+    state: "fresh",
+    ...overrides,
+  };
+}
+
+function staleDashboardQuote(overrides: Record<string, unknown> = {}) {
+  return freshDashboardQuote({
+    source: "last_known_good",
+    cacheState: {
+      stale: true,
+      servedFromFallback: true,
+      state: "last_known_good",
+      lastGoodAt: PROVIDER_TS * 1_000,
+    },
+    servedFromFallback: true,
+    state: "last_known_good",
+    ...overrides,
+  });
+}
+
 const db = {
   user_settings: [] as Row[],
   plans: [] as Row[],
@@ -189,7 +224,7 @@ describe("Investing dashboard tenant-scoped read", () => {
     vi.clearAllMocks();
     for (const rows of Object.values(db)) rows.splice(0, rows.length);
     seedTenantAFinancialRows();
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote() });
   });
 
   it("loads transitional user-level rows directly and never calls the non-tenant-scoped compact RPC", async () => {
@@ -280,7 +315,7 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("does not label a USD quote as EUR portfolio value without FX lineage", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "USD", source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote({ currency: "USD" }) });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
@@ -317,7 +352,7 @@ describe("Investing dashboard tenant-scoped read", () => {
       available_amount: 700,
       as_of: "2026-08-02T09:30:00.000Z",
     });
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "USD", source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote({ currency: "USD" }) });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
@@ -349,7 +384,7 @@ describe("Investing dashboard tenant-scoped read", () => {
 
   it("does not default a missing account base currency to EUR", async () => {
     delete db.investing_accounts[0].base_currency;
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote() });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
@@ -380,7 +415,7 @@ describe("Investing dashboard tenant-scoped read", () => {
   it("does not default a null or invalid account base currency to EUR", async () => {
     for (const baseCurrency of [null, "EURO"]) {
       db.investing_accounts[0].base_currency = baseCurrency;
-      mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+      mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote() });
 
       const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
@@ -393,7 +428,7 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("does not label stale USD quote evidence as a stale EUR valuation without FX lineage", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "USD", source: "last_known_good" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: staleDashboardQuote({ currency: "USD" }) });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
@@ -420,22 +455,22 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("does not default a missing quote currency to EUR for portfolio valuation", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote({ currency: undefined }) });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
     expect(result.portfolio.items[0]).toMatchObject({
       symbol: "VWCE",
       quoteCurrency: null,
-      valueEur: null,
-      value_eur: null,
-      valuationSource: "unavailable",
-      valuationAvailability: "UNAVAILABLE",
+      valueEur: 250,
+      value_eur: 250,
+      valuationSource: "cost_basis_fallback",
+      valuationAvailability: "ESTIMATED",
     });
     expect(result.portfolio.cash).toMatchObject({ amountEur: 700, availability: "REAL" });
-    expect(result.portfolio.totalEur).toBeNull();
-    expect(result.portfolio.valuation.totalEur).toBeNull();
-    expect(result.portfolio.valuation.availability).toBe("UNAVAILABLE");
+    expect(result.portfolio.totalEur).toBe(950);
+    expect(result.portfolio.valuation.totalEur).toBe(950);
+    expect(result.portfolio.valuation.availability).toBe("ESTIMATED");
     expect(result.portfolio.performance.components.unrealizedPnl.availability).toBe("UNAVAILABLE");
   });
 
@@ -448,8 +483,8 @@ describe("Investing dashboard tenant-scoped read", () => {
       currency: "EUR",
     });
     mocks.getQuotes.mockResolvedValue({
-      VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" },
-      IWDA: { price: 50, currency: "USD", source: "verified_fresh_test" },
+      VWCE: freshDashboardQuote(),
+      IWDA: freshDashboardQuote({ price: 50, currency: "USD" }),
     });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
@@ -480,7 +515,7 @@ describe("Investing dashboard tenant-scoped read", () => {
   it("does not relabel a foreign-currency position cost basis as EUR", async () => {
     db.investing_positions[0].currency = "USD";
     db.investing_positions[0].cost_basis = 250;
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "verified_fresh_test" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: freshDashboardQuote() });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
@@ -912,7 +947,7 @@ describe("Investing dashboard tenant-scoped read", () => {
       symbol: "VWCE",
       valueEur: 250,
       costBasisEur: 250,
-      price: 0,
+      price: null,
       priceSource: null,
       priceAvailability: "UNAVAILABLE",
       valuationSource: "cost_basis_fallback",
@@ -936,14 +971,14 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("does not use the current provider quote shape as customer-visible market truth without freshness evidence", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, ts: "2026-08-08T10:00:00.000Z", source: "twelvedata" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", ts: PROVIDER_TS, source: "twelvedata" } });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
     expect(result.portfolio.items[0]).toMatchObject({
       symbol: "VWCE",
-      price: 100,
-      priceSource: "twelvedata",
+      price: null,
+      priceSource: null,
       priceAvailability: "UNAVAILABLE",
       valueEur: 250,
       valuationSource: "cost_basis_fallback",
@@ -969,13 +1004,13 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("fails closed for positive prices with unknown source", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, source: "unknown" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", ts: PROVIDER_TS, source: "unknown" } });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 
     expect(result.portfolio.items[0]).toMatchObject({
       symbol: "VWCE",
-      price: 100,
+      price: null,
       priceAvailability: "UNAVAILABLE",
       valueEur: 250,
       valuationSource: "cost_basis_fallback",
@@ -995,7 +1030,7 @@ describe("Investing dashboard tenant-scoped read", () => {
   });
 
   it("marks stale quote evidence as STALE, not REAL", async () => {
-    mocks.getQuotes.mockResolvedValue({ VWCE: { price: 100, currency: "EUR", source: "last_known_good" } });
+    mocks.getQuotes.mockResolvedValue({ VWCE: staleDashboardQuote() });
 
     const result = await loadInvestingDashboard({ userId: "owner-1", tenantId: "tenant-a" });
 

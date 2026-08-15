@@ -50,8 +50,8 @@ function normalizedEvidenceTokens(quote: Record<string, unknown>) {
     .filter(Boolean);
 }
 
-function priceAvailabilityFromQuote(quote: Record<string, unknown>, price: number): AvailabilityStatus {
-  if (price <= 0) return "UNAVAILABLE";
+function priceAvailabilityFromQuote(quote: Record<string, unknown>, price: number | null): AvailabilityStatus {
+  if (price === null || price <= 0) return "UNAVAILABLE";
   const tokens = normalizedEvidenceTokens(quote);
   if (tokens.length === 0) return "UNAVAILABLE";
   if (tokens.some((token) => token.includes("stale") || token.includes("last_known") || token.includes("fallback"))) return "STALE";
@@ -280,7 +280,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
     const qty = number(position.quantity);
     const quote = snapshotQuotes[symbol] ?? {};
     const sourceQuote = quotes?.[symbol] && typeof quotes[symbol] === "object" ? quotes[symbol] : quote;
-    const price = number(quote?.price);
+    const price = finiteNumber(quote?.price);
     const priceAvailability = priceAvailabilityFromQuote(sourceQuote, price);
     const quoteCurrency = typeof sourceQuote?.currency === "string" && /^[A-Z]{3}$/i.test(sourceQuote.currency)
       ? sourceQuote.currency.toUpperCase()
@@ -290,7 +290,7 @@ export async function loadInvestingDashboard(args: DashboardLoadArgs) {
       : null;
     const rawCostBasis = finiteNumber(position.cost_basis);
     const costBasisEur = costBasisCurrency === "EUR" ? rawCostBasis : null;
-    const hasMarketEvidence = price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
+    const hasMarketEvidence = price !== null && price > 0 && (priceAvailability === "REAL" || priceAvailability === "STALE");
     const hasUsableMarketPrice = hasMarketEvidence && quoteCurrency === accountBaseCurrency && accountBaseCurrency === "EUR";
     const hasCurrencyBlockedQuote = hasMarketEvidence && (!accountBaseCurrency || !quoteCurrency || quoteCurrency !== accountBaseCurrency || accountBaseCurrency !== "EUR");
     const hasCostBasisFallback = costBasisEur !== null && costBasisEur > 0 && !hasCurrencyBlockedQuote;
