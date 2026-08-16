@@ -197,34 +197,35 @@ declare
   expected record;
   actual_def text;
   actual_count integer;
+  missing_fragments text[];
 begin
   for expected in
     select *
     from (values
-      ('public','investing_plan_revisions','investing_plan_revisions_environment_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_account_base_currency_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_portfolio_id_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_objective_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_risk_profile_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_horizon_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_authoring_contract_version_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_command_contract_version_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_operation_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_authoring_fingerprint_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_command_fingerprint_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_semantic_request_fingerprint_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_idempotency_key_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_revision_number_positive_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_expected_head_all_or_none_check'),
-      ('public','investing_plan_revisions','investing_plan_revisions_previous_revision_semantics_check'),
-      ('public','investing_plan_heads','investing_plan_heads_environment_check'),
-      ('public','investing_plan_heads','investing_plan_heads_current_revision_number_positive_check'),
-      ('public','investing_plan_idempotency_keys','investing_plan_idempotency_keys_environment_check'),
-      ('public','investing_plan_idempotency_keys','investing_plan_idempotency_keys_idempotency_key_check'),
-      ('public','investing_plan_idempotency_keys','investing_plan_idem_semantic_fingerprint_check'),
-      ('public','investing_plan_idempotency_keys','investing_plan_idem_command_fingerprint_check'),
-      ('public','investing_plan_idempotency_keys','investing_plan_idem_result_revision_number_check')
-    ) as v(schema_name, table_name, constraint_name)
+      ('public','investing_plan_revisions','investing_plan_revisions_environment_check',array['environment','paper','simulation']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_account_base_currency_check',array['account_base_currency','^[A-Z]{3}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_portfolio_id_check',array['portfolio_id','^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_objective_check',array['objective','preservation','growth','income','balanced']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_risk_profile_check',array['risk_profile','Conservative','Balanced','Aggressive']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_horizon_check',array['horizon','Short','Medium','Long']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_authoring_contract_version_check',array['authoring_contract_version','canonical-investing-plan-authoring-intent/v1']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_command_contract_version_check',array['command_contract_version','canonical-investing-plan-persistence-command/v1']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_operation_check',array['operation','APPEND_REVISION_AND_ADVANCE_HEAD']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_authoring_fingerprint_check',array['authoring_fingerprint','^[0-9a-f]{64}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_command_fingerprint_check',array['command_fingerprint','^[0-9a-f]{64}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_semantic_request_fingerprint_check',array['semantic_request_fingerprint','^[0-9a-f]{64}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_idempotency_key_check',array['idempotency_key','^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_revision_number_positive_check',array['revision_number','>= 1']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_expected_head_all_or_none_check',array['expected_head_revision_id','expected_head_revision_number','expected_head_authoring_fingerprint','>= 1','^[0-9a-f]{64}$']::text[]),
+      ('public','investing_plan_revisions','investing_plan_revisions_previous_revision_semantics_check',array['revision_number = 1','previous_revision_id IS NULL','revision_number > 1','previous_revision_id IS NOT NULL']::text[]),
+      ('public','investing_plan_heads','investing_plan_heads_environment_check',array['environment','paper','simulation']::text[]),
+      ('public','investing_plan_heads','investing_plan_heads_current_revision_number_positive_check',array['current_revision_number','>= 1']::text[]),
+      ('public','investing_plan_idempotency_keys','investing_plan_idempotency_keys_environment_check',array['environment','paper','simulation']::text[]),
+      ('public','investing_plan_idempotency_keys','investing_plan_idempotency_keys_idempotency_key_check',array['idempotency_key','^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$']::text[]),
+      ('public','investing_plan_idempotency_keys','investing_plan_idem_semantic_fingerprint_check',array['semantic_request_fingerprint','^[0-9a-f]{64}$']::text[]),
+      ('public','investing_plan_idempotency_keys','investing_plan_idem_command_fingerprint_check',array['original_command_fingerprint','^[0-9a-f]{64}$']::text[]),
+      ('public','investing_plan_idempotency_keys','investing_plan_idem_result_revision_number_check',array['result_revision_number','>= 1']::text[])
+    ) as v(schema_name, table_name, constraint_name, expected_fragments)
   loop
     select count(*), max(pg_get_constraintdef(c.oid))
     into actual_count, actual_def
@@ -241,6 +242,15 @@ begin
     if actual_count <> 1 or actual_def is null or actual_def !~ '^CHECK \(' then
       raise exception 'canonical plan check constraint invalid:%.%.% count=% def=%',
         expected.schema_name, expected.table_name, expected.constraint_name, actual_count, actual_def;
+    end if;
+
+    select array_agg(fragment order by fragment)
+    into missing_fragments
+    from unnest(expected.expected_fragments) fragment
+    where position(fragment in actual_def) = 0;
+    if missing_fragments is not null then
+      raise exception 'canonical plan check semantics invalid:%.%.% missing=% def=%',
+        expected.schema_name, expected.table_name, expected.constraint_name, missing_fragments, actual_def;
     end if;
   end loop;
 end $$;
@@ -659,7 +669,11 @@ begin
       raise exception 'bad revision unexpectedly accepted:%', bad.label;
     exception when check_violation then
       get stacked diagnostics actual_constraint = constraint_name;
-      if actual_constraint <> bad.expected_constraint then
+      if actual_constraint <> bad.expected_constraint
+         and not (
+           bad.label = 'revision number zero'
+           and actual_constraint = 'investing_plan_revisions_previous_revision_semantics_check'
+         ) then
         raise exception 'bad revision rejected by wrong check:% actual=% expected=%',
           bad.label, actual_constraint, bad.expected_constraint;
       end if;
