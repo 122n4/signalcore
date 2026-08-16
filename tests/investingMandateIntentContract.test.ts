@@ -402,6 +402,99 @@ describe("canonical mandate intent contract", () => {
     }))).not.toThrow();
   });
 
+  it("rejects inherited permission array behavior before any map dispatch", () => {
+    let mapInvocations = 0;
+    class EvilPermissions extends Array<string> {
+      override map<U>() {
+        mapInvocations += 1;
+        return ["investing:read"] as U[];
+      }
+    }
+
+    const evilPermissions = new EvilPermissions("billing:read");
+    expectRejected((input) => {
+      input.tenant.permissions = evilPermissions;
+    }, /permissions_invalid/);
+    expect(mapInvocations).toBe(0);
+
+    const replacedPrototype = ["investing:read"];
+    Object.setPrototypeOf(replacedPrototype, { map: () => ["investing:read"] });
+    expectRejected((input) => {
+      input.tenant.permissions = replacedPrototype;
+    }, /permissions_invalid/);
+
+    let prototypeGetterCalls = 0;
+    const maliciousPrototype = Object.create(Array.prototype);
+    Object.defineProperty(maliciousPrototype, "map", {
+      get() {
+        prototypeGetterCalls += 1;
+        return () => ["investing:read"];
+      },
+    });
+    const maliciousPrototypeArray = ["billing:read"];
+    Object.setPrototypeOf(maliciousPrototypeArray, maliciousPrototype);
+    expectRejected((input) => {
+      input.tenant.permissions = maliciousPrototypeArray;
+    }, /permissions_invalid/);
+    expect(prototypeGetterCalls).toBe(0);
+
+    expect(() => sealCanonicalInvestingMandateIntentV1(validInput({
+      tenant: {
+        ...validInput().tenant,
+        permissions: ["investing:read"],
+      },
+    }))).not.toThrow();
+  });
+
+  it("rejects non-closed permission arrays without invoking index accessors", () => {
+    const sparsePermissions = ["investing:read"];
+    delete sparsePermissions[0];
+    expectRejected((input) => {
+      input.tenant.permissions = sparsePermissions;
+    }, /permissions_invalid/);
+
+    let getterCalls = 0;
+    const accessorPermissions = ["billing:read"];
+    Object.defineProperty(accessorPermissions, "0", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return "investing:read";
+      },
+    });
+    expectRejected((input) => {
+      input.tenant.permissions = accessorPermissions;
+    }, /permissions_invalid/);
+    expect(getterCalls).toBe(0);
+
+    expectRejected((input) => {
+      input.tenant.permissions[Symbol("futureAuthority")] = { allowExecution: true };
+    }, /permissions_invalid/);
+
+    expectRejected((input) => {
+      Object.defineProperty(input.tenant.permissions, "futureAuthority", {
+        value: { allowExecution: true },
+        enumerable: false,
+      });
+    }, /permissions_invalid/);
+  });
+
+  it("rejects inherited plan assessment reason code behavior before any map dispatch", () => {
+    let mapInvocations = 0;
+    class EvilReasonCodes extends Array<string> {
+      override map<U>() {
+        mapInvocations += 1;
+        return ["HORIZON_EXPLICIT_AUTHORING_REQUIRED"] as U[];
+      }
+    }
+
+    const reasonCodes = new EvilReasonCodes("HORIZON_EXPLICIT_AUTHORING_REQUIRED");
+    expectRejected((input) => {
+      input.planAssessment.reasonCodes = reasonCodes;
+    }, /reason_codes_invalid/);
+    expect(mapInvocations).toBe(0);
+  });
+
   it("enforces normalized temporal lineage and allows timestamp equality", () => {
     const equalityPlan = canonicalPlan({
       activatedAt: "2026-05-10T10:00:00.000Z",

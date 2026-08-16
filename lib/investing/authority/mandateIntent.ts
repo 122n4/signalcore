@@ -168,7 +168,10 @@ function assertClosedDataRecord(
 }
 
 function assertClosedDataArray(value: unknown, code: string): asserts value is readonly unknown[] {
+  // This ordinary-array boundary does not claim immunity to arbitrary Proxy
+  // reflective traps; callers must cross a plain-data serialization boundary first.
   assert(Array.isArray(value), code);
+  assert(Object.getPrototypeOf(value) === Array.prototype, code);
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
   assert(Boolean(lengthDescriptor) && "value" in lengthDescriptor && lengthDescriptor.enumerable === false, code);
@@ -189,6 +192,22 @@ function assertClosedDataArray(value: unknown, code: string): asserts value is r
     const descriptor = descriptors[String(index)];
     assert(Boolean(descriptor) && descriptor.enumerable === true && "value" in descriptor, code);
   }
+}
+
+function materializeClosedDataArray(value: unknown, code: string) {
+  assertClosedDataArray(value, code);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  assert(Boolean(lengthDescriptor) && "value" in lengthDescriptor, code);
+  const length = lengthDescriptor.value;
+  assert(Number.isSafeInteger(length) && length >= 0, code);
+  const materialized: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    assert(Boolean(descriptor) && descriptor.enumerable === true && "value" in descriptor, code);
+    materialized.push(descriptor.value);
+  }
+  return materialized;
 }
 
 function readDataField(record: Record<string, unknown>, key: string) {
@@ -223,11 +242,14 @@ function assertSha256(value: unknown, code: string): asserts value is string {
 }
 
 function materializeStringArray(value: unknown, code: string) {
-  assertClosedDataArray(value, code);
-  return value.map((entry) => {
+  const materialized = materializeClosedDataArray(value, code);
+  const strings: string[] = [];
+  for (let index = 0; index < materialized.length; index += 1) {
+    const entry = materialized[index];
     assert(typeof entry === "string", code);
-    return entry;
-  });
+    strings.push(entry);
+  }
+  return strings;
 }
 
 function materializeTenant(value: unknown) {
