@@ -7,14 +7,14 @@ export const CANONICAL_INVESTING_PLAN_PERSISTENCE_SCHEMA_FUTURE_TRANSACTION_ORDE
   "FRESH_SERVER_AUTHORIZATION",
   "REVALIDATE_ACTIVE_MEMBERSHIP_OWNER_CREATE_PERMISSION",
   "LOCK_CANONICAL_ACCOUNT_ROW_FOR_UPDATE",
-  "REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY",
   "LOOKUP_IDEMPOTENCY_KEY",
   "REPLAY_IF_SEMANTIC_FINGERPRINT_MATCHES",
   "FAIL_IF_IDEMPOTENCY_PAYLOAD_MISMATCH",
+  "REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY_ONLY_FOR_NEW_IDEMPOTENCY",
   "VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY",
   "DERIVE_NEXT_REVISION_NUMBER_AND_PREVIOUS_REVISION",
   "INSERT_IMMUTABLE_REVISION",
-  "INSERT_OR_ADVANCE_SINGLE_HEAD",
+  "INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP",
   "INSERT_IMMUTABLE_IDEMPOTENCY_RESULT",
   "COMMIT",
 ] as const);
@@ -95,11 +95,41 @@ export type CanonicalInvestingPlanPersistenceSchemaContractV1 = {
   readonly transactionOrder: typeof CANONICAL_INVESTING_PLAN_PERSISTENCE_SCHEMA_FUTURE_TRANSACTION_ORDER;
   readonly retrySemantics: {
     readonly replayBeforeExpectedHeadConflict: true;
+    readonly replayBeforeMutableWriteEligibility: true;
     readonly sameScopeKeySameSemanticFingerprint: "REPLAY_STORED_RESULT";
     readonly sameScopeKeyDifferentSemanticFingerprint: "FAIL";
     readonly mismatchError: "investing_plan_idempotency_payload_mismatch";
     readonly replayCreatesRevision: false;
+    readonly replayAdvancesHead: false;
+    readonly replayUpdatesHeadTimestamp: false;
+    readonly replayGeneratesPersistenceTimestamp: false;
+    readonly replayGeneratesPersistenceTxid: false;
     readonly membershipIdInRetryUniqueness: false;
+  };
+  readonly newPersistenceWriteEligibility: {
+    readonly appliesOnlyWhenIdempotencyKeyIsNew: true;
+    readonly replayBypassesMutableWriteEligibility: true;
+    readonly checks: readonly string[];
+  };
+  readonly headMutationSemantics: {
+    readonly insertOrAdvanceOperation: "INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP";
+    readonly newRevisionSetsUpdatedAt: "CURRENT_DB_PERSISTENCE_TRANSACTION_TIMESTAMP";
+    readonly replayPreservesOriginalHeadTimestamp: true;
+    readonly replayPreservesCurrentRevision: true;
+    readonly replayPreservesCurrentRevisionNumber: true;
+  };
+  readonly transactionLineage: {
+    readonly newPersistenceSameTransactionTimestampColumns: readonly [
+      "investing_plan_revisions.persisted_at",
+      "investing_plan_heads.updated_at",
+      "investing_plan_idempotency_keys.created_at",
+    ];
+    readonly newPersistenceSameTransactionIdColumns: readonly [
+      "investing_plan_revisions.persistence_txid",
+      "investing_plan_idempotency_keys.persistence_txid",
+    ];
+    readonly replayReturnsStoredLineage: true;
+    readonly replayGeneratesNewTimestampOrTxid: false;
   };
   readonly freshAuthorization: {
     readonly required: true;
@@ -180,6 +210,13 @@ const IDEMPOTENCY_KEY_PATTERN = "^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$";
 const CANONICAL_UUID_LOWERCASE =
   "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 const PORTFOLIO_ID_PATTERN = "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$";
+
+const RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS = {
+  onDelete: "RESTRICT",
+  onUpdate: "NO_ACTION",
+  deferrable: false,
+  destructiveParentDeletePreventedByPlanHistory: true,
+} as const;
 
 const NO_DEFAULT = {
   default: "NONE",
@@ -338,6 +375,7 @@ const DRAFT_CONTRACT = {
             table: "investing_accounts",
             columns: ["tenant_id", "owner_user_id", "portfolio_id", "id", "environment"],
           },
+          ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
           provesFullAccountScope: true,
           accountIdAloneOwnershipProof: false,
         },
@@ -347,6 +385,7 @@ const DRAFT_CONTRACT = {
             table: "investing_tenant_memberships",
             columns: ["id", "tenant_id", "user_id"],
           },
+          ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
           provesSameTenantUser: true,
         },
         environment: {
@@ -390,6 +429,7 @@ const DRAFT_CONTRACT = {
               table: "investing_plan_revisions",
               columns: ["id", "account_id"],
             },
+            ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
             preventsCrossAccountPreviousPointer: true,
           },
           exactNumberArithmeticIsTransactionInvariant: true,
@@ -467,6 +507,7 @@ const DRAFT_CONTRACT = {
             table: "investing_accounts",
             columns: ["tenant_id", "owner_user_id", "portfolio_id", "id", "environment"],
           },
+          ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
         },
         currentRevisionForeignKey: {
           local: ["current_revision_id", "account_id", "current_revision_number"],
@@ -474,10 +515,17 @@ const DRAFT_CONTRACT = {
             table: "investing_plan_revisions",
             columns: ["id", "account_id", "revision_number"],
           },
+          ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
           preventsCrossAccountRevisionPointer: true,
         },
         duplicatedCurrentAuthoringFingerprint: false,
         expectedHeadProducedByJoiningCurrentRevision: true,
+        updatedAt: {
+          insertDefault: "DB_PERSISTENCE_TIMESTAMP",
+          advanceSets: "CURRENT_DB_PERSISTENCE_TRANSACTION_TIMESTAMP",
+          replayMutates: false,
+          replayPreservesOriginalValue: true,
+        },
       },
       immutability: {
         appendOnly: false,
@@ -511,6 +559,7 @@ const DRAFT_CONTRACT = {
             table: "investing_accounts",
             columns: ["tenant_id", "owner_user_id", "portfolio_id", "id", "environment"],
           },
+          ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
           provesFullAccountScope: true,
           accountIdAloneOwnershipProof: false,
         },
@@ -520,6 +569,7 @@ const DRAFT_CONTRACT = {
             table: "investing_plan_revisions",
             columns: ["id", "account_id", "revision_number"],
           },
+          ...RESTRICT_CANONICAL_PLAN_REFERENTIAL_ACTIONS,
           preventsCrossAccountResultPointer: true,
         },
       },
@@ -582,11 +632,45 @@ const DRAFT_CONTRACT = {
   transactionOrder: CANONICAL_INVESTING_PLAN_PERSISTENCE_SCHEMA_FUTURE_TRANSACTION_ORDER,
   retrySemantics: {
     replayBeforeExpectedHeadConflict: true,
+    replayBeforeMutableWriteEligibility: true,
     sameScopeKeySameSemanticFingerprint: "REPLAY_STORED_RESULT",
     sameScopeKeyDifferentSemanticFingerprint: "FAIL",
     mismatchError: "investing_plan_idempotency_payload_mismatch",
     replayCreatesRevision: false,
+    replayAdvancesHead: false,
+    replayUpdatesHeadTimestamp: false,
+    replayGeneratesPersistenceTimestamp: false,
+    replayGeneratesPersistenceTxid: false,
     membershipIdInRetryUniqueness: false,
+  },
+  newPersistenceWriteEligibility: {
+    appliesOnlyWhenIdempotencyKeyIsNew: true,
+    replayBypassesMutableWriteEligibility: true,
+    checks: [
+      "account_active",
+      "environment_paper_or_simulation",
+      "current_account_base_currency_matches_command_currency",
+    ],
+  },
+  headMutationSemantics: {
+    insertOrAdvanceOperation: "INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP",
+    newRevisionSetsUpdatedAt: "CURRENT_DB_PERSISTENCE_TRANSACTION_TIMESTAMP",
+    replayPreservesOriginalHeadTimestamp: true,
+    replayPreservesCurrentRevision: true,
+    replayPreservesCurrentRevisionNumber: true,
+  },
+  transactionLineage: {
+    newPersistenceSameTransactionTimestampColumns: [
+      "investing_plan_revisions.persisted_at",
+      "investing_plan_heads.updated_at",
+      "investing_plan_idempotency_keys.created_at",
+    ],
+    newPersistenceSameTransactionIdColumns: [
+      "investing_plan_revisions.persistence_txid",
+      "investing_plan_idempotency_keys.persistence_txid",
+    ],
+    replayReturnsStoredLineage: true,
+    replayGeneratesNewTimestampOrTxid: false,
   },
   freshAuthorization: {
     required: true,
@@ -602,9 +686,6 @@ const DRAFT_CONTRACT = {
       "membership_role_owner",
       "membership_permission_investing_create",
       "account_exact_scope",
-      "account_active",
-      "environment_paper_or_simulation",
-      "current_account_base_currency_matches_command_currency",
     ],
   },
   rls: {
@@ -636,7 +717,13 @@ const DRAFT_CONTRACT = {
   },
   defaultPolicy: {
     forbiddenFinancialDefaults: ["EUR", "paper", "Balanced", "Medium", "growth", "0", "[]", "{}"],
-    allowedOperationalDefaults: ["uuid_primary_identifiers", "persisted_at", "created_at", "persistence_txid"],
+    allowedOperationalDefaults: [
+      "uuid_primary_identifiers",
+      "persisted_at",
+      "created_at",
+      "updated_at",
+      "persistence_txid",
+    ],
   },
   rollback: {
     beforeCanonicalWritesObjectsMayBeRemovedOnlyWithExplicitAuthorization: true,

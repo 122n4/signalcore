@@ -28,12 +28,20 @@ function table(name: string) {
 
 const SCOPE_COLUMNS = ["tenant_id", "owner_user_id", "portfolio_id", "account_id", "environment"];
 
+const RESTRICT_REFERENTIAL_ACTIONS = {
+  onDelete: "RESTRICT",
+  onUpdate: "NO_ACTION",
+  deferrable: false,
+  destructiveParentDeletePreventedByPlanHistory: true,
+};
+
 const EXACT_ACCOUNT_SCOPE_FOREIGN_KEY = {
   local: SCOPE_COLUMNS,
   references: {
     table: "investing_accounts",
     columns: ["tenant_id", "owner_user_id", "portfolio_id", "id", "environment"],
   },
+  ...RESTRICT_REFERENTIAL_ACTIONS,
   provesFullAccountScope: true,
   accountIdAloneOwnershipProof: false,
 };
@@ -64,6 +72,21 @@ function expectColumnsHaveClosedDefinitions(tableName: string) {
 function hasClosedIdempotencyScope(candidate: any) {
   return JSON.stringify(candidate.constraints.scopeForeignKey ?? null)
     === JSON.stringify(EXACT_ACCOUNT_SCOPE_FOREIGN_KEY);
+}
+
+function foreignKeys() {
+  const revisions = table("investing_plan_revisions");
+  const heads = table("investing_plan_heads");
+  const idempotency = table("investing_plan_idempotency_keys");
+  return [
+    revisions.constraints.scopeForeignKey,
+    revisions.constraints.authoringMembershipForeignKey,
+    (revisions.constraints.previousRevision as any).previousRevisionForeignKey,
+    heads.constraints.scopeForeignKey,
+    heads.constraints.currentRevisionForeignKey,
+    idempotency.constraints.scopeForeignKey,
+    idempotency.constraints.resultRevisionForeignKey,
+  ];
 }
 
 function assertFrozenClosed(value: unknown, path = "$", seen = new WeakSet<object>()) {
@@ -281,6 +304,7 @@ describe("canonical investing plan persistence schema contract", () => {
           table: "investing_plan_revisions",
           columns: ["id", "account_id"],
         },
+        ...RESTRICT_REFERENTIAL_ACTIONS,
         preventsCrossAccountPreviousPointer: true,
       },
       exactNumberArithmeticIsTransactionInvariant: true,
@@ -332,6 +356,7 @@ describe("canonical investing plan persistence schema contract", () => {
           table: "investing_plan_revisions",
           columns: ["id", "account_id", "revision_number"],
         },
+        ...RESTRICT_REFERENTIAL_ACTIONS,
         preventsCrossAccountRevisionPointer: true,
       },
       duplicatedCurrentAuthoringFingerprint: false,
@@ -382,6 +407,7 @@ describe("canonical investing plan persistence schema contract", () => {
           table: "investing_plan_revisions",
           columns: ["id", "account_id", "revision_number"],
         },
+        ...RESTRICT_REFERENTIAL_ACTIONS,
         preventsCrossAccountResultPointer: true,
       },
     });
@@ -393,10 +419,15 @@ describe("canonical investing plan persistence schema contract", () => {
     });
     expect(contract.retrySemantics).toEqual({
       replayBeforeExpectedHeadConflict: true,
+      replayBeforeMutableWriteEligibility: true,
       sameScopeKeySameSemanticFingerprint: "REPLAY_STORED_RESULT",
       sameScopeKeyDifferentSemanticFingerprint: "FAIL",
       mismatchError: "investing_plan_idempotency_payload_mismatch",
       replayCreatesRevision: false,
+      replayAdvancesHead: false,
+      replayUpdatesHeadTimestamp: false,
+      replayGeneratesPersistenceTimestamp: false,
+      replayGeneratesPersistenceTxid: false,
       membershipIdInRetryUniqueness: false,
     });
   });
@@ -417,6 +448,7 @@ describe("canonical investing plan persistence schema contract", () => {
         table: "investing_plan_revisions",
         columns: ["id", "account_id", "revision_number"],
       },
+      ...RESTRICT_REFERENTIAL_ACTIONS,
       preventsCrossAccountResultPointer: true,
     });
     expect(hasClosedIdempotencyScope(resultOnlyDesign)).toBe(false);
@@ -437,6 +469,7 @@ describe("canonical investing plan persistence schema contract", () => {
           table: "investing_plan_revisions",
           columns: ["id", "account_id"],
         },
+        ...RESTRICT_REFERENTIAL_ACTIONS,
         preventsCrossAccountPreviousPointer: true,
       },
       exactNumberArithmeticIsTransactionInvariant: true,
@@ -448,6 +481,15 @@ describe("canonical investing plan persistence schema contract", () => {
       checkConstraintAloneSufficientForCrossRowChain: false,
     });
     expect(revisions.columns).not.toContain("previous_revision_number");
+  });
+
+  it("closes every canonical foreign key with restrictive non-deferrable referential actions", () => {
+    for (const foreignKey of foreignKeys()) {
+      expect(foreignKey).toMatchObject(RESTRICT_REFERENTIAL_ACTIONS);
+      expect(JSON.stringify(foreignKey)).not.toContain("CASCADE");
+      expect(JSON.stringify(foreignKey)).not.toContain("SET NULL");
+      expect(JSON.stringify(foreignKey)).not.toContain("SET DEFAULT");
+    }
   });
 
   it("declares explicit type, nullability and default semantics for every canonical column", () => {
@@ -553,12 +595,12 @@ describe("canonical investing plan persistence schema contract", () => {
   });
 
   it("limits database defaults to approved operational metadata columns only", () => {
-    const defaultsByColumn = getCanonicalInvestingPlanPersistenceSchemaContractV1()
-      .canonicalTables.flatMap((entry) =>
-        entry.columnDefinitions
-          .filter((definition) => definition.default !== "NONE")
-          .map((definition) => `${entry.name}.${definition.name}:${definition.default}`),
-      );
+    const contract = getCanonicalInvestingPlanPersistenceSchemaContractV1();
+    const defaultsByColumn = contract.canonicalTables.flatMap((entry) =>
+      entry.columnDefinitions
+        .filter((definition) => definition.defaultAuthority === "OPERATIONAL_METADATA_ONLY")
+        .map((definition) => `${entry.name}.${definition.name}:${definition.default}`),
+    );
 
     expect(defaultsByColumn).toEqual([
       "investing_plan_revisions.id:DB_GENERATED_UUID",
@@ -568,6 +610,11 @@ describe("canonical investing plan persistence schema contract", () => {
       "investing_plan_idempotency_keys.created_at:DB_PERSISTENCE_TIMESTAMP",
       "investing_plan_idempotency_keys.persistence_txid:DB_TRANSACTION_ID",
     ]);
+    for (const defaultBearingColumn of defaultsByColumn) {
+      const columnName = defaultBearingColumn.split(".").at(-1)?.split(":")[0];
+      const approvedCategory = columnName === "id" ? "uuid_primary_identifiers" : columnName;
+      expect(contract.defaultPolicy.allowedOperationalDefaults, defaultBearingColumn).toContain(approvedCategory);
+    }
   });
 
   it("requires account-row locking and idempotency replay before expected-head CAS", () => {
@@ -583,14 +630,14 @@ describe("canonical investing plan persistence schema contract", () => {
       "FRESH_SERVER_AUTHORIZATION",
       "REVALIDATE_ACTIVE_MEMBERSHIP_OWNER_CREATE_PERMISSION",
       "LOCK_CANONICAL_ACCOUNT_ROW_FOR_UPDATE",
-      "REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY",
       "LOOKUP_IDEMPOTENCY_KEY",
       "REPLAY_IF_SEMANTIC_FINGERPRINT_MATCHES",
       "FAIL_IF_IDEMPOTENCY_PAYLOAD_MISMATCH",
+      "REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY_ONLY_FOR_NEW_IDEMPOTENCY",
       "VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY",
       "DERIVE_NEXT_REVISION_NUMBER_AND_PREVIOUS_REVISION",
       "INSERT_IMMUTABLE_REVISION",
-      "INSERT_OR_ADVANCE_SINGLE_HEAD",
+      "INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP",
       "INSERT_IMMUTABLE_IDEMPOTENCY_RESULT",
       "COMMIT",
     ]);
@@ -603,14 +650,72 @@ describe("canonical investing plan persistence schema contract", () => {
     expect(order.indexOf("LOOKUP_IDEMPOTENCY_KEY"))
       .toBeLessThan(order.indexOf("VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY"));
     expect(order.indexOf("REPLAY_IF_SEMANTIC_FINGERPRINT_MATCHES"))
+      .toBeLessThan(order.indexOf("REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY_ONLY_FOR_NEW_IDEMPOTENCY"));
+    expect(order.indexOf("FAIL_IF_IDEMPOTENCY_PAYLOAD_MISMATCH"))
+      .toBeLessThan(order.indexOf("REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY_ONLY_FOR_NEW_IDEMPOTENCY"));
+    expect(order.indexOf("REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY_ONLY_FOR_NEW_IDEMPOTENCY"))
       .toBeLessThan(order.indexOf("VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY"));
     expect(order.indexOf("FAIL_IF_IDEMPOTENCY_PAYLOAD_MISMATCH"))
       .toBeLessThan(order.indexOf("VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY"));
     expect(order.indexOf("VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY"))
       .toBeLessThan(order.indexOf("INSERT_IMMUTABLE_REVISION"));
     expect(order.indexOf("INSERT_IMMUTABLE_REVISION"))
-      .toBeLessThan(order.indexOf("INSERT_OR_ADVANCE_SINGLE_HEAD"));
-    expect(order.indexOf("INSERT_OR_ADVANCE_SINGLE_HEAD")).toBeLessThan(order.indexOf("COMMIT"));
+      .toBeLessThan(order.indexOf("INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP"));
+    expect(order.indexOf("INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP")).toBeLessThan(order.indexOf("COMMIT"));
+    expect(contract.retrySemantics.replayBeforeMutableWriteEligibility).toBe(true);
+    expect(contract.newPersistenceWriteEligibility).toEqual({
+      appliesOnlyWhenIdempotencyKeyIsNew: true,
+      replayBypassesMutableWriteEligibility: true,
+      checks: [
+        "account_active",
+        "environment_paper_or_simulation",
+        "current_account_base_currency_matches_command_currency",
+      ],
+    });
+  });
+
+  it("defines head timestamp advance semantics and immutable replay lineage", () => {
+    const contract = getCanonicalInvestingPlanPersistenceSchemaContractV1();
+    const heads = table("investing_plan_heads");
+
+    expect(heads.constraints.updatedAt).toEqual({
+      insertDefault: "DB_PERSISTENCE_TIMESTAMP",
+      advanceSets: "CURRENT_DB_PERSISTENCE_TRANSACTION_TIMESTAMP",
+      replayMutates: false,
+      replayPreservesOriginalValue: true,
+    });
+    expect(contract.headMutationSemantics).toEqual({
+      insertOrAdvanceOperation: "INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP",
+      newRevisionSetsUpdatedAt: "CURRENT_DB_PERSISTENCE_TRANSACTION_TIMESTAMP",
+      replayPreservesOriginalHeadTimestamp: true,
+      replayPreservesCurrentRevision: true,
+      replayPreservesCurrentRevisionNumber: true,
+    });
+    expect(contract.retrySemantics).toMatchObject({
+      replayCreatesRevision: false,
+      replayAdvancesHead: false,
+      replayUpdatesHeadTimestamp: false,
+      replayGeneratesPersistenceTimestamp: false,
+      replayGeneratesPersistenceTxid: false,
+    });
+  });
+
+  it("binds new persistence rows to one DB transaction timestamp and transaction id", () => {
+    const contract = getCanonicalInvestingPlanPersistenceSchemaContractV1();
+
+    expect(contract.transactionLineage).toEqual({
+      newPersistenceSameTransactionTimestampColumns: [
+        "investing_plan_revisions.persisted_at",
+        "investing_plan_heads.updated_at",
+        "investing_plan_idempotency_keys.created_at",
+      ],
+      newPersistenceSameTransactionIdColumns: [
+        "investing_plan_revisions.persistence_txid",
+        "investing_plan_idempotency_keys.persistence_txid",
+      ],
+      replayReturnsStoredLineage: true,
+      replayGeneratesNewTimestampOrTxid: false,
+    });
   });
 
   it("keeps fresh authorization and current account currency verification separate from fingerprint capability", () => {
@@ -630,6 +735,8 @@ describe("canonical investing plan persistence schema contract", () => {
       "membership_role_owner",
       "membership_permission_investing_create",
       "account_exact_scope",
+    ]);
+    expect(contract.newPersistenceWriteEligibility.checks).toEqual([
       "account_active",
       "environment_paper_or_simulation",
       "current_account_base_currency_matches_command_currency",
@@ -699,6 +806,7 @@ describe("canonical investing plan persistence schema contract", () => {
       "uuid_primary_identifiers",
       "persisted_at",
       "created_at",
+      "updated_at",
       "persistence_txid",
     ]);
     expect(contract.migration).toMatchObject({
@@ -763,6 +871,67 @@ describe("canonical investing plan persistence schema contract", () => {
         "persisted_at default semantics",
         (draft) => {
           draft.canonicalTables[0].columnDefinitions.find((entry: any) => entry.name === "persisted_at").default = "NONE";
+        },
+      ],
+      [
+        "foreign key on delete",
+        (draft) => {
+          draft.canonicalTables[0].constraints.scopeForeignKey.onDelete = "CASCADE";
+        },
+      ],
+      [
+        "foreign key on update",
+        (draft) => {
+          draft.canonicalTables[1].constraints.currentRevisionForeignKey.onUpdate = "CASCADE";
+        },
+      ],
+      [
+        "foreign key deferrability",
+        (draft) => {
+          draft.canonicalTables[2].constraints.resultRevisionForeignKey.deferrable = true;
+        },
+      ],
+      [
+        "head replay timestamp mutation",
+        (draft) => {
+          draft.headMutationSemantics.replayPreservesOriginalHeadTimestamp = false;
+          draft.canonicalTables[1].constraints.updatedAt.replayMutates = true;
+        },
+      ],
+      [
+        "head advance timestamp omission",
+        (draft) => {
+          draft.headMutationSemantics.newRevisionSetsUpdatedAt = "UNCHANGED";
+          draft.canonicalTables[1].constraints.updatedAt.advanceSets = "UNCHANGED";
+        },
+      ],
+      [
+        "mutable write validation before replay",
+        (draft) => {
+          draft.transactionOrder = [
+            "FRESH_SERVER_AUTHORIZATION",
+            "REVALIDATE_ACTIVE_MEMBERSHIP_OWNER_CREATE_PERMISSION",
+            "LOCK_CANONICAL_ACCOUNT_ROW_FOR_UPDATE",
+            "REVALIDATE_ACCOUNT_STATUS_ENVIRONMENT_AND_CURRENCY_ONLY_FOR_NEW_IDEMPOTENCY",
+            "LOOKUP_IDEMPOTENCY_KEY",
+            "REPLAY_IF_SEMANTIC_FINGERPRINT_MATCHES",
+            "FAIL_IF_IDEMPOTENCY_PAYLOAD_MISMATCH",
+            "VALIDATE_EXPECTED_HEAD_ONLY_FOR_NEW_IDEMPOTENCY",
+            "DERIVE_NEXT_REVISION_NUMBER_AND_PREVIOUS_REVISION",
+            "INSERT_IMMUTABLE_REVISION",
+            "INSERT_OR_ADVANCE_SINGLE_HEAD_AND_UPDATE_TIMESTAMP",
+            "INSERT_IMMUTABLE_IDEMPOTENCY_RESULT",
+            "COMMIT",
+          ];
+        },
+      ],
+      [
+        "same transaction lineage weakened",
+        (draft) => {
+          draft.transactionLineage.newPersistenceSameTransactionTimestampColumns = [
+            "investing_plan_revisions.persisted_at",
+            "investing_plan_idempotency_keys.created_at",
+          ];
         },
       ],
     ];
