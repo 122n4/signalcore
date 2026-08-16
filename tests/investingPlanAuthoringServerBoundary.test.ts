@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashCanonicalInvestingPlanAuthoringIntentV1 } from "@/lib/investing/authority/planAuthoringIntent";
 
@@ -103,11 +103,13 @@ function assertFrozenClosed(value: unknown, path = "$", seen = new WeakSet<objec
   }
 }
 
-async function resolve(input: unknown = rawInput(), clock = () => "2026-07-01T12:00:00.000Z") {
-  return resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(REQUEST, input, { clock });
+async function resolve(input: unknown = rawInput()) {
+  return resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(REQUEST, input);
 }
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-07-01T12:00:00.000Z"));
   state.authz = {
     userId: "server_user",
     tenantId: "server_tenant",
@@ -129,6 +131,10 @@ beforeEach(() => {
   state.accountAccessError = null;
   state.requestContextCalls.length = 0;
   state.accountAccessCalls.length = 0;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("server-authorized canonical plan authoring producer", () => {
@@ -221,7 +227,8 @@ describe("server-authorized canonical plan authoring producer", () => {
   });
 
   it("generates authoredAt from server time and rejects client authoredAt", async () => {
-    const artifact = await resolve(rawInput(), () => "2026-07-02T03:04:05.006Z");
+    vi.setSystemTime(new Date("2026-07-02T03:04:05.006Z"));
+    const artifact = await resolve(rawInput());
     expect(artifact.authoredAt).toBe("2026-07-02T03:04:05.006Z");
 
     await expect(resolve(rawInput({ authoredAt: "1999-01-01T00:00:00.000Z" }))).rejects.toMatchObject({
@@ -380,6 +387,29 @@ describe("server-authorized canonical plan authoring producer", () => {
     }
   });
 
+  it("accepts the canonical 128-character portfolio id limit and rejects a 129-character forged resolver row", async () => {
+    const canonicalMaxPortfolioId = `P${"a".repeat(127)}`;
+    expect(canonicalMaxPortfolioId).toHaveLength(128);
+    state.account = { ...state.account, portfolioId: canonicalMaxPortfolioId };
+    const accepted = await resolve();
+    expect(accepted.authorityScope.portfolioId).toBe(canonicalMaxPortfolioId);
+
+    const forgedTooLongPortfolioId = `P${"a".repeat(128)}`;
+    expect(forgedTooLongPortfolioId).toHaveLength(129);
+    state.account = { ...state.account, portfolioId: forgedTooLongPortfolioId };
+
+    let produced: Awaited<ReturnType<typeof resolve>> | null = null;
+    await expect(resolve().then((artifact) => {
+      produced = artifact;
+      return artifact;
+    })).rejects.toMatchObject({
+      code: "investing_plan_authoring_portfolio_id_invalid",
+      status: 403,
+    });
+
+    expect(produced).toBeNull();
+  });
+
   it("does not default EUR, primary portfolio, first account, paper environment, or customer-visible authority", async () => {
     state.account = { ...state.account, portfolioId: "secondary_portfolio", environment: "simulation", baseCurrency: "CHF" };
     const artifact = await resolve();
@@ -455,6 +485,10 @@ describe("server-authorized canonical plan authoring producer", () => {
     expect(moduleSource).toContain("buildCanonicalInvestingPlanAuthoringIntentV1");
     expect(moduleSource).toContain("requireInvestingRequestContext");
     expect(moduleSource).toContain("requireInvestingAccountAccess");
+    expect(moduleSource).toContain("const PORTFOLIO_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/");
+    expect(moduleSource).toContain("authoredAt: new Date().toISOString()");
+    expect(moduleSource).not.toContain("type Clock");
+    expect(moduleSource).not.toContain("clock?:");
   });
 
   it("keeps route and dashboard activation surfaces closed outside this producer", () => {

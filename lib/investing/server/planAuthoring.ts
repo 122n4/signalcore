@@ -18,12 +18,10 @@ export type CanonicalInvestingPlanAuthoringRequestInputV1 = {
   };
 };
 
-type Clock = () => string;
-
 const RAW_INPUT_KEYS = ["accountId", "explicitIntent"] as const;
 const EXPLICIT_INTENT_KEYS = ["objective", "riskProfile", "horizon"] as const;
 const CANONICAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/;
+const PORTFOLIO_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const REQUIRED_PERMISSION = "investing:create";
 
@@ -123,7 +121,9 @@ function assertAccountScope(
   if (acceptedEnvironment !== "paper" && acceptedEnvironment !== "simulation") {
     fail("investing_plan_authoring_environment_not_accepted", 403);
   }
-  if (!ID_PATTERN.test(account.portfolioId)) fail("investing_plan_authoring_portfolio_id_invalid", 403);
+  if (!PORTFOLIO_ID_PATTERN.test(account.portfolioId)) {
+    fail("investing_plan_authoring_portfolio_id_invalid", 403);
+  }
   if (!CURRENCY_PATTERN.test(account.baseCurrency)) {
     fail("investing_plan_authoring_account_base_currency_invalid", 403);
   }
@@ -132,7 +132,6 @@ function assertAccountScope(
 export async function resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(
   request: Request,
   rawInput: unknown,
-  options: { readonly clock?: Clock } = {},
 ): Promise<CanonicalInvestingPlanAuthoringIntentV1> {
   const input = materializeRawInput(rawInput);
   const authz = await requireInvestingRequestContext(request);
@@ -160,6 +159,6 @@ export async function resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(
       accountBaseCurrency: account.baseCurrency,
     },
     explicitIntent: input.explicitIntent,
-    authoredAt: (options.clock ?? (() => new Date().toISOString()))(),
+    authoredAt: new Date().toISOString(),
   });
 }
