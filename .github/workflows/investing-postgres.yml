@@ -36,6 +36,8 @@ jobs:
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/investing_acl_fidelity_snapshot.sql
       - name: Run Investing PostgreSQL assertions
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/investing_p0_p1.sql
+      - name: Run canonical Investing Plan persistence schema assertions
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_plan_persistence_schema.sql
       - name: Run Investing security, RLS, Live and accounting assertions
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -f supabase/tests/investing_security_accounting.sql
       - name: Run Investing rollback and recovery assertions

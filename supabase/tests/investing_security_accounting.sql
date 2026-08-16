@@ -145,6 +145,9 @@ declare
     'investing_market_snapshot_items',
     'investing_market_snapshots',
     'investing_onboarding_progress',
+    'investing_plan_heads',
+    'investing_plan_idempotency_keys',
+    'investing_plan_revisions',
     'investing_release_candidates',
     'investing_research_beta_readiness_reports',
     'investing_worker_heartbeats'
