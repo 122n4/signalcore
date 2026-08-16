@@ -11,7 +11,7 @@ begin
   into applied_max
   from supabase_migrations.schema_migrations;
 
-  if applied_max <> '20260812132000' then
+  if applied_max is distinct from '20260812132000' then
     raise exception 'r6_overlay_wrong_pre_migration_version:%', applied_max;
   end if;
 

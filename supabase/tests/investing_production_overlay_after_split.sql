@@ -102,12 +102,13 @@ begin
     2,
     'split',
     'r6-overlay-effective-time-key',
-    'r6-overlay-effective-time-corr-1',
+    'r6-overlay-effective-time-corr',
     t1
   )
   into first_result;
 
-  if first_result->>'ok' <> 'true' or first_result->>'replayed' <> 'false' then
+  if first_result->>'ok' is distinct from 'true'
+     or first_result->>'replayed' is distinct from 'false' then
     raise exception 'r6_overlay_split_behavior_first_call_unexpected:%', first_result;
   end if;
 
@@ -125,7 +126,7 @@ begin
     raise exception 'r6_overlay_split_behavior_effective_at_not_recorded:%:%',
       recorded_effective_at, t1;
   end if;
-  if recorded_payload->>'effective_at' <> t1_canonical then
+  if recorded_payload->>'effective_at' is distinct from t1_canonical then
     raise exception 'r6_overlay_split_behavior_payload_effective_at_not_canonical:%:%',
       recorded_payload->>'effective_at', t1_canonical;
   end if;
@@ -137,14 +138,14 @@ begin
     2,
     'split',
     'r6-overlay-effective-time-key',
-    'r6-overlay-effective-time-corr-2',
+    'r6-overlay-effective-time-corr',
     t1
   )
   into replay_result;
 
-  if replay_result->>'ok' <> 'true'
-     or replay_result->>'replayed' <> 'true'
-     or (replay_result->>'corporate_action_id')::uuid <> first_action_id then
+  if replay_result->>'ok' is distinct from 'true'
+     or replay_result->>'replayed' is distinct from 'true'
+     or (replay_result->>'corporate_action_id')::uuid is distinct from first_action_id then
     raise exception 'r6_overlay_split_behavior_replay_unexpected:%', replay_result;
   end if;
 
@@ -156,7 +157,7 @@ begin
       2,
       'split',
       'r6-overlay-effective-time-key',
-      'r6-overlay-effective-time-corr-3',
+      'r6-overlay-effective-time-corr',
       t2
     );
     raise exception 'r6_overlay_split_behavior_effective_time_mismatch_accepted';

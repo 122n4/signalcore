@@ -36,7 +36,7 @@ begin
   if (
     select max(schema_migrations.version::text)
     from supabase_migrations.schema_migrations
-  ) <> '20260816202000' then
+  ) is distinct from '20260816202000' then
     raise exception 'r6_overlay_migration_engine_wrong_max_version:%',
       (
         select max(schema_migrations.version::text)
