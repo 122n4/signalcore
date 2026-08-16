@@ -8,6 +8,7 @@ import {
   hashCanonicalInvestingSuitabilityEvidenceAuthorityV1,
 } from "@/lib/investing/authority/suitabilityEvidenceAuthority";
 import {
+  hashCanonicalInvestingMandateIntentV1,
   sealCanonicalInvestingMandateIntentV1,
   type CanonicalInvestingMandateIntentInputV1,
 } from "@/lib/investing/authority/mandateIntent";
@@ -141,6 +142,36 @@ function recomputePolicyAssessmentFingerprint(assessment: any) {
 
 function recomputeReadinessFingerprint(readiness: any) {
   readiness.assessmentFingerprint = hashCanonicalInvestingSuitabilityReadinessV1(readiness);
+}
+
+function selfConsistentForgedUpstreamChain(mutateIntent: (intent: any) => void) {
+  const intent = clone(genuineIntent()) as any;
+  mutateIntent(intent);
+  intent.lineage.intentFingerprint = hashCanonicalInvestingMandateIntentV1(intent);
+
+  const policy = clone(genuinePolicyAssessment()) as any;
+  policy.intent.intentFingerprint = intent.lineage.intentFingerprint;
+  policy.intent.authority = clone(intent.authority);
+  policy.intent.plan = clone(intent.plan);
+  policy.intent.declaredIntent = clone(intent.intent);
+  recomputePolicyAssessmentFingerprint(policy);
+
+  const readiness = clone(genuineReadiness()) as any;
+  readiness.authority = clone(intent.authority);
+  readiness.lineage = {
+    planId: intent.plan.planId,
+    planVersion: intent.plan.planVersion,
+    activatedAt: intent.plan.activatedAt,
+    updatedAt: intent.plan.updatedAt,
+    structuredSchemaVersion: intent.plan.structuredSchemaVersion,
+    planSemanticFingerprint: intent.plan.semanticFingerprint,
+    intentFingerprint: intent.lineage.intentFingerprint,
+    policyMethodologyAssessmentFingerprint: policy.assessmentFingerprint,
+  };
+  readiness.knownIntent = clone(intent.intent);
+  recomputeReadinessFingerprint(readiness);
+
+  return { intent, policy, readiness };
 }
 
 function expectArrayRejected(reasonCodes: unknown, pattern = /reason_codes_invalid/) {
@@ -328,6 +359,60 @@ describe("canonical suitability evidence authority boundary", () => {
     readinessBeforePolicy.assessedAt = "2026-05-10T12:59:59.999Z";
     recomputeReadinessFingerprint(readinessBeforePolicy);
     expect(() => evidenceAuthority(intent, policy, readinessBeforePolicy)).toThrow(/temporal_lineage_invalid/);
+  });
+
+  it("rejects fully rehashed upstream Plan temporal forgeries before producing B2B2 evidence authority", () => {
+    const expected = /upstream_plan_temporal_lineage_invalid/;
+    const cases: Array<[string, (intent: any) => void]> = [
+      [
+        "plan activated after updated",
+        (intent) => {
+          intent.plan.activatedAt = "2026-05-10T11:30:00.000Z";
+          intent.plan.updatedAt = "2026-05-10T11:00:00.000Z";
+          intent.lineage.authoredAt = "2026-05-10T12:00:00.000Z";
+        },
+      ],
+      [
+        "plan updated after B1 authored",
+        (intent) => {
+          intent.plan.activatedAt = "2026-05-10T10:00:00.000Z";
+          intent.plan.updatedAt = "2026-05-10T12:00:00.001Z";
+          intent.lineage.authoredAt = "2026-05-10T12:00:00.000Z";
+        },
+      ],
+      [
+        "plan activated after B1 authored",
+        (intent) => {
+          intent.plan.activatedAt = "2026-05-10T12:00:00.001Z";
+          intent.plan.updatedAt = "2026-05-10T12:00:00.002Z";
+          intent.lineage.authoredAt = "2026-05-10T12:00:00.000Z";
+        },
+      ],
+    ];
+
+    for (const [label, mutate] of cases) {
+      const { intent, policy, readiness } = selfConsistentForgedUpstreamChain(mutate);
+      expect(hashCanonicalInvestingMandateIntentV1(intent), label).toBe(intent.lineage.intentFingerprint);
+      expect(hashCanonicalInvestingPolicyMethodologyAssessmentV1(policy), label).toBe(policy.assessmentFingerprint);
+      expect(hashCanonicalInvestingSuitabilityReadinessV1(readiness), label).toBe(readiness.assessmentFingerprint);
+      expect(() => evidenceAuthority(intent, policy, readiness), label).toThrow(expected);
+    }
+  });
+
+  it("accepts equality for upstream Plan temporal lineage when accepted B1 can produce it", () => {
+    const equalityAt = "2026-05-10T12:00:00.000Z";
+    const plan = canonicalPlan({
+      activatedAt: equalityAt,
+      updatedAt: equalityAt,
+    });
+    const intent = genuineIntent({
+      planAssessment: planAssessment(plan),
+      authoredAt: equalityAt,
+    });
+    const policy = genuinePolicyAssessment(intent, equalityAt);
+    const readiness = genuineReadiness(intent, policy, equalityAt);
+
+    expect(() => evidenceAuthority(intent, policy, readiness, equalityAt)).not.toThrow();
   });
 
   it("keeps reason-code order and fingerprints deterministic", () => {

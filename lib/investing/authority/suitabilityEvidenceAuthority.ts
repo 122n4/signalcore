@@ -634,6 +634,21 @@ function assertTemporalLineage(authoredAt: string, policyAssessedAt: string, rea
   assert(readinessAssessedAt <= assessedAt, "investing_suitability_evidence_temporal_lineage_invalid");
 }
 
+function assertUpstreamPlanTemporalLineage(intent: CanonicalInvestingMandateIntentV1) {
+  assert(
+    intent.plan.activatedAt <= intent.plan.updatedAt,
+    "investing_suitability_evidence_upstream_plan_temporal_lineage_invalid",
+  );
+  assert(
+    intent.plan.updatedAt <= intent.lineage.authoredAt,
+    "investing_suitability_evidence_upstream_plan_temporal_lineage_invalid",
+  );
+  assert(
+    intent.plan.activatedAt <= intent.lineage.authoredAt,
+    "investing_suitability_evidence_upstream_plan_temporal_lineage_invalid",
+  );
+}
+
 function unavailableSourceAuthorityDomain(): CanonicalInvestingSuitabilityEvidenceSourceAuthorityDomainV1 {
   return {
     availability: "UNAVAILABLE",
@@ -680,6 +695,7 @@ export function assessCanonicalInvestingSuitabilityEvidenceAuthorityV1(
 
   assertAuthorityConsistency(intent, policyMethodologyAssessment, suitabilityReadiness);
   assertPlanLineageConsistency(intent, policyMethodologyAssessment, suitabilityReadiness);
+  assertUpstreamPlanTemporalLineage(intent);
   assertTemporalLineage(
     intent.lineage.authoredAt,
     policyMethodologyAssessment.assessedAt,
