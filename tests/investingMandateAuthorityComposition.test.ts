@@ -221,13 +221,7 @@ function recomputeRecommendationFingerprint(recommendation: any) {
     hashCanonicalInvestingRecommendationSuitabilityAuthorityV1(recommendation);
 }
 
-function fullyRehashedChain(mutate: (chain: any) => void) {
-  const chain = clone(genuineChain()) as any;
-  mutate(chain);
-
-  recomputeTranslationFingerprint(chain.translation);
-  recomputeIntentFingerprint(chain.intent);
-
+function propagateFromIntent(chain: any) {
   chain.policy.intent.intentFingerprint = chain.intent.lineage.intentFingerprint;
   chain.policy.intent.authority = clone(chain.intent.authority);
   chain.policy.intent.plan = clone(chain.intent.plan);
@@ -278,7 +272,23 @@ function fullyRehashedChain(mutate: (chain: any) => void) {
   };
   chain.recommendation.knownIntent = clone(chain.intent.intent);
   recomputeRecommendationFingerprint(chain.recommendation);
+}
 
+function fullyRehashedChain(mutate: (chain: any) => void) {
+  const chain = clone(genuineChain()) as any;
+  mutate(chain);
+
+  recomputeTranslationFingerprint(chain.translation);
+  recomputeIntentFingerprint(chain.intent);
+  propagateFromIntent(chain);
+
+  return chain;
+}
+
+function rehashedTranslationForgery(mutate: (translation: any) => void) {
+  const chain = clone(genuineChain()) as any;
+  mutate(chain.translation);
+  recomputeTranslationFingerprint(chain.translation);
   return chain;
 }
 
@@ -295,6 +305,12 @@ function setPlanTimes(chain: any, activatedAt: string, updatedAt: string, author
 function expectArrayRejected(reasonCodes: unknown, pattern = /reason_codes_invalid|mismatch/) {
   const chain = clone(genuineChain()) as any;
   chain.policy.methodology.reasonCodes = reasonCodes;
+  expect(() => composeFromChain(chain)).toThrow(pattern);
+}
+
+function expectTranslationArrayRejected(reasonCodes: unknown, pattern = /plan_translation_reason_codes/) {
+  const chain = clone(genuineChain()) as any;
+  chain.translation.reasonCodes = reasonCodes;
   expect(() => composeFromChain(chain)).toThrow(pattern);
 }
 
@@ -381,6 +397,91 @@ describe("canonical mandate authority composition boundary", () => {
     }
   });
 
+  it("does not infer mandate authority from plan economics, account state, tenant role, environment or legacy policy", () => {
+    const economicPlan = canonicalPlan({
+      structured: {
+        availability: "AVAILABLE",
+        schemaVersion: 1,
+        reason: null,
+        objective: {
+          type: "growth",
+          targetAmount: { amount: 500000, currency: "EUR" },
+          timeframeMonths: 36,
+          monthlyContribution: { amount: 5000, currency: "EUR" },
+        },
+        risk: { profile: "Balanced" },
+      },
+    });
+    const result = composeFromChain(genuineChain({ plan: economicPlan }));
+    expect(result.knownIntent.horizon).toBe("Medium");
+    expect(result.mandateAuthority).toEqual({
+      availability: "UNAVAILABLE",
+      authority: "NOT_ACCEPTED",
+      mandate: null,
+      reasonCodes: CANONICAL_INVESTING_MANDATE_AUTHORITY_COMPOSITION_REASON_CODES,
+    });
+    expect(result.compositionBasis.policyMethodology).toEqual({
+      availability: "UNAVAILABLE",
+      financialAuthority: "NOT_ACCEPTED",
+      declarations: null,
+    });
+    expect(result.authority.environment).toBe("paper");
+
+    const simulationTranslation = planAssessment();
+    const simulationIntent = genuineIntent({
+      planAssessment: simulationTranslation,
+      account: {
+        ...validMandateIntentInput({ planAssessment: simulationTranslation }).account,
+        environment: "simulation",
+      },
+    });
+    const simulationPolicy = genuinePolicyAssessment(simulationIntent);
+    const simulationReadiness = genuineReadiness(simulationIntent, simulationPolicy);
+    const simulationEvidence = genuineEvidenceAuthority(
+      simulationIntent,
+      simulationPolicy,
+      simulationReadiness,
+    );
+    const simulationRecommendation = genuineRecommendationAuthority(
+      simulationIntent,
+      simulationPolicy,
+      simulationReadiness,
+      simulationEvidence,
+    );
+    const simulationResult = composeFromChain({
+      translation: simulationTranslation,
+      intent: simulationIntent,
+      policy: simulationPolicy,
+      readiness: simulationReadiness,
+      evidence: simulationEvidence,
+      recommendation: simulationRecommendation,
+    });
+    expect(simulationResult.authority.environment).toBe("simulation");
+    expect(simulationResult.mandateAuthority.authority).toBe("NOT_ACCEPTED");
+
+    const implementation = source("lib/investing/authority/mandateAuthorityComposition.ts");
+    const implementationLower = implementation.toLowerCase();
+    for (const forbidden of [
+      "targetAmount",
+      "monthlyContribution",
+      "timeframeMonths",
+      "user_settings",
+      "OfflineSetup",
+      "regulatoryClassificationAuthority.classification =",
+      "role",
+      "permissions",
+      "investing:read",
+      "phase3d",
+    ]) {
+      expect(implementation).not.toContain(forbidden);
+    }
+    expect(implementationLower).not.toMatch(/\bcash\b/);
+    expect(implementationLower).not.toMatch(/\bnav\b/);
+    expect(implementationLower).not.toMatch(/\bholdings\b/);
+    expect(implementationLower).not.toContain("account currency");
+    expect(implementationLower).not.toContain("technical policy as financial");
+  });
+
   it("keeps exact reason ordering, frozen constants and deterministic fingerprints", () => {
     const first = composeFromChain();
     const second = composeFromChain();
@@ -401,6 +502,33 @@ describe("canonical mandate authority composition boundary", () => {
     expect(hashCanonicalInvestingMandateAuthorityCompositionV1(first)).toBe(first.compositionFingerprint);
     expect(composeFromChain(undefined, "2026-05-10T17:01:00.000Z").compositionFingerprint)
       .not.toBe(first.compositionFingerprint);
+  });
+
+  it("commits composition fingerprints to every material output family", () => {
+    const composition = composeFromChain();
+    const mutations: Array<[string, (draft: any) => void]> = [
+      ["authority", (draft) => { draft.authority.membershipId = "membership_changed"; }],
+      ["plan lineage", (draft) => { draft.lineage.planSemanticFingerprint = "b".repeat(64); }],
+      ["upstream fingerprint", (draft) => { draft.lineage.suitabilityEvidenceAuthorityFingerprint = "c".repeat(64); }],
+      ["known intent", (draft) => { draft.knownIntent.horizon = "Long"; }],
+      [
+        "mandate authority semantics",
+        (draft) => {
+          draft.mandateAuthority.reasonCodes = [
+            "CANONICAL_MANDATE_AUTHORITY_NOT_ACCEPTED",
+            "PLAN_TO_MANDATE_TRANSLATION_UNAVAILABLE",
+          ];
+        },
+      ],
+    ];
+
+    for (const [label, mutate] of mutations) {
+      const draft = clone(composition) as any;
+      delete draft.compositionFingerprint;
+      mutate(draft);
+      expect(hashCanonicalInvestingMandateAuthorityCompositionV1(draft), label)
+        .not.toBe(composition.compositionFingerprint);
+    }
   });
 
   it("rejects forged lower canonical fingerprints and lineage mismatches", () => {
@@ -429,6 +557,82 @@ describe("canonical mandate authority composition boundary", () => {
     const badRecommendation = clone(chain) as any;
     badRecommendation.recommendation.authorityFingerprint = "0".repeat(64);
     expect(() => composeFromChain(badRecommendation)).toThrow(/recommendation_suitability_mismatch/);
+  });
+
+  it("rejects fully rehashed A2.3A authority forgeries", () => {
+    const availableTranslation = rehashedTranslationForgery((translation) => {
+      translation.availability = "AVAILABLE";
+    });
+    expect(hashCanonicalPlanToMandateTranslationAssessmentV1(availableTranslation.translation))
+      .toBe(availableTranslation.translation.translationFingerprint);
+    expect(() => composeFromChain(availableTranslation)).toThrow(/plan_translation_availability_invalid/);
+
+    const mandateTranslation = rehashedTranslationForgery((translation) => {
+      translation.mandate = {
+        objective: "growth",
+        riskProfile: "Balanced",
+        horizon: "Medium",
+        baseCurrency: "EUR",
+        constraints: [],
+      };
+    });
+    expect(hashCanonicalPlanToMandateTranslationAssessmentV1(mandateTranslation.translation))
+      .toBe(mandateTranslation.translation.translationFingerprint);
+    expect(() => composeFromChain(mandateTranslation)).toThrow(/plan_translation_mandate_invalid/);
+  });
+
+  it("rejects rehashed A2.3A to B1 lineage and semantic mismatches", () => {
+    const cases: Array<[string, (translation: any) => void, RegExp]> = [
+      ["planId", (translation) => { translation.sourcePlan.planId = "plan_other"; }, /translation_plan_id_mismatch/],
+      ["planVersion", (translation) => { translation.sourcePlan.planVersion = 8; }, /translation_plan_version_mismatch/],
+      [
+        "activatedAt",
+        (translation) => { translation.sourcePlan.activatedAt = "2026-05-10T10:00:01.000Z"; },
+        /translation_plan_activated_at_mismatch/,
+      ],
+      [
+        "updatedAt",
+        (translation) => { translation.sourcePlan.updatedAt = "2026-05-10T11:00:01.000Z"; },
+        /translation_plan_updated_at_mismatch/,
+      ],
+      [
+        "structuredSchemaVersion",
+        (translation) => { translation.sourcePlan.structuredSchemaVersion = 2; },
+        /plan_translation_schema_invalid/,
+      ],
+      [
+        "semanticFingerprint",
+        (translation) => { translation.sourcePlan.semanticFingerprint = "b".repeat(64); },
+        /translation_plan_semantic_fingerprint_mismatch/,
+      ],
+      [
+        "accountBaseCurrency",
+        (translation) => {
+          translation.account.baseCurrency = "USD";
+          translation.compatibleSemantics.baseCurrency = "USD";
+        },
+        /translation_currency_mismatch/,
+      ],
+      [
+        "objective",
+        (translation) => { translation.compatibleSemantics.objective = "income"; },
+        /translation_objective_mismatch/,
+      ],
+      [
+        "riskProfile",
+        (translation) => { translation.compatibleSemantics.riskProfile = "Aggressive"; },
+        /translation_risk_profile_mismatch/,
+      ],
+    ];
+
+    for (const [label, mutate, expected] of cases) {
+      const forged = rehashedTranslationForgery(mutate);
+      if (label !== "structuredSchemaVersion") {
+        expect(hashCanonicalPlanToMandateTranslationAssessmentV1(forged.translation), label)
+          .toBe(forged.translation.translationFingerprint);
+      }
+      expect(() => composeFromChain(forged), label).toThrow(expected);
+    }
   });
 
   it("rejects fully rehashed authority-bearing upstream forgeries", () => {
@@ -478,6 +682,128 @@ describe("canonical mandate authority composition boundary", () => {
     for (const [label, mutate, expected] of cases) {
       const forged = fullyRehashedChain(mutate);
       expect(() => composeFromChain(forged), label).toThrow(expected);
+    }
+  });
+
+  it("rejects separate fully rehashed B2A authority and methodology forgeries", () => {
+    const financialAuthorityAccepted = fullyRehashedChain((chain) => {
+      chain.policy.technicalPolicyIdentity.financialAuthority = "ACCEPTED";
+    });
+    expect(hashCanonicalInvestingPolicyMethodologyAssessmentV1(financialAuthorityAccepted.policy))
+      .toBe(financialAuthorityAccepted.policy.assessmentFingerprint);
+    expect(() => composeFromChain(financialAuthorityAccepted)).toThrow(/policy_methodology_mismatch/);
+
+    const methodologyAvailable = fullyRehashedChain((chain) => {
+      chain.policy.methodology.availability = "AVAILABLE";
+      chain.policy.methodology.specification = { source: "technical_policy" };
+    });
+    expect(hashCanonicalInvestingPolicyMethodologyAssessmentV1(methodologyAvailable.policy))
+      .toBe(methodologyAvailable.policy.assessmentFingerprint);
+    expect(() => composeFromChain(methodologyAvailable)).toThrow(/policy_methodology_mismatch/);
+  });
+
+  it("rejects fully rehashed B2B1 risk tolerance readiness forgeries", () => {
+    const forged = fullyRehashedChain((chain) => {
+      chain.readiness.evidence.riskTolerance.availability = "AVAILABLE";
+      chain.readiness.evidence.riskTolerance.source = "user_settings";
+      chain.readiness.evidence.riskTolerance.asOf = "2026-05-10T13:30:00.000Z";
+    });
+
+    expect(hashCanonicalInvestingSuitabilityReadinessV1(forged.readiness))
+      .toBe(forged.readiness.assessmentFingerprint);
+    expect(hashCanonicalInvestingSuitabilityEvidenceAuthorityV1(forged.evidence))
+      .toBe(forged.evidence.evidenceAuthorityFingerprint);
+    expect(hashCanonicalInvestingRecommendationSuitabilityAuthorityV1(forged.recommendation))
+      .toBe(forged.recommendation.authorityFingerprint);
+    expect(() => composeFromChain(forged)).toThrow(/suitability_readiness_mismatch/);
+  });
+
+  it("rejects fully rehashed B2B2 source, regulatory and reliability authority forgeries", () => {
+    const cases: Array<[string, (chain: any) => void]> = [
+      [
+        "knowledge experience source",
+        (chain) => { chain.evidence.sourceAuthority.knowledgeExperience.acceptedSource = "user_settings"; },
+      ],
+      [
+        "financial situation source",
+        (chain) => { chain.evidence.sourceAuthority.financialSituation.acceptedSource = "portfolio"; },
+      ],
+      [
+        "regulatory classification",
+        (chain) => {
+          chain.evidence.regulatoryClassificationAuthority.classification = "retail";
+          chain.evidence.regulatoryClassificationAuthority.source = "account_currency";
+        },
+      ],
+      [
+        "reliability methodology",
+        (chain) => { chain.evidence.reliabilityAuthority.methodology = { version: "methodology/v1" }; },
+      ],
+    ];
+
+    for (const [label, mutate] of cases) {
+      const forged = fullyRehashedChain(mutate);
+      expect(hashCanonicalInvestingSuitabilityEvidenceAuthorityV1(forged.evidence), label)
+        .toBe(forged.evidence.evidenceAuthorityFingerprint);
+      expect(hashCanonicalInvestingRecommendationSuitabilityAuthorityV1(forged.recommendation), label)
+        .toBe(forged.recommendation.authorityFingerprint);
+      expect(() => composeFromChain(forged), label).toThrow(/suitability_evidence_mismatch/);
+    }
+  });
+
+  it("rejects fully rehashed B2B3 determination forgeries when authority remains not accepted", () => {
+    const forged = fullyRehashedChain((chain) => {
+      chain.recommendation.recommendationSuitabilityAuthority.determination = {
+        suitability: "suitable",
+        decision: "BUY",
+      };
+    });
+
+    expect(forged.recommendation.recommendationSuitabilityAuthority.availability).toBe("UNAVAILABLE");
+    expect(forged.recommendation.recommendationSuitabilityAuthority.authority).toBe("NOT_ACCEPTED");
+    expect(hashCanonicalInvestingRecommendationSuitabilityAuthorityV1(forged.recommendation))
+      .toBe(forged.recommendation.authorityFingerprint);
+    expect(() => composeFromChain(forged)).toThrow(/recommendation_suitability_mismatch/);
+  });
+
+  it("rejects cross-scope authority mismatches one upstream artifact at a time", () => {
+    const values: Record<string, unknown> = {
+      userId: "user_other",
+      tenantId: "tenant_other",
+      membershipId: "membership_other",
+      portfolioId: "portfolio_other",
+      accountId: "account_other",
+      environment: "simulation",
+      accountBaseCurrency: "USD",
+    };
+    const artifacts: Array<"policy" | "readiness" | "evidence" | "recommendation"> = [
+      "policy",
+      "readiness",
+      "evidence",
+      "recommendation",
+    ];
+
+    for (const [key, value] of Object.entries(values)) {
+      for (const artifact of artifacts) {
+        const chain = clone(genuineChain()) as any;
+        if (artifact === "policy") {
+          chain.policy.intent.authority[key] = value;
+          recomputePolicyAssessmentFingerprint(chain.policy);
+        } else if (artifact === "readiness") {
+          chain.readiness.authority[key] = value;
+          recomputeReadinessFingerprint(chain.readiness);
+        } else if (artifact === "evidence") {
+          chain.evidence.authority[key] = value;
+          recomputeEvidenceAuthorityFingerprint(chain.evidence);
+        } else {
+          chain.recommendation.authority[key] = value;
+          recomputeRecommendationFingerprint(chain.recommendation);
+        }
+
+        expect(() => composeFromChain(chain), `${artifact}.${key}`).toThrow(
+          new RegExp(`${key}_mismatch|${artifact === "policy" ? "policy_methodology_mismatch" : artifact === "readiness" ? "suitability_readiness_mismatch" : artifact === "evidence" ? "suitability_evidence_mismatch" : "recommendation_suitability_mismatch"}`),
+        );
+      }
     }
   });
 
@@ -606,6 +932,49 @@ describe("canonical mandate authority composition boundary", () => {
   });
 
   it("fails closed on decorated, subclassed, sparse, accessor and replaced-prototype arrays without invoking array methods", () => {
+    const validTranslationReasons = ["HORIZON_EXPLICIT_AUTHORING_REQUIRED"];
+    const symbolDecorated = [...validTranslationReasons];
+    Object.defineProperty(symbolDecorated, Symbol("decision"), {
+      value: "BUY",
+      enumerable: true,
+    });
+    expectTranslationArrayRejected(symbolDecorated);
+
+    const nonEnumerableDecorated = [...validTranslationReasons];
+    Object.defineProperty(nonEnumerableDecorated, "futureDecision", {
+      value: "BUY",
+      enumerable: false,
+    });
+    expectTranslationArrayRejected(nonEnumerableDecorated);
+
+    let mapInvocations = 0;
+    class CountingReasonArray extends Array<string> {
+      override map<U>(
+        callbackfn: (value: string, index: number, array: string[]) => U,
+        thisArg?: unknown,
+      ): U[] {
+        mapInvocations += 1;
+        return Array.prototype.map.call(this, callbackfn, thisArg) as U[];
+      }
+    }
+    const countingSubclass = new CountingReasonArray("HORIZON_EXPLICIT_AUTHORING_REQUIRED");
+    expectTranslationArrayRejected(countingSubclass);
+    expect(mapInvocations).toBe(0);
+
+    const customPrototype = [...validTranslationReasons];
+    let mapGetterCalls = 0;
+    Object.setPrototypeOf(customPrototype, Object.create(Array.prototype, {
+      map: {
+        enumerable: false,
+        get() {
+          mapGetterCalls += 1;
+          return () => validTranslationReasons;
+        },
+      },
+    }));
+    expectTranslationArrayRejected(customPrototype);
+    expect(mapGetterCalls).toBe(0);
+
     expectArrayRejected(["CANONICAL_POLICY_METHODOLOGY_NOT_ACCEPTED", "ENGINE_TECHNICAL_POLICY_NOT_FINANCIAL_AUTHORITY"]);
 
     const decorated = [
