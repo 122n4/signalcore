@@ -66,6 +66,110 @@ begin
   end;
 end $$;
 
+savepoint r6_overlay_split_effective_time_behavior;
+
+do $$
+declare
+  account_a uuid;
+  t1 timestamptz := statement_timestamp() - interval '2 hours';
+  t2 timestamptz := statement_timestamp() - interval '1 hour';
+  t1_canonical text;
+  first_result jsonb;
+  replay_result jsonb;
+  first_action_id uuid;
+  recorded_effective_at timestamptz;
+  recorded_payload jsonb;
+begin
+  select id
+  into account_a
+  from public.investing_accounts
+  where user_id = 'r6_overlay_user_a'
+    and portfolio_id = 'r6-overlay-portfolio-a';
+
+  if account_a is null then
+    raise exception 'r6_overlay_split_behavior_account_missing';
+  end if;
+  if t1 = t2 or t1 > statement_timestamp() or t2 > statement_timestamp() then
+    raise exception 'r6_overlay_split_behavior_times_invalid';
+  end if;
+
+  t1_canonical := to_char(t1 at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"');
+
+  select public.investing_apply_split_v2(
+    'r6_overlay_user_a',
+    account_a,
+    'VWCE',
+    2,
+    'split',
+    'r6-overlay-effective-time-key',
+    'r6-overlay-effective-time-corr-1',
+    t1
+  )
+  into first_result;
+
+  if first_result->>'ok' <> 'true' or first_result->>'replayed' <> 'false' then
+    raise exception 'r6_overlay_split_behavior_first_call_unexpected:%', first_result;
+  end if;
+
+  first_action_id := (first_result->>'corporate_action_id')::uuid;
+  if first_action_id is null then
+    raise exception 'r6_overlay_split_behavior_first_action_missing';
+  end if;
+
+  select effective_at, payload
+  into recorded_effective_at, recorded_payload
+  from public.investing_corporate_actions
+  where id = first_action_id;
+
+  if recorded_effective_at is distinct from t1 then
+    raise exception 'r6_overlay_split_behavior_effective_at_not_recorded:%:%',
+      recorded_effective_at, t1;
+  end if;
+  if recorded_payload->>'effective_at' <> t1_canonical then
+    raise exception 'r6_overlay_split_behavior_payload_effective_at_not_canonical:%:%',
+      recorded_payload->>'effective_at', t1_canonical;
+  end if;
+
+  select public.investing_apply_split_v2(
+    'r6_overlay_user_a',
+    account_a,
+    'VWCE',
+    2,
+    'split',
+    'r6-overlay-effective-time-key',
+    'r6-overlay-effective-time-corr-2',
+    t1
+  )
+  into replay_result;
+
+  if replay_result->>'ok' <> 'true'
+     or replay_result->>'replayed' <> 'true'
+     or (replay_result->>'corporate_action_id')::uuid <> first_action_id then
+    raise exception 'r6_overlay_split_behavior_replay_unexpected:%', replay_result;
+  end if;
+
+  begin
+    perform public.investing_apply_split_v2(
+      'r6_overlay_user_a',
+      account_a,
+      'VWCE',
+      2,
+      'split',
+      'r6-overlay-effective-time-key',
+      'r6-overlay-effective-time-corr-3',
+      t2
+    );
+    raise exception 'r6_overlay_split_behavior_effective_time_mismatch_accepted';
+  exception when others then
+    if sqlerrm not like '%investing_idempotency_payload_mismatch%' then
+      raise;
+    end if;
+  end;
+end $$;
+
+rollback to savepoint r6_overlay_split_effective_time_behavior;
+release savepoint r6_overlay_split_effective_time_behavior;
+
 select r6_overlay_rehearsal.assert_existing_rows_unchanged();
 select r6_overlay_rehearsal.capture_object_snapshot('post_20260813201607');
 

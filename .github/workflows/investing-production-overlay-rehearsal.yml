@@ -24,10 +24,13 @@ jobs:
         run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.114.0
       - name: Show exact Supabase CLI migration help
         run: |
+          supabase --version
           supabase db reset --help
+          supabase db push --help
+          supabase migration list --help
           supabase migration --help
           supabase migration up --help
       - name: Start local Supabase
@@ -106,6 +109,63 @@ jobs:
         env:
           INVESTING_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
         run: node scripts/qa/runInvestingWorkerCrashRecovery.mjs
+      - name: Reset again to production max before migration-engine rehearsal
+        run: supabase db reset --local --version 20260812132000 --no-seed
+      - name: Assert migration-engine pre-state and capture fixtures
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_production_overlay_prestate.sql
+      - name: Assert exactly three local migrations are pending after production max
+        run: |
+          set -euo pipefail
+          expected="20260812133000 20260813201607 20260816202000"
+          actual="$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' \
+            | awk -F_ '$1 > 20260812132000 { print $1 }' \
+            | sort \
+            | paste -sd ' ' -)"
+          test "$actual" = "$expected"
+      - name: Demonstrate migration-engine pending set
+        run: |
+          set -euo pipefail
+          supabase migration list --local 2>&1 | tee /tmp/r6_overlay_migration_list_pre.txt
+          supabase db push --local --dry-run 2>&1 | tee /tmp/r6_overlay_db_push_dry_run.txt
+          for version in 20260812133000 20260813201607 20260816202000; do
+            grep -q "$version" /tmp/r6_overlay_db_push_dry_run.txt
+          done
+          unexpected="$(grep -Eo '20[0-9]{12}' /tmp/r6_overlay_db_push_dry_run.txt \
+            | sort -u \
+            | grep -Ev '^(20260812133000|20260813201607|20260816202000)$' || true)"
+          test -z "$unexpected"
+      - name: Apply pending overlays through Supabase migration engine
+        run: supabase db push --local --yes
+      - name: Assert migration-engine history and final schema state
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_production_overlay_after_migration_engine.sql
+      - name: Reassert security overlay after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_production_overlay_after_security.sql
+      - name: Reassert split effective-time behavior after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_production_overlay_after_split.sql
+      - name: Reassert canonical Plan schema after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_production_overlay_after_a3c.sql
+      - name: Rerun canonical Investing Plan persistence schema assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_plan_persistence_schema.sql
+      - name: Rerun final Investing PostgreSQL assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_p0_p1.sql
+      - name: Rerun final Investing security, RLS, Live and accounting assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_security_accounting.sql
+      - name: Rerun final Investing rollback and recovery assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_rollback_recovery.sql
+      - name: Rerun final Investing material reconciliation-break assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_reconciliation_breaks.sql
+      - name: Rerun final Investing Engine FASE 4A schema, RLS and append-only assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_engine_phase4a.sql
+      - name: Rerun final Investing Engine FASE 4B-R1 authorization assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_engine_phase4b_r1.sql
+      - name: Rerun final Investing Engine FASE 4B-R2 root sealing assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_engine_phase4b_r2.sql
+      - name: Rerun final Investing Engine FASE 4B-R3 raw boundary assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_engine_phase4b_r3.sql
+      - name: Rerun final Investing Engine FASE 4B-R4 final conditions assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_engine_phase4b_r4.sql
+      - name: Rerun final Investing Engine FASE 4B-R5 empty-state transition assertions after migration-engine application
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/investing_engine_phase4b_r5.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
