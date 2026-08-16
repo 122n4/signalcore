@@ -273,6 +273,131 @@ describe("canonical Investing mandate authority contract", () => {
     }
   });
 
+  it("rejects inherited constraint array behavior before any map dispatch", () => {
+    let mapInvocations = 0;
+    class EvilConstraints extends Array<any> {
+      override map<U>() {
+        mapInvocations += 1;
+        return [constraint()] as U[];
+      }
+    }
+
+    const evilConstraints = new EvilConstraints(constraint());
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints = evilConstraints;
+    });
+    expect(mapInvocations).toBe(0);
+
+    const replacedPrototype = [constraint()];
+    Object.setPrototypeOf(replacedPrototype, { map: () => [constraint()] });
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints = replacedPrototype;
+    });
+
+    let prototypeGetterCalls = 0;
+    const maliciousPrototype = Object.create(Array.prototype);
+    Object.defineProperty(maliciousPrototype, "map", {
+      get() {
+        prototypeGetterCalls += 1;
+        return () => [constraint()];
+      },
+    });
+    const maliciousPrototypeArray = [constraint()];
+    Object.setPrototypeOf(maliciousPrototypeArray, maliciousPrototype);
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints = maliciousPrototypeArray;
+    });
+    expect(prototypeGetterCalls).toBe(0);
+
+    expect(() => sealCanonicalInvestingMandateAuthorityV1(validDraft({
+      mandate: {
+        ...validDraft().mandate,
+        constraints: [constraint()],
+      },
+    }))).not.toThrow();
+  });
+
+  it("rejects non-closed constraint arrays without invoking index accessors", () => {
+    const sparseConstraints = [constraint()];
+    delete sparseConstraints[0];
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints = sparseConstraints;
+    });
+
+    let getterCalls = 0;
+    const accessorConstraints = [constraint()];
+    Object.defineProperty(accessorConstraints, "0", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return constraint();
+      },
+    });
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints = accessorConstraints;
+    });
+    expect(getterCalls).toBe(0);
+  });
+
+  it("rejects inherited evidence reference array behavior before any map dispatch", () => {
+    let mapInvocations = 0;
+    class EvilEvidenceRefs extends Array<string> {
+      override map<U>() {
+        mapInvocations += 1;
+        return ["plan_guardrail"] as U[];
+      }
+    }
+
+    const evilEvidenceRefs = new EvilEvidenceRefs("plan_guardrail");
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0].evidenceRefs = evilEvidenceRefs;
+    });
+    expect(mapInvocations).toBe(0);
+
+    const replacedPrototype = ["plan_guardrail"];
+    Object.setPrototypeOf(replacedPrototype, { map: () => ["plan_guardrail"] });
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0].evidenceRefs = replacedPrototype;
+    });
+
+    let prototypeGetterCalls = 0;
+    const maliciousPrototype = Object.create(Array.prototype);
+    Object.defineProperty(maliciousPrototype, "map", {
+      get() {
+        prototypeGetterCalls += 1;
+        return () => ["plan_guardrail"];
+      },
+    });
+    const maliciousPrototypeArray = ["plan_guardrail"];
+    Object.setPrototypeOf(maliciousPrototypeArray, maliciousPrototype);
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0].evidenceRefs = maliciousPrototypeArray;
+    });
+    expect(prototypeGetterCalls).toBe(0);
+  });
+
+  it("rejects non-closed evidence reference arrays without invoking index accessors", () => {
+    const sparseEvidenceRefs = ["plan_guardrail"];
+    delete sparseEvidenceRefs[0];
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0].evidenceRefs = sparseEvidenceRefs;
+    });
+
+    let getterCalls = 0;
+    const accessorEvidenceRefs = ["not_authorized"];
+    Object.defineProperty(accessorEvidenceRefs, "0", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return "plan_guardrail";
+      },
+    });
+    expectInvalidDraft((draft) => {
+      draft.mandate.constraints[0].evidenceRefs = accessorEvidenceRefs;
+    });
+    expect(getterCalls).toBe(0);
+  });
+
   it("rejects hidden, Symbol-keyed and accessor authority fields before hashing or sealing", () => {
     const rootSymbol = Symbol("futureAuthority");
     const authoritySymbol = Symbol("futureAuthority");

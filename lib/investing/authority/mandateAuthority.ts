@@ -135,7 +135,10 @@ function assertClosedDataRecord(
 }
 
 function assertClosedDataArray(value: unknown, code: string): asserts value is readonly unknown[] {
+  // This ordinary-array boundary does not claim immunity to arbitrary Proxy
+  // reflective traps; callers must cross a plain-data serialization boundary first.
   assert(Array.isArray(value), code);
+  assert(Object.getPrototypeOf(value) === Array.prototype, code);
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
   assert(Boolean(lengthDescriptor) && "value" in lengthDescriptor && lengthDescriptor.enumerable === false, code);
@@ -156,6 +159,22 @@ function assertClosedDataArray(value: unknown, code: string): asserts value is r
     const descriptor = descriptors[String(index)];
     assert(Boolean(descriptor) && descriptor.enumerable === true && "value" in descriptor, code);
   }
+}
+
+function materializeClosedDataArray(value: unknown, code: string) {
+  assertClosedDataArray(value, code);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  assert(Boolean(lengthDescriptor) && "value" in lengthDescriptor, code);
+  const length = lengthDescriptor.value;
+  assert(Number.isSafeInteger(length) && length >= 0, code);
+  const materialized: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    assert(Boolean(descriptor) && descriptor.enumerable === true && "value" in descriptor, code);
+    materialized.push(descriptor.value);
+  }
+  return materialized;
 }
 
 function readDataField(record: Record<string, unknown>, key: string) {
@@ -193,7 +212,16 @@ function materializeConstraint(constraint: unknown, index: number): InvestingCon
   );
 
   const evidenceRefs = readDataField(constraint, "evidenceRefs");
-  assertClosedDataArray(evidenceRefs, `investing_mandate_authority_constraint_${index}_evidence_refs_invalid`);
+  const materializedEvidenceRefs = materializeClosedDataArray(
+    evidenceRefs,
+    `investing_mandate_authority_constraint_${index}_evidence_refs_invalid`,
+  );
+  const typedEvidenceRefs: string[] = [];
+  for (let refIndex = 0; refIndex < materializedEvidenceRefs.length; refIndex += 1) {
+    const ref = materializedEvidenceRefs[refIndex];
+    assertId(ref, `investing_mandate_authority_constraint_${index}_evidence_ref_${refIndex}_invalid`);
+    typedEvidenceRefs.push(ref as string);
+  }
 
   const materialized = {
     id: readDataField(constraint, "id"),
@@ -202,7 +230,7 @@ function materializeConstraint(constraint: unknown, index: number): InvestingCon
     reasonCode: readDataField(constraint, "reasonCode"),
     observed: readDataField(constraint, "observed"),
     limit: readDataField(constraint, "limit"),
-    evidenceRefs: evidenceRefs.map((ref) => ref),
+    evidenceRefs: typedEvidenceRefs,
   };
 
   assertId(materialized.id, `investing_mandate_authority_constraint_${index}_id_invalid`);
@@ -223,9 +251,6 @@ function materializeConstraint(constraint: unknown, index: number): InvestingCon
     materialized.limit === null || isCanonicalDecimal(materialized.limit),
     `investing_mandate_authority_constraint_${index}_limit_invalid`,
   );
-  materialized.evidenceRefs.forEach((ref, refIndex) =>
-    assertId(ref, `investing_mandate_authority_constraint_${index}_evidence_ref_${refIndex}_invalid`),
-  );
   return materialized as InvestingConstraintEvaluationV1;
 }
 
@@ -236,7 +261,14 @@ export function assertCanonicalMandateV1Closed(mandate: unknown): asserts mandat
 function materializeMandate(mandate: unknown): CanonicalMandateV1 {
   assertClosedDataRecord(mandate, MANDATE_KEYS, "investing_mandate_authority_mandate_closed_invalid");
   const constraints = readDataField(mandate, "constraints");
-  assertClosedDataArray(constraints, "investing_mandate_authority_constraints_invalid");
+  const materializedConstraints = materializeClosedDataArray(
+    constraints,
+    "investing_mandate_authority_constraints_invalid",
+  );
+  const typedConstraints: InvestingConstraintEvaluationV1[] = [];
+  for (let index = 0; index < materializedConstraints.length; index += 1) {
+    typedConstraints.push(materializeConstraint(materializedConstraints[index], index));
+  }
 
   const materialized = {
     mandateSnapshotId: readDataField(mandate, "mandateSnapshotId"),
@@ -244,7 +276,7 @@ function materializeMandate(mandate: unknown): CanonicalMandateV1 {
     riskProfile: readDataField(mandate, "riskProfile"),
     horizon: readDataField(mandate, "horizon"),
     baseCurrency: readDataField(mandate, "baseCurrency"),
-    constraints: constraints.map((constraint, index) => materializeConstraint(constraint, index)),
+    constraints: typedConstraints,
   };
 
   assertId(materialized.mandateSnapshotId, "investing_mandate_authority_mandate_snapshot_id_invalid");
