@@ -203,9 +203,9 @@ declare
     'investing_plan_heads_current_revision_number_positive_check',
     'investing_plan_idempotency_keys_environment_check',
     'investing_plan_idempotency_keys_idempotency_key_check',
-    'investing_plan_idempotency_keys_semantic_request_fingerprint_check',
-    'investing_plan_idempotency_keys_original_command_fingerprint_check',
-    'investing_plan_idempotency_keys_result_revision_number_positive_check'
+    'investing_plan_idem_semantic_fingerprint_check',
+    'investing_plan_idem_command_fingerprint_check',
+    'investing_plan_idem_result_revision_number_check'
   ];
   missing text[];
 begin

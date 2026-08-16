@@ -159,11 +159,11 @@ create table public.investing_plan_idempotency_keys (
     check (environment in ('paper', 'simulation')),
   constraint investing_plan_idempotency_keys_idempotency_key_check
     check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$'),
-  constraint investing_plan_idempotency_keys_semantic_request_fingerprint_check
+  constraint investing_plan_idem_semantic_fingerprint_check
     check (semantic_request_fingerprint ~ '^[0-9a-f]{64}$'),
-  constraint investing_plan_idempotency_keys_original_command_fingerprint_check
+  constraint investing_plan_idem_command_fingerprint_check
     check (original_command_fingerprint ~ '^[0-9a-f]{64}$'),
-  constraint investing_plan_idempotency_keys_result_revision_number_positive_check
+  constraint investing_plan_idem_result_revision_number_check
     check (result_revision_number >= 1),
   constraint investing_plan_idempotency_keys_account_scope_fk
     foreign key (tenant_id, owner_user_id, portfolio_id, account_id, environment)
