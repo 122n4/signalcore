@@ -140,6 +140,26 @@ type CanonicalInvestingPlanPersistencePrivilegeV1 = {
   readonly directDelete: false;
 };
 
+type CanonicalInvestingPlanPersistenceColumnTypeV1 = "uuid" | "text" | "bigint" | "timestamptz";
+
+type CanonicalInvestingPlanPersistenceColumnDefaultV1 =
+  | "NONE"
+  | "DB_GENERATED_UUID"
+  | "DB_PERSISTENCE_TIMESTAMP"
+  | "DB_TRANSACTION_ID";
+
+type CanonicalInvestingPlanPersistenceColumnDefaultAuthorityV1 =
+  | "NO_DEFAULT"
+  | "OPERATIONAL_METADATA_ONLY";
+
+type CanonicalInvestingPlanPersistenceColumnDefinitionV1 = {
+  readonly name: string;
+  readonly type: CanonicalInvestingPlanPersistenceColumnTypeV1;
+  readonly nullable: boolean;
+  readonly default: CanonicalInvestingPlanPersistenceColumnDefaultV1;
+  readonly defaultAuthority: CanonicalInvestingPlanPersistenceColumnDefaultAuthorityV1;
+};
+
 type CanonicalInvestingPlanPersistenceTableV1 = {
   readonly name:
     | "investing_plan_revisions"
@@ -150,6 +170,7 @@ type CanonicalInvestingPlanPersistenceTableV1 = {
     | "SINGLE_CURRENT_HEAD_PER_ACCOUNT"
     | "IMMUTABLE_RETRY_RESULT";
   readonly columns: readonly string[];
+  readonly columnDefinitions: readonly CanonicalInvestingPlanPersistenceColumnDefinitionV1[];
   readonly constraints: Record<string, unknown>;
   readonly immutability: Record<string, unknown>;
 };
@@ -160,60 +181,103 @@ const CANONICAL_UUID_LOWERCASE =
   "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
 const PORTFOLIO_ID_PATTERN = "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$";
 
-const REVISION_COLUMNS = [
-  "id",
-  "tenant_id",
-  "owner_user_id",
-  "portfolio_id",
-  "account_id",
-  "environment",
-  "account_base_currency",
-  "revision_number",
-  "previous_revision_id",
-  "authoring_membership_id",
-  "authoring_contract_version",
-  "authoring_fingerprint",
-  "authored_at",
-  "objective",
-  "risk_profile",
-  "horizon",
-  "command_contract_version",
-  "operation",
-  "command_fingerprint",
-  "semantic_request_fingerprint",
-  "idempotency_key",
-  "expected_head_revision_id",
-  "expected_head_revision_number",
-  "expected_head_authoring_fingerprint",
-  "persisted_at",
-  "persistence_txid",
+const NO_DEFAULT = {
+  default: "NONE",
+  defaultAuthority: "NO_DEFAULT",
+} as const;
+
+const OPERATIONAL_METADATA_DEFAULT = {
+  defaultAuthority: "OPERATIONAL_METADATA_ONLY",
+} as const;
+
+const REVISION_COLUMN_DEFINITIONS = [
+  { name: "id", type: "uuid", nullable: false, default: "DB_GENERATED_UUID", defaultAuthority: "OPERATIONAL_METADATA_ONLY" },
+  { name: "tenant_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "owner_user_id", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "portfolio_id", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "account_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "environment", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "account_base_currency", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "revision_number", type: "bigint", nullable: false, ...NO_DEFAULT },
+  { name: "previous_revision_id", type: "uuid", nullable: true, ...NO_DEFAULT },
+  { name: "authoring_membership_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "authoring_contract_version", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "authoring_fingerprint", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "authored_at", type: "timestamptz", nullable: false, ...NO_DEFAULT },
+  { name: "objective", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "risk_profile", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "horizon", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "command_contract_version", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "operation", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "command_fingerprint", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "semantic_request_fingerprint", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "idempotency_key", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "expected_head_revision_id", type: "uuid", nullable: true, ...NO_DEFAULT },
+  { name: "expected_head_revision_number", type: "bigint", nullable: true, ...NO_DEFAULT },
+  { name: "expected_head_authoring_fingerprint", type: "text", nullable: true, ...NO_DEFAULT },
+  {
+    name: "persisted_at",
+    type: "timestamptz",
+    nullable: false,
+    default: "DB_PERSISTENCE_TIMESTAMP",
+    ...OPERATIONAL_METADATA_DEFAULT,
+  },
+  {
+    name: "persistence_txid",
+    type: "bigint",
+    nullable: false,
+    default: "DB_TRANSACTION_ID",
+    ...OPERATIONAL_METADATA_DEFAULT,
+  },
 ] as const;
 
-const HEAD_COLUMNS = [
-  "tenant_id",
-  "owner_user_id",
-  "portfolio_id",
-  "account_id",
-  "environment",
-  "current_revision_id",
-  "current_revision_number",
-  "updated_at",
+const HEAD_COLUMN_DEFINITIONS = [
+  { name: "tenant_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "owner_user_id", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "portfolio_id", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "account_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "environment", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "current_revision_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "current_revision_number", type: "bigint", nullable: false, ...NO_DEFAULT },
+  {
+    name: "updated_at",
+    type: "timestamptz",
+    nullable: false,
+    default: "DB_PERSISTENCE_TIMESTAMP",
+    ...OPERATIONAL_METADATA_DEFAULT,
+  },
 ] as const;
 
-const IDEMPOTENCY_COLUMNS = [
-  "tenant_id",
-  "owner_user_id",
-  "portfolio_id",
-  "account_id",
-  "environment",
-  "idempotency_key",
-  "semantic_request_fingerprint",
-  "original_command_fingerprint",
-  "result_revision_id",
-  "result_revision_number",
-  "created_at",
-  "persistence_txid",
+const IDEMPOTENCY_COLUMN_DEFINITIONS = [
+  { name: "tenant_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "owner_user_id", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "portfolio_id", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "account_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "environment", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "idempotency_key", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "semantic_request_fingerprint", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "original_command_fingerprint", type: "text", nullable: false, ...NO_DEFAULT },
+  { name: "result_revision_id", type: "uuid", nullable: false, ...NO_DEFAULT },
+  { name: "result_revision_number", type: "bigint", nullable: false, ...NO_DEFAULT },
+  {
+    name: "created_at",
+    type: "timestamptz",
+    nullable: false,
+    default: "DB_PERSISTENCE_TIMESTAMP",
+    ...OPERATIONAL_METADATA_DEFAULT,
+  },
+  {
+    name: "persistence_txid",
+    type: "bigint",
+    nullable: false,
+    default: "DB_TRANSACTION_ID",
+    ...OPERATIONAL_METADATA_DEFAULT,
+  },
 ] as const;
+
+function columnNames(definitions: readonly CanonicalInvestingPlanPersistenceColumnDefinitionV1[]) {
+  return definitions.map((definition) => definition.name);
+}
 
 const DRAFT_CONTRACT = {
   contractVersion: CANONICAL_INVESTING_PLAN_PERSISTENCE_SCHEMA_CONTRACT_VERSION,
@@ -259,7 +323,8 @@ const DRAFT_CONTRACT = {
     {
       name: "investing_plan_revisions",
       role: "IMMUTABLE_APPEND_ONLY_HISTORY",
-      columns: REVISION_COLUMNS,
+      columns: columnNames(REVISION_COLUMN_DEFINITIONS),
+      columnDefinitions: REVISION_COLUMN_DEFINITIONS,
       constraints: {
         primaryIdentity: {
           column: "id",
@@ -309,6 +374,8 @@ const DRAFT_CONTRACT = {
           positiveBigint: true,
           minimum: "1",
           clientGenerated: false,
+          dbDefault: false,
+          writerDerived: true,
           revisionOneRequiresPreviousNull: "TRANSACTION_INVARIANT",
           laterRevisionRequiresFormerHeadAsPrevious: "TRANSACTION_INVARIANT",
           laterRevisionPreviousNumberDelta: "N_MINUS_1_TRANSACTION_INVARIANT",
@@ -317,6 +384,14 @@ const DRAFT_CONTRACT = {
         previousRevision: {
           nullableOnlyForRevisionOne: true,
           sameAccountCompositeForeignKeyRequired: true,
+          previousRevisionForeignKey: {
+            local: ["previous_revision_id", "account_id"],
+            references: {
+              table: "investing_plan_revisions",
+              columns: ["id", "account_id"],
+            },
+            preventsCrossAccountPreviousPointer: true,
+          },
           exactNumberArithmeticIsTransactionInvariant: true,
         },
         explicitIntent: {
@@ -363,6 +438,7 @@ const DRAFT_CONTRACT = {
         },
         uniqueness: {
           accountRevisionNumber: ["account_id", "revision_number"],
+          samePreviousRevisionAccountIdentity: ["id", "account_id"],
           sameRevisionIdentityForHead: ["id", "account_id", "revision_number"],
           authoringFingerprintGloballyUnique: false,
         },
@@ -378,7 +454,8 @@ const DRAFT_CONTRACT = {
     {
       name: "investing_plan_heads",
       role: "SINGLE_CURRENT_HEAD_PER_ACCOUNT",
-      columns: HEAD_COLUMNS,
+      columns: columnNames(HEAD_COLUMN_DEFINITIONS),
+      columnDefinitions: HEAD_COLUMN_DEFINITIONS,
       constraints: {
         oneRowPerAccount: true,
         accountIdPrimaryKeyOrEquivalent: true,
@@ -413,7 +490,8 @@ const DRAFT_CONTRACT = {
     {
       name: "investing_plan_idempotency_keys",
       role: "IMMUTABLE_RETRY_RESULT",
-      columns: IDEMPOTENCY_COLUMNS,
+      columns: columnNames(IDEMPOTENCY_COLUMN_DEFINITIONS),
+      columnDefinitions: IDEMPOTENCY_COLUMN_DEFINITIONS,
       constraints: {
         uniqueIdentity: [
           "tenant_id",
@@ -427,6 +505,15 @@ const DRAFT_CONTRACT = {
         idempotencyKeyPattern: IDEMPOTENCY_KEY_PATTERN,
         semanticRequestFingerprintPattern: SHA256_LOWERCASE,
         originalCommandFingerprintPattern: SHA256_LOWERCASE,
+        scopeForeignKey: {
+          local: ["tenant_id", "owner_user_id", "portfolio_id", "account_id", "environment"],
+          references: {
+            table: "investing_accounts",
+            columns: ["tenant_id", "owner_user_id", "portfolio_id", "id", "environment"],
+          },
+          provesFullAccountScope: true,
+          accountIdAloneOwnershipProof: false,
+        },
         resultRevisionForeignKey: {
           local: ["result_revision_id", "account_id", "result_revision_number"],
           references: {

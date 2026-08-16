@@ -26,6 +26,46 @@ function table(name: string) {
   return found!;
 }
 
+const SCOPE_COLUMNS = ["tenant_id", "owner_user_id", "portfolio_id", "account_id", "environment"];
+
+const EXACT_ACCOUNT_SCOPE_FOREIGN_KEY = {
+  local: SCOPE_COLUMNS,
+  references: {
+    table: "investing_accounts",
+    columns: ["tenant_id", "owner_user_id", "portfolio_id", "id", "environment"],
+  },
+  provesFullAccountScope: true,
+  accountIdAloneOwnershipProof: false,
+};
+
+function column(tableName: string, columnName: string) {
+  const found = table(tableName).columnDefinitions.find((entry) => entry.name === columnName);
+  expect(found, `${tableName}.${columnName}`).toBeDefined();
+  return found!;
+}
+
+function expectColumnsHaveClosedDefinitions(tableName: string) {
+  const canonicalTable = table(tableName);
+  expect(canonicalTable.columnDefinitions.map((entry) => entry.name)).toEqual(canonicalTable.columns);
+  expect(new Set(canonicalTable.columnDefinitions.map((entry) => entry.name)).size)
+    .toBe(canonicalTable.columnDefinitions.length);
+  for (const definition of canonicalTable.columnDefinitions) {
+    expect(["uuid", "text", "bigint", "timestamptz"], definition.name).toContain(definition.type);
+    expect(typeof definition.nullable, definition.name).toBe("boolean");
+    expect(["NONE", "DB_GENERATED_UUID", "DB_PERSISTENCE_TIMESTAMP", "DB_TRANSACTION_ID"], definition.name)
+      .toContain(definition.default);
+    expect(["NO_DEFAULT", "OPERATIONAL_METADATA_ONLY"], definition.name)
+      .toContain(definition.defaultAuthority);
+    expect(definition.default === "NONE", definition.name)
+      .toBe(definition.defaultAuthority === "NO_DEFAULT");
+  }
+}
+
+function hasClosedIdempotencyScope(candidate: any) {
+  return JSON.stringify(candidate.constraints.scopeForeignKey ?? null)
+    === JSON.stringify(EXACT_ACCOUNT_SCOPE_FOREIGN_KEY);
+}
+
 function assertFrozenClosed(value: unknown, path = "$", seen = new WeakSet<object>()) {
   if (!value || typeof value !== "object" || seen.has(value)) return;
   seen.add(value);
@@ -235,6 +275,14 @@ describe("canonical investing plan persistence schema contract", () => {
     expect(revisions.constraints.previousRevision).toMatchObject({
       nullableOnlyForRevisionOne: true,
       sameAccountCompositeForeignKeyRequired: true,
+      previousRevisionForeignKey: {
+        local: ["previous_revision_id", "account_id"],
+        references: {
+          table: "investing_plan_revisions",
+          columns: ["id", "account_id"],
+        },
+        preventsCrossAccountPreviousPointer: true,
+      },
       exactNumberArithmeticIsTransactionInvariant: true,
     });
     expect(revisions.constraints.expectedHead).toEqual({
@@ -252,6 +300,7 @@ describe("canonical investing plan persistence schema contract", () => {
     });
     expect(revisions.constraints.uniqueness).toEqual({
       accountRevisionNumber: ["account_id", "revision_number"],
+      samePreviousRevisionAccountIdentity: ["id", "account_id"],
       sameRevisionIdentityForHead: ["id", "account_id", "revision_number"],
       authoringFingerprintGloballyUnique: false,
     });
@@ -326,6 +375,7 @@ describe("canonical investing plan persistence schema contract", () => {
       idempotencyKeyPattern: "^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$",
       semanticRequestFingerprintPattern: "^[0-9a-f]{64}$",
       originalCommandFingerprintPattern: "^[0-9a-f]{64}$",
+      scopeForeignKey: EXACT_ACCOUNT_SCOPE_FOREIGN_KEY,
       resultRevisionForeignKey: {
         local: ["result_revision_id", "account_id", "result_revision_number"],
         references: {
@@ -349,6 +399,175 @@ describe("canonical investing plan persistence schema contract", () => {
       replayCreatesRevision: false,
       membershipIdInRetryUniqueness: false,
     });
+  });
+
+  it("closes idempotency account scope independently of the result revision pointer", () => {
+    const idempotency = table("investing_plan_idempotency_keys");
+
+    expect(idempotency.constraints.scopeForeignKey).toEqual(EXACT_ACCOUNT_SCOPE_FOREIGN_KEY);
+    expect((idempotency.constraints.scopeForeignKey as any).accountIdAloneOwnershipProof).toBe(false);
+    expect((idempotency.constraints.scopeForeignKey as any).local).toEqual(SCOPE_COLUMNS);
+    expect(hasClosedIdempotencyScope(idempotency)).toBe(true);
+
+    const resultOnlyDesign = clone(idempotency) as any;
+    delete resultOnlyDesign.constraints.scopeForeignKey;
+    expect(resultOnlyDesign.constraints.resultRevisionForeignKey).toEqual({
+      local: ["result_revision_id", "account_id", "result_revision_number"],
+      references: {
+        table: "investing_plan_revisions",
+        columns: ["id", "account_id", "revision_number"],
+      },
+      preventsCrossAccountResultPointer: true,
+    });
+    expect(hasClosedIdempotencyScope(resultOnlyDesign)).toBe(false);
+  });
+
+  it("declares exact previous-revision relational closure without replacing transaction invariants", () => {
+    const revisions = table("investing_plan_revisions");
+
+    expect(revisions.constraints.uniqueness).toMatchObject({
+      samePreviousRevisionAccountIdentity: ["id", "account_id"],
+      sameRevisionIdentityForHead: ["id", "account_id", "revision_number"],
+    });
+    expect(revisions.constraints.previousRevision).toMatchObject({
+      nullableOnlyForRevisionOne: true,
+      previousRevisionForeignKey: {
+        local: ["previous_revision_id", "account_id"],
+        references: {
+          table: "investing_plan_revisions",
+          columns: ["id", "account_id"],
+        },
+        preventsCrossAccountPreviousPointer: true,
+      },
+      exactNumberArithmeticIsTransactionInvariant: true,
+    });
+    expect(revisions.constraints.revisionNumber).toMatchObject({
+      revisionOneRequiresPreviousNull: "TRANSACTION_INVARIANT",
+      laterRevisionRequiresFormerHeadAsPrevious: "TRANSACTION_INVARIANT",
+      laterRevisionPreviousNumberDelta: "N_MINUS_1_TRANSACTION_INVARIANT",
+      checkConstraintAloneSufficientForCrossRowChain: false,
+    });
+    expect(revisions.columns).not.toContain("previous_revision_number");
+  });
+
+  it("declares explicit type, nullability and default semantics for every canonical column", () => {
+    expectColumnsHaveClosedDefinitions("investing_plan_revisions");
+    expectColumnsHaveClosedDefinitions("investing_plan_heads");
+    expectColumnsHaveClosedDefinitions("investing_plan_idempotency_keys");
+
+    for (const tableName of [
+      "investing_plan_revisions",
+      "investing_plan_heads",
+      "investing_plan_idempotency_keys",
+    ]) {
+      for (const scopeColumn of SCOPE_COLUMNS) {
+        expect(column(tableName, scopeColumn).nullable, `${tableName}.${scopeColumn}`).toBe(false);
+        expect(column(tableName, scopeColumn).default, `${tableName}.${scopeColumn}`).toBe("NONE");
+      }
+    }
+
+    for (const intentColumn of ["objective", "risk_profile", "horizon"]) {
+      expect(column("investing_plan_revisions", intentColumn)).toMatchObject({
+        type: "text",
+        nullable: false,
+        default: "NONE",
+      });
+    }
+
+    for (const [tableName, fingerprintColumns] of [
+      [
+        "investing_plan_revisions",
+        ["authoring_fingerprint", "command_fingerprint", "semantic_request_fingerprint"],
+      ],
+      [
+        "investing_plan_idempotency_keys",
+        ["semantic_request_fingerprint", "original_command_fingerprint"],
+      ],
+    ] as const) {
+      for (const fingerprintColumn of fingerprintColumns) {
+        expect(column(tableName, fingerprintColumn)).toMatchObject({
+          type: "text",
+          nullable: false,
+          default: "NONE",
+        });
+      }
+    }
+
+    for (const expectedHeadColumn of [
+      "expected_head_revision_id",
+      "expected_head_revision_number",
+      "expected_head_authoring_fingerprint",
+    ]) {
+      expect(column("investing_plan_revisions", expectedHeadColumn)).toMatchObject({
+        nullable: true,
+        default: "NONE",
+      });
+    }
+    expect(table("investing_plan_revisions").constraints.expectedHead).toMatchObject({
+      allOrNone: [
+        "expected_head_revision_id",
+        "expected_head_revision_number",
+        "expected_head_authoring_fingerprint",
+      ],
+      nullableAsSet: true,
+    });
+  });
+
+  it("keeps financial and authoring truth free of database defaults", () => {
+    const financialAndIntentColumns = [
+      "account_base_currency",
+      "environment",
+      "objective",
+      "risk_profile",
+      "horizon",
+      "revision_number",
+      "authoring_fingerprint",
+      "command_fingerprint",
+      "semantic_request_fingerprint",
+    ];
+
+    for (const columnName of financialAndIntentColumns) {
+      expect(column("investing_plan_revisions", columnName), columnName).toMatchObject({
+        default: "NONE",
+        defaultAuthority: "NO_DEFAULT",
+      });
+    }
+    expect(column("investing_plan_revisions", "revision_number")).toMatchObject({
+      type: "bigint",
+      nullable: false,
+      default: "NONE",
+    });
+    expect(table("investing_plan_revisions").constraints.revisionNumber).toMatchObject({
+      clientGenerated: false,
+      dbDefault: false,
+      writerDerived: true,
+    });
+
+    const dbDefaults = getCanonicalInvestingPlanPersistenceSchemaContractV1()
+      .canonicalTables.flatMap((entry) => entry.columnDefinitions.map((definition) => definition.default));
+    expect(dbDefaults).not.toContain("EUR");
+    expect(dbDefaults).not.toContain("paper");
+    expect(dbDefaults).not.toContain("Balanced");
+    expect(dbDefaults).not.toContain("Medium");
+    expect(dbDefaults).not.toContain("growth");
+  });
+
+  it("limits database defaults to approved operational metadata columns only", () => {
+    const defaultsByColumn = getCanonicalInvestingPlanPersistenceSchemaContractV1()
+      .canonicalTables.flatMap((entry) =>
+        entry.columnDefinitions
+          .filter((definition) => definition.default !== "NONE")
+          .map((definition) => `${entry.name}.${definition.name}:${definition.default}`),
+      );
+
+    expect(defaultsByColumn).toEqual([
+      "investing_plan_revisions.id:DB_GENERATED_UUID",
+      "investing_plan_revisions.persisted_at:DB_PERSISTENCE_TIMESTAMP",
+      "investing_plan_revisions.persistence_txid:DB_TRANSACTION_ID",
+      "investing_plan_heads.updated_at:DB_PERSISTENCE_TIMESTAMP",
+      "investing_plan_idempotency_keys.created_at:DB_PERSISTENCE_TIMESTAMP",
+      "investing_plan_idempotency_keys.persistence_txid:DB_TRANSACTION_ID",
+    ]);
   });
 
   it("requires account-row locking and idempotency replay before expected-head CAS", () => {
@@ -506,6 +725,46 @@ describe("canonical investing plan persistence schema contract", () => {
       ["grants", (draft) => { draft.privileges.authenticated.select = true; }],
       ["lock strategy", (draft) => { draft.lockStrategy.strategy = "HEAD_ROW_FOR_UPDATE"; }],
       ["legacy fallback", (draft) => { draft.legacyIsolation.canonicalReadFallbackToLegacy = true; }],
+      [
+        "tenant_id type",
+        (draft) => {
+          draft.canonicalTables[0].columnDefinitions.find((entry: any) => entry.name === "tenant_id").type = "text";
+        },
+      ],
+      [
+        "revision_number type",
+        (draft) => {
+          draft.canonicalTables[0].columnDefinitions.find((entry: any) => entry.name === "revision_number").type = "text";
+        },
+      ],
+      [
+        "environment nullability",
+        (draft) => {
+          draft.canonicalTables[0].columnDefinitions.find((entry: any) => entry.name === "environment").nullable = true;
+        },
+      ],
+      [
+        "account_base_currency financial default",
+        (draft) => {
+          draft.canonicalTables[0].columnDefinitions.find(
+            (entry: any) => entry.name === "account_base_currency",
+          ).default = "EUR";
+        },
+      ],
+      [
+        "expected_head nullability",
+        (draft) => {
+          draft.canonicalTables[0].columnDefinitions.find(
+            (entry: any) => entry.name === "expected_head_revision_id",
+          ).nullable = false;
+        },
+      ],
+      [
+        "persisted_at default semantics",
+        (draft) => {
+          draft.canonicalTables[0].columnDefinitions.find((entry: any) => entry.name === "persisted_at").default = "NONE";
+        },
+      ],
     ];
 
     for (const [label, mutate] of cases) {
