@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { readInvestingPaperConfig } from "@/lib/investing/server/config";
-import { applyPersistentPaperSplit } from "@/lib/investing/server/cashAndCorporateActions";
+import { applyPersistentPaperSplit, validateInvestingCorporateActionEffectiveAt } from "@/lib/investing/server/cashAndCorporateActions";
 import { getPersistentPaperHealth, processPersistentPaperOrder, recoverPersistentPaperWork } from "@/lib/investing/server/persistentPaper";
 
 export const runtime = "nodejs";
@@ -38,6 +38,10 @@ export async function POST(req: Request) {
       && /^[A-Z0-9._-]{1,24}$/.test(String(body?.symbol || "").toUpperCase())
       && /^\d{1,4}(?:\.\d{1,12})?$/.test(String(body?.ratio || ""))
     ) {
+      const effectiveAt = validateInvestingCorporateActionEffectiveAt(body?.effectiveAt);
+      if (!effectiveAt.ok) {
+        return NextResponse.json({ ok: false, error: effectiveAt.error }, { status: 400 });
+      }
       return NextResponse.json({ ok: true, result: await applyPersistentPaperSplit({
         userId: String(body?.userId || ""),
         accountId: String(body.accountId),
@@ -45,7 +49,7 @@ export async function POST(req: Request) {
         ratio: String(body.ratio),
         action: body.action,
         clientRequestId: String(body.clientRequestId),
-        effectiveAt: body?.effectiveAt ? String(body.effectiveAt) : null,
+        effectiveAt: effectiveAt.effectiveAt,
       }) });
     }
     if (body?.action === "process_order" && UUID.test(String(body?.orderId || ""))) {

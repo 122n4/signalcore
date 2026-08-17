@@ -52,7 +52,7 @@ function parseQuoteTimestamp(data: TDQuote) {
     return parsedDatetime;
   }
 
-  return Date.now();
+  return null;
 }
 
 function supportsExtendedHours(kind: ReturnType<typeof inferAssetKind>) {
@@ -126,7 +126,6 @@ export async function tdQuoteNormalized(
   const change = parseNum(data.change) ?? undefined;
   const percent = parseNum(data.percent_change) ?? undefined;
 
-  // TwelveData datetime é string; usamos "agora" como timestamp se não der parse
   const ts = parseQuoteTimestamp(data);
 
   const out: QuoteNormalized = {
@@ -146,9 +145,9 @@ export async function tdQuoteNormalized(
     isExtendedHours:
       typeof data.is_extended_hours === "boolean" ? data.is_extended_hours : undefined,
     currency: data.currency,
-    timestamp: ts,
     provider: "twelvedata",
   };
+  if (ts !== null) out.timestamp = ts;
 
   if (cacheTtlMs > 0) cacheSet(key, out, cacheTtlMs);
   return out;
@@ -202,14 +201,14 @@ export async function tdCandles(
     const v = parseNum(p.volume);
 
     return {
-      t: Number.isFinite(t) ? t : Date.now(),
+      t: Number.isFinite(t) ? t : NaN,
       o: o ?? NaN,
       h: h ?? NaN,
       l: l ?? NaN,
       c: c ?? NaN,
       v: v ?? undefined,
     };
-  }).filter((x) => Number.isFinite(x.c) && Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l));
+  }).filter((x) => Number.isFinite(x.t) && Number.isFinite(x.c) && Number.isFinite(x.o) && Number.isFinite(x.h) && Number.isFinite(x.l));
 
   if (cacheTtlMs > 0) cacheSet(key, out, cacheTtlMs);
   return out;

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -16,6 +16,24 @@ const marketSnapshots = readFileSync(
 );
 
 describe("investing financial migration", () => {
+  it("keeps DB security hardening after recovered production history", () => {
+    const migrationRoot = join(process.cwd(), "supabase/migrations");
+    const migrations = readdirSync(migrationRoot)
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
+    const versions = migrations.map((name) => name.split("_")[0]);
+    expect(new Set(versions).size).toBe(versions.length);
+
+    const recoveredProductionMax = "20260812132000";
+    const phase1 = "20260812133000_investing_db_security_hardening_phase1.sql";
+    expect(migrations).toContain("20260812132000_drop_broken_remote_investing_onboarding_rpcs.sql");
+    expect(migrations).toContain(phase1);
+    expect(migrations.indexOf("20260812132000_drop_broken_remote_investing_onboarding_rpcs.sql")).toBeLessThan(
+      migrations.indexOf(phase1),
+    );
+    expect(phase1.split("_")[0] > recoveredProductionMax).toBe(true);
+  });
+
   it("defines required accounting tables and append-only guards", () => {
     for (const table of [
       "investing_accounts",

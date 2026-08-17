@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "slice": "R0",
+  "status": "canonical_integration_foundation",
+  "canonical_technical_base": "6269c1b9a8744cbc35b438310255fec723537fe8",
+  "trust_boundary_head": "36d4d438c03df7ef371263157f2fb9cfc225e311",
+  "migration_recovery_head": "2e9660828b0ac8d001c883671d5a08614f4381c9",
+  "db_security_phase1_head": "6269c1b9a8744cbc35b438310255fec723537fe8",
+  "production_git_base": "57ac0c96a45afd7774ae3001b835244945e61308",
+  "production_source_reconstructibility": "PARTIALLY_RECONSTRUCTIBLE",
+  "product_feature_harvest_head": "145dddec3bf9f2948702e3553f62f38c17de59f5",
+  "product_feature_harvest_role": "PRODUCT_FEATURE_HARVEST_LINE",
+  "production_vercel_project": "signalcore-site",
+  "production_vercel_project_id": "prj_RSSHviION9QODmd2Qa6L4qf4D4mQ",
+  "production_deployment": "dpl_89RNMRTmgQSAM3CLpqWeBHuXVw52",
+  "production_domains": [
+    "syntrake.com",
+    "www.syntrake.com"
+  ],
+  "production_deployment_git_dirty": true,
+  "latest_live_supabase_migration": "20260812132000",
+  "next_already_defined_architecture_migration": "20260812133000_investing_db_security_hardening_phase1.sql",
+  "source_constraints": {
+    "do_not_base_on": [
+      "main",
+      "57ac0c96a45afd7774ae3001b835244945e61308",
+      "145dddec3bf9f2948702e3553f62f38c17de59f5",
+      "production_dirty_worktree",
+      "github_synthesized_merge_commit"
+    ],
+    "production_dirty_source_contract": "preserve_functional_intent_only",
+    "dead_dirty_database_contract": "do_not_resurrect"
+  },
+  "endpoint_decisions": [
+    {
+      "route": "/api/investing/accounts",
+      "decision": "KEEP_ROUTE",
+      "target_slice": "R1",
+      "initial_scope": "READ_ORIENTED",
+      "meaning": "Authenticated read/list of canonical Investing accounts through Clerk user to active tenant to canonical account to account_id.",
+      "must_not": [
+        "restore old dirty RPCs",
+        "trust client-supplied userId",
+        "trust client-supplied tenantId",
+        "treat service_role as authorization",
+        "include opening or creation lifecycle unless explicitly specified later"
+      ]
+    },
+    {
+      "route": "/api/investing/accounts/[accountId]/movements",
+      "decision": "DEFER_TO_ACCOUNTING_TRUTH",
+      "target_slice": "R4_OR_LATER",
+      "meaning": "Financial movement exposure must follow the canonical ledger/accounting model.",
+      "must_not": [
+        "implement in R0",
+        "implement in R1",
+        "fabricate movements",
+        "expose cross-account movements"
+      ]
+    },
+    {
+      "route": "/api/investing/broker/connections",
+      "decision": "DEFER_TO_LIVE_MANUAL_EXECUTION",
+      "target_slice": "LIVE_MANUAL_EXECUTION",
+      "meaning": "Broker connection metadata belongs to LIVE manual execution architecture and never establishes account ownership.",
+      "must_not": [
+        "implement in R0",
+        "expose credentials or secrets",
+        "authorize financial ownership from connection presence"
+      ]
+    },
+    {
+      "route": "/api/investing/plan",
+      "decision": "FOUNDATION_NOW",
+      "target_slice": "R3",
+      "meaning": "Canonical plan/version contract with unavailable modelling explicitly represented.",
+      "must_not": [
+        "create fake return assumptions",
+        "create fake Goal Probability",
+        "resurrect old dirty RPCs"
+      ]
+    },
+    {
+      "route": "/api/investing/preferences",
+      "decision": "KEEP_USER_LEVEL_PREFERENCE_CAPABILITY",
+      "target_slice": "R3",
+      "preferred_storage_direction": "existing canonical user_settings path with Investing-specific namespace unless R3 proves a concrete reason not to",
+      "meaning": "User/dashboard presentation preferences only.",
+      "must_not_authorize": [
+        "tenant",
+        "account",
+        "portfolio",
+        "financial ownership"
+      ]
+    }
+  ],
+  "dead_dirty_rpcs": [
+    {
+      "name": "open_investing_account_mode_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "read_investing_account_truth_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "list_investing_account_truth_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "propose_investing_live_manual_order_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "decide_investing_live_manual_order_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "read_investing_canonical_plan_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "read_investing_canonical_plan_version_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "list_investing_canonical_plan_history_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "replace_investing_canonical_plan_version_v2",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "read_investing_dashboard_preferences_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    },
+    {
+      "name": "save_investing_dashboard_preferences_v1",
+      "disposition": "DO_NOT_RESURRECT"
+    }
+  ],
+  "trust_contract": {
+    "path": [
+      "Clerk authenticated user",
+      "active personal tenant",
+      "active owner membership",
+      "canonical Investing account",
+      "account_id",
+      "financial data"
+    ],
+    "service_role_is_authorization": false,
+    "client_supplied_identity_or_ownership_claims_allowed": false,
+    "ambiguity_policy": "FAIL_CLOSED",
+    "forbidden_authorization_inputs": [
+      "client userId",
+      "client tenantId",
+      "client portfolioId ownership claim",
+      "client account ownership claim"
+    ]
+  },
+  "financial_truth_contract": {
+    "availability_vocabulary": [
+      "REAL",
+      "STALE",
+      "ESTIMATED",
+      "SIMULATED",
+      "DEMO",
+      "UNAVAILABLE"
+    ],
+    "unknown_provider_response_is_real": false,
+    "cash_only_canonical_account_can_be_real": true,
+    "zero_quantity_positions_are_active_holdings": false,
+    "unavailable_financial_values_render_as_normal_real_values": false
+  },
+  "product_harvest_policy": {
+    "source": "145dddec3bf9f2948702e3553f62f38c17de59f5",
+    "role": "PRODUCT_FEATURE_HARVEST_LINE",
+    "approved_behaviors_to_evaluate": [
+      "rebuilt Investing customer experience",
+      "independent first-screen loading",
+      "bounded quote loading",
+      "new-customer journey",
+      "funded portfolio journey",
+      "stale-price explanation",
+      "Overview/Advisor consistency",
+      "cash-flow-adjusted performance intent",
+      "valid shadow parity / Research behavior"
+    ],
+    "architecture_security_truth_semantics_win_over_legacy_implementations": true
+  },
+  "migration_policy": {
+    "r0_adds_migration": false,
+    "recovered_production_migration_history_is_immutable": true,
+    "historical_migrations_must_not_be_edited_for_new_behavior": true,
+    "db_security_phase1_migration": "20260812133000_investing_db_security_hardening_phase1.sql",
+    "future_migration_versions_must_be_greater_than": "20260812133000",
+    "never_create_migrations_to_recreate_dead_dirty_rpc_names": true
+  },
+  "future_slice_order": [
+    "R0 - canonical integration foundation",
+    "R1 - canonical account/auth contract",
+    "R2 - production UX + truth contract reconciliation",
+    "R3 - plan/preferences canonicalization",
+    "R4 - Accounting Truth + performance",
+    "R5 - Research/shadow parity harvest",
+    "R6 - DB Security integration verification",
+    "R7 - full QA / release readiness"
+  ],
+  "post_r7_sequence": [
+    "Market Truth / Accounting Truth completion",
+    "Engine/Research integration",
+    "Risk / Goal Probability",
+    "Investing LIVE Manual",
+    "Automated DEMO",
+    "Automated LIVE",
+    "Trading leveling"
+  ],
+  "repository_governance_target": {
+    "future_invariant": [
+      "ONE canonical Git lineage",
+      "clean reproducible commit",
+      "CI",
+      "Vercel Preview",
+      "controlled production promotion"
+    ],
+    "target_production_git_dirty": false,
+    "dirty_cli_production_deployment_status": "prohibited_operational_debt",
+    "current_github_main_status": "legacy_stale_not_automatic_integration_target"
+  },
+  "vercel_project_governance": {
+    "production_project": {
+      "name": "signalcore-site",
+      "domains": [
+        "syntrake.com",
+        "www.syntrake.com"
+      ]
+    },
+    "preview_project": {
+      "name": "signalcore"
+    },
+    "r0_changes_vercel_projects": false
+  },
+  "r0_scope": {
+    "runtime_behavior_changes": false,
+    "api_route_changes": false,
+    "business_logic_changes": false,
+    "database_changes": false,
+    "vercel_production_changes": false,
+    "github_pr_stack_changes": false
+  }
+}

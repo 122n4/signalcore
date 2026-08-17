@@ -97,6 +97,13 @@ export type InvestingFillSourceV1 = {
   readonly quantity: string;
 };
 
+export const INVESTING_MANDATE_SNAPSHOT_SOURCE_V1_AUTHORITY_CLASSIFICATION =
+  "PRE_R5_ENGINE_INTERNAL/NOT_ACCEPTED_R5_AUTHORITY" as const;
+
+// Phase3C only binds the pre-R5 engine-internal mandate source. It is not the
+// accepted R5 mandate authority contract because it omits tenant, membership,
+// portfolio, environment, account-currency, canonical Plan lineage and the
+// durable authority fingerprint.
 export type InvestingMandateSnapshotSourceV1 = {
   readonly userId: string;
   readonly accountId: string;

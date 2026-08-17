@@ -1,34 +1,72 @@
 import { NextResponse } from "next/server";
 
-import { getRequestUserId } from "@/lib/auth/requestUser";
 import { getInvestingSupabaseAdmin } from "@/lib/investing/repository/admin";
+import {
+  assertInvestingPortfolioScope,
+  investingAuthzResponse,
+  listInvestingAccountIdsForTenant,
+  requireInvestingQueueAccess,
+  requireInvestingRequestContext,
+} from "@/lib/investing/server/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  }
+const ROUTE = "/api/ops/investing/approvals";
+
+async function queueBelongsToTenant(args: {
+  row: Record<string, unknown>;
+  accountIds: string[];
+  userId: string;
+  tenantId: string;
+}) {
+  const accountId = args.row.account_id ? String(args.row.account_id) : null;
+  if (accountId) return args.accountIds.includes(accountId);
+
+  const portfolioId = args.row.portfolio_id ? String(args.row.portfolio_id) : "";
+  if (!portfolioId) return false;
   try {
+    await assertInvestingPortfolioScope({
+      userId: args.userId,
+      tenantId: args.tenantId,
+      portfolioId,
+      requireExistingAccount: true,
+      route: ROUTE,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const authz = await requireInvestingRequestContext(req);
     const url = new URL(req.url);
     const mode = String(url.searchParams.get("mode") || "investing").trim() || "investing";
+    if (mode !== "investing") {
+      return NextResponse.json({ ok: false, error: "invalid_mode" }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    }
     const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || 25) || 25));
+    const accountIds = await listInvestingAccountIdsForTenant({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      environments: ["paper", "simulation"],
+      route: ROUTE,
+    });
     const sb = getInvestingSupabaseAdmin() as any;
     const [queueQuery, historyQuery] = await Promise.all([
       sb
         .from("investing_execution_queue")
         .select("id,user_id,portfolio_id,account_id,mode,day_key,as_of,decision_fingerprint,approval_status,approval_required,execution_decision,operational_state,version,expires_at,kill_switch_active,deployable_capital_eur,blocking_reasons,notes,meta,created_at")
-        .eq("user_id", userId)
+        .eq("user_id", authz.userId)
         .eq("mode", mode)
-        .eq("approval_status", "pending")
         .order("created_at", { ascending: false })
-        .limit(limit),
+        .limit(Math.max(limit * 4, 100)),
       sb
         .from("investing_execution_approvals")
         .select("queue_id,queue_version,user_id,mode,decision_fingerprint,queue_day_key,decided_at,decided_by,approval_status,override_applied,note,meta,created_at")
-        .eq("user_id", userId)
+        .eq("user_id", authz.userId)
         .eq("mode", mode)
         .order("decided_at", { ascending: false })
         .limit(limit),
@@ -40,30 +78,47 @@ export async function GET(req: Request) {
     if (historyQuery.error) {
       throw new Error(historyQuery.error.message);
     }
+    const queueRows = Array.isArray(queueQuery.data) ? queueQuery.data : [];
+    const scopedQueues = [];
+    for (const row of queueRows) {
+      if (await queueBelongsToTenant({
+        row,
+        accountIds,
+        userId: authz.userId,
+        tenantId: authz.tenantId,
+      })) {
+        scopedQueues.push(row);
+      }
+    }
+    const scopedQueueIds = new Set(scopedQueues.map((row: Record<string, unknown>) => String(row.id || "")).filter(Boolean));
 
     return NextResponse.json(
       {
         ok: true,
         mode,
-        approvals: Array.isArray(queueQuery.data) ? queueQuery.data : [],
-        history: Array.isArray(historyQuery.data) ? historyQuery.data : [],
+        approvals: scopedQueues
+          .filter((row: Record<string, unknown>) => row.approval_status === "pending")
+          .slice(0, limit),
+        history: (Array.isArray(historyQuery.data) ? historyQuery.data : [])
+          .filter((row: Record<string, unknown>) => scopedQueueIds.has(String(row.queue_id || "")))
+          .slice(0, limit),
+        boundary: "user_scoped_ops_path",
       },
       { headers: { "Cache-Control": "no-store" } },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
     return NextResponse.json(
-      { ok: false, error: "investing_approvals_read_failed", message: error?.message ?? "Unknown" },
+      { ok: false, error: "investing_approvals_read_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }
 }
 
 export async function POST(req: Request) {
-  const userId = await getRequestUserId(req);
-  if (!userId) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  }
   try {
+    const authz = await requireInvestingRequestContext(req);
     const contentLength = Number(req.headers.get("content-length") || 0);
     if (contentLength > 16_384) {
       return NextResponse.json({ ok: false, error: "request_too_large" }, { status: 413, headers: { "Cache-Control": "no-store" } });
@@ -88,43 +143,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "note_too_long" }, { status: 400, headers: { "Cache-Control": "no-store" } });
     }
 
-    const sb = getInvestingSupabaseAdmin() as any;
-    const correlationId = `investing_approval_${crypto.randomUUID()}`;
-    const result = await sb.rpc("investing_record_approval_v2", {
-      p_actor_user_id: userId,
-      p_queue_id: queueId,
-      p_expected_status: expectedStatus,
-      p_expected_version: expectedVersion,
-      p_decision: approvalStatus,
-      p_note: note,
-      p_correlation_id: correlationId,
-    } as any);
-
-    if (result.error) {
-      const message = String(result.error.message || "investing_approval_rpc_failed");
-      const code = message.includes("not_found_or_forbidden")
-        ? "investing_approval_not_found_or_forbidden"
-        : message.includes("expired")
-          ? "investing_approval_expired"
-          : "investing_approval_state_conflict";
-      const status = code.includes("not_found") ? 404 : 409;
-      return NextResponse.json({ ok: false, error: code }, { status, headers: { "Cache-Control": "no-store" } });
-    }
+    await requireInvestingQueueAccess({
+      userId: authz.userId,
+      tenantId: authz.tenantId,
+      queueId,
+      mode: "investing",
+      expectedVersion,
+      route: ROUTE,
+    });
 
     return NextResponse.json(
-      {
-        ok: true,
-        mode: "investing",
-        queueId,
-        approvalStatus,
-        version: result.data?.version ?? expectedVersion + 1,
-        correlationId,
-      },
-      { headers: { "Cache-Control": "no-store" } },
+      { ok: false, error: "investing_supervised_approval_authority_unavailable" },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const authzResponse = investingAuthzResponse(error);
+    if (authzResponse) return authzResponse;
     return NextResponse.json(
-      { ok: false, error: "investing_approval_write_failed", message: error?.message ?? "Unknown" },
+      { ok: false, error: "investing_approval_write_failed" },
       { status: 500, headers: { "Cache-Control": "no-store" } },
     );
   }

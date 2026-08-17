@@ -8,6 +8,17 @@ vi.mock("@/lib/auth/requestUser", () => ({
   getRequestUserId: vi.fn(async () => authState.userId),
 }));
 
+vi.mock("@/lib/investing/server/authz", () => ({
+  requireInvestingRequestContext: vi.fn(async () => {
+    if (!authState.userId) throw { status: 401, code: "unauthorized", publicError: "unauthorized" };
+    return { userId: authState.userId, tenantId: "tenant_test", membershipId: "membership_test", role: "owner", permissions: ["investing:read", "investing:create", "investing:verify", "investing:replay"] };
+  }),
+  assertInvestingPortfolioScope: vi.fn(async () => ({ portfolioId: "primary" })),
+  investingAuthzResponse: vi.fn((error: any) =>
+    error?.status ? Response.json({ ok: false, error: error.publicError ?? error.code, code: error.code }, { status: error.status }) : null,
+  ),
+}));
+
 vi.mock("@/lib/investing/server/dailyCycle", () => ({
   closeInvestingDailyCycle: vi.fn(async (command: Record<string, unknown>) => {
     closeCalls.push(command);

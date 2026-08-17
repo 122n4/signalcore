@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { tdQuoteNormalized } from "@/lib/market/providers/twelvedata";
+import { tdCandles, tdQuoteNormalized } from "@/lib/market/providers/twelvedata";
 import { resetTwelveDataKeyPoolForTests } from "@/lib/market/providers/twelvedataKeyPool";
 
 describe("twelvedata provider", () => {
@@ -18,6 +18,7 @@ describe("twelvedata provider", () => {
     process.env.TWELVEDATA_API_KEYS = originalKeys;
     resetTwelveDataKeyPoolForTests();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("uses the provider timestamp when quote metadata includes it", async () => {
@@ -56,6 +57,52 @@ describe("twelvedata provider", () => {
     const quote = await tdQuoteNormalized("MSFT");
 
     expect(quote.timestamp).toBe(Date.parse("2026-01-12 07:58:00"));
+  });
+
+
+  it("does not fabricate Date.now when quote timestamp metadata is absent", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T12:00:00.000Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          symbol: "NO_TS",
+          close: "100.00",
+        }),
+      })),
+    );
+
+    const quote = await tdQuoteNormalized("NO_TS", 0);
+
+    expect(quote.timestamp).toBeUndefined();
+  });
+
+  it("does not fabricate Date.now for candles with invalid provider datetimes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T12:00:00.000Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          values: [
+            {
+              datetime: "not-a-date",
+              open: "99.00",
+              high: "101.00",
+              low: "98.00",
+              close: "100.00",
+            },
+          ],
+        }),
+      })),
+    );
+
+    const candles = await tdCandles("NO_CANDLE_TS", { interval: "5min", points: 40 }, 0);
+
+    expect(candles).toEqual([]);
   });
 
   it("requests pre/post-market data explicitly when extended hours are needed", async () => {

@@ -126,7 +126,6 @@ begin
   if (result->>'recovered_reconciling')::integer<>1 then raise exception 'stale_reconciling_not_recovered:%',result; end if;
   if (select status from public.investing_orders o where o.id=v_order_id)<>'reconciliation_failed' then raise exception 'recovery_order_state_wrong'; end if;
   if (select operational_state from public.investing_execution_queue q where q.id=v_queue_id)<>'reconciliation_failed' then raise exception 'recovery_queue_state_wrong'; end if;
-  if not exists(select 1 from public.investing_worker_heartbeats where worker_name='validation-worker' and status='healthy') then raise exception 'recovery_heartbeat_missing'; end if;
 
   if exists(
     select 1 from public.investing_ledger_transactions t join public.investing_ledger_entries e on e.transaction_id=t.id
@@ -136,5 +135,11 @@ begin
 end $$;
 
 reset role;
+
+do $$
+begin
+  if not exists(select 1 from public.investing_worker_heartbeats where worker_name='validation-worker' and status='healthy') then raise exception 'recovery_heartbeat_missing'; end if;
+end $$;
+
 rollback;
 \echo 'Investing rollback, failure-injection, and recovery assertions passed'

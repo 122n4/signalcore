@@ -73,6 +73,14 @@ export async function POST(req: Request) {
     );
   }
   const mode = access.mode;
+
+  if (mode === "investing") {
+    return NextResponse.json(
+      { ok: false, error: "investing_plan_authoring_not_accepted", mode },
+      { status: 503 }
+    );
+  }
+
   const nowIso = new Date().toISOString();
 
   // Keep exactly one active plan per user+mode.

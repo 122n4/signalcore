@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertDestructiveInvestingQaDatabase,
   assertEffectiveDestructiveInvestingQaDatabase,
+  assertLocalSupabaseDestructiveInvestingQaTarget,
 } from "@/scripts/qa/investingDestructiveQaGuard";
 
 const NO_DATABASE_ENVIRONMENT = {};
@@ -107,5 +108,62 @@ describe("Investing destructive PostgreSQL QA guard", () => {
       "postgresql://127.0.0.1/signalcore_4b_qa?host=db.example.com",
     )).toThrow("investing_destructive_qa_ambiguous_database_url");
     expect(administrativeOperationCalled).toBe(false);
+  });
+});
+
+describe("Investing local Supabase destructive QA guard", () => {
+  const localDatabaseUrl = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+  const localSupabaseUrl = "http://127.0.0.1:54321";
+
+  it("accepts only the explicitly confirmed local Supabase topology used by CI", () => {
+    expect(assertLocalSupabaseDestructiveInvestingQaTarget({
+      databaseUrl: localDatabaseUrl,
+      supabaseUrl: localSupabaseUrl,
+      destructiveConfirmation: "true",
+      environment: NO_DATABASE_ENVIRONMENT,
+    })).toEqual({
+      database: { host: "127.0.0.1", port: 54322, database: "postgres" },
+      api: { protocol: "http:", host: "127.0.0.1", port: 54321 },
+    });
+  });
+
+  it.each([
+    ["missing confirmation", localDatabaseUrl, localSupabaseUrl, undefined, NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_requires_explicit_confirmation"],
+    ["remote DB hostname", "postgresql://postgres:postgres@db.example.com:54322/postgres", localSupabaseUrl, "true", NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_requires_local_database"],
+    ["remote Supabase API hostname", localDatabaseUrl, "https://qdnvbamoamtkujzwrxdb.supabase.co", "true", NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_ambiguous_supabase_api_url"],
+    ["wrong DB port", "postgresql://postgres:postgres@127.0.0.1:65432/postgres", localSupabaseUrl, "true", NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_unexpected_local_supabase_database_port"],
+    ["wrong API port", localDatabaseUrl, "http://127.0.0.1:54323", "true", NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_unexpected_local_supabase_api_port"],
+    ["different loopback stack", "postgresql://postgres:postgres@localhost:54322/postgres", localSupabaseUrl, "true", NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_local_supabase_stack_mismatch"],
+    ["unexpected database name", "postgresql://postgres:postgres@127.0.0.1:54322/investing_a3e_qa", localSupabaseUrl, "true", NO_DATABASE_ENVIRONMENT, "investing_destructive_qa_unexpected_local_supabase_database_name"],
+    ["conflicting PG destination environment", localDatabaseUrl, localSupabaseUrl, "true", { PGHOST: "db.example.com" }, "investing_destructive_qa_external_database_environment:PGHOST"],
+  ])("rejects %s before administrative work", (_name, databaseUrl, supabaseUrl, confirmation, environment, code) => {
+    let administrativeOperationCalled = false;
+    const guardedAdministrativeOperation = () => {
+      assertLocalSupabaseDestructiveInvestingQaTarget({
+        databaseUrl,
+        supabaseUrl,
+        destructiveConfirmation: confirmation,
+        environment,
+      });
+      administrativeOperationCalled = true;
+    };
+
+    expect(guardedAdministrativeOperation).toThrow(code);
+    expect(administrativeOperationCalled).toBe(false);
+  });
+
+  it("proves the effective PostgreSQL connection cannot drift from the local Supabase target", () => {
+    const target = assertLocalSupabaseDestructiveInvestingQaTarget({
+      databaseUrl: localDatabaseUrl,
+      supabaseUrl: localSupabaseUrl,
+      destructiveConfirmation: "true",
+      environment: NO_DATABASE_ENVIRONMENT,
+    });
+
+    expect(() => assertEffectiveDestructiveInvestingQaDatabase(target.database, target.database)).not.toThrow();
+    expect(() => assertEffectiveDestructiveInvestingQaDatabase(target.database, {
+      ...target.database,
+      port: 54323,
+    })).toThrow("investing_destructive_qa_effective_target_mismatch");
   });
 });
