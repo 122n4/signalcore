@@ -336,7 +336,7 @@ values
   ('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111', 'a3d_owner_a', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null),
   ('55555555-5555-4555-8555-555555555555', '44444444-4444-4444-8444-444444444444', 'a3d_owner_b', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null),
   ('77777777-7777-4777-8777-777777777778', '77777777-7777-4777-8777-777777777777', 'a3d_inactive_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'inactive', null),
-  ('88888888-8888-4888-8888-888888888889', '88888888-8888-4888-8888-888888888888', 'a3d_revoked_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'revoked', '2026-08-17T02:36:50.000Z'),
+  ('88888888-8888-4888-8888-888888888889', '88888888-8888-4888-8888-888888888888', 'a3d_revoked_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'revoked', pg_catalog.transaction_timestamp()),
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3d_inactive_account_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'a3d_inactive_tenant_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null);
 
