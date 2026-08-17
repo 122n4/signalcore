@@ -137,6 +137,7 @@ jobs:
       - name: Run canonical Investing Plan server persistence boundary real Supabase RPC assertions
         env:
           INVESTING_A3E_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          ALLOW_DESTRUCTIVE_INVESTING_QA: "true"
         run: npx vitest run tests/investingPlanPersistenceServerBoundaryPostgres.integration.test.ts
       - name: Run real separate-worker crash recovery assertions
         env:

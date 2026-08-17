@@ -349,6 +349,18 @@ describe("server-only canonical investing Plan persistence boundary", () => {
       ["unauthenticated", () => {
         state.requestContextError = new InvestingAuthzError({ code: "unauthorized", status: 401 });
       }, "investing_plan_persistence_unauthenticated", 401],
+      ["tenant ambiguous", () => {
+        state.requestContextError = new InvestingAuthzError({ code: "investing_tenant_ambiguous", status: 409 });
+      }, "investing_plan_persistence_authorization_unavailable", 503],
+      ["tenant unavailable", () => {
+        state.requestContextError = new InvestingAuthzError({ code: "investing_tenant_resolution_failed", status: 503 });
+      }, "investing_plan_persistence_authorization_unavailable", 503],
+      ["unknown forbidden auth truth", () => {
+        state.requestContextError = new InvestingAuthzError({
+          code: "investing_tenant_material_binding_mismatch",
+          status: 403,
+        });
+      }, "investing_plan_persistence_not_authorized", 403],
       ["non-owner", () => {
         state.authz = { ...state.authz, role: "member" };
       }, "investing_plan_persistence_not_authorized", 403],
@@ -397,6 +409,21 @@ describe("server-only canonical investing Plan persistence boundary", () => {
         baseCurrency: "USD",
       };
     }
+  });
+
+  it("maps server-side authoring resolution integrity failures to service unavailable without RPC", async () => {
+    state.requestContextError = new Error("server generated authoring invariant leaked");
+    const rpc = databaseReturning();
+
+    await expect(
+      persistCanonicalInvestingPlanForRequestV1(REQUEST, rawInput(), { database: rpc.database }),
+    ).rejects.toMatchObject({
+      code: "investing_plan_persistence_authoring_resolution_integrity_failure",
+      status: 503,
+      category: "SERVICE_UNAVAILABLE",
+      message: "investing_plan_persistence_authoring_resolution_integrity_failure",
+    });
+    expect(rpc.calls).toHaveLength(0);
   });
 
   it("maps writer conflicts and service failures fail-closed without raw database messages", async () => {

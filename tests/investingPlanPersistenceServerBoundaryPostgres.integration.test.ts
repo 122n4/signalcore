@@ -2,11 +2,23 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import {
+  assertEffectiveDestructiveInvestingQaDatabase,
+  assertLocalSupabaseDestructiveInvestingQaTarget,
+} from "@/scripts/qa/investingDestructiveQaGuard";
+
 const databaseUrl = process.env.INVESTING_A3E_TEST_DATABASE_URL;
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const integrationDescribe = databaseUrl && supabaseUrl && serviceRoleKey ? describe : describe.skip;
 const configuredDatabaseUrl = databaseUrl ?? "postgresql://invalid/a3e_not_configured";
+const destructiveQaTarget = databaseUrl && supabaseUrl && serviceRoleKey
+  ? assertLocalSupabaseDestructiveInvestingQaTarget({
+    databaseUrl,
+    supabaseUrl,
+    destructiveConfirmation: process.env.ALLOW_DESTRUCTIVE_INVESTING_QA,
+  })
+  : null;
 
 const runId = `a3e_pg_${randomUUID().replaceAll("-", "")}`;
 const authState = vi.hoisted(() => ({
@@ -61,12 +73,24 @@ function rawInput(scope: Scope, overrides: Record<string, unknown> = {}) {
 
 integrationDescribe("R6-A3E real Supabase RPC canonical Plan persistence boundary", () => {
   const pool = new pg.Pool({ connectionString: configuredDatabaseUrl, max: 8 });
+  let destructiveQaVerified = false;
 
   beforeAll(async () => {
-    await pool.query("select 'public.investing_persist_canonical_plan_v1(text,jsonb)'::regprocedure");
+    await verifyTarget();
+    destructiveQaVerified = true;
+    console.info(JSON.stringify({
+      event: "investing_a3e_local_supabase_destructive_qa_target_verified",
+      database: destructiveQaTarget!.database,
+      api: destructiveQaTarget!.api,
+    }));
   });
 
   afterAll(async () => {
+    if (!destructiveQaVerified) {
+      await pool.end();
+      return;
+    }
+    await verifyTarget();
     const client = await pool.connect();
     try {
       await client.query("begin");
@@ -92,7 +116,33 @@ integrationDescribe("R6-A3E real Supabase RPC canonical Plan persistence boundar
     }
   });
 
+  async function withClient<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+    const client = await pool.connect();
+    try {
+      return await fn(client);
+    } finally {
+      client.release();
+    }
+  }
+
+  async function verifyTarget() {
+    await withClient(async (client) => {
+      const connectionParameters = (client as unknown as { connectionParameters: {
+        host: string;
+        port: number;
+        database: string;
+      } }).connectionParameters;
+      assertEffectiveDestructiveInvestingQaDatabase(destructiveQaTarget!.database, {
+        host: connectionParameters.host,
+        port: connectionParameters.port,
+        database: connectionParameters.database,
+      });
+      await client.query("select 'public.investing_persist_canonical_plan_v1(text,jsonb)'::regprocedure");
+    });
+  }
+
   async function createScope(scope: Scope) {
+    await verifyTarget();
     await pool.query(
       `insert into public.investing_tenants(id, owner_user_id, kind, status)
        values ($1, $2, 'personal', 'active')`,

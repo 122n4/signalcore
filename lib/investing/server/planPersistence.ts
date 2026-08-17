@@ -387,6 +387,12 @@ function mapAuthzError(error: InvestingAuthzError): never {
   if (error.status === 401 || error.code === "unauthorized") {
     fail("investing_plan_persistence_unauthenticated", 401, "UNAUTHENTICATED", error);
   }
+  if (
+    error.code === "investing_tenant_ambiguous"
+    || error.status >= 500
+  ) {
+    fail("investing_plan_persistence_authorization_unavailable", 503, "SERVICE_UNAVAILABLE", error);
+  }
   if (error.code === "investing_plan_authoring_not_authorized") {
     fail("investing_plan_persistence_not_authorized", 403, "FORBIDDEN", error);
   }
@@ -398,6 +404,9 @@ function mapAuthzError(error: InvestingAuthzError): never {
   }
   if (error.code === "investing_plan_authoring_environment_not_accepted") {
     fail("investing_plan_persistence_environment_not_accepted", 403, "FORBIDDEN", error);
+  }
+  if (error.status === 403) {
+    fail("investing_plan_persistence_not_authorized", 403, "FORBIDDEN", error);
   }
   fail(error.code, error.status, error.status >= 500 ? "SERVICE_UNAVAILABLE" : "FORBIDDEN", error);
 }
@@ -461,7 +470,7 @@ export async function persistCanonicalInvestingPlanForRequestV1(
     });
   } catch (error) {
     if (error instanceof InvestingAuthzError) mapAuthzError(error);
-    fail("investing_plan_persistence_authoring_resolution_failed", 400, "BAD_REQUEST", error);
+    fail("investing_plan_persistence_authoring_resolution_integrity_failure", 503, "SERVICE_UNAVAILABLE", error);
   }
 
   let command: CanonicalInvestingPlanPersistenceCommandV1;
