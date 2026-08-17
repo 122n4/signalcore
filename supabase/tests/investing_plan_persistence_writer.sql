@@ -346,7 +346,7 @@ values
   ('66666666-6666-4666-8666-666666666666', 'a3d_owner_b', 'a3d_owner_b', '44444444-4444-4444-8444-444444444444', 'a3d-portfolio-b', 'GBP', 'simulation', 'active'),
   ('77777777-7777-4777-8777-777777777779', 'a3d_inactive_owner', 'a3d_inactive_owner', '77777777-7777-4777-8777-777777777777', 'a3d-portfolio-inactive', 'EUR', 'paper', 'active'),
   ('88888888-8888-4888-8888-888888888880', 'a3d_revoked_owner', 'a3d_revoked_owner', '88888888-8888-4888-8888-888888888888', 'a3d-portfolio-revoked', 'EUR', 'paper', 'active'),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac', 'a3d_inactive_account_owner', 'a3d_inactive_account_owner', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3d-portfolio-inactive-account', 'EUR', 'paper', 'inactive'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac', 'a3d_inactive_account_owner', 'a3d_inactive_account_owner', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3d-portfolio-inactive-account', 'EUR', 'paper', 'suspended'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbd', 'a3d_inactive_tenant_owner', 'a3d_inactive_tenant_owner', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'a3d-portfolio-inactive-tenant', 'EUR', 'paper', 'active');
 
 do $$
