@@ -3,7 +3,9 @@
 do $$
 declare
   fn oid := 'public.investing_persist_canonical_plan_v1(text,jsonb)'::regprocedure::oid;
-  helper_fn oid := 'public.investing_canonical_json_string_v1(jsonb)'::regprocedure::oid;
+  helper_fn oid;
+  helper_signature text;
+  plan_table text;
   privilege_name text;
 begin
   if not exists (
@@ -31,16 +33,67 @@ begin
     raise exception 'a3d writer execute acl invalid';
   end if;
 
-  if has_function_privilege('service_role', helper_fn, 'EXECUTE') then
-    raise exception 'a3d canonical helper exposed to service_role';
-  end if;
+  foreach helper_signature in array array[
+    'public.investing_canonical_json_string_v1(jsonb)',
+    'public.investing_canonical_sha256_v1(jsonb)',
+    'public.investing_jsonb_has_exact_keys_v1(jsonb,text[])'
+  ] loop
+    helper_fn := helper_signature::regprocedure::oid;
 
-  foreach privilege_name in array array['INSERT','UPDATE','DELETE','TRUNCATE'] loop
-    if has_table_privilege('service_role', 'public.investing_plan_revisions', privilege_name)
-       or has_table_privilege('service_role', 'public.investing_plan_heads', privilege_name)
-       or has_table_privilege('service_role', 'public.investing_plan_idempotency_keys', privilege_name) then
-      raise exception 'a3d service_role direct plan dml exposed:%', privilege_name;
+    if not exists (
+      select 1
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      join pg_roles r on r.oid = p.proowner
+      where p.oid = helper_fn
+        and n.nspname = 'public'
+        and r.rolname = 'postgres'
+    ) then
+      raise exception 'a3d canonical helper catalog invalid:%', helper_signature;
     end if;
+
+    if has_function_privilege('public', helper_fn, 'EXECUTE')
+       or has_function_privilege('anon', helper_fn, 'EXECUTE')
+       or has_function_privilege('authenticated', helper_fn, 'EXECUTE')
+       or has_function_privilege('service_role', helper_fn, 'EXECUTE') then
+      raise exception 'a3d canonical helper execute acl exposed:%', helper_signature;
+    end if;
+  end loop;
+
+  foreach plan_table in array array[
+    'public.investing_plan_revisions',
+    'public.investing_plan_heads',
+    'public.investing_plan_idempotency_keys'
+  ] loop
+    if not exists (
+      select 1
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_roles r on r.oid = c.relowner
+      where c.oid = plan_table::regclass
+        and n.nspname = 'public'
+        and r.rolname = 'postgres'
+    ) then
+      raise exception 'a3d plan table owner invalid:%', plan_table;
+    end if;
+
+    if not has_table_privilege('service_role', plan_table, 'SELECT') then
+      raise exception 'a3d service_role plan select missing:%', plan_table;
+    end if;
+
+    foreach privilege_name in array array['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+      if has_table_privilege('service_role', plan_table, privilege_name) then
+        raise exception 'a3d service_role direct plan table privilege exposed:%:%', plan_table, privilege_name;
+      end if;
+    end loop;
+
+    foreach privilege_name in array array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+      if has_table_privilege('public', plan_table, privilege_name)
+         or has_table_privilege('anon', plan_table, privilege_name)
+         or has_table_privilege('authenticated', plan_table, privilege_name) then
+        raise exception 'a3d browser/public direct plan table privilege exposed:%:%', plan_table, privilege_name;
+      end if;
+    end loop;
   end loop;
 end $$;
 
@@ -274,21 +327,27 @@ values
   ('11111111-1111-4111-8111-111111111111', 'a3d_owner_a', 'personal', 'active'),
   ('44444444-4444-4444-8444-444444444444', 'a3d_owner_b', 'personal', 'active'),
   ('77777777-7777-4777-8777-777777777777', 'a3d_inactive_owner', 'personal', 'active'),
-  ('88888888-8888-4888-8888-888888888888', 'a3d_revoked_owner', 'personal', 'active');
+  ('88888888-8888-4888-8888-888888888888', 'a3d_revoked_owner', 'personal', 'active'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3d_inactive_account_owner', 'personal', 'active'),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'a3d_inactive_tenant_owner', 'personal', 'inactive');
 
 insert into public.investing_tenant_memberships(id, tenant_id, user_id, role, permissions, status, revoked_at)
 values
   ('22222222-2222-4222-8222-222222222222', '11111111-1111-4111-8111-111111111111', 'a3d_owner_a', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null),
   ('55555555-5555-4555-8555-555555555555', '44444444-4444-4444-8444-444444444444', 'a3d_owner_b', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null),
   ('77777777-7777-4777-8777-777777777778', '77777777-7777-4777-8777-777777777777', 'a3d_inactive_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'inactive', null),
-  ('88888888-8888-4888-8888-888888888889', '88888888-8888-4888-8888-888888888888', 'a3d_revoked_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'revoked', '2026-08-17T02:36:50.000Z');
+  ('88888888-8888-4888-8888-888888888889', '88888888-8888-4888-8888-888888888888', 'a3d_revoked_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'revoked', '2026-08-17T02:36:50.000Z'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3d_inactive_account_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'a3d_inactive_tenant_owner', 'owner', array['investing:read','investing:create','investing:verify','investing:replay'], 'active', null);
 
 insert into public.investing_accounts(id, user_id, owner_user_id, tenant_id, portfolio_id, base_currency, environment, status)
 values
   ('33333333-3333-4333-8333-333333333333', 'a3d_owner_a', 'a3d_owner_a', '11111111-1111-4111-8111-111111111111', 'a3d-portfolio-a', 'USD', 'paper', 'active'),
   ('66666666-6666-4666-8666-666666666666', 'a3d_owner_b', 'a3d_owner_b', '44444444-4444-4444-8444-444444444444', 'a3d-portfolio-b', 'GBP', 'simulation', 'active'),
   ('77777777-7777-4777-8777-777777777779', 'a3d_inactive_owner', 'a3d_inactive_owner', '77777777-7777-4777-8777-777777777777', 'a3d-portfolio-inactive', 'EUR', 'paper', 'active'),
-  ('88888888-8888-4888-8888-888888888880', 'a3d_revoked_owner', 'a3d_revoked_owner', '88888888-8888-4888-8888-888888888888', 'a3d-portfolio-revoked', 'EUR', 'paper', 'active');
+  ('88888888-8888-4888-8888-888888888880', 'a3d_revoked_owner', 'a3d_revoked_owner', '88888888-8888-4888-8888-888888888888', 'a3d-portfolio-revoked', 'EUR', 'paper', 'active'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac', 'a3d_inactive_account_owner', 'a3d_inactive_account_owner', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'a3d-portfolio-inactive-account', 'EUR', 'paper', 'inactive'),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbd', 'a3d_inactive_tenant_owner', 'a3d_inactive_tenant_owner', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'a3d-portfolio-inactive-tenant', 'EUR', 'paper', 'active');
 
 do $$
 declare
@@ -568,6 +627,57 @@ begin
       'EUR'
     ),
     'investing_plan_persistence_revoked_membership'
+  );
+
+  perform pg_temp.a3d_expect_error(
+    'inactive tenant',
+    'a3d_inactive_tenant_owner',
+    pg_temp.a3d_command(
+      'a3d_inactive_tenant_owner',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbc',
+      'a3d-portfolio-inactive-tenant',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbd',
+      'paper',
+      'EUR'
+    ),
+    'investing_plan_persistence_inactive_tenant'
+  );
+
+  perform pg_temp.a3d_expect_error(
+    'inactive account status',
+    'a3d_inactive_account_owner',
+    pg_temp.a3d_command(
+      'a3d_inactive_account_owner',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab',
+      'a3d-portfolio-inactive-account',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac',
+      'paper',
+      'EUR'
+    ),
+    'investing_plan_persistence_account_status_invalid'
+  );
+
+  if (select count(*) from public.investing_plan_revisions where account_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac') <> 0
+     or (select count(*) from public.investing_plan_heads where account_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac') <> 0
+     or (select count(*) from public.investing_plan_idempotency_keys where account_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac') <> 0 then
+    raise exception 'a3d inactive account rejection wrote canonical Plan rows';
+  end if;
+
+  perform pg_temp.a3d_expect_error(
+    'parent account environment mismatch',
+    'a3d_owner_b',
+    pg_temp.a3d_command(
+      'a3d_owner_b',
+      '44444444-4444-4444-8444-444444444444',
+      '55555555-5555-4555-8555-555555555555',
+      'a3d-portfolio-b',
+      '66666666-6666-4666-8666-666666666666',
+      'paper',
+      'GBP'
+    ),
+    'investing_plan_persistence_account_scope_mismatch'
   );
 
   perform pg_temp.a3d_expect_error(

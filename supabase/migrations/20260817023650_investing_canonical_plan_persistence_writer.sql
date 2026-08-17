@@ -127,6 +127,7 @@ declare
   v_expected_head_revision_id uuid;
   v_expected_head_revision_number bigint;
   v_expected_head_authoring_fingerprint text;
+  v_tenant record;
   v_account record;
   v_membership record;
   v_existing record;
@@ -134,8 +135,8 @@ declare
   v_revision_id uuid;
   v_revision_number bigint;
   v_previous_revision_id uuid;
-  v_tx_timestamp timestamptz := pg_catalog.transaction_timestamp();
-  v_txid bigint := pg_catalog.txid_current();
+  v_tx_timestamp timestamptz;
+  v_txid bigint;
 begin
   if p_authorized_user_id is null or p_authorized_user_id !~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$' then
     raise exception using errcode = 'P0001', message = 'investing_plan_persistence_unauthorized_caller_scope';
@@ -426,16 +427,28 @@ begin
     raise exception using errcode = 'P0001', message = 'investing_plan_persistence_command_fingerprint_mismatch';
   end if;
 
-  select m.*
-  into v_membership
+  select t.*
+  into v_tenant
   from public.investing_tenants t
-  join public.investing_tenant_memberships m on m.tenant_id = t.id
   where t.id = v_tenant_id
     and t.owner_user_id = p_authorized_user_id
     and t.kind = 'personal'
-    and t.status = 'active'
+  for update;
+
+  if not found then
+    raise exception using errcode = 'P0001', message = 'investing_plan_persistence_unauthorized_caller_scope';
+  end if;
+  if v_tenant.status <> 'active' then
+    raise exception using errcode = 'P0001', message = 'investing_plan_persistence_inactive_tenant';
+  end if;
+
+  select m.*
+  into v_membership
+  from public.investing_tenant_memberships m
+  where m.tenant_id = v_tenant_id
     and m.id = v_membership_id
-    and m.user_id = p_authorized_user_id;
+    and m.user_id = p_authorized_user_id
+  for update;
 
   if not found then
     raise exception using errcode = 'P0001', message = 'investing_plan_persistence_unauthorized_caller_scope';
@@ -533,9 +546,10 @@ begin
   if v_account.status <> 'active' then
     raise exception using errcode = 'P0001', message = 'investing_plan_persistence_account_status_invalid';
   end if;
-  if v_account.environment not in ('paper', 'simulation') then
-    raise exception using errcode = 'P0001', message = 'investing_plan_persistence_environment_invalid';
-  end if;
+  -- Command environment is already closed to paper/simulation. The account
+  -- parent row is locked by exact canonical scope, including environment, so a
+  -- parent environment mismatch is an account-scope mismatch rather than a
+  -- mutable post-lookup eligibility state.
   if v_account.base_currency <> v_account_base_currency then
     raise exception using errcode = 'P0001', message = 'investing_plan_persistence_account_currency_mismatch';
   end if;
@@ -566,6 +580,9 @@ begin
     v_revision_number := v_head.current_revision_number + 1;
     v_previous_revision_id := v_head.current_revision_id;
   end if;
+
+  v_tx_timestamp := pg_catalog.transaction_timestamp();
+  v_txid := pg_catalog.txid_current();
 
   insert into public.investing_plan_revisions(
     tenant_id,

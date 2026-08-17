@@ -78,10 +78,21 @@ describe("R6-A3D canonical Investing Plan persistence writer migration", () => {
       .toBeLessThan(sql.indexOf("select h.current_revision_id"));
     expect(sql.indexOf("IDEMPOTENT_REPLAY"))
       .toBeLessThan(sql.indexOf("investing_plan_expected_head_conflict"));
-    expect(sql).toContain("for update;");
-    expect(sql).toContain("from public.investing_accounts a");
-    expect(sql).toContain("v_tx_timestamp timestamptz := pg_catalog.transaction_timestamp()");
-    expect(sql).toContain("v_txid bigint := pg_catalog.txid_current()");
+    expect(sql.indexOf("from public.investing_tenants t")).toBeLessThan(
+      sql.indexOf("from public.investing_tenant_memberships m"),
+    );
+    expect(sql.indexOf("from public.investing_tenant_memberships m")).toBeLessThan(
+      sql.indexOf("from public.investing_accounts a"),
+    );
+    expect(sql).toMatch(/from public\.investing_tenants t[\s\S]*?for update;/);
+    expect(sql).toMatch(/from public\.investing_tenant_memberships m[\s\S]*?for update;/);
+    expect(sql).toMatch(/from public\.investing_accounts a[\s\S]*?for update;/);
+    expect(sql).toContain("v_tx_timestamp timestamptz;");
+    expect(sql).toContain("v_txid bigint;");
+    expect(sql.indexOf("IDEMPOTENT_REPLAY")).toBeLessThan(sql.indexOf("v_txid := pg_catalog.txid_current()"));
+    expect(sql.indexOf("investing_plan_expected_head_conflict")).toBeLessThan(
+      sql.indexOf("v_txid := pg_catalog.txid_current()"),
+    );
     expect(sql).not.toContain("pg_advisory_xact_lock");
   });
 
