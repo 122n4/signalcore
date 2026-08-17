@@ -401,16 +401,6 @@ do $$
 begin
   if exists (
     select 1
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public'
-      and p.proname = 'investing_persist_canonical_plan_v1'
-  ) then
-    raise exception 'canonical plan writer function unexpectedly exists';
-  end if;
-
-  if exists (
-    select 1
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
