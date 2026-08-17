@@ -72,15 +72,24 @@ describe("investing legacy boundaries", () => {
     expect(setup).toContain("Canonical financial authoring is unavailable");
   });
 
-  it("keeps main investing surfaces on the canonical dashboard endpoint", () => {
+  it("keeps main investing sources present but disconnected from the active app shell", () => {
     const appUi = read("app/app/ui.tsx");
     const investingExperience = read("app/app/investing/InvestingExperience.tsx");
     const dashboardSurface = read("app/app/tabs/InvestingDashboardSurface.tsx");
 
-    expect(appUi).toContain("<InvestingExperience screen=\"overview\" />");
-    expect(appUi).toContain("<InvestingExperience screen=\"plan\" />");
-    expect(appUi).toContain("<InvestingExperience screen=\"portfolio\" />");
-    expect(appUi).toContain("<InvestingExperience screen=\"insights\" />");
+    expect(appUi).not.toContain("@/app/app/investing/InvestingExperience");
+    expect(appUi).not.toContain("@/app/app/tabs/InvestingDashboardSurface");
+    expect(appUi).not.toContain("@/app/app/offline-setup/offlineSetupClient");
+    expect(appUi).not.toContain("@/components/AutopilotSwitcher");
+    expect(appUi).not.toContain("<InvestingExperience");
+    expect(appUi).not.toContain("<InvestingDashboardSurface");
+    expect(appUi).not.toContain("<OfflineSetupClient");
+    expect(appUi).not.toContain("/api/investing/dashboard");
+    expect(appUi).not.toContain("/api/daily-bundle?mode=investing");
+    expect(appUi).toContain("InvestingTemporarilyUnavailableBoundary");
+    expect(appUi).toContain("Investing is temporarily unavailable while the canonical experience is rebuilt.");
+    expect(appUi).toContain("No Investing dashboard data is loaded from this temporary boundary.");
+    expect(appUi).toContain("/app?tab=trading&mode=trading");
     expect(investingExperience).toContain('fetch("/api/investing/dashboard"');
     expect(dashboardSurface).toContain("/api/investing/dashboard?mode=investing");
   });

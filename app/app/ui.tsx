@@ -6,7 +6,6 @@ import { useUser } from "@clerk/nextjs";
 
 import CockpitShell from "@/components/CockpitShell";
 import MoneyPill from "@/components/MoneyPill";
-import AutopilotSwitcher from "@/components/AutopilotSwitcher";
 import UpgradeModal from "@/components/UpgradeModal";
 import TradingUpgradeGate from "@/components/trading/TradingUpgradeGate";
 import TradingNotificationManager from "@/components/trading/TradingNotificationManager";
@@ -15,17 +14,13 @@ import { useSiteLanguage } from "@/components/SiteLanguageProvider";
 import { pickByLang } from "@/lib/i18n/siteLanguage";
 
 import { useAccess } from "@/lib/signalcore/useAccess";
-import { useAutopilotMode } from "@/lib/signalcore/useAutopilotMode";
 import { useUserSettings } from "@/lib/signalcore/useUserSettings";
 import { canAccessView, getLockedViewsForMode } from "@/lib/signalcore/entitlements";
-import { deriveFirstValueRailState, deriveSetupProgress, type FirstValueSetupKey } from "@/app/app/firstValue";
+import { deriveFirstValueRailState, type FirstValueSetupKey } from "@/app/app/firstValue";
 
 import TradingTab from "@/app/app/tabs/TradingTab";
-import InvestingDashboardSurface from "@/app/app/tabs/InvestingDashboardSurface";
-import InvestingExperience from "@/app/app/investing/InvestingExperience";
 import JournalTab from "@/app/app/tabs/JournalTab";
 import AlertsTab from "@/app/app/tabs/AlertsTab";
-import OfflineSetupClient from "@/app/app/offline-setup/offlineSetupClient";
 import {
   buildModeAwareNavItems,
   buildShellCopy,
@@ -35,42 +30,6 @@ import {
   toModeAwareTab,
   type ViewKey,
 } from "@/app/app/navigationModel";
-
-function buildModeHint(args: {
-  lang: ReturnType<typeof useSiteLanguage>["lang"];
-  tier: "free" | "trial" | "pro";
-}) {
-  if (args.tier === "trial") {
-    return pickByLang(args.lang, {
-      en: "Trial active: full trading execution unlocked",
-      pt: "Trial ativo: trading completo desbloqueado",
-      es: "Trial activo: trading completo desbloqueado",
-      fr: "Essai actif : trading complet debloque",
-      de: "Test aktiv: vollstandiges Trading freigeschaltet",
-      it: "Trial attivo: trading completo sbloccato",
-    });
-  }
-
-  if (args.tier === "pro") {
-    return pickByLang(args.lang, {
-      en: "Pro account: full investing + full trading execution",
-      pt: "Conta Pro: investing completo + trading completo",
-      es: "Cuenta Pro: investing completo + trading completo",
-      fr: "Compte Pro : investing complet + trading complet",
-      de: "Pro-Konto: volles Investing + volles Trading",
-      it: "Account Pro: investing completo + trading completo",
-    });
-  }
-
-  return pickByLang(args.lang, {
-    en: "Investing is free forever. Trading is open in discovery mode.",
-    pt: "Investing e gratis para sempre. Trading abre em modo discovery.",
-    es: "Investing es gratis para siempre. Trading abre en modo discovery.",
-    fr: "Investing reste gratuit. Trading ouvre en mode discovery.",
-    de: "Investing bleibt gratis. Trading offnet im Discovery-Modus.",
-    it: "Investing resta gratis. Trading si apre in modalita discovery.",
-  });
-}
 
 function toLockedTradingSurface(view: ViewKey): "execution" | "risk" | "journal" | "alerts" | null {
   if (view === "execution" || view === "risk" || view === "journal" || view === "alerts") {
@@ -86,6 +45,60 @@ function isLocalQaShellAuthBypass() {
   const params = new URLSearchParams(window.location.search);
   if (params.get("qa") === "assisted" || params.get("__qa_auth") === "1") return true;
   return document.cookie.split(";").some((part) => part.trim() === "syntrake_qa_auth=1");
+}
+
+function InvestingTemporarilyUnavailableBoundary(props: {
+  lang: ReturnType<typeof useSiteLanguage>["lang"];
+  onOpenTrading: () => void;
+}) {
+  return (
+    <section className="rounded-[22px] border border-amber-300/20 bg-amber-300/[0.07] p-5 text-amber-50 shadow-[0_18px_50px_rgba(245,158,11,0.08)]">
+      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-100/75">
+        {pickByLang(props.lang, {
+          en: "Investing unavailable",
+          pt: "Investing indisponivel",
+          es: "Investing no disponible",
+          fr: "Investing indisponible",
+          de: "Investing nicht verfuegbar",
+          it: "Investing non disponibile",
+        })}
+      </p>
+      <h2 className="mt-2 text-xl font-black text-white">
+        {pickByLang(props.lang, {
+          en: "Investing is temporarily unavailable while the canonical experience is rebuilt.",
+          pt: "Investing esta temporariamente indisponivel enquanto a experiencia canonica e reconstruida.",
+          es: "Investing no esta disponible temporalmente mientras se reconstruye la experiencia canonica.",
+          fr: "Investing est temporairement indisponible pendant la reconstruction de l experience canonique.",
+          de: "Investing ist voruebergehend nicht verfuegbar, waehrend die kanonische Experience neu aufgebaut wird.",
+          it: "Investing e temporaneamente non disponibile mentre viene ricostruita l esperienza canonica.",
+        })}
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-50/75">
+        {pickByLang(props.lang, {
+          en: "No Investing dashboard data is loaded from this temporary boundary. Trading remains available.",
+          pt: "Nenhum dado do dashboard Investing e carregado neste limite temporario. Trading continua disponivel.",
+          es: "Este limite temporal no carga datos del dashboard Investing. Trading sigue disponible.",
+          fr: "Cette limite temporaire ne charge aucune donnee du dashboard Investing. Trading reste disponible.",
+          de: "Diese temporaere Grenze laedt keine Investing-Dashboard-Daten. Trading bleibt verfuegbar.",
+          it: "Questo limite temporaneo non carica dati del dashboard Investing. Trading resta disponibile.",
+        })}
+      </p>
+      <button
+        type="button"
+        onClick={props.onOpenTrading}
+        className="mt-4 inline-flex items-center justify-center rounded-2xl bg-amber-200 px-4 py-3 text-sm font-black text-slate-950 transition hover:brightness-110"
+      >
+        {pickByLang(props.lang, {
+          en: "Open Trading",
+          pt: "Abrir Trading",
+          es: "Abrir Trading",
+          fr: "Ouvrir Trading",
+          de: "Trading oeffnen",
+          it: "Apri Trading",
+        })}
+      </button>
+    </section>
+  );
 }
 
 function firstValueSetupLabel(lang: ReturnType<typeof useSiteLanguage>["lang"], key: FirstValueSetupKey) {
@@ -469,14 +482,12 @@ export default function AppUI() {
   const { lang } = useSiteLanguage();
 
   const { isPaid, trial, tier, entitlements, loadingAccess } = useAccess();
-  const { loading: modeLoading, mode, setActiveMode } = useAutopilotMode();
   const { data: settingsData, loading: settingsLoading } = useUserSettings();
-  const activeMode = mode;
   const requestedViewRaw = search?.get("tab") ?? search?.get("view");
   const requestedModeRaw = String(search?.get("mode") || "").toLowerCase();
-  const requestedMode =
-    requestedModeRaw === "trading" || requestedModeRaw === "investing" ? requestedModeRaw : null;
-  const workspaceMode = requestedMode ?? inferModeFromView(requestedViewRaw) ?? activeMode;
+  const requestedModeFromView = inferModeFromView(requestedViewRaw);
+  const investingUnavailableRequested = requestedModeRaw === "investing" || requestedModeFromView === "investing";
+  const workspaceMode = "trading" as const;
 
   const [view, setView] = useState<ViewKey>(() =>
     resolveModeAwareView({
@@ -494,15 +505,17 @@ export default function AppUI() {
   }, []);
 
   useEffect(() => {
+    if (investingUnavailableRequested) return;
     setView(
       resolveModeAwareView({
         rawView: requestedViewRaw ?? getModeHomeView(workspaceMode),
         mode: workspaceMode,
       }),
     );
-  }, [requestedViewRaw, workspaceMode]);
+  }, [investingUnavailableRequested, requestedViewRaw, workspaceMode]);
 
   useEffect(() => {
+    if (investingUnavailableRequested) return;
     const qp = new URLSearchParams(search?.toString() || "");
     qp.set("tab", toModeAwareTab({ view, mode: workspaceMode }));
     qp.set("mode", workspaceMode);
@@ -517,18 +530,40 @@ export default function AppUI() {
     if (nextQuery === currentQuery) return;
     router.replace(`/app?${nextQuery}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, workspaceMode]);
+  }, [investingUnavailableRequested, view, workspaceMode]);
 
   const lockedViewKeys = useMemo(() => getLockedViewsForMode({ tier, mode: workspaceMode }), [tier, workspaceMode]);
   const navItems = useMemo(
     () => buildModeAwareNavItems({ mode: workspaceMode, lang, lockedKeys: lockedViewKeys as ViewKey[] }),
     [workspaceMode, lang, lockedViewKeys],
   );
-  const shellCopy = useMemo(() => buildShellCopy({ mode: workspaceMode, view, lang }), [workspaceMode, view, lang]);
+  const shellCopy = useMemo(
+    () =>
+      investingUnavailableRequested
+        ? {
+            title: pickByLang(lang, {
+              en: "Investing unavailable",
+              pt: "Investing indisponivel",
+              es: "Investing no disponible",
+              fr: "Investing indisponible",
+              de: "Investing nicht verfuegbar",
+              it: "Investing non disponibile",
+            }),
+            subtitle: pickByLang(lang, {
+              en: "The current Investing UX is offline while the canonical experience is rebuilt.",
+              pt: "A UX Investing atual esta offline enquanto a experiencia canonica e reconstruida.",
+              es: "La UX Investing actual esta fuera de linea mientras se reconstruye la experiencia canonica.",
+              fr: "L UX Investing actuelle est hors ligne pendant la reconstruction de l experience canonique.",
+              de: "Die aktuelle Investing-UX ist offline, waehrend die kanonische Experience neu aufgebaut wird.",
+              it: "La UX Investing attuale e offline mentre viene ricostruita l esperienza canonica.",
+            }),
+          }
+        : buildShellCopy({ mode: workspaceMode, view, lang }),
+    [investingUnavailableRequested, workspaceMode, view, lang],
+  );
   const homeHref = useMemo(() => `/app?tab=${getModeHomeView(workspaceMode)}&mode=${workspaceMode}`, [workspaceMode]);
   const showTopRight = false;
-  const modeHint = useMemo(() => buildModeHint({ lang, tier }), [lang, tier]);
-  const tradingViewLocked = workspaceMode === "trading" && !canAccessView({ tier, mode: workspaceMode, view });
+  const tradingViewLocked = !canAccessView({ tier, mode: workspaceMode, view });
   const lockedTradingSurface = toLockedTradingSurface(view);
   const settings = useMemo(
     () =>
@@ -539,140 +574,63 @@ export default function AppUI() {
         : {},
     [settingsData],
   );
-	  const firstValueRailState = useMemo(
-	    () =>
-	      deriveFirstValueRailState({
-	        mode: workspaceMode,
-	        tier,
-	        settings,
-	        view,
-	        welcomeSetupRequested,
-	        offlineSetupRequested,
-	      }),
-	    [workspaceMode, tier, settings, view, welcomeSetupRequested, offlineSetupRequested],
-	  );
-  const setupProgress = useMemo(() => deriveSetupProgress(settings), [settings]);
-  const firstValuePrimaryHref =
-    workspaceMode === "trading" ? `/app?tab=trading&mode=${workspaceMode}` : `/app?tab=daily&mode=${workspaceMode}`;
-  const setupHref = `/app?tab=planning&welcomeSetup=1&mode=${workspaceMode}`;
+  const firstValueRailState = useMemo(
+    () =>
+      deriveFirstValueRailState({
+        mode: workspaceMode,
+        tier,
+        settings,
+        view,
+        welcomeSetupRequested,
+        offlineSetupRequested,
+      }),
+    [workspaceMode, tier, settings, view, welcomeSetupRequested, offlineSetupRequested],
+  );
+  const firstValuePrimaryHref = `/app?tab=trading&mode=${workspaceMode}`;
+  const setupHref = `/app?tab=trading&welcomeSetup=1&mode=${workspaceMode}`;
   const pricingHref = "/pricing?source=app_first_value";
   const lockedNavSurface = lockedNavTarget ? toLockedTradingSurface(lockedNavTarget) : null;
   const lockedNavUpgradeModel = lockedNavSurface ? buildTradingUpgradeModel(lockedNavSurface) : null;
 
-  const right =
-    workspaceMode === "trading" ? (
-      <div className="hidden gap-2 md:flex">
-        <MoneyPill
-          label={pickByLang(lang, {
-            en: "Opportunity flow",
-            pt: "Fluxo de oportunidades",
-            es: "Flujo de oportunidades",
-            fr: "Flux d opportunites",
-            de: "Opportunity-Flow",
-            it: "Flusso opportunita",
-          })}
-          value={tier === "free" ? "DISCOVERY" : "LIVE"}
-        />
-        <MoneyPill
-          label={pickByLang(lang, {
-            en: "Execution posture",
-            pt: "Postura de execucao",
-            es: "Postura de ejecucion",
-            fr: "Posture d execution",
-            de: "Execution-Posture",
-            it: "Postura di esecuzione",
-          })}
-          value={tier === "free" ? "LIMITED" : "ACTIVE"}
-        />
-      </div>
-    ) : (
-      <div className="hidden gap-2 md:flex">
-        <MoneyPill
-          label={pickByLang(lang, {
-            en: "Setup",
-            pt: "Setup",
-            es: "Setup",
-            fr: "Setup",
-            de: "Setup",
-            it: "Setup",
-          })}
-          value={
-            setupProgress.complete
-              ? pickByLang(lang, {
-                  en: "Complete",
-                  pt: "Completo",
-                  es: "Completo",
-                  fr: "Complet",
-                  de: "Komplett",
-                  it: "Completo",
-                })
-              : `${setupProgress.progressDone}/${setupProgress.progressTotal}`
-          }
-        />
-        <MoneyPill
-          label={pickByLang(lang, {
-            en: "Protection",
-            pt: "Protecao",
-            es: "Proteccion",
-            fr: "Protection",
-            de: "Schutz",
-            it: "Protezione",
-          })}
-          value={
-            setupProgress.complete
-              ? pickByLang(lang, {
-                  en: "Plan ready",
-                  pt: "Plano pronto",
-                  es: "Plan listo",
-                  fr: "Plan pret",
-                  de: "Plan bereit",
-                  it: "Piano pronto",
-                })
-              : pickByLang(lang, {
-                  en: "Configure",
-                  pt: "Configurar",
-                  es: "Configurar",
-                  fr: "Configurer",
-                  de: "Einrichten",
-                  it: "Configura",
-                })
-          }
-        />
-      </div>
-    );
-
-  async function handleModeChange(nextMode: typeof activeMode) {
-    const result = await setActiveMode(nextMode);
-    const resolvedMode =
-      result && result.ok === false && "allowedMode" in result && result.allowedMode
-        ? result.allowedMode
-        : nextMode;
-    const nextView = getModeHomeView(resolvedMode);
-
-    setView(nextView);
-
-    const qp = new URLSearchParams(search?.toString() || "");
-    qp.set("mode", resolvedMode);
-    qp.set("tab", nextView);
-    qp.delete("view");
-    qp.delete("brokerSetup");
-    qp.delete("welcomeSetup");
-    qp.delete("offlineSetup");
-    router.push(`/app?${qp.toString()}`);
-  }
+  const right = (
+    <div className="hidden gap-2 md:flex">
+      <MoneyPill
+        label={pickByLang(lang, {
+          en: "Opportunity flow",
+          pt: "Fluxo de oportunidades",
+          es: "Flujo de oportunidades",
+          fr: "Flux d opportunites",
+          de: "Opportunity-Flow",
+          it: "Flusso opportunita",
+        })}
+        value={tier === "free" ? "DISCOVERY" : "LIVE"}
+      />
+      <MoneyPill
+        label={pickByLang(lang, {
+          en: "Execution posture",
+          pt: "Postura de execucao",
+          es: "Postura de ejecucion",
+          fr: "Posture d execution",
+          de: "Execution-Posture",
+          it: "Postura di esecuzione",
+        })}
+        value={tier === "free" ? "LIMITED" : "ACTIVE"}
+      />
+    </div>
+  );
 
   if (!isSignedIn && !qaAuthBypass) return null;
 
   return (
     <>
-      {workspaceMode === "trading" && entitlements.trading.alertsEnabled ? (
+      {entitlements.trading.alertsEnabled ? (
         <TradingNotificationManager enabled={entitlements.trading.alertsEnabled} />
       ) : null}
 
       <CockpitShell
         title={shellCopy.title}
         subtitle={shellCopy.subtitle}
-        productBadge={workspaceMode === "trading" ? "Trading Desk" : "Investing OS"}
+        productBadge="Trading Desk"
         right={showTopRight ? right : null}
         active={view}
         items={navItems}
@@ -696,22 +654,11 @@ export default function AppUI() {
         }}
         onLockedNav={(key) => setLockedNavTarget(key as ViewKey)}
         isPaid={Boolean(isPaid)}
-        trial={loadingAccess || modeLoading ? null : trial}
-        showPageHeader={workspaceMode === "trading" && view !== "trading"}
+        trial={loadingAccess ? null : trial}
+        showPageHeader={view !== "trading"}
       >
         <div className="grid gap-4">
-          <AutopilotSwitcher
-            mode={workspaceMode}
-            disabled={modeLoading}
-            isPaid={Boolean(isPaid)}
-            tier={tier}
-            allowedModes={entitlements.allowedModes}
-            proHint={modeHint}
-            variant={workspaceMode === "trading" ? "compact" : "default"}
-            onChange={handleModeChange}
-          />
-
-          {workspaceMode === "trading" ? (
+          {!investingUnavailableRequested ? (
             <div className="rounded-[22px] border border-cyan-300/20 bg-cyan-300/[0.08] p-4 text-cyan-50 shadow-[0_18px_50px_rgba(8,145,178,0.08)]">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -734,7 +681,7 @@ export default function AppUI() {
             </div>
           ) : null}
 
-          {workspaceMode !== "investing" && !settingsLoading && !loadingAccess && !modeLoading ? (
+          {!investingUnavailableRequested && !settingsLoading && !loadingAccess ? (
             <FirstValueRail
               lang={lang}
               mode={workspaceMode}
@@ -747,22 +694,11 @@ export default function AppUI() {
             />
           ) : null}
 
-          {workspaceMode === "investing" ? (
-            <>
-              {view === "planning" &&
-                (welcomeSetupRequested || offlineSetupRequested ? (
-                  <OfflineSetupClient />
-                ) : (
-                  <InvestingExperience screen="plan" />
-                ))}
-              {view === "daily" && <InvestingExperience screen="overview" />}
-              {view === "advisor" && <InvestingExperience screen="insights" />}
-              {view === "research" && <InvestingExperience screen="insights" />}
-              {view === "portfolio" && <InvestingExperience screen="portfolio" />}
-              {view === "reports" && <InvestingDashboardSurface page="reports" />}
-              {view === "settings" && <InvestingDashboardSurface page="settings" />}
-              {view === "autonomy" && <InvestingDashboardSurface page="autonomy" />}
-            </>
+          {investingUnavailableRequested ? (
+            <InvestingTemporarilyUnavailableBoundary
+              lang={lang}
+              onOpenTrading={() => router.push("/app?tab=trading&mode=trading")}
+            />
           ) : tradingViewLocked && lockedTradingSurface ? (
             <TradingUpgradeGate surface={lockedTradingSurface} />
           ) : (
@@ -785,7 +721,7 @@ export default function AppUI() {
         title={lockedNavUpgradeModel?.modalTitle || "Unlock full trading depth"}
         subtitle={
           lockedNavUpgradeModel?.modalSubtitle ||
-          "Investing stays free forever. Trading opens with Market Radar in discovery mode. Upgrade when you want execution depth, journal, alerts, and deeper history."
+          "Trading opens with Market Radar in discovery mode. Upgrade when you want execution depth, journal, alerts, and deeper history."
         }
         primaryHref={lockedNavUpgradeModel?.pricingHref || "/pricing?source=app_locked_nav"}
         primaryText={lockedNavUpgradeModel?.primaryCta || "See trading plans"}
