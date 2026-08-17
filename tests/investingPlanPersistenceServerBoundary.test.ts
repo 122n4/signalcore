@@ -439,6 +439,20 @@ describe("server-only canonical investing Plan persistence boundary", () => {
     }
   });
 
+  it("accepts idempotent replay with the original persisted authoring and command lineage", async () => {
+    const validRpc = databaseReturning();
+    await persistCanonicalInvestingPlanForRequestV1(REQUEST, rawInput(), { database: validRpc.database });
+    const command = validRpc.calls[0].args.p_command as CanonicalInvestingPlanPersistenceCommandV1;
+    const result = writerResult(command, "IDEMPOTENT_REPLAY");
+    result.revision.authoringFingerprint = "b".repeat(64);
+    result.idempotency.originalCommandFingerprint = "c".repeat(64);
+
+    const parsed = parseCanonicalInvestingPlanPersistenceResultV1(result, command, "server_user");
+    expect(parsed.status).toBe("IDEMPOTENT_REPLAY");
+    expect(parsed.revision.authoringFingerprint).toBe("b".repeat(64));
+    expect(parsed.idempotency.originalCommandFingerprint).toBe("c".repeat(64));
+  });
+
   it("keeps the server boundary isolated from routes, legacy Plan writes and downstream financial authority", () => {
     const moduleSource = source("lib/investing/server/planPersistence.ts");
     const workflowSource = source(".github/workflows/investing-postgres.yml");

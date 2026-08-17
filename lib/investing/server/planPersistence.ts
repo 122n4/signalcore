@@ -338,15 +338,15 @@ function parseResult(
   assertResultInvariant(scope.portfolioId === command.scope.portfolioId);
   assertResultInvariant(scope.accountId === command.scope.accountId);
   assertResultInvariant(scope.environment === command.scope.environment);
-  assertResultInvariant(revision.authoringFingerprint === command.authoringLineage.authoringFingerprint);
   assertResultInvariant(head.accountId === command.scope.accountId);
   assertResultInvariant(head.currentRevisionId === revision.id);
   assertResultInvariant(head.currentRevisionNumber === revision.revisionNumber);
   assertResultInvariant(idempotency.key === command.idempotency.key);
   assertResultInvariant(idempotency.semanticRequestFingerprint === command.idempotency.semanticRequestFingerprint);
-  assertResultInvariant(idempotency.originalCommandFingerprint === command.commandFingerprint);
   assertResultInvariant(revision.persistenceTxid === idempotency.persistenceTxid);
   if (status === "NEW_COMMIT") {
+    assertResultInvariant(revision.authoringFingerprint === command.authoringLineage.authoringFingerprint);
+    assertResultInvariant(idempotency.originalCommandFingerprint === command.commandFingerprint);
     assertResultInvariant(revision.persistedAt === head.updatedAt);
     assertResultInvariant(revision.persistedAt === idempotency.createdAt);
   }
