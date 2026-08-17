@@ -123,6 +123,10 @@ jobs:
           printf '%s\n' "$env_output"
           api_url="$(printf '%s\n' "$env_output" | sed -nE 's/^(API_URL|SUPABASE_URL|NEXT_PUBLIC_SUPABASE_URL)=//p' | head -n 1)"
           service_role_key="$(printf '%s\n' "$env_output" | sed -nE 's/^(SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY)=//p' | head -n 1)"
+          api_url="${api_url%\"}"
+          api_url="${api_url#\"}"
+          service_role_key="${service_role_key%\"}"
+          service_role_key="${service_role_key#\"}"
           test -n "$api_url"
           test -n "$service_role_key"
           {
