@@ -255,7 +255,7 @@ pgDescribe("R6-A3D real PostgreSQL canonical Plan writer", () => {
          'owner',
          array['investing:read','investing:create','investing:verify','investing:replay'],
          $4,
-         case when $4 = 'revoked' then pg_catalog.transaction_timestamp() else null end
+         case when $4 = 'revoked' then pg_catalog.clock_timestamp() + interval '1 second' else null end
        )`,
       [scope.membershipId, scope.tenantId, scope.ownerUserId, scope.membershipStatus],
     );
@@ -323,7 +323,7 @@ pgDescribe("R6-A3D real PostgreSQL canonical Plan writer", () => {
           await client.query("set local lock_timeout = '100ms'");
           await client.query(
             `update public.investing_tenant_memberships
-             set status = 'revoked', revoked_at = pg_catalog.transaction_timestamp()
+             set status = 'revoked', revoked_at = pg_catalog.clock_timestamp() + interval '1 second'
              where id = $1`,
             [scope.membershipId],
           );
@@ -446,7 +446,7 @@ pgDescribe("R6-A3D real PostgreSQL canonical Plan writer", () => {
     await createScope(scope);
     await pool.query(
       `update public.investing_tenant_memberships
-       set status = 'revoked', revoked_at = pg_catalog.transaction_timestamp()
+       set status = 'revoked', revoked_at = pg_catalog.clock_timestamp() + interval '1 second'
        where id = $1`,
       [scope.membershipId],
     );
@@ -477,7 +477,7 @@ pgDescribe("R6-A3D real PostgreSQL canonical Plan writer", () => {
 
       await pool.query(
         `update public.investing_tenant_memberships
-         set status = 'revoked', revoked_at = pg_catalog.transaction_timestamp()
+         set status = 'revoked', revoked_at = pg_catalog.clock_timestamp() + interval '1 second'
          where id = $1`,
         [scope.membershipId],
       );
