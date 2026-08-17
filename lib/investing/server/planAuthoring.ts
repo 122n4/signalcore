@@ -18,6 +18,11 @@ export type CanonicalInvestingPlanAuthoringRequestInputV1 = {
   };
 };
 
+export type CanonicalInvestingPlanAuthoringServerResolutionV1 = {
+  readonly authorizedUserId: string;
+  readonly authoringIntent: CanonicalInvestingPlanAuthoringIntentV1;
+};
+
 const RAW_INPUT_KEYS = ["accountId", "explicitIntent"] as const;
 const EXPLICIT_INTENT_KEYS = ["objective", "riskProfile", "horizon"] as const;
 const CANONICAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -133,6 +138,14 @@ export async function resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(
   request: Request,
   rawInput: unknown,
 ): Promise<CanonicalInvestingPlanAuthoringIntentV1> {
+  const resolution = await resolveCanonicalInvestingPlanAuthoringServerResolutionForRequestV1(request, rawInput);
+  return resolution.authoringIntent;
+}
+
+export async function resolveCanonicalInvestingPlanAuthoringServerResolutionForRequestV1(
+  request: Request,
+  rawInput: unknown,
+): Promise<CanonicalInvestingPlanAuthoringServerResolutionV1> {
   const input = materializeRawInput(rawInput);
   const authz = await requireInvestingRequestContext(request);
   assertCreateAuthority(authz);
@@ -148,7 +161,7 @@ export async function resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(
 
   // This producer authorizes the current request only. The resulting fingerprint
   // remains lineage evidence, not future authorization, ownership, or currency proof.
-  return buildCanonicalInvestingPlanAuthoringIntentV1({
+  const authoringIntent = buildCanonicalInvestingPlanAuthoringIntentV1({
     authorityScope: {
       userId: authz.userId,
       tenantId: authz.tenantId,
@@ -161,4 +174,9 @@ export async function resolveCanonicalInvestingPlanAuthoringIntentForRequestV1(
     explicitIntent: input.explicitIntent,
     authoredAt: new Date().toISOString(),
   });
+
+  return {
+    authorizedUserId: authz.userId,
+    authoringIntent,
+  };
 }
