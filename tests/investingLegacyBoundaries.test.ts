@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -23,59 +23,35 @@ describe("investing legacy boundaries", () => {
     expect(repo).toContain("Runtime holdings are canonical in portfolio_items");
   });
 
-  it("does not call the removed standalone opportunities API from the legacy panel", () => {
-    const panel = read("components/opportunities/OpportunitiesPanel.tsx");
-    expect(panel).not.toContain('fetch("/api/opportunities"');
-    expect(panel).toContain('fetch("/api/daily-bundle?mode=investing"');
-    expect(panel).not.toContain("demoOpportunities");
-    expect(panel).not.toContain("demoPortfolio");
-    expect(panel).not.toContain("@/lib/execution/store");
-    expect(panel).not.toContain("mode=trading");
-    expect(panel).not.toContain("opportunity_sent_to_execution");
-    expect(panel).toContain("investing_opportunity_reviewed");
+  it("physically removes obsolete Investing UX source paths", () => {
+    const deletedPaths = [
+      "app/app/investing/InvestingExperience.tsx",
+      "app/app/investing/investingExperienceModel.ts",
+      "app/app/offline-setup/offlineSetupClient.tsx",
+      "app/app/offline-setup/page.tsx",
+      "app/app/welcome/page.tsx",
+      "app/app/welcome/welcomeClient.tsx",
+      "app/app/daily/page.tsx",
+      "app/app/daily/DailyClient.tsx",
+      "app/app/daily/DailyPageClient.tsx",
+      "app/app/portfolio/page.tsx",
+      "app/my-portfolio/page.tsx",
+      "app/structure-preview/page.tsx",
+      "components/opportunities/OpportunitiesPanel.tsx",
+      "components/planning/PlanningCopilotChat.tsx",
+      "lib/opportunities/demo.ts",
+      "lib/opportunities/realEngine.ts",
+      "lib/opportunities/supabaseRepo.ts",
+      "lib/opportunities/types.ts",
+    ];
+
+    for (const path of deletedPaths) {
+      expect(existsSync(join(process.cwd(), path)), `${path} should be deleted`).toBe(false);
+    }
   });
 
-  it("does not present legacy daily-bundle recommendations from offline setup", () => {
-    const setup = read("app/app/offline-setup/offlineSetupClient.tsx");
-    expect(setup).not.toContain("/api/daily-bundle");
-    expect(setup).not.toContain("/api/plans");
-    expect(setup).not.toContain("buildScenarios");
-    expect(setup).not.toContain("requiredMonthlyContribution");
-    expect(setup).not.toContain("baseAnnualReturnPct");
-    expect(setup).not.toContain("Assumed annual return");
-    expect(setup).not.toContain("Projected value");
-    expect(setup).not.toContain("Required monthly deposit");
-    expect(setup).not.toContain("Required monthly contribution");
-    expect(setup).not.toContain("realistic range");
-    expect(setup).not.toContain("increase monthly contribution");
-    expect(setup).not.toContain("5.5");
-    expect(setup).not.toContain("7.5");
-    expect(setup).not.toContain("10%");
-    expect(setup).not.toContain("sc_wealth_plan_v1");
-    expect(setup).not.toContain("sc_goal_quiz_v1");
-    expect(setup).not.toContain("sc_starter_budget_v1");
-    expect(setup).not.toContain("risk_profile");
-    expect(setup).not.toContain("horizon");
-    expect(setup).not.toContain("goal_target_value");
-    expect(setup).not.toContain("monthly_contribution");
-    expect(setup).not.toContain("goal_timeframe_months");
-    expect(setup).not.toContain("Allocation target");
-    expect(setup).not.toContain("Top opportunities now");
-    expect(setup).not.toContain("high-conviction");
-    expect(setup).not.toContain("Get my first action");
-    expect(setup).not.toContain("starterReady");
-    expect(setup).not.toContain("BUY");
-    expect(setup).not.toContain("SELL");
-    expect(setup).not.toContain("recommended allocation");
-    expect(setup).toContain("Canonical Plan authoring is currently unavailable");
-    expect(setup).toContain("Recommendation authority is unavailable during setup");
-    expect(setup).toContain("Canonical financial authoring is unavailable");
-  });
-
-  it("keeps main investing sources present but disconnected from the active app shell", () => {
+  it("keeps removed Investing UX disconnected from the active app shell", () => {
     const appUi = read("app/app/ui.tsx");
-    const investingExperience = read("app/app/investing/InvestingExperience.tsx");
-    const dashboardSurface = read("app/app/tabs/InvestingDashboardSurface.tsx");
 
     expect(appUi).not.toContain("@/app/app/investing/InvestingExperience");
     expect(appUi).not.toContain("@/app/app/tabs/InvestingDashboardSurface");
@@ -89,9 +65,31 @@ describe("investing legacy boundaries", () => {
     expect(appUi).toContain("InvestingTemporarilyUnavailableBoundary");
     expect(appUi).toContain("Investing is temporarily unavailable while the canonical experience is rebuilt.");
     expect(appUi).toContain("No Investing dashboard data is loaded from this temporary boundary.");
+    expect(appUi).toContain('String(search?.get("mode") || "").toLowerCase().trim()');
     expect(appUi).toContain("/app?tab=trading&mode=trading");
-    expect(investingExperience).toContain('fetch("/api/investing/dashboard"');
-    expect(dashboardSurface).toContain("/api/investing/dashboard?mode=investing");
+    expect(appUi).toContain("<TradingTab");
+    expect(appUi).toContain("<JournalTab");
+    expect(appUi).toContain("<AlertsTab");
+  });
+
+  it("does not keep deleted Investing page front doors in the protected route matcher", () => {
+    const proxy = read("proxy.ts");
+
+    expect(proxy).not.toContain('"/my-portfolio(.*)"');
+    expect(proxy).not.toContain('"/portfolio(.*)"');
+  });
+
+  it("treats whitespace-wrapped investing mode as the unavailable Investing boundary", () => {
+    const appUi = read("app/app/ui.tsx");
+    const params = new URLSearchParams("mode=%20investing%20");
+    const requestedModeRaw = String(params.get("mode") || "").toLowerCase().trim();
+    const investingUnavailableRequested = requestedModeRaw === "investing";
+
+    expect(appUi).toContain('String(search?.get("mode") || "").toLowerCase().trim()');
+    expect(requestedModeRaw).toBe("investing");
+    expect(investingUnavailableRequested).toBe(true);
+    expect(appUi.indexOf("investingUnavailableRequested ? (")).toBeLessThan(appUi.indexOf("<TradingTab"));
+    expect(appUi).toContain("<InvestingTemporarilyUnavailableBoundary");
   });
 
   it("keeps R5 customer decision authority closed", () => {
@@ -100,15 +98,13 @@ describe("investing legacy boundaries", () => {
     expect(dashboard).toContain("return false;");
   });
 
-  it("keeps the old opportunities engine outside the active app and API routes", () => {
+  it("physically removes the old opportunities engine from active source", () => {
     const activeFiles = [
       "app/api/daily-bundle/route.ts",
-      "components/opportunities/OpportunitiesPanel.tsx",
     ].map(read).join("\n");
-    const legacyRepo = read("lib/opportunities/supabaseRepo.ts");
 
     expect(activeFiles).not.toContain("@/lib/opportunities/supabaseRepo");
     expect(activeFiles).not.toContain("@/lib/opportunities/realEngine");
-    expect(legacyRepo).toContain("Active Investing opportunities are served by /api/daily-bundle");
+    expect(existsSync(join(process.cwd(), "lib/opportunities"))).toBe(false);
   });
 });

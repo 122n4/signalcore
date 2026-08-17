@@ -2,15 +2,12 @@ import { describe, expect, it } from "vitest";
 import { resolveProtectedRedirectTarget } from "@/lib/navigation/resolveProtectedRedirectTarget";
 
 describe("resolveProtectedRedirectTarget", () => {
-  it("maps /app/welcome into shell onboarding and preserves mode", () => {
+  it("does not revive deleted Investing onboarding routes", () => {
     expect(resolveProtectedRedirectTarget("/app/welcome", "?mode=investing")).toBe(
-      "/app?tab=planning&welcomeSetup=1&mode=investing",
+      "/app/welcome?mode=investing",
     );
-  });
-
-  it("maps /app/offline-setup into shell onboarding and preserves mode and source", () => {
     expect(resolveProtectedRedirectTarget("/app/offline-setup", "?mode=crypto&source=welcome")).toBe(
-      "/app?tab=planning&offlineSetup=1&mode=crypto&source=welcome",
+      "/app/offline-setup?mode=crypto&source=welcome",
     );
   });
 
@@ -20,11 +17,11 @@ describe("resolveProtectedRedirectTarget", () => {
     );
   });
 
-  it("maps compatibility portfolio routes into the shell", () => {
+  it("does not revive deleted portfolio compatibility routes", () => {
     expect(resolveProtectedRedirectTarget("/my-portfolio", "?mode=trading")).toBe(
-      "/app?tab=portfolio&mode=trading",
+      "/my-portfolio?mode=trading",
     );
-    expect(resolveProtectedRedirectTarget("/app/portfolio", "")).toBe("/app?tab=portfolio");
+    expect(resolveProtectedRedirectTarget("/app/portfolio", "")).toBe("/app/portfolio");
   });
 
   it("leaves unrelated protected routes unchanged", () => {

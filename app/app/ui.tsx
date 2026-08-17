@@ -484,7 +484,7 @@ export default function AppUI() {
   const { isPaid, trial, tier, entitlements, loadingAccess } = useAccess();
   const { data: settingsData, loading: settingsLoading } = useUserSettings();
   const requestedViewRaw = search?.get("tab") ?? search?.get("view");
-  const requestedModeRaw = String(search?.get("mode") || "").toLowerCase();
+  const requestedModeRaw = String(search?.get("mode") || "").toLowerCase().trim();
   const requestedModeFromView = inferModeFromView(requestedViewRaw);
   const investingUnavailableRequested = requestedModeRaw === "investing" || requestedModeFromView === "investing";
   const workspaceMode = "trading" as const;
@@ -520,7 +520,6 @@ export default function AppUI() {
     qp.set("tab", toModeAwareTab({ view, mode: workspaceMode }));
     qp.set("mode", workspaceMode);
     qp.delete("view");
-    if (view !== "autonomy") qp.delete("brokerSetup");
     if (view !== "planning") {
       qp.delete("welcomeSetup");
       qp.delete("offlineSetup");
@@ -644,7 +643,6 @@ export default function AppUI() {
           qp.set("mode", workspaceMode);
           qp.delete("view");
 
-          if (nextView !== "autonomy") qp.delete("brokerSetup");
           if (nextView !== "planning") {
             qp.delete("welcomeSetup");
             qp.delete("offlineSetup");

@@ -120,24 +120,6 @@ function buildFullScreenHref(pathname: string, params: URLSearchParams, preferre
   return query ? `${pathname}?${query}` : pathname;
 }
 
-function buildOnboardingShellHref(
-  kind: "welcomeSetup" | "offlineSetup",
-  params: URLSearchParams,
-) {
-  const next = new URLSearchParams();
-  next.set("tab", "planning");
-  next.set(kind, "1");
-
-  const filtered = filterParams(params, FULL_SCREEN_QUERY_ALLOWLIST);
-  const mode = "investing";
-  if (mode) next.set("mode", mode);
-
-  const source = toNonEmptyString(filtered.get("source"));
-  if (source) next.set("source", source);
-
-  return `/app?${next.toString()}`;
-}
-
 function buildFallbackHref(
   fallbackUrl: URL | null,
   allowedFullScreenRoutes: Set<string>,
@@ -186,14 +168,6 @@ export function sanitizeProductHref(args: SanitizeProductHrefArgs): string {
       preferredMode,
       buildFallbackHref(fallbackUrl, allowedFullScreenRoutes, preferredMode),
     );
-  }
-
-  if (parsed.pathname === "/app/welcome") {
-    return buildOnboardingShellHref("welcomeSetup", parsed.searchParams);
-  }
-
-  if (parsed.pathname === "/app/offline-setup") {
-    return buildOnboardingShellHref("offlineSetup", parsed.searchParams);
   }
 
   if (allowedFullScreenRoutes.has(parsed.pathname)) {

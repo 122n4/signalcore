@@ -45,8 +45,6 @@ describe("investing architecture isolation", () => {
     const queue = [
       ...listTsFiles(join(root, "lib/investing")),
       ...listTsFiles(join(root, "app/api/investing")),
-      join(root, "app/app/tabs/DailyTab.tsx"),
-      join(root, "app/app/tabs/InvestingDashboardSurface.tsx"),
       join(root, "app/app/tabs/dailyDecisionViewModel.ts"),
       ...listTsFiles(join(root, "components/investing")),
     ];
@@ -72,64 +70,27 @@ describe("investing architecture isolation", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps the Investing UI off shared broker, snapshot, journal and auto-fix APIs", () => {
-    const source = readFileSync(join(process.cwd(), "app/app/tabs/DailyTab.tsx"), "utf8");
-    for (const endpoint of ["/api/broker/", "/api/daily-bundle", "/api/daily-snapshot", "/api/journal/", "/api/fix-now/"]) {
-      expect(source).not.toContain(endpoint);
-    }
-    expect(source).toContain("/api/investing/dashboard");
-    expect(source).toContain("/api/investing/daily-cycle");
-    expect(source).toContain("/api/investing/paper/accounts");
-  });
-
-  it("keeps the Investing portfolio tab on canonical Investing APIs", () => {
-    const source = readFileSync(join(process.cwd(), "app/app/tabs/PortfolioTab.tsx"), "utf8");
-    for (const endpoint of ["/api/daily-bundle", "/api/portfolio-items", "/api/fix-now/"]) {
-      expect(source).not.toContain(endpoint);
-    }
-    expect(source).toContain("/api/investing/dashboard");
-    expect(source).toContain("/api/investing/paper/accounts");
-  });
-
-  it("keeps all primary Investing tabs off legacy shared automation APIs", () => {
-    const tabFiles = ["DailyTab.tsx", "PlanningTab.tsx", "PortfolioTab.tsx", "AdvisorTab.tsx", "AutonomyTab.tsx", "InvestingDashboardSurface.tsx"];
-    for (const tabFile of tabFiles) {
-      const source = readFileSync(join(process.cwd(), "app/app/tabs", tabFile), "utf8");
-      for (const endpoint of ["/api/daily-bundle", "/api/portfolio-items", "/api/fix-now/", "/api/broker/", "/api/daily/close", "@/lib/broker"]) {
-        expect(source, `${tabFile} should not call ${endpoint}`).not.toContain(endpoint);
-      }
-      expect(source, `${tabFile} should read the canonical Investing dashboard`).toContain("/api/investing/dashboard");
-    }
-  });
-
-  it("does not expose fake disabled action buttons on the unified Investing dashboard", () => {
-    const source = readFileSync(join(process.cwd(), "app/app/tabs/InvestingDashboardSurface.tsx"), "utf8");
-    expect(source).not.toMatch(/<button[^>]*\sdisabled[\s=>]/i);
-    expect(source).not.toContain("disabled in audit build");
-  });
-
   it("does not mount shared broker setup inside the Investing workspace", () => {
     const source = readFileSync(join(process.cwd(), "app/app/ui.tsx"), "utf8");
     expect(source).not.toContain("BrokerPageClient");
     expect(source).not.toMatch(/view === "autonomy"[\s\S]*brokerSetupRequested/);
   });
 
-  it("does not present fabricated operational health or security claims on the Investing surface", () => {
-    const source = readFileSync(join(process.cwd(), "app/app/tabs/InvestingDashboardSurface.tsx"), "utf8");
-    expect(source).not.toContain(">OK<");
-    expect(source).not.toContain('value="Operational"');
-    expect(source).not.toContain('["Paper account active", true]');
-    expect(source).not.toContain('["Security posture", "Good"]');
-    expect(source).not.toContain('["Daily reminders", "Enabled"]');
-    expect(source).not.toContain("Read-only disabled");
-  });
+  it("physically removes obsolete Investing UI surfaces from the repository", () => {
+    const obsoletePaths = [
+      "app/app/tabs/DailyTab.tsx",
+      "app/app/tabs/PlanningTab.tsx",
+      "app/app/tabs/PortfolioTab.tsx",
+      "app/app/tabs/AdvisorTab.tsx",
+      "app/app/tabs/AutonomyTab.tsx",
+      "app/app/tabs/InvestingDashboardSurface.tsx",
+      "app/app/investing/InvestingExperience.tsx",
+      "components/opportunities/OpportunitiesPanel.tsx",
+      "components/planning/PlanningCopilotChat.tsx",
+    ];
 
-  it("routes Portfolio add-holdings actions through canonical Paper lifecycle APIs", () => {
-    const source = readFileSync(join(process.cwd(), "app/app/tabs/InvestingDashboardSurface.tsx"), "utf8");
-    expect(source).toContain("/api/investing/paper/accounts");
-    expect(source).toContain("/api/investing/daily-cycle");
-    expect(source).toContain("/api/investing/paper/orders");
-    expect(source).toContain("Holdings are created by Paper orders and fills");
-    expect(source).not.toContain("/api/portfolio-items");
+    for (const path of obsoletePaths) {
+      expect(existsSync(join(process.cwd(), path)), `${path} should be deleted`).toBe(false);
+    }
   });
 });

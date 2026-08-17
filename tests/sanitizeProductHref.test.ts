@@ -42,24 +42,24 @@ describe("sanitizeProductHref", () => {
     expect(href).toBe("/app?tab=opportunities&mode=trading&source=journal");
   });
 
-  it("falls back to a shell-safe href without reviving removed modes", () => {
+  it("falls back from deleted welcome routes instead of reviving onboarding chains", () => {
     const href = sanitizeProductHref({
       href: "/app/welcome?mode=forex&unknown=1",
       fallbackHref: "/app?tab=daily",
       mode: null,
     });
 
-    expect(href).toBe("/app?tab=planning&welcomeSetup=1&mode=investing");
+    expect(href).toBe("/app?tab=daily");
   });
 
-  it("falls back to investing when the target href has no valid mode", () => {
+  it("falls back from deleted welcome routes with the caller-selected safe mode", () => {
     const href = sanitizeProductHref({
       href: "/app/welcome",
       fallbackHref: "/app?tab=portfolio",
       mode: "crypto",
     });
 
-    expect(href).toBe("/app?tab=planning&welcomeSetup=1&mode=investing");
+    expect(href).toBe("/app?tab=portfolio");
   });
 
   it("uses the trading home when the fallback lives in trading mode", () => {
@@ -72,14 +72,14 @@ describe("sanitizeProductHref", () => {
     expect(href).toBe("/app?tab=trading&mode=trading");
   });
 
-  it("coerces offline-setup targets into planning shell onboarding using investing mode", () => {
+  it("falls back from deleted offline-setup targets instead of reviving onboarding chains", () => {
     const href = sanitizeProductHref({
       href: "/app/offline-setup?mode=trading&source=welcome&unknown=drop-me",
       fallbackHref: "/app?tab=daily&mode=investing",
       mode: "investing",
     });
 
-    expect(href).toBe("/app?tab=planning&offlineSetup=1&mode=investing&source=welcome");
+    expect(href).toBe("/app?tab=daily&mode=investing");
   });
 
   it("falls back from removed standalone broker targets to the safe investing shell", () => {

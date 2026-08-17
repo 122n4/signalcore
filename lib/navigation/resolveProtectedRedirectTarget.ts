@@ -17,35 +17,9 @@ export function resolveProtectedRedirectTarget(pathname: string, search: string)
     if (lang) qp.set("lang", lang);
   };
 
-  if (pathname === "/app/welcome") {
-    qp.set("tab", "planning");
-    qp.set("welcomeSetup", "1");
-    preserveCommon();
-    return `/app?${qp.toString()}`;
-  }
-
-  if (pathname === "/app/offline-setup") {
-    qp.set("tab", "planning");
-    qp.set("offlineSetup", "1");
-    preserveCommon();
-    return `/app?${qp.toString()}`;
-  }
-
   if (pathname === "/app/broker") {
     qp.set("tab", "autonomy");
     qp.set("brokerSetup", "1");
-    preserveCommon();
-    return `/app?${qp.toString()}`;
-  }
-
-  if (pathname === "/app/daily") {
-    qp.set("tab", "daily");
-    preserveCommon();
-    return `/app?${qp.toString()}`;
-  }
-
-  if (pathname === "/app/portfolio" || pathname === "/my-portfolio" || pathname === "/portfolio") {
-    qp.set("tab", "portfolio");
     preserveCommon();
     return `/app?${qp.toString()}`;
   }
