@@ -170,7 +170,7 @@ export async function GET(req: Request) {
       }
 
       if (!anonymous) {
-        const mode = normalizeMode((row as any)?.mode || "investing");
+        const mode = normalizeMode((row as any)?.mode || "trading");
         const modeEntry = byMode.get(mode) || { mode, users: new Set<string>(), ...blankCountMap() };
         modeEntry[eventKey] += 1;
         modeEntry.users.add(uid);

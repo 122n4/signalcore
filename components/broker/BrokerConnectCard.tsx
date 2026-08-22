@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Link2, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Link2, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 type Status =
   | { status: "disconnected" | "error"; provider?: string | null; message?: string | null }
@@ -16,7 +16,7 @@ function cls(...xs: Array<string | false | null | undefined>) {
 export default function BrokerConnectCard({
   compact = false,
   title = "Broker",
-  subtitle = "Connect to sync your portfolio automatically.",
+  subtitle = "Connect broker context for Trading workflows.",
 }: {
   compact?: boolean;
   title?: string;
@@ -76,26 +76,6 @@ export default function BrokerConnectCard({
     }
   }
 
-  async function handleSync() {
-    setMsg(null);
-    setBusy(true);
-    try {
-      const res = await fetch("/api/broker/sync", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? "sync_failed");
-      await load();
-      router.refresh();
-    } catch (e: any) {
-      setMsg(e?.message ?? "sync_failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const ok = status.status === "connected" || status.status === "active";
   const isError = status.status === "error";
 
@@ -147,15 +127,10 @@ export default function BrokerConnectCard({
           {ok ? (
             <button
               type="button"
-              onClick={handleSync}
-              disabled={busy}
-              className={cls(
-                "inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10",
-                busy && "opacity-60"
-              )}
+              onClick={() => router.refresh()}
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
             >
-              <RefreshCw className={cls("h-4 w-4", busy && "animate-spin")} />
-              Sync
+              Refresh
             </button>
           ) : (
             <button

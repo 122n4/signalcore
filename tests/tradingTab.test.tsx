@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import TradingTab from "@/app/app/tabs/TradingTab";
-import { composeDecisionEnvelope } from "@/lib/decision/composeDecisionEnvelope";
+import {
+  composeTradingWatchlist,
+  composeTradingWatchlistSections,
+  resolveTradingWatchlistFocus,
+} from "@/lib/trading/state";
 
 import { createTradingLiveDecisionInput } from "./helpers/tradingLiveDecisionFixtures";
 
@@ -15,7 +19,7 @@ vi.mock("@/lib/signalcore/useDailyBundle", () => ({
   useDailyBundle: useDailyBundleMock,
 }));
 
-function createTradingEnvelope() {
+function createTradingSupport() {
   const eurusd = createTradingLiveDecisionInput();
   eurusd.snapshot.instrument = "EURUSD";
   eurusd.market.instrument = "EURUSD";
@@ -26,39 +30,29 @@ function createTradingEnvelope() {
   btcusd.market.instrument = "BTCUSD";
   btcusd.decisionCore.decision.currentState = "WAIT";
 
-  return composeDecisionEnvelope({
-    mode: "investing",
-    asOf: "2026-03-10T14:00:00.000Z",
-    branch: "success",
-    branchReason: null,
-    nextBestAction: null,
-    whyNow: null,
-    operationalAction: null,
-    decisionGovernance: null,
-    actionGate: null,
-    riskPolicyEval: null,
-    capitalStatus: null,
-    decisionScores: null,
-    diagnostics: null,
-    engineV4: null,
-    tradingWatchlistInputs: [eurusd, btcusd],
-  });
+  const watchlist = composeTradingWatchlist([eurusd, btcusd]);
+  const watchlistFocus = resolveTradingWatchlistFocus(watchlist);
+  return {
+    watchlist,
+    watchlistFocus,
+    watchlistSections: composeTradingWatchlistSections(watchlist, watchlistFocus),
+  };
 }
 
 describe("TradingTab", () => {
   it("renders the trading watchlist and detail surface from the envelope", () => {
-    const envelope = createTradingEnvelope();
+    const trading = createTradingSupport();
 
     useDailyBundleMock.mockReturnValue({
       status: "ready",
       error: null,
       daily: {
-        decisionEnvelope: envelope,
+        support: { trading },
       },
       refresh: vi.fn(),
     });
 
-    const html = renderToStaticMarkup(<TradingTab mode="investing" />);
+    const html = renderToStaticMarkup(<TradingTab mode="trading" />);
 
     expect(html).toContain("Market radar");
     expect(html).toContain("Choose the market before opening the plan.");
@@ -78,28 +72,11 @@ describe("TradingTab", () => {
     useDailyBundleMock.mockReturnValue({
       status: "ready",
       error: null,
-      daily: {
-        decisionEnvelope: composeDecisionEnvelope({
-          mode: "investing",
-          asOf: "2026-03-10T14:00:00.000Z",
-          branch: "success",
-          branchReason: null,
-          nextBestAction: null,
-          whyNow: null,
-          operationalAction: null,
-          decisionGovernance: null,
-          actionGate: null,
-          riskPolicyEval: null,
-          capitalStatus: null,
-          decisionScores: null,
-          diagnostics: null,
-          engineV4: null,
-        }),
-      },
+      daily: {},
       refresh: vi.fn(),
     });
 
-    const html = renderToStaticMarkup(<TradingTab mode="investing" />);
+    const html = renderToStaticMarkup(<TradingTab mode="trading" />);
 
     expect(html).toContain("Radar is quiet in this snapshot");
   });

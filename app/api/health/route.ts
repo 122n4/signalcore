@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 async function checkSupabase() {
   try {
     const sb = getSupabaseAdmin();
-    const { error } = await sb.from("user_settings").select("user_id").limit(1);
+    const { error } = await sb.from("journal_entries").select("user_id").limit(1);
     if (error) return { ok: false, error: error.message };
     return { ok: true };
   } catch (e: any) {

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { composeDecisionEnvelope } from "@/lib/decision/composeDecisionEnvelope";
 import {
   buildTradingLightScannerInputs,
   inspectTradingLightScanner,
@@ -9,6 +8,12 @@ import {
   setTradingLightScannerFallbackCatalogForTests,
   summarizeTradingLightScannerDiagnostics,
 } from "@/lib/trading/lightScanner";
+import {
+  composeTradingWatchlist,
+  composeTradingWatchlistSections,
+  resolveTradingWatchlistFocus,
+  summarizeTradingWatchlistCoverage,
+} from "@/lib/trading/state";
 
 const {
   getCandlesMock,
@@ -995,31 +1000,17 @@ describe("trading light scanner", () => {
     expect(second?.snapshot.snapshotAt).toBe("2026-03-31T10:04:00.000Z");
   });
 
-  it("feeds the envelope with a real backend-generated watchlist", async () => {
+  it("builds a real backend-generated trading watchlist", async () => {
     const inputs = await buildTradingLightScannerInputs({
       asOf: "2026-03-10T14:00:00.000Z",
     });
 
-    const envelope = composeDecisionEnvelope({
-      mode: "investing",
-      asOf: "2026-03-10T14:00:00.000Z",
-      branch: "success",
-      branchReason: null,
-      nextBestAction: null,
-      whyNow: null,
-      operationalAction: null,
-      decisionGovernance: null,
-      actionGate: null,
-      riskPolicyEval: null,
-      capitalStatus: null,
-      decisionScores: null,
-      diagnostics: null,
-      engineV4: null,
-      tradingWatchlistInputs: inputs,
-    });
+    const watchlist = composeTradingWatchlist(inputs);
+    const focus = resolveTradingWatchlistFocus(watchlist);
+    const sections = composeTradingWatchlistSections(watchlist, focus);
 
-    expect(envelope.support.trading?.watchlist).toHaveLength(19);
-    expect(envelope.support.trading?.watchlist.map((entry) => entry.instrument)).toEqual(
+    expect(watchlist).toHaveLength(19);
+    expect(watchlist.map((entry) => entry.instrument)).toEqual(
       expect.arrayContaining([
         "EURUSD",
         "GBPUSD",
@@ -1042,18 +1033,14 @@ describe("trading light scanner", () => {
         "NAS100",
       ]),
     );
-    expect(envelope.support.trading?.watchlistFocus).toMatchObject({
-      anchorInstrument: envelope.support.trading?.watchlist[0]?.instrument,
+    expect(focus).toMatchObject({
+      anchorInstrument: watchlist[0]?.instrument,
       marketOpen: true,
     });
-    expect(envelope.support.trading?.watchlistSections.length).toBeGreaterThan(0);
-    expect(envelope.support.trading?.watchlist.every((entry) => entry.chart?.candles.length)).toBe(
-      true,
-    );
+    expect(sections.length).toBeGreaterThan(0);
+    expect(watchlist.every((entry) => entry.chart?.candles.length)).toBe(true);
     expect(
-      envelope.support.trading?.watchlist.every(
-        (entry) => entry.workspace.instrument === entry.instrument,
-      ),
+      watchlist.every((entry) => entry.workspace.instrument === entry.instrument),
     ).toBe(true);
   });
 
@@ -1078,25 +1065,9 @@ describe("trading light scanner", () => {
       label: "Live-only",
     });
 
-    const envelope = composeDecisionEnvelope({
-      mode: "trading",
-      asOf: "2026-03-10T14:00:00.000Z",
-      branch: "success",
-      branchReason: null,
-      nextBestAction: null,
-      whyNow: null,
-      operationalAction: null,
-      decisionGovernance: null,
-      actionGate: null,
-      riskPolicyEval: null,
-      capitalStatus: null,
-      decisionScores: null,
-      diagnostics: null,
-      engineV4: null,
-      tradingWatchlistInputs: inputs,
-    });
+    const watchlist = composeTradingWatchlist(inputs);
 
-    expect(envelope.support.trading?.marketCoverageSummary).toEqual({
+    expect(summarizeTradingWatchlistCoverage(watchlist)).toEqual({
       coverageBackedCount: 8,
       stagedOnlyCount: 5,
       liveOnlyCount: 6,

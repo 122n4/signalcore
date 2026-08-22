@@ -15,12 +15,8 @@ const isProtectedRoute = createRouteMatcher([
   "/app(.*)",
 
   // Private APIs
-  "/api/user-settings(.*)",
-  "/api/portfolio-items(.*)",
   "/api/daily-bundle(.*)",
-  "/api/daily-snapshot(.*)",
   "/api/journal(.*)", // cobre /api/journal/log
-  "/api/setup(.*)",
 
   // Market data (private)
   "/api/market(.*)",

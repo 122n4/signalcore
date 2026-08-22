@@ -2,13 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeMode, type AutopilotMode } from "@/lib/signalcore/modes";
 import { loadBrokerConnection, saveBrokerConnection } from "@/lib/broker/store";
 import { hasConnectionEvidence, normalizeBrokerConnection, type BrokerConnection } from "@/lib/broker/shared";
-import { reconcileWithPortfolio, resolveActiveModeForUser, syncBrokerToPortfolio } from "@/lib/broker/sync";
 import { createExecutionId, writeEngineEvent } from "@/lib/engine/events";
-import {
-  INVESTING_SHARED_BROKER_SYNC_BLOCKED,
-  isInvestingSharedBrokerBlocked,
-  resolveEffectiveSharedBrokerMode,
-} from "@/lib/broker/investingBoundary";
 
 type EngineTarget = {
   userId: string;
@@ -43,17 +37,9 @@ export type EngineLoopResult = {
     reason?: string;
     sync?: {
       positions: number;
-      inserted: number;
-      updated: number;
-      deleted: number;
       totalEur: number;
       source: string;
       asOf: string;
-    };
-    reconcile?: {
-      score: number;
-      status: string;
-      mismatchCount: number;
     };
   }>;
 };
@@ -106,35 +92,6 @@ function normalizeLimit(limit: unknown) {
   return Math.max(1, Math.min(100, Math.round(n || 25)));
 }
 
-async function listTargetsFromUserSettings(args: { limit: number; now: Date; force: boolean }) {
-  const sb = getSupabaseAdmin();
-  const { data, error } = await sb
-    .from("user_settings")
-    .select("user_id,active_mode,broker_connection,updated_at")
-    .limit(args.limit);
-
-  if (error) {
-    if (isMissingSchemaError(String(error.message || ""))) return [] as EngineTarget[];
-    throw new Error(error.message || "user_settings_read_failed");
-  }
-
-  const rows = (data || []) as Array<Record<string, unknown>>;
-  const out: EngineTarget[] = [];
-  for (const row of rows) {
-    const userId = String(row.user_id || "").trim();
-    if (!userId) continue;
-
-    const connRaw = parseMaybeJSON(row.broker_connection);
-    if (!connRaw) continue;
-
-    const conn = normalizeBrokerConnection(connRaw, userId, "user_settings");
-    const mode = normalizeMode(row.active_mode || conn.snapshot?.mode || "investing");
-    const due = isConnectionDue(conn, args.now, args.force);
-    out.push({ userId, mode, connection: conn, due });
-  }
-  return out;
-}
-
 async function listTargetsFromJournal(args: { limit: number; now: Date; force: boolean }) {
   const sb = getSupabaseAdmin();
   const { data, error } = await sb
@@ -162,13 +119,7 @@ async function listTargetsFromJournal(args: { limit: number; now: Date; force: b
     if (!connRaw || typeof connRaw !== "object") continue;
 
     const conn = normalizeBrokerConnection(connRaw, userId, "journal");
-    const journalMode = normalizeMode(row.mode || conn.snapshot?.mode || "investing");
-    const effectiveMode = await resolveEffectiveSharedBrokerMode({
-      userId,
-      requestedMode: journalMode,
-      supabase: sb,
-    });
-    const mode = effectiveMode.mode;
+    const mode = normalizeMode(row.mode || conn.snapshot?.mode || "trading");
     const due = isConnectionDue(conn, args.now, args.force);
     out.push({ userId, mode, connection: conn, due });
     seen.add(userId);
@@ -181,17 +132,7 @@ async function listTargetsFromJournal(args: { limit: number; now: Date; force: b
 async function listTargets(args: { limit: number; now: Date; force: boolean; userId?: string | null; mode?: string | null }) {
   if (args.userId) {
     const userId = String(args.userId).trim();
-    const effectiveMode = await resolveEffectiveSharedBrokerMode({
-      userId,
-      requestedMode: args.mode || null,
-    });
-    let mode = effectiveMode.mode;
-    if (!isInvestingSharedBrokerBlocked(mode)) {
-      mode = await resolveActiveModeForUser(userId, mode);
-    }
-    if (isInvestingSharedBrokerBlocked(mode)) {
-      return [{ userId, mode, connection: null, due: false }] as EngineTarget[];
-    }
+    const mode = normalizeMode(args.mode || "trading");
     const conn = await loadBrokerConnection(userId);
     return [
       {
@@ -202,9 +143,6 @@ async function listTargets(args: { limit: number; now: Date; force: boolean; use
       },
     ] as EngineTarget[];
   }
-
-  const primary = await listTargetsFromUserSettings({ limit: args.limit, now: args.now, force: args.force });
-  if (primary.length > 0) return primary.slice(0, args.limit);
 
   const fallback = await listTargetsFromJournal({ limit: args.limit, now: args.now, force: args.force });
   return fallback.slice(0, args.limit);
@@ -253,17 +191,6 @@ export async function runEngineLoop(options?: EngineLoopOptions): Promise<Engine
   let skipped = 0;
 
   for (const t of targets) {
-    if (isInvestingSharedBrokerBlocked(t.mode)) {
-      skipped += 1;
-      rows.push({
-        userId: t.userId,
-        mode: t.mode,
-        status: "skipped",
-        reason: INVESTING_SHARED_BROKER_SYNC_BLOCKED,
-      });
-      continue;
-    }
-
     if (!t.connection) {
       skipped += 1;
       rows.push({
@@ -342,49 +269,43 @@ export async function runEngineLoop(options?: EngineLoopOptions): Promise<Engine
         },
       });
 
-      const out = await syncBrokerToPortfolio({
-        userId: t.userId,
+      const snapshot = t.connection.snapshot ?? {
         mode: t.mode,
-        connection: t.connection,
-      });
+        source: "broker_connection",
+        asOf: new Date().toISOString(),
+        positions: [],
+        cashEur: 0,
+        totalEur: 0,
+      };
 
       const syncedConn = normalizeBrokerConnection(
         {
           ...t.connection,
           connected: true,
-          lastSyncAt: out.snapshot.asOf,
+          lastSyncAt: snapshot.asOf,
           lastSyncStatus: "ok",
           lastError: null,
-          snapshot: out.snapshot,
+          snapshot,
           proofCheckedAt: new Date().toISOString(),
         },
         t.userId,
         t.connection.source || "memory"
       );
 
-      const saved = await saveBrokerConnection(t.userId, syncedConn, "engine_loop_sync_ok");
-      const rec = await reconcileWithPortfolio({
-        userId: t.userId,
-        mode: t.mode,
-        snapshot: saved.snapshot,
-      });
+      const saved = await saveBrokerConnection(t.userId, syncedConn, "engine_loop_connection_ok");
 
       await writeLoopJournal({
         userId: t.userId,
         mode: t.mode,
-        title: "Engine loop sync",
+        title: "Engine loop connection check",
         details: {
           ok: true,
           sync: {
-            inserted: out.changes.inserted,
-            updated: out.changes.updated,
-            deleted: out.changes.deleted,
-            positions: out.snapshot.positions.length,
-            totalEur: out.snapshot.totalEur,
-            source: out.snapshot.source,
-            asOf: out.snapshot.asOf,
+            positions: saved.snapshot.positions.length,
+            totalEur: saved.snapshot.totalEur,
+            source: saved.snapshot.source,
+            asOf: saved.snapshot.asOf,
           },
-          reconcile: rec,
         },
       });
       await writeEngineEvent({
@@ -395,11 +316,8 @@ export async function runEngineLoop(options?: EngineLoopOptions): Promise<Engine
         source: "engine.loop",
         executionId,
         details: {
-          positions: out.snapshot.positions.length,
-          inserted: out.changes.inserted,
-          updated: out.changes.updated,
-          deleted: out.changes.deleted,
-          totalEur: out.snapshot.totalEur,
+          positions: saved.snapshot.positions.length,
+          totalEur: saved.snapshot.totalEur,
           duration_ms: Date.now() - targetStartedAtMs,
         },
       });
@@ -411,13 +329,8 @@ export async function runEngineLoop(options?: EngineLoopOptions): Promise<Engine
         source: "engine.loop",
         executionId,
         details: {
-          positions: out.snapshot.positions.length,
-          inserted: out.changes.inserted,
-          updated: out.changes.updated,
-          deleted: out.changes.deleted,
-          totalEur: out.snapshot.totalEur,
-          reconcileScore: rec?.ok ? Math.round(Number(rec.score || 0)) : null,
-          reconcileMismatchCount: rec?.ok ? Number(rec.mismatchCount || 0) : null,
+          positions: saved.snapshot.positions.length,
+          totalEur: saved.snapshot.totalEur,
           duration_ms: Date.now() - targetStartedAtMs,
         },
       });
@@ -428,22 +341,11 @@ export async function runEngineLoop(options?: EngineLoopOptions): Promise<Engine
         mode: t.mode,
         status: "synced",
         sync: {
-          positions: out.snapshot.positions.length,
-          inserted: out.changes.inserted,
-          updated: out.changes.updated,
-          deleted: out.changes.deleted,
-          totalEur: out.snapshot.totalEur,
-          source: out.snapshot.source,
-          asOf: out.snapshot.asOf,
+          positions: saved.snapshot.positions.length,
+          totalEur: saved.snapshot.totalEur,
+          source: saved.snapshot.source,
+          asOf: saved.snapshot.asOf,
         },
-        reconcile:
-          rec && rec.ok
-            ? {
-                score: Math.round(Number(rec.score || 0)),
-                status: String(rec.status || "unknown"),
-                mismatchCount: Number(rec.mismatchCount || 0),
-              }
-            : undefined,
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : "engine_loop_sync_failed";

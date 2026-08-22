@@ -55,7 +55,7 @@ export type BrokerConnection = {
   proofValid: boolean;
   proofCheckedAt: string | null;
   snapshot: BrokerSnapshot | null;
-  source: "user_settings" | "journal" | "memory" | "none";
+  source: "journal" | "memory" | "none";
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -231,8 +231,6 @@ function normalizeSnapshot(raw: any): BrokerSnapshot | null {
   const positionsRaw =
     Array.isArray((raw as any).positions)
       ? (raw as any).positions
-      : Array.isArray((raw as any).holdings)
-      ? (raw as any).holdings
       : [];
 
   const positions: BrokerPosition[] = positionsRaw

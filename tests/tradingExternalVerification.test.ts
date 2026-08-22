@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  extractInvestingPriceFromHtml,
   extractTradingViewPriceFromHtml,
   resolveTradingExternalVerificationSummary,
   verifyTradingInstrumentExternally,
@@ -46,14 +45,6 @@ describe("trading external verification", () => {
     vi.restoreAllMocks();
   });
 
-  it("extracts Investing.com price from public html", () => {
-    expect(
-      extractInvestingPriceFromHtml(
-        '<div data-test="instrument-price-last">1.1592</div><span>rest</span>',
-      ),
-    ).toBe(1.1592);
-  });
-
   it("extracts TradingView price from public html", () => {
     expect(
       extractTradingViewPriceFromHtml(
@@ -74,7 +65,7 @@ describe("trading external verification", () => {
         matchesInternal: true,
       },
       {
-        source: "Investing.com",
+        source: "Public chart",
         kind: "site",
         price: 1.162,
         fetchedAt: "2026-03-25T10:00:00.000Z",
@@ -133,13 +124,6 @@ describe("trading external verification", () => {
       .mockImplementation(async (input: string | URL | Request) => {
         const url = String(input);
 
-        if (url.includes("investing.com")) {
-          return new Response(
-            '<div data-test="instrument-price-last">1.1597</div>',
-            { status: 200 },
-          );
-        }
-
         if (url.includes("tradingview.com")) {
           return new Response('{"trade":{"price":1.1599}}', { status: 200 });
         }
@@ -152,7 +136,6 @@ describe("trading external verification", () => {
     expect(result.status).toBe("confirmed");
     expect(result.instrument).toBe("EURUSD");
     expect(result.internalPrice).toBe(1.1597);
-    expect(result.checks.some((check) => check.source === "Investing.com")).toBe(true);
     expect(result.checks.some((check) => check.source === "TradingView")).toBe(true);
     expect(result.checks.some((check) => check.matchesInternal === true)).toBe(true);
 

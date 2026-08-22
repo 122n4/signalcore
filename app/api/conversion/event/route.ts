@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const result = await logConversionEvent({
       userId,
       event,
-      mode: body?.mode || "investing",
+      mode: body?.mode || "trading",
       source: body?.source || "client",
       details: body?.details || {},
     });

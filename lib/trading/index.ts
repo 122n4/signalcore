@@ -1,5 +1,5 @@
 // Trading engine root. This namespace hosts the rebuilt trading runtime,
-// fully isolated from the investing brain.
+// fully isolated trading core.
 
 export * from "./data";
 export * from "./market";

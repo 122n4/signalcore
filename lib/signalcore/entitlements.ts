@@ -2,26 +2,11 @@ import type { AutopilotMode } from "@/lib/signalcore/modes";
 
 export type AccessTier = "free" | "trial" | "pro";
 
-export type EntitledViewKey =
-  | "daily"
-  | "planning"
-  | "advisor"
-  | "research"
-  | "reports"
-  | "settings"
-  | "portfolio"
-  | "autonomy"
-  | "trading"
-  | "opportunities"
-  | "execution"
-  | "risk"
-  | "journal"
-  | "alerts";
+export type EntitledViewKey = "trading" | "journal" | "alerts";
 
 export type AccessEntitlements = {
   tier: AccessTier;
   allowedModes: AutopilotMode[];
-  investingViews: EntitledViewKey[];
   tradingViews: EntitledViewKey[];
   lockedTradingViews: EntitledViewKey[];
   trading: {
@@ -36,16 +21,14 @@ export type AccessEntitlements = {
   };
 };
 
-const INVESTING_VIEWS: EntitledViewKey[] = ["daily", "portfolio", "planning", "research", "reports", "autonomy", "settings"];
-const FULL_TRADING_VIEWS: EntitledViewKey[] = ["trading", "opportunities", "execution", "risk", "journal", "alerts"];
-const DISCOVERY_TRADING_VIEWS: EntitledViewKey[] = ["trading", "opportunities"];
-const LOCKED_DISCOVERY_TRADING_VIEWS: EntitledViewKey[] = ["execution", "risk", "journal", "alerts"];
+const FULL_TRADING_VIEWS: EntitledViewKey[] = ["trading", "journal", "alerts"];
+const DISCOVERY_TRADING_VIEWS: EntitledViewKey[] = ["trading"];
+const LOCKED_DISCOVERY_TRADING_VIEWS: EntitledViewKey[] = ["journal", "alerts"];
 
 const ENTITLEMENTS_BY_TIER: Record<AccessTier, AccessEntitlements> = {
   free: {
     tier: "free",
-    allowedModes: ["investing", "trading"],
-    investingViews: INVESTING_VIEWS,
+    allowedModes: ["trading"],
     tradingViews: DISCOVERY_TRADING_VIEWS,
     lockedTradingViews: LOCKED_DISCOVERY_TRADING_VIEWS,
     trading: {
@@ -61,8 +44,7 @@ const ENTITLEMENTS_BY_TIER: Record<AccessTier, AccessEntitlements> = {
   },
   trial: {
     tier: "trial",
-    allowedModes: ["investing", "trading"],
-    investingViews: INVESTING_VIEWS,
+    allowedModes: ["trading"],
     tradingViews: FULL_TRADING_VIEWS,
     lockedTradingViews: [],
     trading: {
@@ -78,8 +60,7 @@ const ENTITLEMENTS_BY_TIER: Record<AccessTier, AccessEntitlements> = {
   },
   pro: {
     tier: "pro",
-    allowedModes: ["investing", "trading"],
-    investingViews: INVESTING_VIEWS,
+    allowedModes: ["trading"],
     tradingViews: FULL_TRADING_VIEWS,
     lockedTradingViews: [],
     trading: {
@@ -132,7 +113,7 @@ export function canAccessView(args: {
   view: EntitledViewKey;
 }): boolean {
   const entitlements = getEntitlementsForTier(args.tier);
-  const allowedViews = args.mode === "trading" ? entitlements.tradingViews : entitlements.investingViews;
+  const allowedViews = entitlements.tradingViews;
   return allowedViews.includes(args.view);
 }
 
@@ -141,6 +122,7 @@ export function getLockedViewsForMode(args: {
   mode: AutopilotMode;
 }): EntitledViewKey[] {
   const entitlements = getEntitlementsForTier(args.tier);
-  return args.mode === "trading" ? entitlements.lockedTradingViews : [];
+  void args.mode;
+  return entitlements.lockedTradingViews;
 }
 

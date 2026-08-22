@@ -10,7 +10,6 @@ import PremiumAsyncStateCard, {
 import TradingLiveDecisionSimpleChart from "@/components/daily/TradingLiveDecisionSimpleChart";
 import TradingDiscoveryValueRail from "@/components/trading/TradingDiscoveryValueRail";
 import TradingNotificationPreviewRail from "@/components/trading/TradingNotificationPreviewRail";
-import type { DecisionEnvelope } from "@/lib/decision/types";
 import { useDailyBundle } from "@/lib/signalcore/useDailyBundle";
 import {
   assessTradingLiveSnapshot,
@@ -1880,8 +1879,7 @@ export default function TradingTab({
   const { status, error, daily, refresh, isRefreshing, lastUpdatedAt } =
     useDailyBundle(activeMode);
   const tradingSupport = useMemo(() => {
-    const envelope = daily?.decisionEnvelope as DecisionEnvelope | undefined;
-    return envelope?.support?.trading ?? null;
+    return (daily as any)?.support?.trading ?? (daily as any)?.trading ?? null;
   }, [daily]);
   const tradingAccess = useMemo(() => {
     return daily?.tradingAccess ?? null;

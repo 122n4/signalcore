@@ -18,7 +18,7 @@ export function useAccess() {
   const [billingPaid, setBillingPaid] = useState(false);
   const [trial, setTrial] = useState<AccessTrialState>(EMPTY_ACCESS_TRIAL);
   const [tier, setTier] = useState<AccessTier>("free");
-  const [storedMode, setStoredMode] = useState<AutopilotMode>("investing");
+  const [storedMode, setStoredMode] = useState<AutopilotMode>("trading");
 
   useEffect(() => {
     let alive = true;
@@ -39,7 +39,7 @@ export function useAccess() {
         setBillingPaid(false);
         setTrial(EMPTY_ACCESS_TRIAL);
         setTier("free");
-        setStoredMode("investing");
+        setStoredMode("trading");
       } finally {
         if (!alive) return;
         setLoadingAccess(false);

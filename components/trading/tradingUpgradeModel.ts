@@ -39,7 +39,7 @@ const MODELS: Record<TradingUpgradeSurface, TradingUpgradeModel> = {
       "Proof trail across setup, checklist, and aftermath",
     ],
     modalTitle: "Unlock execution when the setup becomes real",
-    modalSubtitle: "Investing stays free forever. Trading discovery stays open. Pro starts where disciplined execution protects the broker click.",
+    modalSubtitle: "Trading discovery stays open. Pro starts where disciplined execution protects the broker click.",
   },
   risk: {
     surface: "risk",

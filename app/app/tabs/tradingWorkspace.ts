@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 
-import type { DecisionEnvelope } from "@/lib/decision/types";
 import { useDailyBundle } from "@/lib/signalcore/useDailyBundle";
 import { assessTradingLiveSnapshot } from "@/lib/trading/liveSnapshotDiscipline";
 import { deriveTradingNotificationEvents } from "@/lib/trading/notifications";
@@ -196,13 +195,9 @@ export function useTradingWorkspace(modeInput = "trading") {
     hasCachedBundle,
   } = useDailyBundle(modeInput);
 
-  const envelope = useMemo(() => {
-    return (daily?.decisionEnvelope as DecisionEnvelope | undefined) ?? null;
-  }, [daily]);
-
   const trading = useMemo(() => {
-    return envelope?.support?.trading ?? null;
-  }, [envelope]);
+    return (daily as any)?.support?.trading ?? (daily as any)?.trading ?? null;
+  }, [daily]);
   const tradingAccess = useMemo(() => {
     return daily?.tradingAccess ?? null;
   }, [daily]);
@@ -273,7 +268,6 @@ export function useTradingWorkspace(modeInput = "trading") {
     lastUpdatedAt: tradingSnapshotAt ?? lastUpdatedAt,
     hasCachedBundle,
     tradingAccess,
-    envelope,
     trading,
     sections,
     entries,

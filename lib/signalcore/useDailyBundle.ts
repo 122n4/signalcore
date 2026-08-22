@@ -98,8 +98,6 @@ function normalizeDailyBundle(mode: AutopilotMode, data: DailyBundleResponse): R
     ok: data?.ok !== false,
     mode: normalizeMode(data?.mode ?? mode),
     asOf: normalizedAsOf,
-    plan: (data as any)?.plan ?? null,
-    portfolio: (data as any)?.portfolio ?? null,
     daily: (data as any)?.daily ?? null,
     derived: (data as any)?.derived ?? null,
   };
@@ -111,10 +109,7 @@ export function isUsableDailyBundleResponse(data: DailyBundleResponse | null | u
   if (data.degraded !== true) return false;
 
   return Boolean(
-    (data as any).daily ||
-      (data as any).derived ||
-      (data as any).plan ||
-      (data as any).portfolio,
+    (data as any).daily || (data as any).derived,
   );
 }
 
@@ -221,8 +216,6 @@ export function useDailyBundle(modeInput?: unknown) {
 
   const bundle = snapshot.bundle;
   const derived = useMemo(() => bundle?.derived ?? null, [bundle]);
-  const portfolio = useMemo(() => bundle?.portfolio ?? null, [bundle]);
-  const plan = useMemo(() => bundle?.plan ?? null, [bundle]);
   const daily = useMemo(() => (bundle as any)?.daily ?? null, [bundle]);
 
   return {
@@ -231,8 +224,6 @@ export function useDailyBundle(modeInput?: unknown) {
     error: snapshot.error,
     bundle,
     derived,
-    portfolio,
-    plan,
     daily,
     refresh,
     isRefreshing: snapshot.isRefreshing,

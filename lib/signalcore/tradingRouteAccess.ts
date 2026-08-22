@@ -10,6 +10,7 @@ import type { AutopilotMode } from "@/lib/signalcore/modes";
 import { resolveModeAccess } from "@/lib/signalcore/modeAccess";
 
 export type TradingCapability = "execution" | "risk" | "journal" | "alerts";
+type EntitlementSurface = "trading" | "journal" | "alerts";
 
 type TradingRouteAccessDenied = {
   ok: false;
@@ -35,6 +36,33 @@ type TradingRouteAccessAllowed = {
 
 export type TradingRouteAccessResult = TradingRouteAccessDenied | TradingRouteAccessAllowed;
 
+function entitlementSurfaceForCapability(capability: TradingCapability): EntitlementSurface {
+  if (capability === "journal" || capability === "alerts") {
+    return capability;
+  }
+
+  return "trading";
+}
+
+function entitlementFlagForCapability(args: {
+  entitlements: AccessEntitlements;
+  capability: TradingCapability;
+}): boolean {
+  if (args.capability === "journal") {
+    return args.entitlements.trading.journalEnabled;
+  }
+
+  if (args.capability === "alerts") {
+    return args.entitlements.trading.alertsEnabled;
+  }
+
+  if (args.capability === "risk") {
+    return args.entitlements.trading.riskEnabled;
+  }
+
+  return args.entitlements.trading.executionEnabled;
+}
+
 export function evaluateTradingCapabilityAccess(args: {
   mode: AutopilotMode;
   tier: AccessTier;
@@ -48,7 +76,10 @@ export function evaluateTradingCapabilityAccess(args: {
   const allowed = canAccessView({
     tier: args.tier,
     mode: "trading",
-    view: args.capability,
+    view: entitlementSurfaceForCapability(args.capability),
+  }) && entitlementFlagForCapability({
+    entitlements: args.entitlements,
+    capability: args.capability,
   });
 
   if (allowed) {

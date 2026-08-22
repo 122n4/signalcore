@@ -1,8 +1,8 @@
-// lib/signalcore/modes.ts
-export type AutopilotMode = "Investing";
+// lib/signalcore/normalize.ts
+export type AutopilotMode = "Trading";
 
 export function normMode(x: any): AutopilotMode {
   const s = String(x ?? "").trim();
   void s;
-  return "Investing";
+  return "Trading";
 }
