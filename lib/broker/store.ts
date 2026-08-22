@@ -58,42 +58,8 @@ function getSbOrNull() {
   }
 }
 
-async function readFromUserSettings(sb: any, userId: string) {
-  try {
-    const { data, error } = await sb.from("user_settings").select("*").eq("user_id", userId).maybeSingle();
-    if (error) throw error;
-    if (!data) return null;
-
-    const payload = parseMaybeJSON((data as any).broker_connection);
-    if (!payload) return null;
-
-    return normalizeBrokerConnection(payload, userId, "user_settings");
-  } catch (e: any) {
-    const msg = String(e?.message || "");
-    if (isMissingSchemaError(msg)) return null;
-    throw e;
-  }
-}
-
-async function writeToUserSettings(sb: any, userId: string, conn: BrokerConnection) {
-  const row = {
-    user_id: userId,
-    broker_connection: conn,
-    updated_at: new Date().toISOString(),
-  } as any;
-
-  try {
-    const { error } = await sb.from("user_settings").upsert(row, { onConflict: "user_id" });
-    if (error) throw error;
-    return true;
-  } catch (e: any) {
-    if (isMissingSchemaError(String(e?.message || ""))) return false;
-    throw e;
-  }
-}
-
 async function writeToJournal(sb: any, userId: string, conn: BrokerConnection, event: string) {
-  const mode = normalizeModeValue(conn.snapshot?.mode || "investing");
+  const mode = normalizeModeValue(conn.snapshot?.mode || "trading");
   const row = {
     user_id: userId,
     mode,
@@ -110,37 +76,13 @@ async function writeToJournal(sb: any, userId: string, conn: BrokerConnection, e
   if (error) throw new Error(error.message || "journal_write_failed");
 }
 
-async function tryPersistSetupMode(sb: any, userId: string, setupMode: "offline" | "broker") {
-  try {
-    const row = {
-      user_id: userId,
-      setup_mode: setupMode,
-      setup_status: "complete",
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = await sb.from("user_settings").upsert(row as any, { onConflict: "user_id" });
-    if (error && !isMissingSchemaError(error.message || "")) throw error;
-  } catch {
-    // non-blocking
-  }
-}
-
 export async function loadBrokerConnection(userId: string): Promise<BrokerConnection> {
-  const sb = getSbOrNull();
-  if (sb) {
-    const fromSettings = await readFromUserSettings(sb, userId);
-    if (fromSettings) {
-      writeMemory(userId, fromSettings);
-      return fromSettings;
-    }
-  }
+  const fromMemory = readMemory(userId);
+  if (fromMemory) return fromMemory;
 
   if (!canUseMemoryFallback()) {
     throw new Error("broker_persistence_unavailable");
   }
-
-  const fromMemory = readMemory(userId);
-  if (fromMemory) return fromMemory;
 
   return buildDisconnectedConnection(userId, "none");
 }
@@ -157,14 +99,7 @@ export async function saveBrokerConnection(userId: string, next: BrokerConnectio
     return normalized;
   }
 
-  let persistedToSettings = false;
   let journalLogged = false;
-  try {
-    persistedToSettings = await writeToUserSettings(sb, userId, normalized);
-  } catch {
-    // fall through to audit log and memory fallback
-  }
-
   try {
     await writeToJournal(sb, userId, normalized, event);
     journalLogged = true;
@@ -172,22 +107,10 @@ export async function saveBrokerConnection(userId: string, next: BrokerConnectio
     // non-blocking
   }
 
-  try {
-    await tryPersistSetupMode(sb, userId, normalized.connected ? "broker" : "offline");
-  } catch {
-    // non-blocking
-  }
-
-  // journal_entries is audit trail only, not a canonical connection store.
-  if (!persistedToSettings && !canUseMemoryFallback()) {
-    throw new Error("broker_persistence_failed");
-  }
-
-  if (persistedToSettings) return normalizeBrokerConnection(normalized as any, userId, "user_settings");
   if (!journalLogged && !canUseMemoryFallback()) {
     throw new Error("broker_persistence_failed");
   }
-  return normalizeBrokerConnection(normalized as any, userId, "memory");
+  return normalizeBrokerConnection(normalized as any, userId, journalLogged ? "journal" : "memory");
 }
 
 export async function patchBrokerConnection(userId: string, patch: Partial<BrokerConnection>, event = "update") {

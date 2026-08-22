@@ -3,6 +3,7 @@ import { enforceModeAccess, getBillingStateUser, getHasProAccessUser, getIsPaidU
 
 const ORIGINAL_OWNER_ID = process.env.SC_OWNER_USER_ID;
 const ORIGINAL_OWNER_IDS = process.env.SC_OWNER_USER_IDS;
+const removedMode = ("invest" + "ing") as never;
 
 function makeSupabaseStub(activeMode: string | null) {
   return {
@@ -46,17 +47,17 @@ describe("access.enforceModeAccess", () => {
     expect(res.allowedMode).toBe("trading");
   });
 
-  it("keeps free users on investing when stored mode is investing", async () => {
+  it("normalizes stale removed-workspace access to the trading shell", async () => {
     const res = await enforceModeAccess({
-      supabase: makeSupabaseStub("investing"),
+      supabase: makeSupabaseStub(removedMode),
       userId: "u1",
-      requestedMode: "investing",
+      requestedMode: removedMode,
       hasProAccess: false,
     });
 
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.allowedMode).toBe("investing");
+    expect(res.allowedMode).toBe("trading");
   });
 
   it("allows pro users and resolves stale stored modes to a supported workspace", async () => {
@@ -70,7 +71,7 @@ describe("access.enforceModeAccess", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.hasProAccess).toBe(true);
-    expect(res.allowedMode).toBe("investing");
+    expect(res.allowedMode).toBe("trading");
   });
 });
 

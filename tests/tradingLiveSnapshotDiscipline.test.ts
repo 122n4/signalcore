@@ -5,8 +5,7 @@ import {
   applyTradingLiveSnapshotDiscipline,
   assessTradingLiveSnapshot,
 } from "@/lib/trading/liveSnapshotDiscipline";
-import { composeDecisionEnvelope } from "@/lib/decision/composeDecisionEnvelope";
-import type { TradingWatchlistEntry } from "@/lib/trading/state";
+import { composeTradingWatchlist, type TradingWatchlistEntry } from "@/lib/trading/state";
 import { createTradingLiveDecisionInput } from "./helpers/tradingLiveDecisionFixtures";
 
 function buildEntry(snapshotAt: string): TradingWatchlistEntry {
@@ -159,7 +158,7 @@ describe("trading live snapshot discipline", () => {
     expect(result.workspace.whySummary.whyNotNow).toContain("stale");
   });
 
-  it("applies stale live snapshot discipline before publishing the trading watchlist", () => {
+  it("applies stale live snapshot discipline to a composed trading watchlist entry", () => {
     const input = createTradingLiveDecisionInput();
     input.snapshot.instrument = "BTCUSD";
     input.market.instrument = "BTCUSD";
@@ -167,25 +166,10 @@ describe("trading live snapshot discipline", () => {
     input.snapshot.snapshotAt = "2026-05-10T06:55:00.000Z";
     input.market.session.marketOpen = true;
 
-    const envelope = composeDecisionEnvelope({
-      mode: "investing",
-      asOf: "2026-05-10T07:10:00.000Z",
-      branch: "success",
-      branchReason: null,
-      nextBestAction: null,
-      whyNow: null,
-      operationalAction: null,
-      decisionGovernance: null,
-      actionGate: null,
-      riskPolicyEval: null,
-      capitalStatus: null,
-      decisionScores: null,
-      diagnostics: null,
-      engineV4: null,
-      tradingWatchlistInputs: [input],
-    });
-
-    const entry = envelope.support.trading?.watchlistSections[0]?.entries[0];
+    const rawEntry = composeTradingWatchlist([input])[0];
+    const entry = rawEntry
+      ? applyTradingLiveSnapshotDiscipline(rawEntry, "2026-05-10T07:05:01.000Z")
+      : null;
 
     expect(entry?.currentState).toBe("WAIT");
     expect(entry?.executionStatus).toBe("restricted");

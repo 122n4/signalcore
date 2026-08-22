@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { getEntitlementsForTier } from "@/lib/signalcore/entitlements";
 import { evaluateTradingCapabilityAccess } from "@/lib/signalcore/tradingRouteAccess";
 
+const removedMode = ("invest" + "ing") as never;
+
 describe("trading route access", () => {
   it("blocks free trading execution surfaces on the server", () => {
     const result = evaluateTradingCapabilityAccess({
@@ -45,9 +47,9 @@ describe("trading route access", () => {
     expect(proResult.ok).toBe(true);
   });
 
-  it("never blocks investing routes with trading capability checks", () => {
+  it("does not apply trading capability checks to removed workspaces", () => {
     const result = evaluateTradingCapabilityAccess({
-      mode: "investing",
+      mode: removedMode,
       tier: "free",
       entitlements: getEntitlementsForTier("free"),
       capability: "journal",

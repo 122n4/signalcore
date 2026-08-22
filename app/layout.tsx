@@ -24,16 +24,16 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://www.syntrake.com"),
   manifest: IS_PROD ? "/manifest.webmanifest" : undefined,
   title: {
-    default: "Syntrake | Goal-Based Investing With Institutional Discipline",
+    default: "Syntrake | Trading Discipline",
     template: "%s | Syntrake",
   },
   description:
-    "Syntrake helps you turn goals into an actionable investment process with risk guardrails, explainable decisions, and calm execution.",
+    "Syntrake helps you read market flow, frame risk, and execute with discipline.",
   openGraph: {
     type: "website",
-    title: "Syntrake | Goal-Based Investing With Institutional Discipline",
+    title: "Syntrake | Trading Discipline",
     description:
-      "Build a goal-based plan, monitor risk like an institution, and execute one clear next step at a time.",
+      "Read market flow, frame risk, and execute one clear next step at a time.",
     siteName: "Syntrake",
     locale: "en_US",
   },
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Syntrake",
     description:
-      "Goal-based investing with institutional discipline, explainable actions, and risk-aware execution.",
+      "Trading discipline, market research, and risk-aware execution.",
   },
   appleWebApp: IS_PROD
     ? {

@@ -31,35 +31,13 @@
   },
   "include": [
     "next-env.d.ts",
-    ".next/types/**/*.ts",
     "**/*.mts",
     "**/*.ts",
-    "**/*.tsx",
-    ".next/dev/types/**/*.ts"
+    "**/*.tsx"
   ],
   "exclude": [
     "node_modules",
-    "artifacts/site-backups",
-    "app/app/tabs/AlertsTab.tsx",
-    "app/app/tabs/ExecutionTab.tsx",
-    "app/app/tabs/JournalTab.tsx",
-    "app/app/tabs/RiskTab.tsx",
-    "app/app/tabs/OpportunitiesTab.tsx",
-    "components/advisor/**",
-    "components/alerts/**",
-    "components/copilot/**",
-    "components/execution/**",
-    "components/journal/**",
-    "components/opportunities/**",
-    "components/planning/**",
-    "components/risk/**",
-    "lib/opportunities/supabaseRepo.ts",
-    "lib/signalcore/client.ts",
-    "lib/signalcore/dailyBundle.brain.ts",
-    "lib/signalcore/dailyBundle.ts",
-    "lib/signalcore/index.ts",
-    "lib/signalcore/server.ts",
-    "lib/signalcore/starterPortfolio.ts",
-    "lib/signalcore/useDailyBundle.ts"
+    ".next",
+    "artifacts/site-backups"
   ]
 }

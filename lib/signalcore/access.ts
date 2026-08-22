@@ -113,19 +113,8 @@ export async function getAllowedModeFromSettings(params: {
   supabase: any;
   userId: string;
 }): Promise<AutopilotMode> {
-  const { supabase, userId } = params;
-  try {
-    const res = await supabase
-      .from("user_settings")
-      .select("active_mode")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    const m = res?.data?.active_mode;
-    return normalizeMode(m || "investing") as AutopilotMode;
-  } catch {
-    return "investing";
-  }
+  void params;
+  return "trading";
 }
 
 export async function enforceModeAccess(params: {

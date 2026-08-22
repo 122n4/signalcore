@@ -33,7 +33,7 @@ export async function logConversionEvent(input: ConversionEventInput) {
     const event = cleanEvent(input.event);
     if (!userId || !event) return { ok: false as const, reason: "invalid_input" as const };
 
-    const mode = normalizeMode(input.mode || "investing") as AutopilotMode;
+    const mode = normalizeMode(input.mode || "trading") as AutopilotMode;
     const source = cleanSource(input.source);
     const details = safeDetails(input.details);
 

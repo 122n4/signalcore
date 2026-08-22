@@ -1,23 +1,12 @@
-const INVESTING_TAB_VALUES = ["daily", "planning", "advisor", "portfolio", "autonomy"] as const;
-const TRADING_TAB_VALUES = ["trading", "opportunities", "execution", "risk", "journal", "alerts"] as const;
-const ALLOWED_TAB_VALUES: ReadonlySet<string> = new Set([...INVESTING_TAB_VALUES, ...TRADING_TAB_VALUES]);
-const ALLOWED_MODE_VALUES: ReadonlySet<string> = new Set(["investing", "trading"]);
+const TRADING_TAB_VALUES = ["trading", "journal", "alerts"] as const;
+const ALLOWED_TAB_VALUES: ReadonlySet<string> = new Set(TRADING_TAB_VALUES);
+const ALLOWED_MODE_VALUES: ReadonlySet<string> = new Set(["trading"]);
 const APP_QUERY_ALLOWLIST = new Set([
   "tab",
   "mode",
   "fresh",
   "source",
-  "addHoldingsNow",
-  "starterReady",
-  "fromSetup",
-  "brokerSetup",
-  "welcomeSetup",
-  "offlineSetup",
-  "fixNow",
-  "fixKey",
-  "fixFrom",
   "manual",
-  "completeProfile",
 ]);
 const FULL_SCREEN_QUERY_ALLOWLIST = new Set(["source", "mode"]);
 const DEFAULT_ALLOWED_FULL_SCREEN_ROUTES = new Set(["/pricing"]);
@@ -45,7 +34,8 @@ function normalizeTab(value: unknown) {
 }
 
 function homeTabForMode(mode: string | null) {
-  return mode === "trading" ? "trading" : "daily";
+  void mode;
+  return "trading";
 }
 
 function filterParams(params: URLSearchParams, allowlist: Set<string>) {
@@ -59,38 +49,12 @@ function filterParams(params: URLSearchParams, allowlist: Set<string>) {
   return next;
 }
 
-function coerceLegacyAppTab(rawHref: string) {
-  if (!rawHref.startsWith("/apptab=")) return null;
-
-  const body = rawHref.slice("/apptab=".length);
-  const [withoutHash] = body.split("#", 1);
-  const [withoutSearch] = withoutHash.split("?", 1);
-  const parts = withoutSearch.split("&").filter(Boolean);
-  if (!parts.length) return null;
-
-  const params = new URLSearchParams();
-  const tab = normalizeTab(parts[0]);
-  if (!tab) return null;
-  params.set("tab", tab);
-
-  for (const part of parts.slice(1)) {
-    const [key, ...rest] = part.split("=");
-    if (!key) continue;
-    params.set(key, rest.join("="));
-  }
-
-  return new URL(`/app?${params.toString()}`, "https://syntrake.local");
-}
-
 function parseProductUrl(rawHref: string) {
   if (/^https?:\/\//i.test(rawHref)) {
     const parsed = new URL(rawHref);
     if (parsed.origin !== "https://syntrake.local") return null;
     return parsed;
   }
-
-  const legacy = coerceLegacyAppTab(rawHref);
-  if (legacy) return legacy;
 
   if (!rawHref.startsWith("/")) return null;
   return new URL(rawHref, "https://syntrake.local");
@@ -120,24 +84,6 @@ function buildFullScreenHref(pathname: string, params: URLSearchParams, preferre
   return query ? `${pathname}?${query}` : pathname;
 }
 
-function buildOnboardingShellHref(
-  kind: "welcomeSetup" | "offlineSetup",
-  params: URLSearchParams,
-) {
-  const next = new URLSearchParams();
-  next.set("tab", "planning");
-  next.set(kind, "1");
-
-  const filtered = filterParams(params, FULL_SCREEN_QUERY_ALLOWLIST);
-  const mode = "investing";
-  if (mode) next.set("mode", mode);
-
-  const source = toNonEmptyString(filtered.get("source"));
-  if (source) next.set("source", source);
-
-  return `/app?${next.toString()}`;
-}
-
 function buildFallbackHref(
   fallbackUrl: URL | null,
   allowedFullScreenRoutes: Set<string>,
@@ -156,7 +102,7 @@ function buildFallbackHref(
     return buildFullScreenHref(fallbackUrl.pathname, fallbackUrl.searchParams, preferredMode);
   }
 
-  return preferredMode ? `/app?tab=${homeTabForMode(preferredMode)}&mode=${preferredMode}` : "/app?tab=daily";
+  return preferredMode ? `/app?tab=${homeTabForMode(preferredMode)}&mode=${preferredMode}` : "/app?tab=trading";
 }
 
 export function sanitizeProductHref(args: SanitizeProductHrefArgs): string {
@@ -164,7 +110,7 @@ export function sanitizeProductHref(args: SanitizeProductHrefArgs): string {
     ...DEFAULT_ALLOWED_FULL_SCREEN_ROUTES,
     ...(args.allowFullScreenRoutes ?? []),
   ]);
-  const fallbackRaw = toNonEmptyString(args.fallbackHref) || "/app?tab=daily";
+  const fallbackRaw = toNonEmptyString(args.fallbackHref) || "/app?tab=trading";
   const fallbackUrl = parseProductUrl(fallbackRaw);
   const fallbackPreferredMode = normalizeMode(fallbackUrl?.searchParams.get("mode")) ?? normalizeMode(args.mode);
 
@@ -186,14 +132,6 @@ export function sanitizeProductHref(args: SanitizeProductHrefArgs): string {
       preferredMode,
       buildFallbackHref(fallbackUrl, allowedFullScreenRoutes, preferredMode),
     );
-  }
-
-  if (parsed.pathname === "/app/welcome") {
-    return buildOnboardingShellHref("welcomeSetup", parsed.searchParams);
-  }
-
-  if (parsed.pathname === "/app/offline-setup") {
-    return buildOnboardingShellHref("offlineSetup", parsed.searchParams);
   }
 
   if (allowedFullScreenRoutes.has(parsed.pathname)) {

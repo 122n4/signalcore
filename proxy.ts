@@ -13,16 +13,10 @@ import { resolveProtectedRedirectTarget } from "@/lib/navigation/resolveProtecte
 const isProtectedRoute = createRouteMatcher([
   // App pages
   "/app(.*)",
-  "/my-portfolio(.*)",
-  "/portfolio(.*)",
 
   // Private APIs
-  "/api/user-settings(.*)",
-  "/api/portfolio-items(.*)",
   "/api/daily-bundle(.*)",
-  "/api/daily-snapshot(.*)",
   "/api/journal(.*)", // cobre /api/journal/log
-  "/api/setup(.*)",
 
   // Market data (private)
   "/api/market(.*)",

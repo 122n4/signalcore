@@ -18,7 +18,7 @@ describe("signalcore marketData", () => {
     getCandlesMock.mockReset();
   });
 
-  it("routes investing quotes through the normalized market client", async () => {
+  it("routes trading quotes through the normalized market client", async () => {
     getQuoteMock.mockImplementation(async (symbol: string) => ({
       symbol,
       price: symbol === "AAPL" ? 192.4 : 497.2,
@@ -32,7 +32,7 @@ describe("signalcore marketData", () => {
 
     const quotes = await getQuotes({
       symbols: ["AAPL", "MSFT"],
-      mode: "investing",
+      mode: "trading",
       ttlSec: 15,
     });
 
@@ -66,7 +66,7 @@ describe("signalcore marketData", () => {
 
     const quotes = await getQuotes({
       symbols: ["NVDA"],
-      mode: "investing",
+      mode: "trading",
       ttlSec: 15,
     });
 

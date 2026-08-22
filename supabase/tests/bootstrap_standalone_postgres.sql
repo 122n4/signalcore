@@ -32,8 +32,8 @@ $function$;
 grant usage on schema auth, public to anon, authenticated, service_role;
 grant execute on function auth.jwt() to anon, authenticated, service_role;
 
--- Supabase API roles receive baseline object privileges; RLS policies and the
--- explicit Investing revokes in later migrations are the security boundary.
+-- Supabase API roles receive baseline object privileges; RLS policies in
+-- product-specific migrations are the security boundary.
 alter default privileges for role postgres in schema public
   grant all on tables to anon, authenticated, service_role;
 alter default privileges for role postgres in schema public

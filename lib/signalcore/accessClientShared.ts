@@ -53,11 +53,11 @@ async function fetchJSON(url: string) {
 }
 
 export async function loadAccessClientState() {
-  const [me, us] = await Promise.all([fetchJSON("/api/me"), fetchJSON("/api/user-settings")]);
+  const me = await fetchJSON("/api/me");
   const billingActive = Boolean(me.data?.isPaid);
   const hasProAccess = Boolean(me.data?.hasProAccess ?? billingActive);
   const trial = normalizeAccessTrial(me.data?.trial);
-  const storedMode = normalizeMode(us.data?.settings?.active_mode || "investing") as AutopilotMode;
+  const storedMode = normalizeMode("trading") as AutopilotMode;
   const tier = resolveAccessTier({
     billingPaid: billingActive,
     hasProAccess,

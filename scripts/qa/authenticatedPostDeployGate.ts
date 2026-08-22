@@ -76,10 +76,8 @@ function redactedEnv() {
 
 function buildSteps(): GateStep[] {
   const tradingOutputDir = path.resolve("artifacts/qa-authenticated-post-deploy/trading");
-  const investingOutputDir = path.resolve("artifacts/qa-authenticated-post-deploy/investing");
   const billingOutputDir = path.resolve("artifacts/qa-authenticated-post-deploy/billing");
   fs.mkdirSync(tradingOutputDir, { recursive: true });
-  fs.mkdirSync(investingOutputDir, { recursive: true });
   fs.mkdirSync(billingOutputDir, { recursive: true });
 
   const billingArgs = [
@@ -100,13 +98,6 @@ function buildSteps(): GateStep[] {
       args: ["scripts/qa/trading-production-audit.mjs"],
       required: true,
       reportPath: path.join(tradingOutputDir, "report.json"),
-    },
-    {
-      name: "investing_authenticated",
-      command: node,
-      args: ["scripts/qa/investing-production-audit.mjs"],
-      required: true,
-      reportPath: path.join(investingOutputDir, "report.json"),
     },
     {
       name: "billing_entitlements",

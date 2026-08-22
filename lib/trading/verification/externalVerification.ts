@@ -32,28 +32,27 @@ export type TradingExternalVerificationResult = {
 
 type ExternalReferenceConfig = {
   instrument: string;
-  investingUrl?: string;
   tradingViewUrl?: string;
 };
 
 const EXTERNAL_REFERENCE_CONFIGS: ExternalReferenceConfig[] = [
-  { instrument: "EURUSD", investingUrl: "https://www.investing.com/currencies/eur-usd", tradingViewUrl: "https://www.tradingview.com/symbols/EURUSD/" },
-  { instrument: "GBPUSD", investingUrl: "https://www.investing.com/currencies/gbp-usd", tradingViewUrl: "https://www.tradingview.com/symbols/GBPUSD/" },
-  { instrument: "USDJPY", investingUrl: "https://www.investing.com/currencies/usd-jpy", tradingViewUrl: "https://www.tradingview.com/symbols/USDJPY/" },
-  { instrument: "AUDUSD", investingUrl: "https://www.investing.com/currencies/aud-usd", tradingViewUrl: "https://www.tradingview.com/symbols/AUDUSD/" },
-  { instrument: "USDCHF", investingUrl: "https://www.investing.com/currencies/usd-chf", tradingViewUrl: "https://www.tradingview.com/symbols/USDCHF/" },
-  { instrument: "NZDUSD", investingUrl: "https://www.investing.com/currencies/nzd-usd", tradingViewUrl: "https://www.tradingview.com/symbols/NZDUSD/" },
-  { instrument: "AUDJPY", investingUrl: "https://www.investing.com/currencies/aud-jpy", tradingViewUrl: "https://www.tradingview.com/symbols/AUDJPY/" },
-  { instrument: "EURJPY", investingUrl: "https://www.investing.com/currencies/eur-jpy", tradingViewUrl: "https://www.tradingview.com/symbols/EURJPY/" },
-  { instrument: "EURGBP", investingUrl: "https://www.investing.com/currencies/eur-gbp", tradingViewUrl: "https://www.tradingview.com/symbols/EURGBP/" },
-  { instrument: "USDCAD", investingUrl: "https://www.investing.com/currencies/usd-cad", tradingViewUrl: "https://www.tradingview.com/symbols/USDCAD/" },
-  { instrument: "GBPJPY", investingUrl: "https://www.investing.com/currencies/gbp-jpy", tradingViewUrl: "https://www.tradingview.com/symbols/GBPJPY/" },
-  { instrument: "EURCHF", investingUrl: "https://www.investing.com/currencies/eur-chf", tradingViewUrl: "https://www.tradingview.com/symbols/EURCHF/" },
-  { instrument: "NZDJPY", investingUrl: "https://www.investing.com/currencies/nzd-jpy", tradingViewUrl: "https://www.tradingview.com/symbols/NZDJPY/" },
-  { instrument: "XAUUSD", investingUrl: "https://www.investing.com/currencies/xau-usd", tradingViewUrl: "https://www.tradingview.com/symbols/XAUUSD/" },
-  { instrument: "XAGUSD", investingUrl: "https://www.investing.com/currencies/xag-usd", tradingViewUrl: "https://www.tradingview.com/symbols/XAGUSD/" },
-  { instrument: "BTCUSD", investingUrl: "https://www.investing.com/crypto/bitcoin/btc-usd", tradingViewUrl: "https://www.tradingview.com/symbols/BTCUSD/" },
-  { instrument: "ETHUSD", investingUrl: "https://www.investing.com/crypto/ethereum/eth-usd", tradingViewUrl: "https://www.tradingview.com/symbols/ETHUSD/" },
+  { instrument: "EURUSD", tradingViewUrl: "https://www.tradingview.com/symbols/EURUSD/" },
+  { instrument: "GBPUSD", tradingViewUrl: "https://www.tradingview.com/symbols/GBPUSD/" },
+  { instrument: "USDJPY", tradingViewUrl: "https://www.tradingview.com/symbols/USDJPY/" },
+  { instrument: "AUDUSD", tradingViewUrl: "https://www.tradingview.com/symbols/AUDUSD/" },
+  { instrument: "USDCHF", tradingViewUrl: "https://www.tradingview.com/symbols/USDCHF/" },
+  { instrument: "NZDUSD", tradingViewUrl: "https://www.tradingview.com/symbols/NZDUSD/" },
+  { instrument: "AUDJPY", tradingViewUrl: "https://www.tradingview.com/symbols/AUDJPY/" },
+  { instrument: "EURJPY", tradingViewUrl: "https://www.tradingview.com/symbols/EURJPY/" },
+  { instrument: "EURGBP", tradingViewUrl: "https://www.tradingview.com/symbols/EURGBP/" },
+  { instrument: "USDCAD", tradingViewUrl: "https://www.tradingview.com/symbols/USDCAD/" },
+  { instrument: "GBPJPY", tradingViewUrl: "https://www.tradingview.com/symbols/GBPJPY/" },
+  { instrument: "EURCHF", tradingViewUrl: "https://www.tradingview.com/symbols/EURCHF/" },
+  { instrument: "NZDJPY", tradingViewUrl: "https://www.tradingview.com/symbols/NZDJPY/" },
+  { instrument: "XAUUSD", tradingViewUrl: "https://www.tradingview.com/symbols/XAUUSD/" },
+  { instrument: "XAGUSD", tradingViewUrl: "https://www.tradingview.com/symbols/XAGUSD/" },
+  { instrument: "BTCUSD", tradingViewUrl: "https://www.tradingview.com/symbols/BTCUSD/" },
+  { instrument: "ETHUSD", tradingViewUrl: "https://www.tradingview.com/symbols/ETHUSD/" },
   { instrument: "NAS100", tradingViewUrl: "https://www.tradingview.com/symbols/NAS100USD/" },
   { instrument: "US500", tradingViewUrl: "https://www.tradingview.com/symbols/SPX/" },
 ];
@@ -147,19 +146,6 @@ function buildCheck(args: {
   };
 }
 
-export function extractInvestingPriceFromHtml(html: string): number | null {
-  const match = html.match(/data-test="instrument-price-last"[^>]*>([^<]+)</i);
-
-  if (!match?.[1]) {
-    return null;
-  }
-
-  const normalized = match[1].replace(/,/g, "").trim();
-  const price = Number(normalized);
-
-  return Number.isFinite(price) ? price : null;
-}
-
 export function extractTradingViewPriceFromHtml(html: string): number | null {
   const tradePriceMatch = html.match(/"trade"\s*:\s*\{\s*"price"\s*:\s*(\d+(?:\.\d+)?)\s*\}/i);
 
@@ -182,23 +168,6 @@ export function extractTradingViewPriceFromHtml(html: string): number | null {
   }
 
   return null;
-}
-
-async function fetchInvestingPrice(url: string): Promise<number | null> {
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: {
-      "user-agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-      "accept-language": "en-US,en;q=0.9",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Investing fetch failed (${response.status})`);
-  }
-
-  return extractInvestingPriceFromHtml(await response.text());
 }
 
 async function fetchTradingViewPrice(url: string): Promise<number | null> {
@@ -288,9 +257,6 @@ export async function verifyTradingInstrumentExternally(
   const links = [
     referenceConfig.tradingViewUrl
       ? { label: "TradingView", url: referenceConfig.tradingViewUrl }
-      : null,
-    referenceConfig.investingUrl
-      ? { label: "Investing.com", url: referenceConfig.investingUrl }
       : null,
   ].filter((item): item is { label: string; url: string } => Boolean(item));
 
@@ -384,34 +350,6 @@ export async function verifyTradingInstrumentExternally(
           });
         }
       })(),
-      referenceConfig.investingUrl
-        ? (async () => {
-            try {
-              const price = await fetchInvestingPrice(referenceConfig.investingUrl!);
-              return buildCheck({
-                source: "Investing.com",
-                kind: "site",
-                price,
-                fetchedAt: new Date().toISOString(),
-                internalPrice,
-                toleranceBps,
-                note: "Public site price cross-check.",
-                url: referenceConfig.investingUrl,
-              });
-            } catch (error) {
-              return buildCheck({
-                source: "Investing.com",
-                kind: "site",
-                price: null,
-                fetchedAt: null,
-                internalPrice,
-                toleranceBps,
-                note: error instanceof Error ? error.message : "Investing.com unavailable.",
-                url: referenceConfig.investingUrl,
-              });
-            }
-          })()
-        : Promise.resolve<TradingExternalVerificationCheck | null>(null),
       referenceConfig.tradingViewUrl
         ? (async () => {
             try {

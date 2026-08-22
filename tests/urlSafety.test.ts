@@ -20,8 +20,8 @@ describe("urlSafety", () => {
   });
 
   it("accepts same-origin absolute return url", () => {
-    expect(resolvePortalReturnUrl("https://signalcore.app/app?tab=portfolio", "https://signalcore.app")).toBe(
-      "https://signalcore.app/app?tab=portfolio"
+    expect(resolvePortalReturnUrl("https://signalcore.app/app?tab=trading", "https://signalcore.app")).toBe(
+      "https://signalcore.app/app?tab=trading"
     );
   });
 

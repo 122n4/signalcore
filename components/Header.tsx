@@ -36,8 +36,8 @@ export default function Header() {
               <Link href="/app" className="text-xs font-semibold opacity-90 hover:opacity-100">
                 App
               </Link>
-              <Link href="/my-portfolio" className="text-xs opacity-70 hover:opacity-100">
-                My Portfolio
+              <Link href="/app?mode=trading" className="text-xs opacity-70 hover:opacity-100">
+                Trading
               </Link>
             </nav>
           </SignedIn>
