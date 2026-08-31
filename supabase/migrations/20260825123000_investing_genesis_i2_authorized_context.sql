@@ -244,15 +244,15 @@ create policy tenants_i2b_authority_read
     tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and exists (
       select 1
-      from investing.principals p
-      join investing.tenant_memberships tm
-        on tm.principal_id = p.principal_id
-      where p.external_provider = current_setting('syntrake.investing.external_provider', true)
+      from investing.accounts a
+      join investing.principals p
+        on p.principal_id = a.initial_principal_id
+      where a.account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+        and a.tenant_id = tenants.tenant_id
+        and a.initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
         and p.external_subject = current_setting('syntrake.investing.external_subject', true)
         and p.state = 'ACTIVE'
-        and tm.tenant_id = tenants.tenant_id
-        and tm.role = 'OWNER'
-        and tm.state = 'ACTIVE'
     )
   );
 

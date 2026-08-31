@@ -106,6 +106,7 @@ type CanonicalDenialAuditDraft = {
 
 export type InvestingAuthorityQueryResult<Row> = {
   rows: Row[];
+  rowCount: number | null;
 };
 
 export type InvestingAuthorityTransactionClient = {

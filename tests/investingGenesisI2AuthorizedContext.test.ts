@@ -84,48 +84,53 @@ class FakeAuthorityClient implements InvestingAuthorityTransactionClient {
       if ((this.failureMode === "rollback" || this.failureMode === "queryRollback") && normalized === "rollback") {
         throw new Error("rollback failed");
       }
-      return { rows: [] as Row[] };
+      return { rows: [] as Row[], rowCount: null };
     }
 
     if (normalized === "commit") {
       if (this.failureMode === "commit") throw new Error("commit failed");
-      return { rows: [] as Row[] };
+      return { rows: [] as Row[], rowCount: null };
     }
 
     if (normalized.startsWith("select current_setting(")) {
-      return { rows: [this.staleContext as Row] };
+      return { rows: [this.staleContext as Row], rowCount: 1 };
     }
 
     if (normalized.startsWith("select set_config(")) {
-      return { rows: [] as Row[] };
+      return { rows: [] as Row[], rowCount: null };
     }
 
     if (normalized.startsWith("insert into investing.pre_authority_audit_events")) {
-      return { rows: [] as Row[] };
+      return { rows: [] as Row[], rowCount: 1 };
     }
 
     if (normalized.startsWith("insert into investing.audit_events")) {
-      return { rows: [] as Row[] };
+      return { rows: [] as Row[], rowCount: 1 };
     }
 
     if (normalized.includes("from investing.principals")) {
-      return { rows: (this.rows.principals ?? defaultRows.principals) as Row[] };
+      const rows = (this.rows.principals ?? defaultRows.principals) as Row[];
+      return { rows, rowCount: rows.length };
     }
 
     if (normalized.includes("from investing.accounts")) {
-      return { rows: (this.rows.accounts ?? defaultRows.accounts) as Row[] };
+      const rows = (this.rows.accounts ?? defaultRows.accounts) as Row[];
+      return { rows, rowCount: rows.length };
     }
 
     if (normalized.includes("from investing.tenants")) {
-      return { rows: (this.rows.tenants ?? defaultRows.tenants) as Row[] };
+      const rows = (this.rows.tenants ?? defaultRows.tenants) as Row[];
+      return { rows, rowCount: rows.length };
     }
 
     if (normalized.includes("from investing.tenant_memberships")) {
-      return { rows: (this.rows.memberships ?? defaultRows.memberships) as Row[] };
+      const rows = (this.rows.memberships ?? defaultRows.memberships) as Row[];
+      return { rows, rowCount: rows.length };
     }
 
     if (normalized.includes("from investing.account_access")) {
-      return { rows: (this.rows.access ?? defaultRows.access) as Row[] };
+      const rows = (this.rows.access ?? defaultRows.access) as Row[];
+      return { rows, rowCount: rows.length };
     }
 
     throw new Error(`Unexpected query: ${text}`);
@@ -993,7 +998,7 @@ describe("Investing Genesis I2-B AuthorizedInvestingContext", () => {
       ["principals_i2b_authority_read", []],
       ["tenant_memberships_i2b_authority_read", ["principals_i2b_authority_read"]],
       ["account_access_i2b_authority_read", ["principals_i2b_authority_read", "tenant_memberships_i2b_authority_read"]],
-      ["tenants_i2b_authority_read", ["principals_i2b_authority_read", "tenant_memberships_i2b_authority_read"]],
+      ["tenants_i2b_authority_read", ["principals_i2b_authority_read", "accounts_i2b_authority_read"]],
       ["accounts_i2b_authority_read", ["principals_i2b_authority_read"]],
     ]);
 
@@ -1026,6 +1031,23 @@ describe("Investing Genesis I2-B AuthorizedInvestingContext", () => {
     expect(accountsPolicy).not.toContain("current_setting('syntrake.investing.tenant_id', true)");
     expect(accountsPolicy).not.toContain("join investing.account_access aa");
     expect(accountsPolicy).not.toContain("join investing.tenant_memberships tm");
+    const tenantsPolicy = normalized.slice(
+      normalized.indexOf("create policy tenants_i2b_authority_read"),
+      normalized.indexOf("create policy tenant_memberships_i2b_authority_read"),
+    );
+    expect(tenantsPolicy).toContain("from investing.accounts a");
+    expect(tenantsPolicy).toContain("join investing.principals p");
+    expect(tenantsPolicy).toContain("a.account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid");
+    expect(tenantsPolicy).toContain("a.tenant_id = tenants.tenant_id");
+    expect(tenantsPolicy).toContain("a.initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid");
+    expect(tenantsPolicy).toContain("p.principal_id = a.initial_principal_id");
+    expect(tenantsPolicy).toContain("p.external_provider = current_setting('syntrake.investing.external_provider', true)");
+    expect(tenantsPolicy).toContain("p.external_subject = current_setting('syntrake.investing.external_subject', true)");
+    expect(tenantsPolicy).toContain("p.state = 'active'");
+    expect(tenantsPolicy).not.toContain("join investing.account_access");
+    expect(tenantsPolicy).not.toContain("join investing.tenant_memberships");
+    expect(tenantsPolicy).not.toContain("a.initial_tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid");
+    expect(tenantsPolicy).not.toContain("current_setting('syntrake.investing.account_access_id', true)");
   });
 
   it("keeps I2-B canonical denial audit honest without fabricating a Principal or SYSTEM_ACTOR", () => {

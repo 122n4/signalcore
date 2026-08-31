@@ -104,7 +104,7 @@ class PgAuthorityClient implements InvestingAuthorityTransactionClient {
     values: readonly unknown[] = [],
   ): Promise<InvestingAuthorityQueryResult<Row>> {
     const result = await this.client.query<Row>(text, [...values]);
-    return { rows: result.rows };
+    return { rows: result.rows, rowCount: result.rowCount };
   }
 
   release(destroy = false) {
