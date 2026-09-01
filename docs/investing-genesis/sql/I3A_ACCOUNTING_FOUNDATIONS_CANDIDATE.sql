@@ -126,7 +126,7 @@ create table investing.i3_instruments (
   constraint i3_instruments_currency_check
     check (primary_currency_code ~ '^[A-Z]{3}$'),
   constraint i3_instruments_state_check
-    check (state in ('ACTIVE', 'RETIRED')),
+    check (state = 'ACTIVE'),
   constraint i3_instruments_source_check
     check (source = 'SYNTHETIC_I3_REHEARSAL'),
   constraint i3_instruments_source_reference_check
@@ -183,8 +183,7 @@ create table investing.i3_accounting_genesis_anchors (
   principal_id uuid not null,
   actor_kind text not null,
   actor_id text not null,
-  operation_scope text not null,
-  operation text not null,
+  origin_operation text not null,
   effective_at timestamptz not null,
   correlation_id text not null,
   source text not null,
@@ -205,12 +204,12 @@ create table investing.i3_accounting_genesis_anchors (
     check (actor_kind = 'USER_PRINCIPAL'),
   constraint i3_accounting_genesis_anchors_actor_id_check
     check (char_length(actor_id) between 1 and 256),
-  constraint i3_accounting_genesis_anchors_scope_check
-    check (operation_scope = 'ACCOUNT_SCOPE'),
   constraint i3_accounting_genesis_anchors_operation_check
-    check (operation = 'INITIAL_PERSONAL_BOOTSTRAP'),
+    check (origin_operation = 'INITIAL_PERSONAL_BOOTSTRAP'),
   constraint i3_accounting_genesis_anchors_correlation_check
     check (char_length(correlation_id) between 16 and 512),
+  constraint i3_accounting_genesis_anchors_time_check
+    check (recorded_at >= effective_at),
   constraint i3_accounting_genesis_anchors_truth_check
     check (
       source = 'PAPER_ACCOUNT_GENESIS'
@@ -234,6 +233,7 @@ create table investing.i3_fills (
   fee_currency_code text not null,
   effective_at timestamptz not null,
   settlement_at timestamptz,
+  source_sequence bigint not null,
   recorded_at timestamptz not null default now(),
   actor_kind text not null,
   actor_id text not null,
@@ -286,6 +286,8 @@ create table investing.i3_fills (
     unique (idempotency_record_id),
   constraint i3_fills_semantic_source_key
     unique (tenant_id, account_id, source, source_reference),
+  constraint i3_fills_source_sequence_key
+    unique (tenant_id, account_id, source, source_sequence),
   constraint i3_fills_side_check
     check (side in ('BUY', 'SELL')),
   constraint i3_fills_quantity_check
@@ -295,16 +297,26 @@ create table investing.i3_fills (
   constraint i3_fills_gross_check
     check (gross_consideration > 0),
   constraint i3_fills_fee_check
-    check (fee_amount >= 0 and fee_amount <= gross_consideration),
+    check (
+      fee_amount >= 0
+      and (side = 'BUY' or fee_amount <= gross_consideration)
+    ),
   constraint i3_fills_currency_check
     check (
       settlement_currency_code ~ '^[A-Z]{3}$'
       and fee_currency_code = settlement_currency_code
     ),
+  constraint i3_fills_source_sequence_check
+    check (source_sequence >= 0),
   constraint i3_fills_no_implicit_rounding_check
     check (
       pg_catalog.scale(pg_catalog.trim_scale(quantity * unit_price)) <= 8
       and gross_consideration = quantity * unit_price
+    ),
+  constraint i3_fills_buy_basis_representable_check
+    check (
+      side = 'SELL'
+      or gross_consideration + fee_amount <= 9999999999999999.99999999::numeric
     ),
   constraint i3_fills_actor_kind_check
     check (actor_kind = 'USER_PRINCIPAL'),
@@ -344,6 +356,7 @@ create index i3_fills_account_instrument_effective_idx
     account_id,
     instrument_id,
     effective_at,
+    source_sequence,
     source_reference,
     fill_id
   );
@@ -360,6 +373,8 @@ create table investing.i3_acquisition_lot_origins (
   acquisition_fee numeric(24, 8) not null,
   settlement_currency_code text not null,
   effective_at timestamptz not null,
+  acquisition_source_sequence bigint not null,
+  acquisition_source_reference text not null,
   recorded_at timestamptz not null default now(),
   lineage_id uuid not null default gen_random_uuid(),
   constraint i3_acquisition_lot_origins_fill_fk
@@ -374,9 +389,17 @@ create table investing.i3_acquisition_lot_origins (
   constraint i3_acquisition_lot_origins_price_check
     check (acquisition_unit_price > 0),
   constraint i3_acquisition_lot_origins_cost_check
-    check (acquisition_gross_cost > 0 and acquisition_fee >= 0),
+    check (
+      acquisition_gross_cost > 0
+      and acquisition_fee >= 0
+      and acquisition_gross_cost + acquisition_fee <= 9999999999999999.99999999::numeric
+    ),
   constraint i3_acquisition_lot_origins_currency_check
-    check (settlement_currency_code ~ '^[A-Z]{3}$')
+    check (settlement_currency_code ~ '^[A-Z]{3}$'),
+  constraint i3_acquisition_lot_origins_source_sequence_check
+    check (acquisition_source_sequence >= 0),
+  constraint i3_acquisition_lot_origins_source_reference_check
+    check (char_length(acquisition_source_reference) between 1 and 512)
 );
 
 create index i3_acquisition_lot_origins_fifo_idx
@@ -385,7 +408,8 @@ create index i3_acquisition_lot_origins_fifo_idx
     account_id,
     instrument_id,
     effective_at,
-    acquisition_fill_id,
+    acquisition_source_sequence,
+    acquisition_source_reference,
     lot_origin_id
   );
 
@@ -447,6 +471,14 @@ create table investing.i3_accounting_revisions (
       disposal_fill_id
     )
 );
+
+create unique index i3_accounting_revisions_one_root_per_disposal_idx
+  on investing.i3_accounting_revisions (disposal_fill_id)
+  where supersedes_accounting_revision_id is null;
+
+create unique index i3_accounting_revisions_one_child_per_revision_idx
+  on investing.i3_accounting_revisions (supersedes_accounting_revision_id)
+  where supersedes_accounting_revision_id is not null;
 
 create table investing.i3_lot_consumption_allocations (
   lot_consumption_allocation_id uuid primary key default gen_random_uuid(),
@@ -579,6 +611,49 @@ begin
 end;
 $$;
 
+create function investing.i3_accounting_genesis_anchor_insert_guard()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+declare
+  v_initial_principal_id uuid;
+  v_account_created_at timestamptz;
+  v_account_state text;
+  v_external_subject text;
+  v_principal_state text;
+begin
+  select
+    a.initial_principal_id,
+    a.created_at,
+    a.state,
+    p.external_subject,
+    p.state
+    into
+      v_initial_principal_id,
+      v_account_created_at,
+      v_account_state,
+      v_external_subject,
+      v_principal_state
+  from investing.accounts a
+  join investing.principals p
+    on p.principal_id = a.initial_principal_id
+  where a.account_id = new.account_id
+    and a.tenant_id = new.tenant_id;
+
+  if not found
+    or v_account_state <> 'ACTIVE'
+    or v_principal_state <> 'ACTIVE'
+    or new.principal_id <> v_initial_principal_id
+    or new.actor_id <> v_external_subject
+    or new.effective_at <> v_account_created_at then
+    raise exception 'I3 accounting genesis anchor must exactly match active canonical account genesis identity and time';
+  end if;
+
+  return new;
+end;
+$$;
+
 create function investing.i3_fill_insert_guard()
 returns trigger
 language plpgsql
@@ -629,6 +704,31 @@ begin
 
   if not exists (
     select 1
+    from investing.account_access aa
+    join investing.tenant_memberships tm
+      on tm.tenant_membership_id = aa.tenant_membership_id
+     and tm.tenant_id = aa.tenant_id
+     and tm.principal_id = aa.principal_id
+    join investing.tenants t
+      on t.tenant_id = aa.tenant_id
+    join investing.principals p
+      on p.principal_id = aa.principal_id
+    where aa.account_id = new.account_id
+      and aa.tenant_id = new.tenant_id
+      and aa.principal_id = new.principal_id
+      and aa.role = 'OWNER'
+      and aa.state = 'ACTIVE'
+      and tm.role = 'OWNER'
+      and tm.state = 'ACTIVE'
+      and t.state = 'ACTIVE'
+      and p.state = 'ACTIVE'
+      and p.external_subject = new.actor_id
+  ) then
+    raise exception 'I3 fill requires an active canonical authority graph';
+  end if;
+
+  if not exists (
+    select 1
     from investing.idempotency_records ir
     where ir.idempotency_record_id = new.idempotency_record_id
       and ir.tenant_id = new.tenant_id
@@ -673,8 +773,60 @@ begin
     or new.acquisition_gross_cost <> v_fill.gross_consideration
     or new.acquisition_fee <> v_fill.fee_amount
     or new.settlement_currency_code <> v_fill.settlement_currency_code
-    or new.effective_at <> v_fill.effective_at then
-    raise exception 'I3 acquisition lot origin must exactly preserve BUY fill economics';
+    or new.effective_at <> v_fill.effective_at
+    or new.acquisition_source_sequence <> v_fill.source_sequence
+    or new.acquisition_source_reference <> v_fill.source_reference then
+    raise exception 'I3 acquisition lot origin must exactly preserve BUY fill economics and ordering evidence';
+  end if;
+
+  return new;
+end;
+$$;
+
+create function investing.i3_accounting_revision_insert_guard()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $$
+declare
+  v_sell_side text;
+  v_current_leaf_id uuid;
+begin
+  select f.side
+    into v_sell_side
+  from investing.i3_fills f
+  where f.fill_id = new.disposal_fill_id
+    and f.tenant_id = new.tenant_id
+    and f.account_id = new.account_id
+    and f.instrument_id = new.instrument_id;
+
+  if not found or v_sell_side <> 'SELL' then
+    raise exception 'I3 accounting revision requires a canonical SELL fill';
+  end if;
+
+  select r.accounting_revision_id
+    into v_current_leaf_id
+  from investing.i3_accounting_revisions r
+  join investing.i3_accounting_revision_seals s
+    on s.accounting_revision_id = r.accounting_revision_id
+  where r.disposal_fill_id = new.disposal_fill_id
+    and r.tenant_id = new.tenant_id
+    and r.account_id = new.account_id
+    and r.instrument_id = new.instrument_id
+    and not exists (
+      select 1
+      from investing.i3_accounting_revisions child
+      join investing.i3_accounting_revision_seals child_seal
+        on child_seal.accounting_revision_id = child.accounting_revision_id
+      where child.supersedes_accounting_revision_id = r.accounting_revision_id
+    );
+
+  if found then
+    if new.supersedes_accounting_revision_id is distinct from v_current_leaf_id then
+      raise exception 'I3 accounting revision must supersede exactly the current sealed canonical leaf';
+    end if;
+  elsif new.supersedes_accounting_revision_id is not null then
+    raise exception 'I3 root accounting revision cannot supersede a nonexistent canonical leaf';
   end if;
 
   return new;
@@ -723,8 +875,9 @@ begin
     raise exception 'I3 lot consumption allocation cannot resolve canonical lot origin';
   end if;
 
-  if v_lot.effective_at > v_sell.effective_at then
-    raise exception 'I3 disposal cannot consume a lot acquired after the SELL effective time';
+  if (v_lot.effective_at, v_lot.acquisition_source_sequence, v_lot.acquisition_source_reference)
+      > (v_sell.effective_at, v_sell.source_sequence, v_sell.source_reference) then
+    raise exception 'I3 disposal cannot consume a lot ordered after the SELL event';
   end if;
 
   if new.consumed_quantity > v_lot.acquired_quantity then
@@ -827,7 +980,7 @@ begin
   where x.consumed_quantity > x.acquired_quantity;
 
   if v_overconsumed_lot_count <> 0 then
-    raise exception 'I3 accounting revision seal rejected overconsumed lot origin';
+    raise exception 'I3 accounting revision seal rejected overconsumed lot origin within revision';
   end if;
 
   return new;
@@ -913,12 +1066,16 @@ create trigger i3_accounting_mutexes_guard_update_delete
   before update or delete on investing.i3_accounting_mutexes
   for each row execute function investing.i3_append_only_guard();
 
+create trigger i3_accounting_genesis_anchors_guard_insert
+  before insert on investing.i3_accounting_genesis_anchors
+  for each row execute function investing.i3_accounting_genesis_anchor_insert_guard();
+
 create trigger i3_accounting_genesis_anchors_guard_update_delete
   before update or delete on investing.i3_accounting_genesis_anchors
   for each row execute function investing.i3_append_only_guard();
 
-create trigger i3_fills_guard_all_mutations
-  before insert or update or delete on investing.i3_fills
+create trigger i3_fills_guard_insert
+  before insert on investing.i3_fills
   for each row execute function investing.i3_fill_insert_guard();
 
 create trigger i3_fills_guard_update_delete
@@ -932,6 +1089,10 @@ create trigger i3_acquisition_lot_origins_guard_insert
 create trigger i3_acquisition_lot_origins_guard_update_delete
   before update or delete on investing.i3_acquisition_lot_origins
   for each row execute function investing.i3_append_only_guard();
+
+create trigger i3_accounting_revisions_guard_insert
+  before insert on investing.i3_accounting_revisions
+  for each row execute function investing.i3_accounting_revision_insert_guard();
 
 create trigger i3_accounting_revisions_guard_update_delete
   before update or delete on investing.i3_accounting_revisions
@@ -993,9 +1154,13 @@ revoke all on function investing.i3_is_canonical_nonnegative_money_v1(text)
   from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.i3_append_only_guard()
   from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.i3_accounting_genesis_anchor_insert_guard()
+  from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.i3_fill_insert_guard()
   from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.i3_lot_origin_insert_guard()
+  from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.i3_accounting_revision_insert_guard()
   from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.i3_allocation_insert_guard()
   from public, anon, authenticated, service_role, investing_app;
