@@ -26,7 +26,12 @@ export type InvestingDatabaseConfig =
       code: "MISSING_INVESTING_DATABASE_URL" | "MALFORMED_INVESTING_DATABASE_URL";
     };
 
-let pool: Pool | null = null;
+type PoolState = {
+  connectionString: string;
+  pool: Pool;
+};
+
+let poolState: PoolState | null = null;
 
 export function readInvestingDatabaseConfig(
   env: Record<string, string | undefined> = process.env,
@@ -78,21 +83,28 @@ export function readInvestingDatabaseConfig(
   }
 }
 
-export function getInvestingAuthorityDatabase(): InvestingAuthorityDatabase {
-  const config = readInvestingDatabaseConfig();
+export function getInvestingAuthorityDatabase(
+  env: Record<string, string | undefined> = process.env,
+): InvestingAuthorityDatabase {
+  const config = readInvestingDatabaseConfig(env);
   if (config.ok === false) {
     throw new Error(config.code);
   }
 
-  if (!pool) {
-    pool = new Pool({
+  if (!poolState) {
+    poolState = {
       connectionString: config.connectionString,
-      ssl: config.tls,
-    });
+      pool: new Pool({
+        connectionString: config.connectionString,
+        ssl: config.tls,
+      }),
+    };
+  } else if (poolState.connectionString !== config.connectionString) {
+    throw new Error("INVESTING_DATABASE_CONFIG_DRIFT");
   }
 
   return {
-    connect: async () => new PgAuthorityClient(await pool!.connect()),
+    connect: async () => new PgAuthorityClient(await poolState!.pool.connect()),
   };
 }
 
