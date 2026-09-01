@@ -1,7 +1,7 @@
 -- SYNTRAKE INVESTING GENESIS I3-C ATOMIC FILL ACCOUNTING
 -- SOURCE CANDIDATE ONLY. THIS FILE IS NOT A SUPABASE MIGRATION.
 --
--- Canonical implementation parent: 5b34717d125d4cab19791d4ea2c36a21570ca326
+-- Canonical implementation parent: 4c2ccff3d37cd314411fa13a329bf21f9d6bf996
 -- I3 design freeze:              33dddc730885b9940f3321dfff3d21562d3410a2
 -- Depends on promoted equivalents of I3-A foundations and I3-B V3 lineage.
 --
@@ -667,6 +667,33 @@ create policy i3_fills_i3c_insert
     and context = 'DEMO'
     and correction_of_fill_id is null
     and reversal_of_fill_id is null
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_fills.account_id
+        and aa.tenant_id = i3_fills.tenant_id
+        and aa.principal_id = i3_fills.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = i3_fills.actor_id
+    )
   );
 
 create policy i3_acquisition_lot_origins_i3c_read
@@ -870,6 +897,33 @@ create policy ledger_transactions_i3c_accounting_insert
         and i3_accounting_revision_id = nullif(current_setting('syntrake.investing.accounting_revision_id', true), '')::uuid
       )
     )
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_transactions.account_id
+        and aa.tenant_id = ledger_transactions.tenant_id
+        and aa.principal_id = ledger_transactions.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = ledger_transactions.actor_id
+    )
   );
 
 create policy ledger_postings_i3c_accounting_read
@@ -939,8 +993,40 @@ create policy audit_events_i3c_fill_success_insert
     and object_id = current_setting('syntrake.investing.fill_id', true)
     and outcome = 'SUCCEEDED'
     and reason_code is null
+    and evidence ->> 'accounting_revision_id' = coalesce(current_setting('syntrake.investing.accounting_revision_id', true), '')
+    and evidence ->> 'idempotency_record_id' = current_setting('syntrake.investing.idempotency_record_id', true)
     and evidence ->> 'ledger_transaction_id' = current_setting('syntrake.investing.ledger_transaction_id', true)
     and evidence ->> 'instrument_id' = current_setting('syntrake.investing.instrument_id', true)
+    and evidence ->> 'material_request_hash' = current_setting('syntrake.investing.material_request_hash', true)
+    and evidence ->> 'source' = 'SYNTHETIC_I3_REHEARSAL'
+    and evidence ->> 'source_reference' = current_setting('syntrake.investing.source_reference', true)
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = audit_events.account_id
+        and aa.tenant_id = audit_events.tenant_id
+        and aa.principal_id = audit_events.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = audit_events.actor_id
+    )
   );
 
 -- ---------------------------------------------------------------------------
@@ -1105,6 +1191,8 @@ declare
   v_expected numeric;
   v_current numeric;
   v_lot record;
+  v_revision_event_count integer;
+  v_revision_event_set_hash text;
 begin
   if tg_op <> 'INSERT' then
     raise exception 'I3 accounting revision seal is append-only and cannot be updated or deleted';
@@ -1120,6 +1208,22 @@ begin
 
   if not found or v_sell.side <> 'SELL' then
     raise exception 'I3 accounting revision seal requires a canonical SELL fill';
+  end if;
+
+  select r.event_count, r.event_set_hash
+    into v_revision_event_count, v_revision_event_set_hash
+  from investing.i3_accounting_revisions r
+  where r.accounting_revision_id = new.accounting_revision_id
+    and r.disposal_fill_id = new.disposal_fill_id
+    and r.tenant_id = new.tenant_id
+    and r.account_id = new.account_id
+    and r.instrument_id = new.instrument_id
+    and r.supersedes_accounting_revision_id is null;
+
+  if not found
+    or v_revision_event_count < 1
+    or v_revision_event_set_hash !~ '^[A-F0-9]{64}$' then
+    raise exception 'I3 accounting revision seal requires canonical event_count and event_set_hash evidence';
   end if;
 
   -- Same fixed cash -> instrument lock order even for a direct DB caller.
@@ -1169,7 +1273,8 @@ begin
   if v_allocation_count < 1
     or v_consumed_quantity <> v_sell.quantity
     or v_allocated_proceeds <> v_sell.gross_consideration
-    or v_allocated_fee <> v_sell.fee_amount then
+    or v_allocated_fee <> v_sell.fee_amount
+    or v_revision_event_count <> v_allocation_count then
     raise exception 'I3 accounting revision seal rejected incomplete SELL allocation reconciliation';
   end if;
 
@@ -1723,6 +1828,26 @@ begin
 
   if v_bad_count <> 0 then
     raise exception 'I3-C postcondition violation: I3-C policy missing I3_ACCOUNTING_WRITE capability guard';
+  end if;
+
+  select lower(pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid))
+    into v_policy_expr
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid = p.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'audit_events'
+    and p.polname = 'audit_events_i3c_fill_success_insert';
+
+  if v_policy_expr is null
+    or v_policy_expr !~ 'i3_fill_accounting_succeeded'
+    or v_policy_expr !~ 'idempotency_record_id'
+    or v_policy_expr !~ 'material_request_hash'
+    or v_policy_expr !~ 'ledger_transaction_id'
+    or v_policy_expr !~ 'accounting_revision_id'
+    or v_policy_expr !~ 'source_reference'
+    or v_policy_expr !~ 'synthetic_i3_rehearsal' then
+    raise exception 'I3-C postcondition violation: success audit lacks material accounting proof';
   end if;
 
   select count(*)

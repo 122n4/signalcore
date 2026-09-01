@@ -34,6 +34,7 @@ describe("Investing Genesis I3-A accounting foundations source candidate", () =>
     expect(raw).toContain("Canonical parent: 33dddc730885b9940f3321dfff3d21562d3410a2");
     expect(raw).toContain("Design core:      6acabcaddf3135138c8194a84dd7d9798a133923");
     expect(raw).toContain("Do not copy this file into supabase/migrations under an invented timestamp.");
+    expect(raw).not.toContain("I3-A PROMOTION HARDENING");
 
     expect(normalized).not.toContain("security definer");
     expect(normalized).not.toContain("trading.");
@@ -42,6 +43,9 @@ describe("Investing Genesis I3-A accounting foundations source candidate", () =>
     expect(normalized).not.toMatch(/\bgrant\b[^;]*\bto anon\b/);
     expect(normalized).not.toMatch(/\bgrant\b[^;]*\bto authenticated\b/);
     expect(normalized).not.toMatch(/\bgrant\b[^;]*\bto investing_app\b/);
+    expect(normalized).toContain("i3 routines already exist");
+    expect(normalized).toContain("unexpected i3 routine inventory");
+    expect(normalized).toContain("i3 routine ownership/security/search_path drift");
   });
 
   it("creates only the closed I3-A table inventory and leaves Position derived", () => {
@@ -100,6 +104,9 @@ describe("Investing Genesis I3-A accounting foundations source candidate", () =>
     expect(normalized).toContain("i3_is_canonical_quantity_v1");
     expect(normalized).toContain("i3_is_canonical_positive_money_v1");
     expect(normalized).toContain("i3_is_canonical_nonnegative_money_v1");
+    expect(normalized).toContain("if investing.i3_is_canonical_quantity_v1(null)");
+    expect(normalized).toContain("null decimal text must fail closed");
+    expect(normalized).not.toContain("create or replace function investing.i3_is_canonical");
     expect(normalized).not.toMatch(/\bnumeric\s+not null/);
   });
 
@@ -152,7 +159,8 @@ describe("Investing Genesis I3-A accounting foundations source candidate", () =>
 
     expect(normalized).toContain("i3_fills_semantic_source_key");
     expect(normalized).toContain("unique (tenant_id, account_id, source, source_reference)");
-    expect(normalized).toContain("i3_fills_source_sequence_key");
+    expect(normalized).not.toContain("i3_fills_source_sequence_key");
+    expect(normalized).not.toContain("unique (tenant_id, account_id, source, source_sequence)");
     expect(normalized).toContain("source_sequence bigint not null");
     expect(normalized).toContain("effective_at, source_sequence, source_reference, fill_id");
     expect(normalized).toContain("operation = 'i3_internal_paper_fill_accounting_v1'");

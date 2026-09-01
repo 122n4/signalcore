@@ -16,7 +16,7 @@ const freshness = "NOT_APPLICABLE";
 const accountingContext = "DEMO";
 const materialHashDomain = "SYNTRAKE_INVESTING_I3_FILL_MATERIAL_V1";
 const eventSetHashDomain = "SYNTRAKE_INVESTING_I3_FIFO_EVENT_SET_V1";
-const maxBigint = 9223372036854775807n;
+const maxBigintText = "9223372036854775807";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -144,6 +144,14 @@ type ArithmeticRow = {
 };
 type IdempotencyRow = {
   idempotency_record_id: string;
+  actor_kind: "USER_PRINCIPAL";
+  actor_id: string;
+  operation_scope: "ACCOUNT_SCOPE";
+  operation: typeof operation;
+  principal_id: string;
+  tenant_id: string;
+  account_id: string;
+  idempotency_key: string;
   material_request_hash: string;
   status: "STARTED" | "SUCCEEDED" | "FAILED" | "CONFLICT";
   canonical_result_reference: unknown;
@@ -186,7 +194,9 @@ type LedgerAccountRow = {
     | "REALIZED_GAIN_LOSS";
 };
 
-type WorkResult = AccountSyntheticI3FillResult & { commitFailure?: boolean; destroyClient?: boolean };
+type WorkSuccess = AccountSyntheticI3FillSuccess & { commitFailure?: false; destroyClient?: false };
+type WorkFailure = AccountSyntheticI3FillFailure & { commitFailure?: boolean; destroyClient?: boolean };
+type WorkResult = WorkSuccess | WorkFailure;
 
 export async function accountSyntheticI3Fill(
   input: AccountSyntheticI3FillInput,
@@ -204,7 +214,7 @@ export async function accountSyntheticI3Fill(
 
   let database: InvestingAuthorityDatabase;
   try {
-    database = getInvestingAuthorityDatabase();
+    database = getInvestingAuthorityDatabase(env);
   } catch {
     return fail("INTERNAL_ERROR");
   }
@@ -328,7 +338,8 @@ export async function accountSyntheticI3Fill(
     const idempotency = await expectExactlyOne(
       client.query<IdempotencyRow>(
         [
-          "select idempotency_record_id, material_request_hash, status, canonical_result_reference",
+          "select idempotency_record_id, actor_kind, actor_id, operation_scope, operation, principal_id, tenant_id, account_id,",
+          "idempotency_key, material_request_hash, status, canonical_result_reference",
           "from investing.idempotency_records",
           "where actor_kind = 'USER_PRINCIPAL' and actor_id = $1",
           "and operation_scope = 'ACCOUNT_SCOPE' and operation = $2 and idempotency_key = $3",
@@ -340,6 +351,10 @@ export async function accountSyntheticI3Fill(
     if (idempotency.ok === false) return idempotency;
 
     await setTransactionContext(client, { idempotency_record_id: idempotency.row.idempotency_record_id });
+
+    if (!idempotencyBelongsToContext(idempotency.row, context, normalized.idempotencyKey)) {
+      return fail("IDEMPOTENCY_CONFLICT");
+    }
 
     if (insertedIdempotency.rowCount === 0) {
       return dispatchExistingIdempotency(client, idempotency.row, materialRequestHash);
@@ -664,7 +679,15 @@ export async function accountSyntheticI3Fill(
         context.tenantId,
         context.accountId,
         fillId,
-        JSON.stringify({ ledger_transaction_id: ledgerTransactionId, instrument_id: normalized.instrumentId }),
+        JSON.stringify({
+          accounting_revision_id: accountingRevisionId,
+          idempotency_record_id: idempotency.row.idempotency_record_id,
+          instrument_id: normalized.instrumentId,
+          ledger_transaction_id: ledgerTransactionId,
+          material_request_hash: materialRequestHash,
+          source,
+          source_reference: normalized.sourceReference,
+        }),
       ],
     );
 
@@ -695,17 +718,29 @@ function normalizeInput(input: AccountSyntheticI3FillInput) {
   if (!isBoundedText(input.idempotencyKey, 16, 512)) return null;
   if (!isBoundedText(input.correlationId, 16, 512)) return null;
   if (!isBoundedText(input.sourceReference, 1, 512)) return null;
-  if (!sourceSequencePattern.test(input.sourceSequence)) return null;
-  try {
-    if (BigInt(input.sourceSequence) > maxBigint) return null;
-  } catch {
-    return null;
-  }
+  if (!isValidBigintText(input.sourceSequence)) return null;
   if (!canonicalUtcInstantPattern.test(input.effectiveAt)) return null;
   const parsed = new Date(input.effectiveAt);
   if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== input.effectiveAt) return null;
 
   return { ...input };
+}
+
+function idempotencyBelongsToContext(
+  row: IdempotencyRow,
+  context: AuthorizedInvestingContext,
+  idempotencyKey: string,
+) {
+  return (
+    row.actor_kind === "USER_PRINCIPAL" &&
+    row.actor_id === context.actorId &&
+    row.operation_scope === "ACCOUNT_SCOPE" &&
+    row.operation === operation &&
+    row.principal_id === context.principalId &&
+    row.tenant_id === context.tenantId &&
+    row.account_id === context.accountId &&
+    row.idempotency_key === idempotencyKey
+  );
 }
 
 async function lockAndRevalidateAuthority(
@@ -1264,11 +1299,16 @@ function isBoundedText(value: unknown, min: number, max: number): value is strin
   return typeof value === "string" && value.length >= min && value.length <= max;
 }
 
+function isValidBigintText(value: string) {
+  if (!sourceSequencePattern.test(value)) return false;
+  return value.length < maxBigintText.length || (value.length === maxBigintText.length && value <= maxBigintText);
+}
+
 function fail(code: AccountSyntheticI3FillFailureCode): AccountSyntheticI3FillFailure {
   return { ok: false, code };
 }
 
 function stripWorkFlags(result: WorkResult): AccountSyntheticI3FillResult {
-  if (result.ok) return result;
+  if (result.ok === true) return result;
   return { ok: false, code: result.code };
 }

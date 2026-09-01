@@ -1,0 +1,206 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+const repoRoot = path.resolve(__dirname, "..");
+const candidatePath = path.join(
+  repoRoot,
+  "docs",
+  "investing-genesis",
+  "sql",
+  "I3C_ATOMIC_FILL_ACCOUNTING_CANDIDATE.sql",
+);
+const sourcePath = path.join(repoRoot, "lib", "investing", "accounting", "syntheticFill.ts");
+
+function readFile(filePath: string) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function stripSqlComments(sql: string) {
+  return sql
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/--.*$/gm, "");
+}
+
+function normalizeSql(sql: string) {
+  return stripSqlComments(sql).replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function policySlice(sql: string, policyName: string) {
+  const normalized = normalizeSql(sql);
+  const marker = `create policy ${policyName.toLowerCase()}`;
+  const start = normalized.indexOf(marker);
+  if (start < 0) return "";
+  const next = normalized.indexOf("create policy ", start + marker.length);
+  const functionBoundary = normalized.indexOf("create or replace function ", start + marker.length);
+  const candidates = [next, functionBoundary].filter((index) => index >= 0);
+  const end = candidates.length === 0 ? normalized.length : Math.min(...candidates);
+  return normalized.slice(start, end);
+}
+
+function functionSlice(sql: string, functionName: string) {
+  const normalized = normalizeSql(sql);
+  const marker = `create or replace function investing.${functionName.toLowerCase()}()`;
+  const start = normalized.indexOf(marker);
+  if (start < 0) return "";
+  const end = normalized.indexOf("$$;", start);
+  return end < 0 ? normalized.slice(start) : normalized.slice(start, end + 3);
+}
+
+describe("Investing Genesis I3-C atomic fill accounting source candidate", () => {
+  it("is source-only, pinned to the exact I3-C prestate lineage, and avoids Trading", () => {
+    const raw = readFile(candidatePath);
+    const normalized = normalizeSql(raw);
+
+    expect(raw).toContain("SOURCE CANDIDATE ONLY. THIS FILE IS NOT A SUPABASE MIGRATION.");
+    expect(raw).toContain("Canonical implementation parent: 4c2ccff3d37cd314411fa13a329bf21f9d6bf996");
+    expect(raw).toContain("Depends on promoted equivalents of I3-A foundations and I3-B V3 lineage.");
+    expect(normalized).toContain("accepted i3-b v3 ledger lineage contract missing");
+    expect(normalized).toContain("canonical guard function ownership drifted");
+    expect(normalized).not.toContain("trading.");
+    expect(normalized).not.toMatch(/\bservice_role\b[^;]*\bgrant\b|\bgrant\b[^;]*\bservice_role\b/);
+    expect(normalized).not.toMatch(/create (?:or replace )?function[^;]+security definer/);
+  });
+
+  it("keeps the runtime environment propagation exact and preview-only", () => {
+    const source = readFile(sourcePath);
+
+    expect(source).toContain("readInvestingDatabaseConfig(env)");
+    expect(source).toContain("getInvestingAuthorityDatabase(env)");
+    expect(source).toContain('env.SYNTRAKE_I3_SYNTHETIC_REHEARSAL_ENABLED === "true"');
+    expect(source).toContain('env.SYNTRAKE_I3_REHEARSAL_PROJECT_REF !== config.projectRef');
+    expect(source).toContain('env.VERCEL_ENV !== "production"');
+    expect(source).not.toContain("getInvestingAuthorityDatabase();");
+  });
+
+  it("uses ES2017-safe source sequence validation without BigInt syntax or runtime conversion", () => {
+    const source = readFile(sourcePath);
+
+    expect(source).toContain('const maxBigintText = "9223372036854775807"');
+    expect(source).toContain("function isValidBigintText");
+    expect(source).toContain("value <= maxBigintText");
+    expect(source).not.toMatch(/\d+n\b/);
+    expect(source).not.toContain("BigInt(");
+  });
+
+  it("uses a discriminated WorkResult and strips internal transaction flags at the boundary", () => {
+    const source = readFile(sourcePath);
+
+    expect(source).toContain("type WorkSuccess = AccountSyntheticI3FillSuccess");
+    expect(source).toContain("type WorkFailure = AccountSyntheticI3FillFailure");
+    expect(source).toContain("type WorkResult = WorkSuccess | WorkFailure");
+    expect(source).toContain("function stripWorkFlags(result: WorkResult): AccountSyntheticI3FillResult");
+    expect(source).toContain("return cleanupFailed ? fail(\"INTERNAL_ERROR\") : stripWorkFlags(result)");
+  });
+
+  it("treats cross-account same-key idempotency as conflict before dispatch", () => {
+    const source = readFile(sourcePath);
+
+    expect(source).toContain("function idempotencyBelongsToContext");
+    expect(source).toContain("row.tenant_id === context.tenantId");
+    expect(source).toContain("row.account_id === context.accountId");
+    expect(source).toContain("row.principal_id === context.principalId");
+    expect(source).toContain("return fail(\"IDEMPOTENCY_CONFLICT\")");
+  });
+
+  it("keeps terminal idempotency dispatch status-first and never replays CONFLICT/STARTED/FAILED", () => {
+    const source = readFile(sourcePath);
+    const dispatch = source.slice(
+      source.indexOf("async function dispatchExistingIdempotency"),
+      source.indexOf("async function resolveCanonicalEffect"),
+    );
+
+    expect(dispatch.indexOf('row.status === "SUCCEEDED"')).toBeLessThan(dispatch.indexOf("row.material_request_hash"));
+    expect(dispatch).toContain('if (row.status === "CONFLICT") return fail("IDEMPOTENCY_CONFLICT")');
+    expect(dispatch).toContain('if (row.status === "STARTED") return fail("IDEMPOTENCY_IN_PROGRESS")');
+    expect(dispatch).toContain('return fail("INTERNAL_ERROR")');
+  });
+
+  it("preserves semantic Fill identity by source reference while material hash decides replay vs conflict", () => {
+    const source = readFile(sourcePath);
+
+    expect(source).toContain("and source = 'SYNTHETIC_I3_REHEARSAL' and source_reference = $4");
+    expect(source).toContain("semanticFill.rows.length > 1");
+    expect(source).toContain("semanticFill.rows[0]!.material_request_hash !== materialRequestHash");
+    expect(source).toContain("return terminalConflict(client, idempotency.row.idempotency_record_id)");
+  });
+
+  it("keeps financial reads and writes account-scoped and does not invent new authority", () => {
+    const source = readFile(sourcePath);
+
+    expect(source).toContain("where t.tenant_id = $1 and t.account_id = $2 and p.currency_code = $3");
+    expect(source).toContain("where a.tenant_id = $1 and a.account_id = $2 and a.instrument_id = $3");
+    expect(source).toContain("where tenant_id = $1 and account_id = $2 and currency_code = $3 and state = 'ACTIVE'");
+    expect(source).not.toContain("service_role");
+    expect(source).not.toContain("AUTHORITY_ACCESS_GRANTED");
+  });
+
+  it("pins SELL ledger arithmetic to net cash, fee expense, consumed basis, and realized result", () => {
+    const source = readFile(sourcePath);
+    const guard = functionSlice(readFile(candidatePath), "i2_ledger_seal_guard");
+
+    expect(source).toContain("pg_catalog.trim_scale(f.gross - f.fee)::text as net_cash");
+    expect(source).toContain("pg_catalog.trim_scale(greatest(f.gross - x.basis, 0::numeric))::text as realized_credit");
+    expect(source).toContain("pg_catalog.trim_scale(greatest(x.basis - f.gross, 0::numeric))::text as realized_debit");
+    expect(guard).toContain("v_cash_debit <> v_fill.gross_consideration - v_fill.fee_amount");
+    expect(guard).toContain("v_fee_debit <> v_fill.fee_amount");
+    expect(guard).toContain("v_book_credit <> v_consumed_basis");
+    expect(guard).toContain("v_realized_credit <> greatest(v_fill.gross_consideration - v_consumed_basis, 0::numeric)");
+    expect(guard).toContain("v_realized_debit <> greatest(v_consumed_basis - v_fill.gross_consideration, 0::numeric)");
+  });
+
+  it("hardens I3-C RLS policies with exact operation, capability, account and persisted authority evidence", () => {
+    const sql = readFile(candidatePath);
+    const normalized = normalizeSql(sql);
+
+    for (const policy of [
+      "idempotency_records_i3c_accounting_read",
+      "i3_fills_i3c_insert",
+      "ledger_transactions_i3c_accounting_insert",
+      "audit_events_i3c_fill_success_insert",
+    ]) {
+      const slice = policySlice(sql, policy);
+      expect(slice).toContain("i3_internal_paper_fill_accounting_v1");
+      expect(slice).toContain("i3_accounting_write");
+      expect(slice).toContain("tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid");
+      expect(slice).toContain("account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid");
+    }
+
+    expect(policySlice(sql, "idempotency_records_i3c_accounting_read")).toContain("from investing.account_access aa");
+    expect(policySlice(sql, "idempotency_records_i3c_accounting_read")).toContain("join investing.tenant_memberships tm");
+    expect(policySlice(sql, "idempotency_records_i3c_accounting_read")).toContain("join investing.principals p");
+    expect(normalized).not.toMatch(/\busing\s*\(\s*true\s*\)|\bwith check\s*\(\s*true\s*\)/);
+  });
+
+  it("requires revision event_count and event_set_hash to match DB-visible SELL allocation evidence", () => {
+    const guard = functionSlice(readFile(candidatePath), "i3_accounting_revision_seal_guard");
+
+    expect(guard).toContain("v_revision_event_count integer");
+    expect(guard).toContain("v_revision_event_set_hash text");
+    expect(guard).toContain("select r.event_count, r.event_set_hash");
+    expect(guard).toContain("v_revision_event_set_hash !~ '^[a-f0-9]{64}$'");
+    expect(guard).toContain("v_revision_event_count <> v_allocation_count");
+    expect(guard).toContain("canonical event_count and event_set_hash evidence");
+  });
+
+  it("requires successful canonical audit rows to prove material accounting evidence", () => {
+    const source = readFile(sourcePath);
+    const normalized = normalizeSql(readFile(candidatePath));
+    const policy = policySlice(readFile(candidatePath), "audit_events_i3c_fill_success_insert");
+
+    for (const key of [
+      "accounting_revision_id",
+      "idempotency_record_id",
+      "instrument_id",
+      "ledger_transaction_id",
+      "material_request_hash",
+      "source_reference",
+    ]) {
+      expect(source).toContain(key);
+      expect(policy).toContain(key);
+    }
+
+    expect(normalized).toContain("success audit lacks material accounting proof");
+    expect(policy).toContain("synthetic_i3_rehearsal");
+  });
+});
