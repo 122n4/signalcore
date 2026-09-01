@@ -1204,6 +1204,16 @@ revoke all on function investing.i3_is_canonical_positive_money_v1(text)
   from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.i3_is_canonical_nonnegative_money_v1(text)
   from public, anon, authenticated, service_role, investing_app;
+
+do $$
+begin
+  if investing.i3_is_canonical_quantity_v1(null)
+    or investing.i3_is_canonical_positive_money_v1(null)
+    or investing.i3_is_canonical_nonnegative_money_v1(null) then
+    raise exception 'I3-A validator integrity violation: NULL decimal text must fail closed';
+  end if;
+end $$;
+
 revoke all on function investing.i3_append_only_guard()
   from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.i3_accounting_genesis_anchor_insert_guard()
@@ -1445,11 +1455,6 @@ begin
     raise exception 'I3-A postcondition violation: I3 routine ownership/security/search_path drift';
   end if;
 
-  if investing.i3_is_canonical_quantity_v1(null)
-    or investing.i3_is_canonical_positive_money_v1(null)
-    or investing.i3_is_canonical_nonnegative_money_v1(null) then
-    raise exception 'I3-A postcondition violation: NULL decimal text must fail closed';
-  end if;
 end $$;
 
 commit;
