@@ -140,6 +140,7 @@ type InstrumentRow = {
 type ArithmeticRow = {
   gross_consideration: string | null;
   required_cash: string | null;
+  sell_net_cash: string | null;
   valid_sell_fee: boolean;
 };
 type IdempotencyRow = {
@@ -277,20 +278,24 @@ export async function accountSyntheticI3Fill(
           "select",
           "case when gross > 0 and pg_catalog.scale(pg_catalog.trim_scale(gross)) <= 8",
           "and gross <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(gross)::text else null end as gross_consideration,",
-          "case when gross + f > 0 and pg_catalog.scale(pg_catalog.trim_scale(gross + f)) <= 8",
+          "case when $4 = 'BUY' and gross + f > 0 and pg_catalog.scale(pg_catalog.trim_scale(gross + f)) <= 8",
           "and gross + f <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(gross + f)::text else null end as required_cash,",
+          "case when $4 = 'SELL' and gross - f >= 0 and pg_catalog.scale(pg_catalog.trim_scale(gross - f)) <= 8",
+          "and gross - f <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(gross - f)::text else null end as sell_net_cash,",
           "f <= gross as valid_sell_fee",
           "from calc",
         ].join(" "),
-        [normalized.quantity, normalized.unitPrice, normalized.feeAmount],
+        [normalized.quantity, normalized.unitPrice, normalized.feeAmount, normalized.side],
       ),
       "INTERNAL_ERROR",
     );
     if (arithmetic.ok === false) return arithmetic;
-    if (!arithmetic.row.gross_consideration || !arithmetic.row.required_cash) {
+    if (!arithmetic.row.gross_consideration) {
       return fail("UNREPRESENTABLE_ACCOUNTING");
     }
+    if (normalized.side === "BUY" && !arithmetic.row.required_cash) return fail("UNREPRESENTABLE_ACCOUNTING");
     if (normalized.side === "SELL" && !arithmetic.row.valid_sell_fee) return fail("VALIDATION_ERROR");
+    if (normalized.side === "SELL" && !arithmetic.row.sell_net_cash) return fail("UNREPRESENTABLE_ACCOUNTING");
 
     const materialRequestHash = hashMaterialRequest({
       context,
@@ -335,20 +340,22 @@ export async function accountSyntheticI3Fill(
     );
     if (insertedIdempotency.rowCount !== 0 && insertedIdempotency.rowCount !== 1) return fail("INTERNAL_ERROR");
 
-    const idempotency = await expectExactlyOne(
-      client.query<IdempotencyRow>(
-        [
-          "select idempotency_record_id, actor_kind, actor_id, operation_scope, operation, principal_id, tenant_id, account_id,",
-          "idempotency_key, material_request_hash, status, canonical_result_reference",
-          "from investing.idempotency_records",
-          "where actor_kind = 'USER_PRINCIPAL' and actor_id = $1",
-          "and operation_scope = 'ACCOUNT_SCOPE' and operation = $2 and idempotency_key = $3",
-        ].join(" "),
-        [context.actorId, operation, normalized.idempotencyKey],
-      ),
-      "INTERNAL_ERROR",
+    const idempotencyResult = await client.query<IdempotencyRow>(
+      [
+        "select idempotency_record_id, actor_kind, actor_id, operation_scope, operation, principal_id, tenant_id, account_id,",
+        "idempotency_key, material_request_hash, status, canonical_result_reference",
+        "from investing.idempotency_records",
+        "where actor_kind = 'USER_PRINCIPAL' and actor_id = $1 and principal_id = $2",
+        "and tenant_id = $3 and account_id = $4",
+        "and operation_scope = 'ACCOUNT_SCOPE' and operation = $5 and idempotency_key = $6",
+      ].join(" "),
+      [context.actorId, context.principalId, context.tenantId, context.accountId, operation, normalized.idempotencyKey],
     );
-    if (idempotency.ok === false) return idempotency;
+    if (idempotencyResult.rows.length > 1) return fail("INTERNAL_ERROR");
+    if (idempotencyResult.rows.length === 0) {
+      return fail(insertedIdempotency.rowCount === 0 ? "IDEMPOTENCY_CONFLICT" : "INTERNAL_ERROR");
+    }
+    const idempotency = { ok: true as const, row: idempotencyResult.rows[0]! };
 
     await setTransactionContext(client, { idempotency_record_id: idempotency.row.idempotency_record_id });
 
@@ -371,12 +378,12 @@ export async function accountSyntheticI3Fill(
     await ensureAndLockMutexes(client, context, normalized.instrumentId, account.base_currency);
 
     const semanticFill = await client.query<FillReplayRow>(
-      [
-        "select fill_id, material_request_hash from investing.i3_fills",
-        "where tenant_id = $1 and account_id = $2 and instrument_id = $3",
-        "and source = 'SYNTHETIC_I3_REHEARSAL' and source_reference = $4",
-      ].join(" "),
-      [context.tenantId, context.accountId, normalized.instrumentId, normalized.sourceReference],
+        [
+          "select fill_id, material_request_hash from investing.i3_fills",
+          "where tenant_id = $1 and account_id = $2",
+          "and source = 'SYNTHETIC_I3_REHEARSAL' and source_reference = $3",
+        ].join(" "),
+      [context.tenantId, context.accountId, normalized.sourceReference],
     );
     if (semanticFill.rows.length > 1) return fail("INTERNAL_ERROR");
     if (semanticFill.rows.length === 1) {
@@ -622,6 +629,7 @@ export async function accountSyntheticI3Fill(
 
     if (normalized.side === "BUY") {
       const requiredCash = arithmetic.row.required_cash;
+      if (!requiredCash) return fail("UNREPRESENTABLE_ACCOUNTING");
       if (!(await insertPosting(client, ledgerTransactionId, context, account.base_currency, ledgerAccounts.rows.SECURITIES_BOOK_COST_ASSET, "DEBIT", requiredCash))) {
         return fail("INTERNAL_ERROR");
       }

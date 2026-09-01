@@ -56,7 +56,7 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(raw).toContain("Canonical implementation parent: 4c2ccff3d37cd314411fa13a329bf21f9d6bf996");
     expect(raw).toContain("Depends on promoted equivalents of I3-A foundations and I3-B V3 lineage.");
     expect(normalized).toContain("accepted i3-b v3 ledger lineage contract missing");
-    expect(normalized).toContain("canonical guard function ownership drifted");
+    expect(normalized).toContain("critical predecessor guard function missing or drifted");
     expect(normalized).not.toContain("trading.");
     expect(normalized).not.toMatch(/\bservice_role\b[^;]*\bgrant\b|\bgrant\b[^;]*\bservice_role\b/);
     expect(normalized).not.toMatch(/create (?:or replace )?function[^;]+security definer/);
@@ -97,6 +97,9 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     const source = readFile(sourcePath);
 
     expect(source).toContain("function idempotencyBelongsToContext");
+    expect(source).toContain("principal_id = $2");
+    expect(source).toContain("tenant_id = $3 and account_id = $4");
+    expect(source).toContain('return fail(insertedIdempotency.rowCount === 0 ? "IDEMPOTENCY_CONFLICT" : "INTERNAL_ERROR")');
     expect(source).toContain("row.tenant_id === context.tenantId");
     expect(source).toContain("row.account_id === context.accountId");
     expect(source).toContain("row.principal_id === context.principalId");
@@ -118,11 +121,19 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
 
   it("preserves semantic Fill identity by source reference while material hash decides replay vs conflict", () => {
     const source = readFile(sourcePath);
+    const sql = readFile(candidatePath);
+    const readPolicy = policySlice(sql, "i3_fills_i3c_read");
 
-    expect(source).toContain("and source = 'SYNTHETIC_I3_REHEARSAL' and source_reference = $4");
+    expect(source).toContain("where tenant_id = $1 and account_id = $2");
+    expect(source).toContain("and source = 'SYNTHETIC_I3_REHEARSAL' and source_reference = $3");
+    const semanticLookupStart = source.indexOf("select fill_id, material_request_hash from investing.i3_fills");
+    const semanticLookupEnd = source.indexOf("if (semanticFill.rows.length > 1)", semanticLookupStart);
+    const semanticLookup = source.slice(semanticLookupStart, semanticLookupEnd);
+    expect(semanticLookup).not.toContain("instrument_id = $3");
     expect(source).toContain("semanticFill.rows.length > 1");
     expect(source).toContain("semanticFill.rows[0]!.material_request_hash !== materialRequestHash");
     expect(source).toContain("return terminalConflict(client, idempotency.row.idempotency_record_id)");
+    expect(readPolicy).not.toContain("instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid");
   });
 
   it("keeps financial reads and writes account-scoped and does not invent new authority", () => {
@@ -139,6 +150,10 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     const source = readFile(sourcePath);
     const guard = functionSlice(readFile(candidatePath), "i2_ledger_seal_guard");
 
+    expect(source).toContain("case when $4 = 'BUY' and gross + f > 0");
+    expect(source).toContain("case when $4 = 'SELL' and gross - f >= 0");
+    expect(source).toContain('if (normalized.side === "BUY" && !arithmetic.row.required_cash)');
+    expect(source).toContain('if (normalized.side === "SELL" && !arithmetic.row.sell_net_cash)');
     expect(source).toContain("pg_catalog.trim_scale(f.gross - f.fee)::text as net_cash");
     expect(source).toContain("pg_catalog.trim_scale(greatest(f.gross - x.basis, 0::numeric))::text as realized_credit");
     expect(source).toContain("pg_catalog.trim_scale(greatest(x.basis - f.gross, 0::numeric))::text as realized_debit");
@@ -177,9 +192,14 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
 
     expect(guard).toContain("v_revision_event_count integer");
     expect(guard).toContain("v_revision_event_set_hash text");
+    expect(guard).toContain("v_recomputed_event_set_hash text");
     expect(guard).toContain("select r.event_count, r.event_set_hash");
     expect(guard).toContain("v_revision_event_set_hash !~ '^[a-f0-9]{64}$'");
     expect(guard).toContain("v_revision_event_count <> v_allocation_count");
+    expect(guard).toContain("upper(encode(sha256(convert_to(");
+    expect(guard).toContain("'syntrake_investing_i3_fifo_event_set_v1'");
+    expect(guard).toContain("order by l.effective_at, l.acquisition_source_sequence, l.acquisition_source_reference, l.lot_origin_id");
+    expect(guard).toContain("v_recomputed_event_set_hash is distinct from v_revision_event_set_hash");
     expect(guard).toContain("canonical event_count and event_set_hash evidence");
   });
 
@@ -202,5 +222,25 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
 
     expect(normalized).toContain("success audit lacks material accounting proof");
     expect(policy).toContain("synthetic_i3_rehearsal");
+    expect(policy).toContain("from investing.i3_fills f");
+    expect(policy).toContain("join investing.ledger_transactions lt");
+    expect(policy).toContain("join investing.ledger_transaction_seals lts");
+    expect(policy).toContain("join investing.i3_accounting_revision_seals ars");
+  });
+
+  it("fails closed on absent or drifted critical predecessor guards before replacement", () => {
+    const normalized = normalizeSql(readFile(candidatePath));
+
+    expect(normalized).toContain("critical predecessor guard function missing or drifted");
+    expect(normalized).toContain("pg_catalog.pg_get_function_identity_arguments(p.oid) = ''");
+    expect(normalized).toContain("and r.rolname = 'investing_owner'");
+    expect(normalized).toContain("and not p.prosecdef");
+    expect(normalized).toContain("p.proconfig @> array['search_path=pg_catalog']");
+    expect(normalized).toContain("'i2_ledger_seal_guard', 'initial_paper_cash_funding'");
+    expect(normalized).toContain("'i3_fill_insert_guard', 'i3 fill requires a complete canonical accounting genesis anchor'");
+    expect(normalized).toContain("critical predecessor constraint missing or drifted");
+    expect(normalized).toContain("predecessor ledger account insert policy missing or drifted");
+    expect(normalized).toContain("'audit_events', 'audit_events_action_check', 'authority_access_denied'");
+    expect(normalized).toContain("'ledger_accounts', 'ledger_accounts_semantics_check', 'simulated_capital'");
   });
 });

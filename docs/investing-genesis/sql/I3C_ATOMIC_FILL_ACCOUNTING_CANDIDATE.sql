@@ -139,20 +139,68 @@ begin
 
   select count(*)
     into v_bad_count
-  from pg_catalog.pg_proc p
-  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-  join pg_catalog.pg_roles r on r.oid = p.proowner
-  where n.nspname = 'investing'
-    and p.proname in (
-      'i2_ledger_seal_guard',
-      'i3_fill_insert_guard',
-      'i3_accounting_revision_seal_guard',
-      'i3_fill_accounting_effect_commit_guard'
-    )
-    and r.rolname <> 'investing_owner';
+  from (values
+    ('audit_events', 'audit_events_action_check', 'AUTHORITY_ACCESS_DENIED'),
+    ('audit_events', 'audit_events_object_type_check', 'ACCOUNT_ACCESS'),
+    ('ledger_accounts', 'ledger_accounts_semantics_check', 'SIMULATED_CAPITAL')
+  ) as expected(relname, conname, required_body)
+  where not exists (
+    select 1
+    from pg_catalog.pg_constraint con
+    join pg_catalog.pg_class c on c.oid = con.conrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = expected.relname
+      and con.conname = expected.conname
+      and pg_catalog.pg_get_constraintdef(con.oid, true) like '%' || expected.required_body || '%'
+  );
 
   if v_bad_count <> 0 then
-    raise exception 'I3-C prestate violation: canonical guard function ownership drifted';
+    raise exception 'I3-C prestate violation: critical predecessor constraint missing or drifted';
+  end if;
+
+  select lower(pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid))
+    into v_policy_expr
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid = p.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'ledger_accounts'
+    and p.polname = 'ledger_accounts_i2_ledger_insert';
+
+  if v_policy_expr is null
+    or v_policy_expr !~ 'initial_paper_cash_funding'
+    or v_policy_expr !~ 'ledger_write'
+    or v_policy_expr !~ 'cash_asset'
+    or v_policy_expr !~ 'simulated_capital'
+    or v_policy_expr ~ 'securities_book_cost_asset|trading_fee_expense|realized_gain_loss' then
+    raise exception 'I3-C prestate violation: predecessor ledger account insert policy missing or drifted';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from (values
+    ('i2_ledger_seal_guard', 'initial_paper_cash_funding'),
+    ('i3_fill_insert_guard', 'i3 fill requires a complete canonical accounting genesis anchor'),
+    ('i3_accounting_revision_seal_guard', 'i3 accounting revision seal rejected incomplete sell allocation reconciliation'),
+    ('i3_fill_accounting_effect_commit_guard', 'i3 fill cannot commit without exactly one sealed canonical ledger effect')
+  ) as expected(proname, required_body)
+  where not exists (
+    select 1
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    join pg_catalog.pg_roles r on r.oid = p.proowner
+    where n.nspname = 'investing'
+      and p.proname = expected.proname
+      and pg_catalog.pg_get_function_identity_arguments(p.oid) = ''
+      and r.rolname = 'investing_owner'
+      and not p.prosecdef
+      and p.proconfig @> array['search_path=pg_catalog']
+      and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body || '%'
+  );
+
+  if v_bad_count <> 0 then
+    raise exception 'I3-C prestate violation: critical predecessor guard function missing or drifted';
   end if;
 end $$;
 
@@ -619,7 +667,6 @@ create policy i3_fills_i3c_read
     and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
-    and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
     and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
     and actor_kind = 'USER_PRINCIPAL'
     and actor_id = current_setting('syntrake.investing.actor_id', true)
@@ -1002,6 +1049,61 @@ create policy audit_events_i3c_fill_success_insert
     and evidence ->> 'source_reference' = current_setting('syntrake.investing.source_reference', true)
     and exists (
       select 1
+      from investing.i3_fills f
+      join investing.ledger_transactions lt
+        on lt.i3_fill_id = f.fill_id
+       and lt.i3_instrument_id = f.instrument_id
+       and lt.tenant_id = f.tenant_id
+       and lt.account_id = f.account_id
+       and lt.principal_id = f.principal_id
+       and lt.idempotency_record_id = f.idempotency_record_id
+       and lt.material_request_hash = f.material_request_hash
+      join investing.ledger_transaction_seals lts
+        on lts.ledger_transaction_id = lt.ledger_transaction_id
+       and lts.tenant_id = lt.tenant_id
+       and lts.account_id = lt.account_id
+      where f.fill_id = nullif(audit_events.object_id, '')::uuid
+        and f.tenant_id = audit_events.tenant_id
+        and f.account_id = audit_events.account_id
+        and f.principal_id = audit_events.principal_id
+        and f.actor_id = audit_events.actor_id
+        and f.source = 'SYNTHETIC_I3_REHEARSAL'
+        and f.source_reference = audit_events.evidence ->> 'source_reference'
+        and f.material_request_hash = audit_events.evidence ->> 'material_request_hash'
+        and lt.ledger_transaction_id = nullif(audit_events.evidence ->> 'ledger_transaction_id', '')::uuid
+        and (
+          (
+            f.side = 'BUY'
+            and lt.transaction_kind = 'I3_INTERNAL_PAPER_BUY_V1'
+            and lt.i3_accounting_revision_id is null
+            and audit_events.evidence ->> 'accounting_revision_id' = ''
+          )
+          or
+          (
+            f.side = 'SELL'
+            and lt.transaction_kind = 'I3_INTERNAL_PAPER_SELL_V1'
+            and lt.i3_accounting_revision_id = nullif(audit_events.evidence ->> 'accounting_revision_id', '')::uuid
+            and exists (
+              select 1
+              from investing.i3_accounting_revisions ar
+              join investing.i3_accounting_revision_seals ars
+                on ars.accounting_revision_id = ar.accounting_revision_id
+               and ars.disposal_fill_id = ar.disposal_fill_id
+               and ars.tenant_id = ar.tenant_id
+               and ars.account_id = ar.account_id
+               and ars.instrument_id = ar.instrument_id
+              where ar.accounting_revision_id = lt.i3_accounting_revision_id
+                and ar.disposal_fill_id = f.fill_id
+                and ar.tenant_id = f.tenant_id
+                and ar.account_id = f.account_id
+                and ar.instrument_id = f.instrument_id
+                and ar.supersedes_accounting_revision_id is null
+            )
+          )
+        )
+    )
+    and exists (
+      select 1
       from investing.account_access aa
       join investing.tenant_memberships tm
         on tm.tenant_membership_id = aa.tenant_membership_id
@@ -1193,6 +1295,7 @@ declare
   v_lot record;
   v_revision_event_count integer;
   v_revision_event_set_hash text;
+  v_recomputed_event_set_hash text;
 begin
   if tg_op <> 'INSERT' then
     raise exception 'I3 accounting revision seal is append-only and cannot be updated or deleted';
@@ -1276,6 +1379,43 @@ begin
     or v_allocated_fee <> v_sell.fee_amount
     or v_revision_event_count <> v_allocation_count then
     raise exception 'I3 accounting revision seal rejected incomplete SELL allocation reconciliation';
+  end if;
+
+  select upper(encode(sha256(convert_to(
+    'SYNTRAKE_INVESTING_I3_FIFO_EVENT_SET_V1'
+    || chr(0)
+    || new.disposal_fill_id::text
+    || coalesce(string_agg(
+      chr(0)
+      || a.lot_origin_id::text
+      || chr(0)
+      || pg_catalog.trim_scale(a.consumed_quantity)::text
+      || chr(0)
+      || pg_catalog.trim_scale(a.allocated_cost_basis)::text
+      || chr(0)
+      || pg_catalog.trim_scale(a.allocated_gross_proceeds)::text
+      || chr(0)
+      || pg_catalog.trim_scale(a.allocated_disposal_fee)::text,
+      ''
+      order by l.effective_at, l.acquisition_source_sequence, l.acquisition_source_reference, l.lot_origin_id
+    ), ''),
+    'UTF8'
+  )), 'hex'))
+    into v_recomputed_event_set_hash
+  from investing.i3_lot_consumption_allocations a
+  join investing.i3_acquisition_lot_origins l
+    on l.lot_origin_id = a.lot_origin_id
+   and l.tenant_id = a.tenant_id
+   and l.account_id = a.account_id
+   and l.instrument_id = a.instrument_id
+  where a.accounting_revision_id = new.accounting_revision_id
+    and a.disposal_fill_id = new.disposal_fill_id
+    and a.tenant_id = new.tenant_id
+    and a.account_id = new.account_id
+    and a.instrument_id = new.instrument_id;
+
+  if v_recomputed_event_set_hash is distinct from v_revision_event_set_hash then
+    raise exception 'I3 accounting revision seal rejected noncanonical event_set_hash';
   end if;
 
   v_remaining_sell := v_sell.quantity;

@@ -631,36 +631,75 @@ set search_path = pg_catalog
 as $$
 declare
   v_initial_principal_id uuid;
+  v_initial_tenant_membership_id uuid;
   v_account_created_at timestamptz;
   v_account_state text;
   v_external_subject text;
+  v_external_provider text;
   v_principal_state text;
+  v_tenant_state text;
+  v_membership_role text;
+  v_membership_state text;
+  v_access_role text;
+  v_access_state text;
 begin
   select
     a.initial_principal_id,
+    a.initial_tenant_membership_id,
     a.created_at,
     a.state,
+    p.external_provider,
     p.external_subject,
-    p.state
+    p.state,
+    t.state,
+    tm.role,
+    tm.state,
+    aa.role,
+    aa.state
     into
       v_initial_principal_id,
+      v_initial_tenant_membership_id,
       v_account_created_at,
       v_account_state,
+      v_external_provider,
       v_external_subject,
-      v_principal_state
+      v_principal_state,
+      v_tenant_state,
+      v_membership_role,
+      v_membership_state,
+      v_access_role,
+      v_access_state
   from investing.accounts a
   join investing.principals p
     on p.principal_id = a.initial_principal_id
+  join investing.tenants t
+    on t.tenant_id = a.tenant_id
+  join investing.tenant_memberships tm
+    on tm.tenant_membership_id = a.initial_tenant_membership_id
+   and tm.tenant_id = a.tenant_id
+   and tm.principal_id = a.initial_principal_id
+  join investing.account_access aa
+    on aa.account_id = a.account_id
+   and aa.tenant_id = a.tenant_id
+   and aa.tenant_membership_id = a.initial_tenant_membership_id
+   and aa.principal_id = a.initial_principal_id
   where a.account_id = new.account_id
     and a.tenant_id = new.tenant_id;
 
   if not found
     or v_account_state <> 'ACTIVE'
+    or v_tenant_state <> 'ACTIVE'
     or v_principal_state <> 'ACTIVE'
+    or v_membership_role <> 'OWNER'
+    or v_membership_state <> 'ACTIVE'
+    or v_access_role <> 'OWNER'
+    or v_access_state <> 'ACTIVE'
     or new.principal_id <> v_initial_principal_id
+    or v_initial_tenant_membership_id is null
+    or v_external_provider <> 'CLERK'
     or new.actor_id <> v_external_subject
     or new.effective_at <> v_account_created_at then
-    raise exception 'I3 accounting genesis anchor must exactly match active canonical account genesis identity and time';
+    raise exception 'I3 accounting genesis anchor must exactly match active canonical account genesis identity, owner authority graph and time';
   end if;
 
   return new;

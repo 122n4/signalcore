@@ -149,8 +149,16 @@ describe("Investing Genesis I3-A accounting foundations source candidate", () =>
     expect(normalized).toContain("origin_operation = 'initial_personal_bootstrap'");
     expect(normalized).toContain("source = 'paper_account_genesis'");
     expect(normalized).toContain("new.principal_id <> v_initial_principal_id");
+    expect(normalized).toContain("v_initial_tenant_membership_id is null");
+    expect(normalized).toContain("v_membership_role <> 'owner'");
+    expect(normalized).toContain("v_membership_state <> 'active'");
+    expect(normalized).toContain("v_access_role <> 'owner'");
+    expect(normalized).toContain("v_access_state <> 'active'");
+    expect(normalized).toContain("v_tenant_state <> 'active'");
+    expect(normalized).toContain("v_external_provider <> 'clerk'");
     expect(normalized).toContain("new.actor_id <> v_external_subject");
     expect(normalized).toContain("new.effective_at <> v_account_created_at");
+    expect(normalized).toContain("owner authority graph and time");
     expect(normalized).toContain("i3 fill requires a complete canonical accounting genesis anchor");
   });
 
