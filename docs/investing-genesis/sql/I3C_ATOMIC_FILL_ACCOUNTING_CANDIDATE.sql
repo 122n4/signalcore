@@ -167,13 +167,22 @@ begin
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'investing'
     and c.relname = 'ledger_accounts'
-    and p.polname = 'ledger_accounts_i2_ledger_insert';
+    and p.polname = 'ledger_accounts_i2_ledger_insert'
+    and p.polcmd = 'a'
+    and p.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
 
   if v_policy_expr is null
     or v_policy_expr !~ 'initial_paper_cash_funding'
     or v_policy_expr !~ 'ledger_write'
-    or v_policy_expr !~ 'cash_asset'
-    or v_policy_expr !~ 'simulated_capital'
+    or v_policy_expr !~ 'tenant_id = \(?nullif'
+    or v_policy_expr !~ 'account_id = \(?nullif'
+    or v_policy_expr !~ 'state = ''active'''
+    or v_policy_expr !~ 'from investing.account_access aa'
+    or v_policy_expr !~ 'join investing.accounts a'
+    or v_policy_expr !~ 'aa.role = ''owner'''
+    or v_policy_expr !~ 'aa.state = ''active'''
+    or v_policy_expr !~ 'a.state = ''active'''
+    or v_policy_expr !~ 'a.base_currency = ledger_accounts.currency_code'
     or v_policy_expr ~ 'securities_book_cost_asset|trading_fee_expense|realized_gain_loss' then
     raise exception 'I3-C prestate violation: predecessor ledger account insert policy missing or drifted';
   end if;

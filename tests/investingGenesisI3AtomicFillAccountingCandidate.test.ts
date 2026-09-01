@@ -11,6 +11,12 @@ const candidatePath = path.join(
   "I3C_ATOMIC_FILL_ACCOUNTING_CANDIDATE.sql",
 );
 const sourcePath = path.join(repoRoot, "lib", "investing", "accounting", "syntheticFill.ts");
+const i2LedgerMigrationPath = path.join(
+  repoRoot,
+  "supabase",
+  "migrations",
+  "20260831221500_investing_genesis_i2_ledger_schema.sql",
+);
 
 function readFile(filePath: string) {
   return fs.readFileSync(filePath, "utf8");
@@ -36,6 +42,14 @@ function policySlice(sql: string, policyName: string) {
   const candidates = [next, functionBoundary].filter((index) => index >= 0);
   const end = candidates.length === 0 ? normalized.length : Math.min(...candidates);
   return normalized.slice(start, end);
+}
+
+function firstPrestateLedgerAccountPolicyCheck(sql: string) {
+  const normalized = normalizeSql(sql);
+  const start = normalized.indexOf("and p.polname = 'ledger_accounts_i2_ledger_insert'");
+  if (start < 0) return "";
+  const end = normalized.indexOf("raise exception 'i3-c prestate violation: predecessor ledger account insert policy missing or drifted'", start);
+  return end < 0 ? normalized.slice(start) : normalized.slice(start, end);
 }
 
 function functionSlice(sql: string, functionName: string) {
@@ -296,5 +310,56 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(normalized).toContain("'i3_fills', 'i3_fills_require_accounting_effect', 'i3_fill_accounting_effect_commit_guard'");
     expect(normalized).toContain("'audit_events', 'audit_events_action_check', 'authority_access_denied'");
     expect(normalized).toContain("'ledger_accounts', 'ledger_accounts_semantics_check', 'simulated_capital'");
+  });
+
+  it("pins the I2 ledger account insert predecessor to the real frozen I2 policy before I3-C narrows it", () => {
+    const i2Policy = policySlice(readFile(i2LedgerMigrationPath), "ledger_accounts_i2_ledger_insert");
+    const i3Sql = readFile(candidatePath);
+    const i3Prestate = firstPrestateLedgerAccountPolicyCheck(i3Sql);
+    const i3RecreatedPolicy = policySlice(i3Sql, "ledger_accounts_i2_ledger_insert");
+
+    for (const proof of [
+      "initial_paper_cash_funding",
+      "ledger_write",
+      "tenant_id = nullif",
+      "account_id = nullif",
+      "state = 'active'",
+      "from investing.account_access aa",
+      "join investing.accounts a",
+      "aa.role = 'owner'",
+      "aa.state = 'active'",
+      "a.state = 'active'",
+      "a.base_currency = ledger_accounts.currency_code",
+    ]) {
+      expect(i2Policy, proof).toContain(proof);
+    }
+
+    for (const proof of [
+      "initial_paper_cash_funding",
+      "ledger_write",
+      "tenant_id = \\(?nullif",
+      "account_id = \\(?nullif",
+      "state = ''active''",
+      "from investing.account_access aa",
+      "join investing.accounts a",
+      "aa.role = ''owner''",
+      "aa.state = ''active''",
+      "a.state = ''active''",
+      "a.base_currency = ledger_accounts.currency_code",
+    ]) {
+      expect(i3Prestate, proof).toContain(proof);
+    }
+
+    expect(i3Prestate).toContain("p.polcmd = 'a'");
+    expect(i3Prestate).toContain("p.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]");
+    expect(i2Policy).not.toContain("cash_asset");
+    expect(i2Policy).not.toContain("simulated_capital");
+    expect(i3Prestate).not.toContain("cash_asset");
+    expect(i3Prestate).not.toContain("simulated_capital");
+
+    expect(i3RecreatedPolicy).toContain("ledger_account_type in ('cash_asset', 'simulated_capital')");
+    expect(i3RecreatedPolicy).not.toContain("securities_book_cost_asset");
+    expect(i3RecreatedPolicy).not.toContain("trading_fee_expense");
+    expect(i3RecreatedPolicy).not.toContain("realized_gain_loss");
   });
 });
