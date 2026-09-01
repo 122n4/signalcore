@@ -55,6 +55,7 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(raw).toContain("SOURCE CANDIDATE ONLY. THIS FILE IS NOT A SUPABASE MIGRATION.");
     expect(raw).toContain("Canonical implementation parent: 4c2ccff3d37cd314411fa13a329bf21f9d6bf996");
     expect(raw).toContain("Depends on promoted equivalents of I3-A foundations and I3-B V3 lineage.");
+    expect(normalized).toMatch(/do \$\$ declare .*v_policy_expr text;.*begin/);
     expect(normalized).toContain("accepted i3-b v3 ledger lineage contract missing");
     expect(normalized).toContain("critical predecessor guard function missing or drifted");
     expect(normalized).not.toContain("trading.");
@@ -133,7 +134,9 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(source).toContain("semanticFill.rows.length > 1");
     expect(source).toContain("semanticFill.rows[0]!.material_request_hash !== materialRequestHash");
     expect(source).toContain("return terminalConflict(client, idempotency.row.idempotency_record_id)");
-    expect(readPolicy).not.toContain("instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid");
+    expect(readPolicy).toContain("instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid or");
+    expect(readPolicy).toContain("source_reference = current_setting('syntrake.investing.source_reference', true)");
+    expect(readPolicy).toContain("from investing.account_access aa");
   });
 
   it("keeps financial reads and writes account-scoped and does not invent new authority", () => {
@@ -154,9 +157,11 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(source).toContain("case when $4 = 'SELL' and gross - f >= 0");
     expect(source).toContain('if (normalized.side === "BUY" && !arithmetic.row.required_cash)');
     expect(source).toContain('if (normalized.side === "SELL" && !arithmetic.row.sell_net_cash)');
-    expect(source).toContain("pg_catalog.trim_scale(f.gross - f.fee)::text as net_cash");
-    expect(source).toContain("pg_catalog.trim_scale(greatest(f.gross - x.basis, 0::numeric))::text as realized_credit");
-    expect(source).toContain("pg_catalog.trim_scale(greatest(x.basis - f.gross, 0::numeric))::text as realized_debit");
+    expect(source).toContain("and x.basis <= 9999999999999999.99999999::numeric");
+    expect(source).toContain("and f.gross - f.fee <= 9999999999999999.99999999::numeric");
+    expect(source).toContain("and greatest(f.gross - x.basis, 0::numeric) <= 9999999999999999.99999999::numeric");
+    expect(source).toContain("and greatest(x.basis - f.gross, 0::numeric) <= 9999999999999999.99999999::numeric");
+    expect(source).toContain('return fail("UNREPRESENTABLE_ACCOUNTING")');
     expect(guard).toContain("v_cash_debit <> v_fill.gross_consideration - v_fill.fee_amount");
     expect(guard).toContain("v_fee_debit <> v_fill.fee_amount");
     expect(guard).toContain("v_book_credit <> v_consumed_basis");
@@ -184,6 +189,50 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(policySlice(sql, "idempotency_records_i3c_accounting_read")).toContain("from investing.account_access aa");
     expect(policySlice(sql, "idempotency_records_i3c_accounting_read")).toContain("join investing.tenant_memberships tm");
     expect(policySlice(sql, "idempotency_records_i3c_accounting_read")).toContain("join investing.principals p");
+    for (const policy of [
+      "idempotency_records_i3c_accounting_insert",
+      "idempotency_records_i3c_accounting_update",
+      "i3_accounting_genesis_anchors_i3c_read",
+      "i3_accounting_genesis_anchors_i3c_insert",
+      "i3_accounting_mutexes_i3c_read",
+      "i3_accounting_mutexes_i3c_insert",
+      "i3_accounting_mutexes_i3c_lock",
+      "i3_fills_i3c_read",
+      "i3_fills_i3c_insert",
+      "i3_acquisition_lot_origins_i3c_read",
+      "i3_acquisition_lot_origins_i3c_insert",
+      "i3_accounting_revisions_i3c_read",
+      "i3_accounting_revisions_i3c_insert",
+      "i3_lot_consumption_allocations_i3c_read",
+      "i3_lot_consumption_allocations_i3c_insert",
+      "i3_accounting_revision_seals_i3c_read",
+      "i3_accounting_revision_seals_i3c_insert",
+      "ledger_accounts_i3c_accounting_read",
+      "ledger_accounts_i3c_accounting_insert",
+      "ledger_transactions_i3c_accounting_read",
+      "ledger_transactions_i3c_accounting_insert",
+      "ledger_postings_i3c_accounting_read",
+      "ledger_postings_i3c_accounting_insert",
+      "ledger_transaction_seals_i3c_accounting_read",
+      "ledger_transaction_seals_i3c_accounting_insert",
+      "audit_events_i3c_fill_success_insert",
+    ]) {
+      const slice = policySlice(sql, policy);
+      expect(slice, policy).toContain("from investing.account_access aa");
+      expect(slice, policy).toContain("join investing.tenant_memberships tm");
+      expect(slice, policy).toContain("join investing.accounts a");
+      expect(slice, policy).toContain("join investing.tenants t");
+      expect(slice, policy).toContain("join investing.principals p");
+      expect(slice, policy).toContain("aa.role = 'owner'");
+      expect(slice, policy).toContain("aa.state = 'active'");
+      expect(slice, policy).toContain("tm.role = 'owner'");
+      expect(slice, policy).toContain("tm.state = 'active'");
+      expect(slice, policy).toContain("a.state = 'active'");
+      expect(slice, policy).toContain("t.state = 'active'");
+      expect(slice, policy).toContain("p.state = 'active'");
+      expect(slice, policy).toContain("p.external_provider = current_setting('syntrake.investing.external_provider', true)");
+      expect(slice, policy).toContain("p.external_subject = current_setting('syntrake.investing.external_subject', true)");
+    }
     expect(normalized).not.toMatch(/\busing\s*\(\s*true\s*\)|\bwith check\s*\(\s*true\s*\)/);
   });
 
@@ -223,6 +272,8 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(normalized).toContain("success audit lacks material accounting proof");
     expect(policy).toContain("synthetic_i3_rehearsal");
     expect(policy).toContain("from investing.i3_fills f");
+    expect(policy).toContain("audit_events.evidence ->> 'idempotency_record_id' = f.idempotency_record_id::text");
+    expect(policy).toContain("audit_events.evidence ->> 'instrument_id' = f.instrument_id::text");
     expect(policy).toContain("join investing.ledger_transactions lt");
     expect(policy).toContain("join investing.ledger_transaction_seals lts");
     expect(policy).toContain("join investing.i3_accounting_revision_seals ars");
@@ -239,7 +290,10 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(normalized).toContain("'i2_ledger_seal_guard', 'initial_paper_cash_funding'");
     expect(normalized).toContain("'i3_fill_insert_guard', 'i3 fill requires a complete canonical accounting genesis anchor'");
     expect(normalized).toContain("critical predecessor constraint missing or drifted");
+    expect(normalized).toContain("critical predecessor trigger missing or drifted");
     expect(normalized).toContain("predecessor ledger account insert policy missing or drifted");
+    expect(normalized).toContain("'ledger_transaction_seals', 'ledger_transaction_seals_guard_all_mutations', 'i2_ledger_seal_guard'");
+    expect(normalized).toContain("'i3_fills', 'i3_fills_require_accounting_effect', 'i3_fill_accounting_effect_commit_guard'");
     expect(normalized).toContain("'audit_events', 'audit_events_action_check', 'authority_access_denied'");
     expect(normalized).toContain("'ledger_accounts', 'ledger_accounts_semantics_check', 'simulated_capital'");
   });

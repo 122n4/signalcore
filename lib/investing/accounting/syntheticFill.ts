@@ -181,6 +181,12 @@ type AllocationPlanRow = {
   realized_result: string | null;
 };
 type SellTotalsRow = {
+  consumed_basis: string | null;
+  net_cash: string | null;
+  realized_credit: string | null;
+  realized_debit: string | null;
+};
+type RepresentableSellTotalsRow = {
   consumed_basis: string;
   net_cash: string;
   realized_credit: string;
@@ -464,7 +470,7 @@ export async function accountSyntheticI3Fill(
     if (fillInsert.rowCount !== 1) return fail("INTERNAL_ERROR");
 
     let accountingRevisionId: string | null = null;
-    let sellTotals: SellTotalsRow | null = null;
+    let sellTotals: RepresentableSellTotalsRow | null = null;
 
     if (normalized.side === "BUY") {
       const lotInsert = await client.query(
@@ -578,10 +584,14 @@ export async function accountSyntheticI3Fill(
             "with x as (select coalesce(sum(allocated_cost_basis), 0::numeric) as basis",
             "from investing.i3_lot_consumption_allocations where accounting_revision_id = $1),",
             "f as (select $2::numeric as gross, $3::numeric as fee)",
-            "select pg_catalog.trim_scale(x.basis)::text as consumed_basis,",
-            "pg_catalog.trim_scale(f.gross - f.fee)::text as net_cash,",
-            "pg_catalog.trim_scale(greatest(f.gross - x.basis, 0::numeric))::text as realized_credit,",
-            "pg_catalog.trim_scale(greatest(x.basis - f.gross, 0::numeric))::text as realized_debit",
+            "select case when pg_catalog.scale(pg_catalog.trim_scale(x.basis)) <= 8",
+            "and x.basis <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(x.basis)::text else null end as consumed_basis,",
+            "case when pg_catalog.scale(pg_catalog.trim_scale(f.gross - f.fee)) <= 8",
+            "and f.gross - f.fee <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(f.gross - f.fee)::text else null end as net_cash,",
+            "case when pg_catalog.scale(pg_catalog.trim_scale(greatest(f.gross - x.basis, 0::numeric))) <= 8",
+            "and greatest(f.gross - x.basis, 0::numeric) <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(greatest(f.gross - x.basis, 0::numeric))::text else null end as realized_credit,",
+            "case when pg_catalog.scale(pg_catalog.trim_scale(greatest(x.basis - f.gross, 0::numeric))) <= 8",
+            "and greatest(x.basis - f.gross, 0::numeric) <= 9999999999999999.99999999::numeric then pg_catalog.trim_scale(greatest(x.basis - f.gross, 0::numeric))::text else null end as realized_debit",
             "from x cross join f",
           ].join(" "),
           [accountingRevisionId, arithmetic.row.gross_consideration, normalized.feeAmount],
@@ -589,7 +599,20 @@ export async function accountSyntheticI3Fill(
         "INTERNAL_ERROR",
       );
       if (totals.ok === false) return totals;
-      sellTotals = totals.row;
+      if (
+        !totals.row.consumed_basis ||
+        !totals.row.net_cash ||
+        !totals.row.realized_credit ||
+        !totals.row.realized_debit
+      ) {
+        return fail("UNREPRESENTABLE_ACCOUNTING");
+      }
+      sellTotals = {
+        consumed_basis: totals.row.consumed_basis,
+        net_cash: totals.row.net_cash,
+        realized_credit: totals.row.realized_credit,
+        realized_debit: totals.row.realized_debit,
+      };
     }
 
     const ledgerAccounts = await ensureLedgerAccounts(client, context, account.base_currency);

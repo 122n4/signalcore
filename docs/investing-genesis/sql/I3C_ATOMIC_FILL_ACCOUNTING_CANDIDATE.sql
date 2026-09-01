@@ -20,6 +20,7 @@ declare
   v_missing_tables text[];
   v_bad_count integer;
   v_constraint text;
+  v_policy_expr text;
   v_update_columns text[];
 begin
   if current_user <> 'postgres' then
@@ -180,11 +181,31 @@ begin
   select count(*)
     into v_bad_count
   from (values
-    ('i2_ledger_seal_guard', 'initial_paper_cash_funding'),
-    ('i3_fill_insert_guard', 'i3 fill requires a complete canonical accounting genesis anchor'),
-    ('i3_accounting_revision_seal_guard', 'i3 accounting revision seal rejected incomplete sell allocation reconciliation'),
-    ('i3_fill_accounting_effect_commit_guard', 'i3 fill cannot commit without exactly one sealed canonical ledger effect')
-  ) as expected(proname, required_body)
+    (
+      'i2_ledger_seal_guard',
+      'initial_paper_cash_funding',
+      'ledger_transaction_seals',
+      'balanced debit and credit totals'
+    ),
+    (
+      'i3_fill_insert_guard',
+      'i3 fill requires a complete canonical accounting genesis anchor',
+      'canonical started idempotency material tuple',
+      'for update'
+    ),
+    (
+      'i3_accounting_revision_seal_guard',
+      'i3 accounting revision seal rejected incomplete sell allocation reconciliation',
+      'event_set_hash',
+      'supersedes_accounting_revision_id is null'
+    ),
+    (
+      'i3_fill_accounting_effect_commit_guard',
+      'i3 fill cannot commit without exactly one sealed canonical ledger effect',
+      'ledger_transaction_seals',
+      'i3_accounting_revision_seals'
+    )
+  ) as expected(proname, required_body, required_body_2, required_body_3)
   where not exists (
     select 1
     from pg_catalog.pg_proc p
@@ -197,10 +218,41 @@ begin
       and not p.prosecdef
       and p.proconfig @> array['search_path=pg_catalog']
       and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body || '%'
+      and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body_2 || '%'
+      and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body_3 || '%'
   );
 
   if v_bad_count <> 0 then
     raise exception 'I3-C prestate violation: critical predecessor guard function missing or drifted';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from (values
+    ('i3_fills', 'i3_fills_guard_insert', 'i3_fill_insert_guard'),
+    ('i3_fills', 'i3_fills_require_accounting_effect', 'i3_fill_accounting_effect_commit_guard'),
+    ('i3_accounting_revisions', 'i3_accounting_revisions_guard_insert', 'i3_accounting_revision_insert_guard'),
+    ('i3_accounting_revisions', 'i3_accounting_revisions_require_exactly_one_seal', 'i3_revision_commit_guard'),
+    ('i3_accounting_revision_seals', 'i3_accounting_revision_seals_guard_all_mutations', 'i3_accounting_revision_seal_guard'),
+    ('ledger_transaction_seals', 'ledger_transaction_seals_guard_all_mutations', 'i2_ledger_seal_guard')
+  ) as expected(relname, tgname, proname)
+  where not exists (
+    select 1
+    from pg_catalog.pg_trigger t
+    join pg_catalog.pg_class c on c.oid = t.tgrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    join pg_catalog.pg_proc p on p.oid = t.tgfoid
+    join pg_catalog.pg_namespace pn on pn.oid = p.pronamespace
+    where n.nspname = 'investing'
+      and pn.nspname = 'investing'
+      and c.relname = expected.relname
+      and t.tgname = expected.tgname
+      and p.proname = expected.proname
+      and not t.tgisinternal
+  );
+
+  if v_bad_count <> 0 then
+    raise exception 'I3-C prestate violation: critical predecessor trigger missing or drifted';
   end if;
 end $$;
 
@@ -493,6 +545,34 @@ create policy idempotency_records_i3c_accounting_insert
     and operation_scope = 'ACCOUNT_SCOPE'
     and operation = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
     and status = 'STARTED'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = idempotency_records.account_id
+        and aa.tenant_id = idempotency_records.tenant_id
+        and aa.principal_id = idempotency_records.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = idempotency_records.actor_id
+    )
   );
 
 create policy idempotency_records_i3c_accounting_update
@@ -513,6 +593,34 @@ create policy idempotency_records_i3c_accounting_update
     and operation_scope = 'ACCOUNT_SCOPE'
     and operation = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
     and status = 'STARTED'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = idempotency_records.account_id
+        and aa.tenant_id = idempotency_records.tenant_id
+        and aa.principal_id = idempotency_records.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = idempotency_records.actor_id
+    )
   )
   with check (
     current_setting('syntrake.investing.operation', true) = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
@@ -529,6 +637,34 @@ create policy idempotency_records_i3c_accounting_update
     and operation = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
     and status in ('SUCCEEDED', 'CONFLICT')
     and completed_at is not null
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = idempotency_records.account_id
+        and aa.tenant_id = idempotency_records.tenant_id
+        and aa.principal_id = idempotency_records.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = idempotency_records.actor_id
+    )
   );
 
 -- ---------------------------------------------------------------------------
@@ -564,6 +700,34 @@ create policy i3_accounting_genesis_anchors_i3c_read
     and value_origin = 'SIMULATED'
     and freshness = 'NOT_APPLICABLE'
     and context = 'DEMO'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_genesis_anchors.account_id
+        and aa.tenant_id = i3_accounting_genesis_anchors.tenant_id
+        and aa.principal_id = i3_accounting_genesis_anchors.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = i3_accounting_genesis_anchors.actor_id
+    )
   );
 
 create policy i3_accounting_genesis_anchors_i3c_insert
@@ -583,6 +747,34 @@ create policy i3_accounting_genesis_anchors_i3c_insert
     and value_origin = 'SIMULATED'
     and freshness = 'NOT_APPLICABLE'
     and context = 'DEMO'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_genesis_anchors.account_id
+        and aa.tenant_id = i3_accounting_genesis_anchors.tenant_id
+        and aa.principal_id = i3_accounting_genesis_anchors.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = i3_accounting_genesis_anchors.actor_id
+    )
   );
 
 create policy i3_accounting_mutexes_i3c_read
@@ -606,6 +798,34 @@ create policy i3_accounting_mutexes_i3c_read
         and currency_code is null
         and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
       )
+    )
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_mutexes.account_id
+        and aa.tenant_id = i3_accounting_mutexes.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
     )
   );
 
@@ -631,6 +851,34 @@ create policy i3_accounting_mutexes_i3c_insert
         and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
       )
     )
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_mutexes.account_id
+        and aa.tenant_id = i3_accounting_mutexes.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_accounting_mutexes_i3c_lock
@@ -655,6 +903,34 @@ create policy i3_accounting_mutexes_i3c_lock
         and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
       )
     )
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_mutexes.account_id
+        and aa.tenant_id = i3_accounting_mutexes.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   )
   with check (false);
 
@@ -672,10 +948,45 @@ create policy i3_fills_i3c_read
     and actor_id = current_setting('syntrake.investing.actor_id', true)
     and operation_scope = 'ACCOUNT_SCOPE'
     and operation = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and (
+      instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+      or (
+        source = 'SYNTHETIC_I3_REHEARSAL'
+        and source_reference = current_setting('syntrake.investing.source_reference', true)
+      )
+    )
     and source = 'SYNTHETIC_I3_REHEARSAL'
     and value_origin = 'SIMULATED'
     and freshness = 'NOT_APPLICABLE'
     and context = 'DEMO'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_fills.account_id
+        and aa.tenant_id = i3_fills.tenant_id
+        and aa.principal_id = i3_fills.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = i3_fills.actor_id
+    )
   );
 
 create policy i3_fills_i3c_insert
@@ -739,6 +1050,7 @@ create policy i3_fills_i3c_insert
         and t.state = 'ACTIVE'
         and p.state = 'ACTIVE'
         and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
         and p.external_subject = i3_fills.actor_id
     )
   );
@@ -753,6 +1065,34 @@ create policy i3_acquisition_lot_origins_i3c_read
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_acquisition_lot_origins.account_id
+        and aa.tenant_id = i3_acquisition_lot_origins.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_acquisition_lot_origins_i3c_insert
@@ -766,6 +1106,34 @@ create policy i3_acquisition_lot_origins_i3c_insert
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
     and acquisition_fill_id = nullif(current_setting('syntrake.investing.fill_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_acquisition_lot_origins.account_id
+        and aa.tenant_id = i3_acquisition_lot_origins.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_accounting_revisions_i3c_read
@@ -778,6 +1146,34 @@ create policy i3_accounting_revisions_i3c_read
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_revisions.account_id
+        and aa.tenant_id = i3_accounting_revisions.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_accounting_revisions_i3c_insert
@@ -796,6 +1192,34 @@ create policy i3_accounting_revisions_i3c_insert
     and methodology_id = 'FIFO_V1'
     and methodology_version = 1
     and supersedes_accounting_revision_id is null
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_revisions.account_id
+        and aa.tenant_id = i3_accounting_revisions.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_lot_consumption_allocations_i3c_read
@@ -808,6 +1232,34 @@ create policy i3_lot_consumption_allocations_i3c_read
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_lot_consumption_allocations.account_id
+        and aa.tenant_id = i3_lot_consumption_allocations.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_lot_consumption_allocations_i3c_insert
@@ -822,6 +1274,34 @@ create policy i3_lot_consumption_allocations_i3c_insert
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_lot_consumption_allocations.account_id
+        and aa.tenant_id = i3_lot_consumption_allocations.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_accounting_revision_seals_i3c_read
@@ -834,6 +1314,34 @@ create policy i3_accounting_revision_seals_i3c_read
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_revision_seals.account_id
+        and aa.tenant_id = i3_accounting_revision_seals.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy i3_accounting_revision_seals_i3c_insert
@@ -848,6 +1356,34 @@ create policy i3_accounting_revision_seals_i3c_insert
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and instrument_id = nullif(current_setting('syntrake.investing.instrument_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = i3_accounting_revision_seals.account_id
+        and aa.tenant_id = i3_accounting_revision_seals.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 -- ---------------------------------------------------------------------------
@@ -871,6 +1407,34 @@ create policy ledger_accounts_i3c_accounting_read
       'REALIZED_GAIN_LOSS'
     )
     and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_accounts.account_id
+        and aa.tenant_id = ledger_accounts.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy ledger_accounts_i3c_accounting_insert
@@ -889,6 +1453,34 @@ create policy ledger_accounts_i3c_accounting_insert
       'REALIZED_GAIN_LOSS'
     )
     and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_accounts.account_id
+        and aa.tenant_id = ledger_accounts.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy ledger_transactions_i3c_accounting_read
@@ -903,6 +1495,34 @@ create policy ledger_transactions_i3c_accounting_read
     and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
     and actor_kind = 'USER_PRINCIPAL'
     and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_transactions.account_id
+        and aa.tenant_id = ledger_transactions.tenant_id
+        and aa.principal_id = ledger_transactions.principal_id
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = ledger_transactions.actor_id
+    )
   );
 
 create policy ledger_transactions_i3c_accounting_insert
@@ -969,6 +1589,7 @@ create policy ledger_transactions_i3c_accounting_insert
         and t.state = 'ACTIVE'
         and p.state = 'ACTIVE'
         and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
         and p.external_subject = ledger_transactions.actor_id
     )
   );
@@ -983,6 +1604,34 @@ create policy ledger_postings_i3c_accounting_read
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and currency_code = current_setting('syntrake.investing.settlement_currency', true)
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_postings.account_id
+        and aa.tenant_id = ledger_postings.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy ledger_postings_i3c_accounting_insert
@@ -996,6 +1645,34 @@ create policy ledger_postings_i3c_accounting_insert
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and currency_code = current_setting('syntrake.investing.settlement_currency', true)
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_postings.account_id
+        and aa.tenant_id = ledger_postings.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy ledger_transaction_seals_i3c_accounting_read
@@ -1007,6 +1684,34 @@ create policy ledger_transaction_seals_i3c_accounting_read
     and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_transaction_seals.account_id
+        and aa.tenant_id = ledger_transaction_seals.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy ledger_transaction_seals_i3c_accounting_insert
@@ -1019,6 +1724,34 @@ create policy ledger_transaction_seals_i3c_accounting_insert
     and ledger_transaction_id = nullif(current_setting('syntrake.investing.ledger_transaction_id', true), '')::uuid
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.account_access aa
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = aa.tenant_membership_id
+       and tm.tenant_id = aa.tenant_id
+       and tm.principal_id = aa.principal_id
+      join investing.accounts a
+        on a.account_id = aa.account_id
+       and a.tenant_id = aa.tenant_id
+      join investing.tenants t
+        on t.tenant_id = aa.tenant_id
+      join investing.principals p
+        on p.principal_id = aa.principal_id
+      where aa.account_id = ledger_transaction_seals.account_id
+        and aa.tenant_id = ledger_transaction_seals.tenant_id
+        and aa.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+        and a.state = 'ACTIVE'
+        and t.state = 'ACTIVE'
+        and p.state = 'ACTIVE'
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+    )
   );
 
 create policy audit_events_i3c_fill_success_insert
@@ -1069,6 +1802,8 @@ create policy audit_events_i3c_fill_success_insert
         and f.actor_id = audit_events.actor_id
         and f.source = 'SYNTHETIC_I3_REHEARSAL'
         and f.source_reference = audit_events.evidence ->> 'source_reference'
+        and audit_events.evidence ->> 'idempotency_record_id' = f.idempotency_record_id::text
+        and audit_events.evidence ->> 'instrument_id' = f.instrument_id::text
         and f.material_request_hash = audit_events.evidence ->> 'material_request_hash'
         and lt.ledger_transaction_id = nullif(audit_events.evidence ->> 'ledger_transaction_id', '')::uuid
         and (
@@ -1127,6 +1862,7 @@ create policy audit_events_i3c_fill_success_insert
         and t.state = 'ACTIVE'
         and p.state = 'ACTIVE'
         and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
         and p.external_subject = audit_events.actor_id
     )
   );
