@@ -55,12 +55,29 @@ function firstPrestateLedgerAccountPolicyCheck(sql: string) {
 const i2LedgerAccountAccessFromRegex =
   /from\s+\(?investing\.account_access\s+aa/;
 
+function prestateGuardFunctionRowSlice(prestateGuard: string, functionName: string) {
+  const start = prestateGuard.indexOf(`'${functionName}'`);
+  if (start < 0) return "";
+  const end = prestateGuard.indexOf(")", start);
+  return end < 0 ? prestateGuard.slice(start) : prestateGuard.slice(start, end);
+}
+
 function functionSlice(sql: string, functionName: string) {
   const normalized = normalizeSql(sql);
   const marker = `create or replace function investing.${functionName.toLowerCase()}()`;
   const start = normalized.indexOf(marker);
   if (start < 0) return "";
   const end = normalized.indexOf("$$;", start);
+  return end < 0 ? normalized.slice(start) : normalized.slice(start, end + 3);
+}
+
+function predecessorFunctionSlice(sql: string, functionName: string) {
+  const normalized = normalizeSql(sql);
+  const marker = `function investing.${functionName.toLowerCase()}()`;
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex < 0) return "";
+  const start = normalized.lastIndexOf("create ", markerIndex);
+  const end = normalized.indexOf("$$;", markerIndex);
   return end < 0 ? normalized.slice(start) : normalized.slice(start, end + 3);
 }
 
@@ -370,5 +387,78 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect("from investing.account_access aa").toMatch(i2LedgerAccountAccessFromRegex);
     expect("from (investing.account_access aa").toMatch(i2LedgerAccountAccessFromRegex);
     expect("from investing.account_access_other aa").not.toMatch(i2LedgerAccountAccessFromRegex);
+  });
+
+  it("derives guard-function prestate pins from the canonical predecessor files, not I3-C poststate", () => {
+    const i2Sql = readFile(i2LedgerMigrationPath);
+    const i3aSql = readFile(path.join(repoRoot, "docs", "investing-genesis", "sql", "I3A_ACCOUNTING_FOUNDATIONS_CANDIDATE.sql"));
+    const i3bSql = readFile(path.join(repoRoot, "docs", "investing-genesis", "sql", "I3B_LEDGER_LINEAGE_CANDIDATE_V3.sql"));
+    const i3cPrestate = normalizeSql(readFile(candidatePath));
+
+    const predecessorPins = [
+      {
+        sql: i2Sql + "\n" + i3bSql,
+        name: "i2_ledger_seal_guard",
+        pins: [
+          "initial_paper_cash_funding",
+          "ledger_transaction_seals",
+          "canonical started idempotency record",
+        ],
+        i3cOnly: ["balanced debit and credit totals", "i3 buy ledger seal rejected posting shape", "negative cash"],
+      },
+      {
+        sql: i3aSql,
+        name: "i3_fill_insert_guard",
+        pins: [
+          "i3 fill requires a complete canonical accounting genesis anchor",
+          "canonical started idempotency material tuple",
+          "active canonical authority graph",
+        ],
+        i3cOnly: ["for update"],
+      },
+      {
+        sql: i3aSql,
+        name: "i3_accounting_revision_seal_guard",
+        pins: [
+          "i3 accounting revision seal rejected incomplete sell allocation reconciliation",
+          "overconsumed lot origin within revision",
+          "canonical sell fill",
+        ],
+        i3cOnly: ["event_set_hash", "supersedes_accounting_revision_id is null"],
+      },
+      {
+        sql: i3aSql,
+        name: "i3_fill_accounting_effect_commit_guard",
+        pins: [
+          "i3 buy fill cannot commit without exactly one acquisition lot origin",
+          "i3 sell fill cannot commit without exactly one sealed initial accounting revision",
+          "i3_accounting_revision_seals",
+        ],
+        i3cOnly: ["sealed canonical ledger effect", "ledger_transaction_seals"],
+      },
+    ];
+
+    for (const predecessor of predecessorPins) {
+      const predecessorBody = predecessorFunctionSlice(predecessor.sql, predecessor.name);
+      expect(predecessorBody, predecessor.name).not.toBe("");
+      expect(i3cPrestate).toContain(`'${predecessor.name}'`);
+      expect(i3cPrestate).toContain("pg_catalog.pg_get_function_identity_arguments(p.oid) = ''");
+      expect(i3cPrestate).toContain("and r.rolname = 'investing_owner'");
+      expect(i3cPrestate).toContain("and not p.prosecdef");
+      expect(i3cPrestate).toContain("p.proconfig @> array['search_path=pg_catalog']");
+
+      for (const pin of predecessor.pins) {
+        expect(predecessorBody, `${predecessor.name}:${pin}`).toContain(pin);
+        expect(i3cPrestate, `${predecessor.name}:${pin}`).toContain(`'${pin}'`);
+      }
+
+      const prestateGuardStart = i3cPrestate.indexOf("from (values ( 'i2_ledger_seal_guard'");
+      const prestateGuardEnd = i3cPrestate.indexOf("raise exception 'i3-c prestate violation: critical predecessor guard function missing or drifted'");
+      const prestateGuard = i3cPrestate.slice(prestateGuardStart, prestateGuardEnd);
+      const functionPrestateRow = prestateGuardFunctionRowSlice(prestateGuard, predecessor.name);
+      for (const poststateMarker of predecessor.i3cOnly) {
+        expect(functionPrestateRow, `${predecessor.name}:${poststateMarker}`).not.toContain(`'${poststateMarker}'`);
+      }
+    }
   });
 });

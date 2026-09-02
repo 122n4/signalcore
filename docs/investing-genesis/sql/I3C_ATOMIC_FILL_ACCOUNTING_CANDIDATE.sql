@@ -194,24 +194,24 @@ begin
       'i2_ledger_seal_guard',
       'initial_paper_cash_funding',
       'ledger_transaction_seals',
-      'balanced debit and credit totals'
+      'canonical started idempotency record'
     ),
     (
       'i3_fill_insert_guard',
       'i3 fill requires a complete canonical accounting genesis anchor',
       'canonical started idempotency material tuple',
-      'for update'
+      'active canonical authority graph'
     ),
     (
       'i3_accounting_revision_seal_guard',
       'i3 accounting revision seal rejected incomplete sell allocation reconciliation',
-      'event_set_hash',
-      'supersedes_accounting_revision_id is null'
+      'overconsumed lot origin within revision',
+      'canonical sell fill'
     ),
     (
       'i3_fill_accounting_effect_commit_guard',
-      'i3 fill cannot commit without exactly one sealed canonical ledger effect',
-      'ledger_transaction_seals',
+      'i3 buy fill cannot commit without exactly one acquisition lot origin',
+      'i3 sell fill cannot commit without exactly one sealed initial accounting revision',
       'i3_accounting_revision_seals'
     )
   ) as expected(proname, required_body, required_body_2, required_body_3)
@@ -2767,6 +2767,42 @@ begin
 
   if v_bad_count <> 0 then
     raise exception 'I3-C postcondition violation: SECURITY DEFINER routine introduced';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from (values
+    (
+      'i3_accounting_revision_seal_guard',
+      'event_set_hash',
+      'supersedes_accounting_revision_id is null',
+      'canonical event_count and event_set_hash evidence'
+    ),
+    (
+      'i3_fill_accounting_effect_commit_guard',
+      'i3 fill cannot commit without exactly one sealed canonical ledger effect',
+      'ledger_transaction_seals',
+      'i3_accounting_revision_seals'
+    )
+  ) as expected(proname, required_body, required_body_2, required_body_3)
+  where not exists (
+    select 1
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    join pg_catalog.pg_roles r on r.oid = p.proowner
+    where n.nspname = 'investing'
+      and p.proname = expected.proname
+      and pg_catalog.pg_get_function_identity_arguments(p.oid) = ''
+      and r.rolname = 'investing_owner'
+      and not p.prosecdef
+      and p.proconfig @> array['search_path=pg_catalog']
+      and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body || '%'
+      and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body_2 || '%'
+      and lower(pg_catalog.pg_get_functiondef(p.oid)) like '%' || expected.required_body_3 || '%'
+  );
+
+  if v_bad_count <> 0 then
+    raise exception 'I3-C postcondition violation: I3-C replacement guard function missing';
   end if;
 
   if not exists (
