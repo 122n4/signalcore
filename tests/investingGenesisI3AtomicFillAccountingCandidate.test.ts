@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -279,11 +280,41 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(guard).toContain("select r.event_count, r.event_set_hash");
     expect(guard).toContain("v_revision_event_set_hash !~ '^[a-f0-9]{64}$'");
     expect(guard).toContain("v_revision_event_count <> v_allocation_count");
-    expect(guard).toContain("upper(encode(sha256(convert_to(");
+    expect(guard).toContain("upper(encode(sha256(");
+    expect(guard).toContain("convert_to('syntrake_investing_i3_fifo_event_set_v1', 'utf8')");
+    expect(guard).toContain("decode('00', 'hex')");
+    expect(guard).toContain("string_agg(");
+    expect(guard).toContain("''::bytea");
+    expect(guard).not.toContain("chr(0)");
+    expect(guard).not.toContain("sha256(convert_to(");
     expect(guard).toContain("'syntrake_investing_i3_fifo_event_set_v1'");
     expect(guard).toContain("order by l.effective_at, l.acquisition_source_sequence, l.acquisition_source_reference, l.lot_origin_id");
     expect(guard).toContain("v_recomputed_event_set_hash is distinct from v_revision_event_set_hash");
     expect(guard).toContain("canonical event_count and event_set_hash evidence");
+  });
+
+  it("keeps DB event_set_hash byte parity with the writer's zero-delimited FIFO event-set contract", () => {
+    const guard = functionSlice(readFile(candidatePath), "i3_accounting_revision_seal_guard");
+    const domain = "SYNTRAKE_INVESTING_I3_FIFO_EVENT_SET_V1";
+    const fillId = "11111111-1111-4111-8111-111111111111";
+    const orderedRows = [
+      ["22222222-2222-4222-8222-222222222222", "4", "40", "48", "0.8"],
+      ["33333333-3333-4333-8333-333333333333", "6", "60", "72", "1.2"],
+    ];
+    const payloadParts = [domain, fillId, ...orderedRows.flat()];
+    const payload = Buffer.from(payloadParts.join("\0"), "utf8");
+
+    expect(payload.toString("hex").toUpperCase()).toBe(
+      "53594E5452414B455F494E56455354494E475F49335F4649464F5F4556454E545F5345545F56310031313131313131312D313131312D343131312D383131312D3131313131313131313131310032323232323232322D323232322D343232322D383232322D323232323232323232323232003400343000343800302E380033333333333333332D333333332D343333332D383333332D333333333333333333333333003600363000373200312E32",
+    );
+    expect(createHash("sha256").update(payload).digest("hex").toUpperCase()).toBe(
+      "0A9A3EDC74FB1C85C452E170D8E87533F5BF1C43F3C341DA55597C985D32CC68",
+    );
+    expect(guard).toContain("convert_to(a.lot_origin_id::text, 'utf8')");
+    expect(guard).toContain("convert_to(pg_catalog.trim_scale(a.consumed_quantity)::text, 'utf8')");
+    expect(guard).toContain("convert_to(pg_catalog.trim_scale(a.allocated_cost_basis)::text, 'utf8')");
+    expect(guard).toContain("convert_to(pg_catalog.trim_scale(a.allocated_gross_proceeds)::text, 'utf8')");
+    expect(guard).toContain("convert_to(pg_catalog.trim_scale(a.allocated_disposal_fee)::text, 'utf8')");
   });
 
   it("requires successful canonical audit rows to prove material accounting evidence", () => {

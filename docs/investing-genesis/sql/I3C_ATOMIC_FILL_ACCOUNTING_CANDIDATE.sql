@@ -2126,26 +2126,25 @@ begin
     raise exception 'I3 accounting revision seal rejected incomplete SELL allocation reconciliation';
   end if;
 
-  select upper(encode(sha256(convert_to(
-    'SYNTRAKE_INVESTING_I3_FIFO_EVENT_SET_V1'
-    || chr(0)
-    || new.disposal_fill_id::text
+  select upper(encode(sha256(
+    convert_to('SYNTRAKE_INVESTING_I3_FIFO_EVENT_SET_V1', 'UTF8')
+    || decode('00', 'hex')
+    || convert_to(new.disposal_fill_id::text, 'UTF8')
     || coalesce(string_agg(
-      chr(0)
-      || a.lot_origin_id::text
-      || chr(0)
-      || pg_catalog.trim_scale(a.consumed_quantity)::text
-      || chr(0)
-      || pg_catalog.trim_scale(a.allocated_cost_basis)::text
-      || chr(0)
-      || pg_catalog.trim_scale(a.allocated_gross_proceeds)::text
-      || chr(0)
-      || pg_catalog.trim_scale(a.allocated_disposal_fee)::text,
-      ''
+      decode('00', 'hex')
+      || convert_to(a.lot_origin_id::text, 'UTF8')
+      || decode('00', 'hex')
+      || convert_to(pg_catalog.trim_scale(a.consumed_quantity)::text, 'UTF8')
+      || decode('00', 'hex')
+      || convert_to(pg_catalog.trim_scale(a.allocated_cost_basis)::text, 'UTF8')
+      || decode('00', 'hex')
+      || convert_to(pg_catalog.trim_scale(a.allocated_gross_proceeds)::text, 'UTF8')
+      || decode('00', 'hex')
+      || convert_to(pg_catalog.trim_scale(a.allocated_disposal_fee)::text, 'UTF8'),
+      ''::bytea
       order by l.effective_at, l.acquisition_source_sequence, l.acquisition_source_reference, l.lot_origin_id
-    ), ''),
-    'UTF8'
-  )), 'hex'))
+    ), ''::bytea)
+  ), 'hex'))
     into v_recomputed_event_set_hash
   from investing.i3_lot_consumption_allocations a
   join investing.i3_acquisition_lot_origins l
