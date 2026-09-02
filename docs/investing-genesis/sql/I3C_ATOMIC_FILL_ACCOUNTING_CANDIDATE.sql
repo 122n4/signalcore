@@ -177,7 +177,7 @@ begin
     or v_policy_expr !~ 'tenant_id = \(?nullif'
     or v_policy_expr !~ 'account_id = \(?nullif'
     or v_policy_expr !~ 'state = ''active'''
-    or v_policy_expr !~ 'from investing.account_access aa'
+    or v_policy_expr !~ 'from[[:space:]]+\(?investing\.account_access[[:space:]]+aa'
     or v_policy_expr !~ 'join investing.accounts a'
     or v_policy_expr !~ 'aa.role = ''owner'''
     or v_policy_expr !~ 'aa.state = ''active'''

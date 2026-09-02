@@ -52,6 +52,9 @@ function firstPrestateLedgerAccountPolicyCheck(sql: string) {
   return end < 0 ? normalized.slice(start) : normalized.slice(start, end);
 }
 
+const i2LedgerAccountAccessFromRegex =
+  /from\s+\(?investing\.account_access\s+aa/;
+
 function functionSlice(sql: string, functionName: string) {
   const normalized = normalizeSql(sql);
   const marker = `create or replace function investing.${functionName.toLowerCase()}()`;
@@ -340,7 +343,7 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
       "tenant_id = \\(?nullif",
       "account_id = \\(?nullif",
       "state = ''active''",
-      "from investing.account_access aa",
+      "from[[:space:]]+\\(?investing\\.account_access[[:space:]]+aa",
       "join investing.accounts a",
       "aa.role = ''owner''",
       "aa.state = ''active''",
@@ -361,5 +364,11 @@ describe("Investing Genesis I3-C atomic fill accounting source candidate", () =>
     expect(i3RecreatedPolicy).not.toContain("securities_book_cost_asset");
     expect(i3RecreatedPolicy).not.toContain("trading_fee_expense");
     expect(i3RecreatedPolicy).not.toContain("realized_gain_loss");
+  });
+
+  it("accepts PostgreSQL serialized predecessor policy FROM clauses with or without the join parenthesis", () => {
+    expect("from investing.account_access aa").toMatch(i2LedgerAccountAccessFromRegex);
+    expect("from (investing.account_access aa").toMatch(i2LedgerAccountAccessFromRegex);
+    expect("from investing.account_access_other aa").not.toMatch(i2LedgerAccountAccessFromRegex);
   });
 });
