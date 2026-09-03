@@ -1,7 +1,8 @@
 -- SYNTRAKE INVESTING GENESIS I3-C BUY AUDIT NULL REPAIR
 -- SOURCE CANDIDATE ONLY. THIS FILE IS NOT A SUPABASE MIGRATION.
 --
--- Canonical base commit: a3dd51bf6dac096f8559ced33189b104c692790d
+-- Canonical base commit: 216333245a9e4fb00f7b13f5259ec1f1fef0b31d
+-- Required I3-C source commit: a3dd51bf6dac096f8559ced33189b104c692790d
 -- Required I3-C blob:   b403a869b26e93279552c5ea6d795f1d89061292
 --
 -- The I3-C writer represents the absence of a BUY disposal accounting revision
