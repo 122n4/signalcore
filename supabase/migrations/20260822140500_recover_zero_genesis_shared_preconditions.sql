@@ -217,7 +217,7 @@ begin
       end;
       $fn$
     $ddl$;
-    execute 'grant execute on function public.set_updated_at() to postgres, anon, authenticated, service_role';
+    execute 'grant execute on function public.set_updated_at() to public, postgres, anon, authenticated, service_role';
     v_created_function := true;
     v_function_oid := 'public.set_updated_at()'::regprocedure;
   end if;
