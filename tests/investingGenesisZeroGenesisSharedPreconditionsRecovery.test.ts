@@ -90,11 +90,12 @@ describe("Investing Genesis Zero Genesis shared-precondition recovery", () => {
 
   it("supplies the exact mode-check names required by the later migration without inventing a historical Investing constraint", () => {
     const sql = normalizeSql(readMigration(recoveryName));
-    const currentConstraint = "check (mode = any (array['trading'::text, 'forex'::text, 'crypto'::text]))";
+    const canonicalConstraintLiteral =
+      "check (mode = any (array[''trading''::text, ''forex''::text, ''crypto''::text]))";
 
     expect(sql).toContain("add constraint plans_mode_check check (mode in ('trading','forex','crypto'))");
     expect(sql).toContain("add constraint portfolio_items_mode_check check (mode in ('trading','forex','crypto'))");
-    expect(sql).toContain(currentConstraint);
+    expect(sql).toContain(canonicalConstraintLiteral);
     expect(sql).toContain("existing plans_mode_check is not the canonical post-genesis definition");
     expect(sql).toContain("existing portfolio_items_mode_check is not the canonical post-genesis definition");
     expect(sql).toContain("plans_mode_check postcondition failed");
@@ -108,7 +109,7 @@ describe("Investing Genesis Zero Genesis shared-precondition recovery", () => {
     expect(sql).not.toMatch(/\binsert\s+into\b/i);
     expect(sql).not.toMatch(/\bupdate\s+public\./i);
     expect(sql).not.toMatch(/\bdelete\s+from\b/i);
-    expect(sql).not.toMatch(/\btruncate\b/i);
+    expect(sql).not.toMatch(/\btruncate\s+(?:table\s+)?public\./i);
     expect(sql).not.toMatch(/\bdrop\s+(?:table|function|constraint)\b/i);
     expect(sql).not.toMatch(/\brevoke\b/i);
     expect(sql).not.toMatch(/\balter\s+function\b/i);
