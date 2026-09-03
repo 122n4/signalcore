@@ -222,7 +222,7 @@ begin
     v_function_oid := 'public.set_updated_at()'::regprocedure;
   end if;
 
-  select regexp_replace(lower(btrim(p.prosrc)), '\s+', ' ', 'g')
+  select btrim(regexp_replace(lower(p.prosrc), '\s+', ' ', 'g'))
     into v_body
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
