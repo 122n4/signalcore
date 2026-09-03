@@ -72,6 +72,7 @@ describe("Investing Genesis I3-C BUY audit-null repair candidate", () => {
 
   it("keeps full persisted authority evidence and does not grant shared access", () => {
     const raw = readFile(repairPath);
+    const normalized = normalizeSql(raw);
     const policy = policySlice(raw, "audit_events_i3c_buy_null_revision_insert");
 
     for (const proof of [
@@ -94,6 +95,7 @@ describe("Investing Genesis I3-C BUY audit-null repair candidate", () => {
     }
 
     expect(raw).not.toMatch(/grant\s+.*\s+to\s+(public|anon|authenticated|service_role)/i);
-    expect(raw).not.toMatch(/security\s+definer/i);
+    expect(normalized).not.toMatch(/\bcreate\s+(?:or\s+replace\s+)?function\b/);
+    expect(normalized).toContain("and p.prosecdef");
   });
 });
