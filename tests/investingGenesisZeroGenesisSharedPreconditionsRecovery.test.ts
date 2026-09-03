@@ -78,6 +78,8 @@ describe("Investing Genesis Zero Genesis shared-precondition recovery", () => {
     expect(creationBlock).toContain(
       "grant execute on function public.set_updated_at() to public, postgres, anon, authenticated, service_role",
     );
+    expect(sql).toContain("btrim(regexp_replace(lower(p.prosrc), '\\s+', ' ', 'g'))");
+    expect(sql).not.toContain("regexp_replace(lower(btrim(p.prosrc)), '\\s+', ' ', 'g')");
     expect(sql).toContain("p.proowner = 'postgres'::regrole");
     expect(sql).toContain("not p.prosecdef");
     expect(sql).toContain("public.set_updated_at() semantics differ from canonical production");
