@@ -200,7 +200,7 @@ begin
       or (p.proname = 'i3_accounting_revision_seal_guard'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'incomplete sell allocation reconciliation'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'canonical event_count and event_set_hash evidence'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'overconsumed lot origin')
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'supersedes_accounting_revision_id is null')
       or (p.proname = 'i3_revision_commit_guard'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_accounting_revision_seals'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'v_seal_count[[:space:]]*<>[[:space:]]*1'
