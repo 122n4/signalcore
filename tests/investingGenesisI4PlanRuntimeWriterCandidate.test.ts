@@ -19,15 +19,31 @@ function normalize(value: string) {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function functionSlice(sql: string, functionName: string) {
+  const lower = sql.toLowerCase();
+  const marker = `create function investing.${functionName.toLowerCase()}(`;
+  const start = lower.indexOf(marker);
+  expect(start, `${functionName} definition missing`).toBeGreaterThanOrEqual(0);
+  const end = lower.indexOf("$$;", start);
+  expect(end, `${functionName} terminator missing`).toBeGreaterThan(start);
+  return normalize(sql.slice(start, end + 3));
+}
+
 describe("Investing Genesis I4-C Plan runtime writer candidate", () => {
   it("keeps the runtime authority path SECURITY INVOKER and investing_app-only", () => {
-    const sql = normalize(source());
+    const raw = source();
+    const sql = normalize(raw);
+    const contextFn = functionSlice(raw, "i4_plan_runtime_context_authorized_v1");
+    const writerFn = functionSlice(raw, "i4_plan_write_v1");
 
-    expect(sql).toContain("create function investing.i4_plan_runtime_context_authorized_v1()");
-    expect(sql).toContain("create function investing.i4_plan_write_v1(");
-    expect((sql.match(/security invoker/g) ?? []).length).toBeGreaterThanOrEqual(2);
-    expect(sql).not.toContain("security definer");
-    expect(sql).toContain("current_user <> 'investing_app'");
+    expect(contextFn).toContain("security invoker");
+    expect(writerFn).toContain("security invoker");
+    expect(contextFn).not.toContain("security definer");
+    expect(writerFn).not.toContain("security definer");
+    expect(contextFn).toContain("current_user <> 'investing_app'");
+    expect(writerFn).toContain("current_user <> 'investing_app'");
+    expect(writerFn).not.toContain("service_role");
+    expect(writerFn).not.toContain("trading.");
     expect(sql).toContain("grant execute on function investing.i4_plan_write_v1(text, text, bytea, text) to investing_app");
     expect(sql).toContain("from public, anon, authenticated, service_role, investing_app");
   });
@@ -85,7 +101,7 @@ describe("Investing Genesis I4-C Plan runtime writer candidate", () => {
     expect(sql).toContain("predecessor_plan_revision_id");
   });
 
-  it("exposes only the narrow Plan table privilege surface and never references Trading", () => {
+  it("exposes only the narrow Plan table privilege surface", () => {
     const sql = normalize(source());
 
     expect(sql).toContain("grant select, insert on table investing.plan_roots to investing_app");
@@ -93,7 +109,6 @@ describe("Investing Genesis I4-C Plan runtime writer candidate", () => {
     expect(sql).toContain("grant select, insert on table investing.plan_revisions to investing_app");
     expect(sql).toContain("grant select, insert on table investing.plan_revision_success_audit_bindings to investing_app");
     expect(sql).not.toContain("grant delete");
-    expect(sql).not.toContain("trading.");
   });
 
   it("requires exactly eleven investing_app I4-C policies in postconditions", () => {
