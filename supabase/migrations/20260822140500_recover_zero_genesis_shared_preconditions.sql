@@ -49,8 +49,8 @@ begin
       create table public.setup_status (
         user_id text primary key,
         completed boolean not null default false,
-        mode text,
-        updated_at timestamptz default now()
+        mode text not null default 'offline',
+        updated_at timestamptz not null default now()
       )
     $ddl$;
     execute 'alter table public.setup_status enable row level security';
@@ -114,12 +114,12 @@ begin
   if not exists (
     select 1
       from pg_attribute a
-      left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+      join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
      where a.attrelid = v_setup_oid
        and a.attname = 'mode'
        and a.atttypid = 'text'::regtype
-       and not a.attnotnull
-       and d.oid is null
+       and a.attnotnull
+       and pg_get_expr(d.adbin, d.adrelid) = '''offline''::text'
   ) then
     raise exception 'Zero Genesis shared-precondition recovery failed: public.setup_status.mode differs from canonical Production';
   end if;
@@ -131,7 +131,7 @@ begin
      where a.attrelid = v_setup_oid
        and a.attname = 'updated_at'
        and a.atttypid = 'timestamptz'::regtype
-       and not a.attnotnull
+       and a.attnotnull
        and pg_get_expr(d.adbin, d.adrelid) = 'now()'
   ) then
     raise exception 'Zero Genesis shared-precondition recovery failed: public.setup_status.updated_at differs from canonical Production';
