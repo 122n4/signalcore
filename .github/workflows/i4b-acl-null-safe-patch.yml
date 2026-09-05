@@ -1,0 +1,46 @@
+name: I4B ACL null-safe patch
+
+on:
+  push:
+    branches:
+      - fix/investing-genesis-rehearsal-gates-20260905
+    paths:
+      - .github/workflows/i4b-acl-null-safe-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/investing-genesis-rehearsal-gates-20260905
+          fetch-depth: 0
+      - name: Replace invalid empty ACL array fallback
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('docs/investing-genesis/sql/I4B_PLAN_PERSISTENCE_CANDIDATE.sql')
+          text = p.read_text()
+          old = "pg_catalog.aclexplode(coalesce(a.attacl, '{}'::aclitem[]))"
+          new = "pg_catalog.aclexplode(a.attacl)"
+          count = text.count(old)
+          assert count == 2, f'expected exactly 2 old ACL patterns, found {count}'
+          text = text.replace(old, new)
+          assert old not in text
+          assert text.count(new) == 2
+          p.write_text(text)
+      - name: Commit exact source-only patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "docs/investing-genesis/sql/I4B_PLAN_PERSISTENCE_CANDIDATE.sql"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/investing-genesis/sql/I4B_PLAN_PERSISTENCE_CANDIDATE.sql
+          git commit -m "fix(i4b): handle null column ACLs in PostgreSQL 17"
+          git push origin HEAD:fix/investing-genesis-rehearsal-gates-20260905
