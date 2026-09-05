@@ -75,66 +75,81 @@ describe("Investing Genesis I4-B canonical predecessor contract", () => {
       {
         source: functionSlice(i3c, "i3_fill_insert_guard"),
         markers: [
-          "complete canonical accounting genesis anchor",
-          "canonical started idempotency material tuple",
-          "active canonical authority graph",
+          { source: "complete canonical accounting genesis anchor", gate: "complete canonical accounting genesis anchor" },
+          { source: "canonical started idempotency material tuple", gate: "canonical started idempotency material tuple" },
+          { source: "active canonical authority graph", gate: "active canonical authority graph" },
         ],
       },
       {
         source: functionSlice(i3a, "i3_accounting_revision_insert_guard"),
         markers: [
-          "canonical sell fill",
-          "current sealed canonical leaf",
-          "root accounting revision cannot supersede a nonexistent canonical leaf",
+          { source: "canonical sell fill", gate: "canonical sell fill" },
+          { source: "current sealed canonical leaf", gate: "current sealed canonical leaf" },
+          {
+            source: "root accounting revision cannot supersede a nonexistent canonical leaf",
+            gate: "root accounting revision cannot supersede a nonexistent canonical leaf",
+          },
         ],
       },
       {
         source: functionSlice(i3c, "i3_accounting_revision_seal_guard"),
         markers: [
-          "incomplete sell allocation reconciliation",
-          "canonical event_count and event_set_hash evidence",
-          "supersedes_accounting_revision_id is null",
+          { source: "incomplete sell allocation reconciliation", gate: "incomplete sell allocation reconciliation" },
+          {
+            source: "canonical event_count and event_set_hash evidence",
+            gate: "canonical event_count and event_set_hash evidence",
+          },
+          { source: "supersedes_accounting_revision_id is null", gate: "supersedes_accounting_revision_id is null" },
         ],
       },
       {
         source: functionSlice(i3a, "i3_revision_commit_guard"),
         markers: [
-          "i3_accounting_revision_seals",
-          "v_seal_count <> 1",
-          "cannot commit without exactly one immutable seal",
+          { source: "i3_accounting_revision_seals", gate: "i3_accounting_revision_seals" },
+          { source: "v_seal_count <> 1", gate: "v_seal_count[[:space:]]*<>[[:space:]]*1" },
+          {
+            source: "cannot commit without exactly one immutable seal",
+            gate: "cannot commit without exactly one immutable seal",
+          },
         ],
       },
       {
         source: functionSlice(i3c, "i3_fill_accounting_effect_commit_guard"),
         markers: [
-          "sealed canonical ledger effect",
-          "ledger_transaction_seals",
-          "i3_accounting_revision_seals",
+          { source: "sealed canonical ledger effect", gate: "sealed canonical ledger effect" },
+          { source: "ledger_transaction_seals", gate: "ledger_transaction_seals" },
+          { source: "i3_accounting_revision_seals", gate: "i3_accounting_revision_seals" },
         ],
       },
       {
         source: functionSlice(i3b, "i3_ledger_transaction_lineage_guard"),
         markers: [
-          "cannot resolve canonical fill lineage",
-          "material lineage does not exactly match canonical fill",
-          "requires exactly one immutable seal on the referenced root accountingrevision",
+          { source: "cannot resolve canonical fill lineage", gate: "cannot resolve canonical fill lineage" },
+          {
+            source: "material lineage does not exactly match canonical fill",
+            gate: "material lineage does not exactly match canonical fill",
+          },
+          {
+            source: "requires exactly one immutable seal on the referenced root accountingrevision",
+            gate: "requires exactly one immutable seal on the referenced root accountingrevision",
+          },
         ],
       },
       {
         source: functionSlice(i3c, "i2_ledger_seal_guard"),
         markers: [
-          "initial_paper_cash_funding",
-          "i3_internal_paper_buy_v1",
-          "i3_internal_paper_sell_v1",
-          "negative cash",
+          { source: "initial_paper_cash_funding", gate: "initial_paper_cash_funding" },
+          { source: "i3_internal_paper_buy_v1", gate: "i3_internal_paper_buy_v1" },
+          { source: "i3_internal_paper_sell_v1", gate: "i3_internal_paper_sell_v1" },
+          { source: "negative cash", gate: "negative cash" },
         ],
       },
     ];
 
-    for (const { source, markers } of expectations) {
-      for (const marker of markers) {
-        expect(source).toContain(marker);
-        expect(i4b).toContain(marker);
+    for (const expectation of expectations) {
+      for (const marker of expectation.markers) {
+        expect(expectation.source).toContain(marker.source);
+        expect(i4b).toContain(marker.gate);
       }
     }
   });
