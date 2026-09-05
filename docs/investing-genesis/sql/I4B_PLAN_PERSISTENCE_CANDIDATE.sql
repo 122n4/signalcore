@@ -400,7 +400,7 @@ begin
   from pg_catalog.pg_class c
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
   join pg_catalog.pg_attribute a on a.attrelid = c.oid
-  cross join lateral pg_catalog.aclexplode(coalesce(a.attacl, '{}'::aclitem[])) acl
+  cross join lateral pg_catalog.aclexplode(a.attacl) acl
   join pg_catalog.pg_roles grantee on grantee.oid = acl.grantee
   where n.nspname = 'investing'
     and grantee.rolname = 'investing_app'
@@ -428,7 +428,7 @@ begin
   from pg_catalog.pg_class c
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
   join pg_catalog.pg_attribute a on a.attrelid = c.oid
-  cross join lateral pg_catalog.aclexplode(coalesce(a.attacl, '{}'::aclitem[])) acl
+  cross join lateral pg_catalog.aclexplode(a.attacl) acl
   left join pg_catalog.pg_roles grantee on grantee.oid = acl.grantee
   where n.nspname = 'investing'
     and a.attnum > 0
