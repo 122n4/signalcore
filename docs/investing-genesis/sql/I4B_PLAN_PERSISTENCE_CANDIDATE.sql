@@ -147,6 +147,41 @@ begin
     raise exception 'I4-B prestate violation: accepted I3 critical guard function inventory missing or drifted';
   end if;
 
+  -- Critical I3 properties are distributed across declarative constraints and
+  -- trigger functions. Prove the relational contracts directly instead of
+  -- requiring incidental literals to appear inside a particular function body.
+  select count(*)
+    into v_bad_count
+  from (values
+    ('i3_fills', 'i3_fills_operation_check', 'c', 'i3_internal_paper_fill_accounting_v1', null::text, null::text),
+    ('i3_fills', 'i3_fills_idempotency_material_fk', 'f', 'idempotency_record_id', 'material_request_hash', 'idempotency_records'),
+    ('i3_accounting_revisions', 'i3_accounting_revisions_disposal_fill_fk', 'f', 'disposal_fill_id', 'instrument_id', 'i3_fills'),
+    ('i3_accounting_revision_seals', 'i3_accounting_revision_seals_one_per_revision_key', 'u', 'accounting_revision_id', null::text, null::text),
+    ('ledger_transactions', 'ledger_transactions_i3_fill_fk', 'f', 'i3_fill_id', 'i3_instrument_id', 'i3_fills'),
+    ('ledger_transactions', 'ledger_transactions_i3_accounting_revision_fk', 'f', 'i3_accounting_revision_id', 'i3_fill_id', 'i3_accounting_revisions'),
+    ('ledger_transactions', 'ledger_transactions_i3_lineage_shape_check', 'c', 'i3_internal_paper_buy_v1', 'i3_internal_paper_sell_v1', 'i3_internal_paper_fill_accounting_v1')
+  ) as expected(relname, conname, contype, required_body, required_body_2, required_body_3)
+  where not exists (
+    select 1
+    from pg_catalog.pg_constraint con
+    join pg_catalog.pg_class c on c.oid = con.conrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = expected.relname
+      and con.conname = expected.conname
+      and con.contype = expected.contype
+      and lower(pg_catalog.pg_get_constraintdef(con.oid, true)) like '%' || expected.required_body || '%'
+      and (expected.required_body_2 is null or lower(pg_catalog.pg_get_constraintdef(con.oid, true)) like '%' || expected.required_body_2 || '%')
+      and (expected.required_body_3 is null or lower(pg_catalog.pg_get_constraintdef(con.oid, true)) like '%' || expected.required_body_3 || '%')
+  );
+
+  if v_bad_count <> 0 then
+    raise exception 'I4-B prestate violation: accepted I3 declarative operation/lineage contract missing or drifted';
+  end if;
+
+  -- Historical error label is retained for trace compatibility. The gate itself
+  -- now uses semantic markers that exist in the canonical I3-A/I3-B/I3-C source,
+  -- while operation and lineage shape are proven above by CHECK/FK/UNIQUE state.
   select count(*)
     into v_bad_count
   from pg_catalog.pg_proc p
@@ -157,26 +192,27 @@ begin
       (p.proname = 'i3_fill_insert_guard'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'complete canonical accounting genesis anchor'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'canonical started idempotency material tuple'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_internal_paper_fill_accounting_v1')
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'active canonical authority graph')
       or (p.proname = 'i3_accounting_revision_insert_guard'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'fill tuple is not canonical'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'accounting revision instrument tuple'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_internal_paper_fill_accounting_v1')
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'canonical sell fill'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'current sealed canonical leaf'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'root accounting revision cannot supersede a nonexistent canonical leaf')
       or (p.proname = 'i3_accounting_revision_seal_guard'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'incomplete sell allocation reconciliation'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'event_count'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'event_set_hash')
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'canonical event_count and event_set_hash evidence'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'overconsumed lot origin')
       or (p.proname = 'i3_revision_commit_guard'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'requires exactly one immutable accounting revision seal'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_accounting_revision_seals')
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_accounting_revision_seals'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'v_seal_count[[:space:]]*<>[[:space:]]*1'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'cannot commit without exactly one immutable seal')
       or (p.proname = 'i3_fill_accounting_effect_commit_guard'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'sealed canonical ledger effect'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'ledger_transaction_seals'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_accounting_revision_seals')
       or (p.proname = 'i3_ledger_transaction_lineage_guard'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3 internal paper fill accounting'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'source_sequence'
-        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_fill_id')
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'cannot resolve canonical fill lineage'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'material lineage does not exactly match canonical fill'
+        and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'requires exactly one immutable seal on the referenced root accountingrevision')
       or (p.proname = 'i2_ledger_seal_guard'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'initial_paper_cash_funding'
         and lower(pg_catalog.pg_get_functiondef(p.oid)) ~ 'i3_internal_paper_buy_v1'
