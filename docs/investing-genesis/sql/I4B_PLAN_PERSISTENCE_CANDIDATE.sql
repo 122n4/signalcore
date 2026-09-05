@@ -252,7 +252,7 @@ begin
   join pg_catalog.pg_class c on c.oid = p.polrelid
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'investing'
-    and p.polroles = array['investing_app'::regrole]
+    and p.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]
     and p.polname in (
       'ledger_accounts_i2_ledger_insert',
       'idempotency_records_i3c_accounting_insert',
@@ -280,7 +280,7 @@ begin
            lower(coalesce(pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid), '')) as check_expr
   ) expr
   where n.nspname = 'investing'
-    and p.polroles = array['investing_app'::regrole]
+    and p.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]
     and (
       (c.relname = 'ledger_accounts'
         and p.polname = 'ledger_accounts_i2_ledger_insert'
