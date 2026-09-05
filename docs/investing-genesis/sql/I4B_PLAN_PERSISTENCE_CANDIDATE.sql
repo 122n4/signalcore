@@ -294,33 +294,36 @@ begin
         and p.polname = 'idempotency_records_i3c_accounting_insert'
         and p.polcmd = 'a'
         and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
-        and expr.check_expr ~ 'ledger_write'
+        and expr.check_expr ~ 'i3_accounting_write'
         and expr.check_expr ~ 'started'
         and expr.check_expr ~ 'material_request_hash')
       or (c.relname = 'idempotency_records'
         and p.polname = 'idempotency_records_i3c_accounting_update'
         and p.polcmd = 'w'
         and expr.using_expr ~ 'i3_internal_paper_fill_accounting_v1'
-        and expr.using_expr ~ 'ledger_write'
-        and expr.check_expr ~ 'succeeded'
-        and expr.check_expr ~ 'canonical_result_reference')
+        and expr.using_expr ~ 'i3_accounting_write'
+        and expr.using_expr ~ 'started'
+        and expr.check_expr ~ 'succeeded')
       or (c.relname = 'i3_fills'
         and p.polname = 'i3_fills_i3c_insert'
         and p.polcmd = 'a'
-        and expr.check_expr ~ 'buy'
-        and expr.check_expr ~ 'sell'
-        and expr.check_expr ~ 'source_sequence')
+        and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
+        and expr.check_expr ~ 'i3_accounting_write'
+        and expr.check_expr ~ 'source_sequence'
+        and expr.check_expr ~ 'material_request_hash')
       or (c.relname = 'i3_accounting_revisions'
         and p.polname = 'i3_accounting_revisions_i3c_insert'
         and p.polcmd = 'a'
-        and expr.check_expr ~ 'pending'
-        and expr.check_expr ~ 'event_count'
-        and expr.check_expr ~ 'event_set_hash')
+        and expr.check_expr ~ 'i3_accounting_write'
+        and expr.check_expr ~ 'disposal_fifo_v1'
+        and expr.check_expr ~ 'supersedes_accounting_revision_id'
+        and expr.check_expr ~ 'accounting_revision_id')
       or (c.relname = 'i3_accounting_revision_seals'
         and p.polname = 'i3_accounting_revision_seals_i3c_insert'
         and p.polcmd = 'a'
-        and expr.check_expr ~ 'event_count'
-        and expr.check_expr ~ 'event_set_hash')
+        and expr.check_expr ~ 'i3_accounting_write'
+        and expr.check_expr ~ 'accounting_revision_id'
+        and expr.check_expr ~ 'fill_id')
       or (c.relname = 'ledger_transactions'
         and p.polname = 'ledger_transactions_i3c_accounting_insert'
         and p.polcmd = 'a'
@@ -330,13 +333,15 @@ begin
       or (c.relname = 'ledger_postings'
         and p.polname = 'ledger_postings_i3c_accounting_insert'
         and p.polcmd = 'a'
-        and expr.check_expr ~ 'securities_book_cost_asset'
-        and expr.check_expr ~ 'trading_fee_expense'
-        and expr.check_expr ~ 'realized_gain_loss')
+        and expr.check_expr ~ 'i3_accounting_write'
+        and expr.check_expr ~ 'ledger_transaction_id'
+        and expr.check_expr ~ 'settlement_currency')
       or (c.relname = 'ledger_transaction_seals'
         and p.polname = 'ledger_transaction_seals_i3c_accounting_insert'
         and p.polcmd = 'a'
-        and expr.check_expr ~ 'ledger_transactions')
+        and expr.check_expr ~ 'i3_accounting_write'
+        and expr.check_expr ~ 'ledger_transaction_id'
+        and expr.check_expr ~ 'account_access')
       or (c.relname = 'audit_events'
         and p.polname = 'audit_events_i3c_fill_success_insert'
         and p.polcmd = 'a'
