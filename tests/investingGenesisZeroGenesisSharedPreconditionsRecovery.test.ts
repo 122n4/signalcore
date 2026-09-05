@@ -50,8 +50,12 @@ describe("Investing Genesis Zero Genesis shared-precondition recovery", () => {
     expect(sql).toContain("create table public.setup_status");
     expect(sql).toContain("user_id text primary key");
     expect(sql).toContain("completed boolean not null default false");
-    expect(sql).toContain("mode text");
-    expect(sql).toContain("updated_at timestamptz default now()");
+    expect(sql).toContain("mode text not null default 'offline'");
+    expect(sql).toContain("updated_at timestamptz not null default now()");
+    expect(sql).toContain("a.attname = 'mode'");
+    expect(sql).toContain("a.atttypid = 'text'::regtype and a.attnotnull and pg_get_expr(d.adbin, d.adrelid) = '''offline''::text'");
+    expect(sql).toContain("a.attname = 'updated_at'");
+    expect(sql).toContain("a.atttypid = 'timestamptz'::regtype and a.attnotnull and pg_get_expr(d.adbin, d.adrelid) = 'now()'");
     expect(sql).toContain("alter table public.setup_status enable row level security");
     expect(sql).toContain("grant all privileges on table public.setup_status to service_role");
     expect(sql).toContain("c.relowner = 'postgres'::regrole");
