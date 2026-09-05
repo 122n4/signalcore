@@ -1,0 +1,172 @@
+name: Temporary I4-B policy fingerprint patch
+
+on:
+  push:
+    branches:
+      - fix/investing-genesis-rehearsal-gates-20260905
+    paths:
+      - .github/workflows/temporary-i4b-policy-fingerprint-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/investing-genesis-rehearsal-gates-20260905
+      - name: Patch exact I4-B policy fingerprint block
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/investing-genesis/sql/I4B_PLAN_PERSISTENCE_CANDIDATE.sql')
+          text = path.read_text()
+
+          old = """      (c.relname = 'ledger_accounts'
+                and p.polname = 'ledger_accounts_i2_ledger_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'initial_paper_cash_funding'
+                and expr.check_expr ~ 'ledger_write'
+                and expr.check_expr ~ 'cash_asset'
+                and expr.check_expr ~ 'simulated_capital'
+                and expr.check_expr ~ 'base_currency')
+              or (c.relname = 'idempotency_records'
+                and p.polname = 'idempotency_records_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.check_expr ~ 'ledger_write'
+                and expr.check_expr ~ 'started'
+                and expr.check_expr ~ 'material_request_hash')
+              or (c.relname = 'idempotency_records'
+                and p.polname = 'idempotency_records_i3c_accounting_update'
+                and p.polcmd = 'w'
+                and expr.using_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.using_expr ~ 'ledger_write'
+                and expr.check_expr ~ 'succeeded'
+                and expr.check_expr ~ 'canonical_result_reference')
+              or (c.relname = 'i3_fills'
+                and p.polname = 'i3_fills_i3c_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'buy'
+                and expr.check_expr ~ 'sell'
+                and expr.check_expr ~ 'source_sequence')
+              or (c.relname = 'i3_accounting_revisions'
+                and p.polname = 'i3_accounting_revisions_i3c_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'pending'
+                and expr.check_expr ~ 'event_count'
+                and expr.check_expr ~ 'event_set_hash')
+              or (c.relname = 'i3_accounting_revision_seals'
+                and p.polname = 'i3_accounting_revision_seals_i3c_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'event_count'
+                and expr.check_expr ~ 'event_set_hash')
+              or (c.relname = 'ledger_transactions'
+                and p.polname = 'ledger_transactions_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.check_expr ~ 'simulated'
+                and expr.check_expr ~ 'i3_accounting')
+              or (c.relname = 'ledger_postings'
+                and p.polname = 'ledger_postings_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'securities_book_cost_asset'
+                and expr.check_expr ~ 'trading_fee_expense'
+                and expr.check_expr ~ 'realized_gain_loss')
+              or (c.relname = 'ledger_transaction_seals'
+                and p.polname = 'ledger_transaction_seals_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'ledger_transactions')
+              or (c.relname = 'audit_events'
+                and p.polname = 'audit_events_i3c_fill_success_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_fill_accounting_succeeded'
+                and expr.check_expr ~ 'i3_fill'
+                and expr.check_expr ~ 'succeeded')"""
+
+          new = """      (c.relname = 'ledger_accounts'
+                and p.polname = 'ledger_accounts_i2_ledger_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'initial_paper_cash_funding'
+                and expr.check_expr ~ 'ledger_write'
+                and expr.check_expr ~ 'cash_asset'
+                and expr.check_expr ~ 'simulated_capital'
+                and expr.check_expr ~ 'base_currency')
+              or (c.relname = 'idempotency_records'
+                and p.polname = 'idempotency_records_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.check_expr ~ 'i3_accounting_write'
+                and expr.check_expr ~ 'started'
+                and expr.check_expr ~ 'material_request_hash')
+              or (c.relname = 'idempotency_records'
+                and p.polname = 'idempotency_records_i3c_accounting_update'
+                and p.polcmd = 'w'
+                and expr.using_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.using_expr ~ 'i3_accounting_write'
+                and expr.using_expr ~ 'started'
+                and expr.check_expr ~ 'succeeded')
+              or (c.relname = 'i3_fills'
+                and p.polname = 'i3_fills_i3c_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.check_expr ~ 'i3_accounting_write'
+                and expr.check_expr ~ 'source_sequence'
+                and expr.check_expr ~ 'material_request_hash')
+              or (c.relname = 'i3_accounting_revisions'
+                and p.polname = 'i3_accounting_revisions_i3c_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_accounting_write'
+                and expr.check_expr ~ 'disposal_fifo_v1'
+                and expr.check_expr ~ 'supersedes_accounting_revision_id'
+                and expr.check_expr ~ 'accounting_revision_id')
+              or (c.relname = 'i3_accounting_revision_seals'
+                and p.polname = 'i3_accounting_revision_seals_i3c_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_accounting_write'
+                and expr.check_expr ~ 'accounting_revision_id'
+                and expr.check_expr ~ 'fill_id')
+              or (c.relname = 'ledger_transactions'
+                and p.polname = 'ledger_transactions_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_internal_paper_fill_accounting_v1'
+                and expr.check_expr ~ 'simulated'
+                and expr.check_expr ~ 'i3_accounting')
+              or (c.relname = 'ledger_postings'
+                and p.polname = 'ledger_postings_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_accounting_write'
+                and expr.check_expr ~ 'ledger_transaction_id'
+                and expr.check_expr ~ 'settlement_currency')
+              or (c.relname = 'ledger_transaction_seals'
+                and p.polname = 'ledger_transaction_seals_i3c_accounting_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_accounting_write'
+                and expr.check_expr ~ 'ledger_transaction_id'
+                and expr.check_expr ~ 'account_access')
+              or (c.relname = 'audit_events'
+                and p.polname = 'audit_events_i3c_fill_success_insert'
+                and p.polcmd = 'a'
+                and expr.check_expr ~ 'i3_fill_accounting_succeeded'
+                and expr.check_expr ~ 'i3_fill'
+                and expr.check_expr ~ 'succeeded')"""
+
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exact old block once, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- docs/investing-genesis/sql/I4B_PLAN_PERSISTENCE_CANDIDATE.sql
+          git config user.name '122n4'
+          git config user.email '112497100+122n4@users.noreply.github.com'
+          git add docs/investing-genesis/sql/I4B_PLAN_PERSISTENCE_CANDIDATE.sql
+          git commit -m 'fix(investing): align I4-B policy fingerprints with I3-C'
+          git push origin HEAD:fix/investing-genesis-rehearsal-gates-20260905
