@@ -93,7 +93,7 @@ describe("Investing Genesis I4-B canonical predecessor contract", () => {
         markers: [
           "incomplete sell allocation reconciliation",
           "canonical event_count and event_set_hash evidence",
-          "overconsumed lot origin",
+          "supersedes_accounting_revision_id is null",
         ],
       },
       {
