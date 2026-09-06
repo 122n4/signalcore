@@ -49,14 +49,15 @@ describe("Investing Genesis I4-C PostgreSQL 17 reconciliation", () => {
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("preserves the frozen Plan conflict and authority audit vocabulary while hardening catalog queries", () => {
+  it("preserves the frozen Plan conflict, authority audit, and FORCE RLS prestate vocabulary while hardening catalog queries", () => {
     const hardened = normalize(renderI4cPlanWriterPg17Candidate(read(frozenSqlPath)).sql);
 
     expect(hardened).toContain("plan_mutation_conflict");
     expect(hardened).toContain("authority_access_denied");
     expect(hardened).toContain("plan_initialization_succeeded");
     expect(hardened).toContain("plan_revision_activated");
-    expect(hardened).toContain("force row level security");
+    expect(hardened).toContain("c.relrowsecurity");
+    expect(hardened).toContain("c.relforcerowsecurity");
     expect(hardened).toContain("service_role");
   });
 
