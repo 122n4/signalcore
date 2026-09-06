@@ -1,0 +1,82 @@
+name: I4-C Reconciliation Static Gate
+
+on:
+  push:
+    branches:
+      - fix/i4c-contract-reconciliation-20260906
+
+permissions:
+  contents: read
+
+env:
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  i4-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: I4 reconciliation tests
+        run: >-
+          npx vitest run
+          tests/investingGenesisI4PlanPersistenceCandidate.test.ts
+          tests/investingGenesisI4PlanWriterCandidate.test.ts
+          tests/investingGenesisI4PlanWriterPg17Reconciliation.test.ts
+          tests/investingGenesisI4PredecessorContract.test.ts
+          tests/investingGenesisI4ColumnAclNullRegression.test.ts
+          tests/investingGenesisI4PolicyRoleTypeContract.test.ts
+          tests/investingGenesisI4PolicyFingerprintContract.test.ts
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
