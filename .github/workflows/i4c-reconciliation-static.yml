@@ -31,6 +31,7 @@ jobs:
           tests/investingGenesisI4PlanPersistenceCandidate.test.ts
           tests/investingGenesisI4PlanWriterCandidate.test.ts
           tests/investingGenesisI4PlanWriterPg17Reconciliation.test.ts
+          tests/investingGenesisI4PlanServiceBoundary.test.ts
           tests/investingGenesisI4PredecessorContract.test.ts
           tests/investingGenesisI4ColumnAclNullRegression.test.ts
           tests/investingGenesisI4PolicyRoleTypeContract.test.ts
