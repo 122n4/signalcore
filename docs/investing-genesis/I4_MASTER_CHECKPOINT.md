@@ -1,8 +1,8 @@
 # Syntrake Investing Genesis I4 — Master Checkpoint
 
-Status: CANONICAL FREEZE CANDIDATE.
+Status: `I4 = FROZEN`, valid only if the exact Git commit containing this status passes every gate in **Freeze gates** below. If any gate on that exact SHA fails, this status is void and I4 returns to freeze-candidate state.
 
-This checkpoint becomes `I4 = FROZEN` only when the exact Git commit containing this document passes every gate in **Freeze gates** below. The final canonical SHA is therefore the checked commit itself, not a SHA written into this file.
+The freeze decision was reached after candidate SHA `0dd2eefd8b129930335ae313b4b03360a6711965` passed global CI run `34045554034` and I4 static/rehearsal run `34045554059`, including the PostgreSQL-17 rehearsal. This documentation-only freeze marker must itself repeat the same gates before it becomes the final canonical freeze SHA.
 
 This document supersedes the status line in `I4C_RECONCILIATION.md`. That file remains historical reconciliation evidence and remains authoritative where it classifies the alternate four-argument SQL runtime and the old I4-D SQL rehearsal as non-canonical.
 
@@ -105,24 +105,24 @@ The permanent CI now gates both the full dependency graph and production-only de
 
 A non-failing Turbopack build warning remains for dynamic filesystem tracing under `lib/trading/backtest/twelveDataArchiveSync.ts`. It is a packaging/performance warning, not an I4 correctness or ESLint failure, and is not silently reclassified as clean.
 
-## Externally verified production state before freeze candidate
+## Externally verified production state before freeze decision
 
 Supabase production project: `qdnvbamoamtkujzwrxdb`.
 
-Verified state before this checkpoint:
+Verified state immediately before recording the freeze decision:
 
 - PostgreSQL server version: `17.6`;
 - development branches: only `main` exists; no disposable rehearsal branch remains;
 - production migration tail: `20260822223021_revoke_legacy_public_function_execute_for_investing_isolation`;
 - no I2/I3/I4 Genesis migration from this reconciliation has been applied to production.
 
-GitHub `main` was independently observed at `67393626c3bd3dbb7c18a4ff7235f9ea06f93e13` before this checkpoint. This repair branch has not been merged.
+GitHub `main` was independently observed at `67393626c3bd3dbb7c18a4ff7235f9ea06f93e13` immediately before recording this decision. This repair branch has not been merged.
 
 The latest audited pre-safety-patch branch CI did not run the production scanner refresh because both refresh secrets were absent and the step failed closed before invoking `qa:post-deploy`. The permanent CI is now additionally hardened so non-main branch/PR runs skip all production QA steps entirely.
 
 ## Freeze gates
 
-The exact commit containing this document may be declared `I4 = FROZEN` only if all of the following are true on that exact SHA:
+The exact commit containing this document is the canonical I4 freeze SHA only if all of the following are true on that exact SHA:
 
 1. GitHub global CI `dependency-audit` succeeds with both full `npm audit --audit-level=low` and production dependency audit passing.
 2. GitHub global CI `verify` succeeds: global tests, ESLint, TypeScript, and production build all pass.
@@ -134,4 +134,4 @@ The exact commit containing this document may be declared `I4 = FROZEN` only if 
 8. GitHub `main` remains unmodified by this operation.
 9. No merge, production deploy, production migration, production DDL/DML, or financial-truth mutation is performed as part of the freeze.
 
-If any gate fails, status remains `CANONICAL FREEZE CANDIDATE` and the failure must be resolved and re-audited before a new freeze decision.
+If any gate fails, the freeze status in this document is void and I4 must be treated as a freeze candidate until the failure is resolved and the exact replacement SHA is re-audited.
