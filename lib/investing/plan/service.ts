@@ -5,8 +5,8 @@ import {
   type InvestingAuthorityFailure,
 } from "../authority/context";
 import {
-  createAndActivateInvestingPlanRevisionV1,
-  initializeInvestingPlanV1,
+  createAndActivatePlanRevisionV1,
+  initializePlanV1,
   type PlanContentV1,
   type PlanMutationResult,
 } from "./writer";
@@ -56,7 +56,7 @@ export async function initializeInvestingPlanForAccountV1(
   });
   if (authority.ok === false) return authority;
 
-  return initializeInvestingPlanV1({
+  return initializePlanV1({
     authorizedContext: authority.context,
     idempotencyKey: command.idempotencyKey,
     correlationId: command.correlationId,
@@ -76,7 +76,7 @@ export async function createAndActivateInvestingPlanRevisionForAccountV1(
   });
   if (authority.ok === false) return authority;
 
-  return createAndActivateInvestingPlanRevisionV1({
+  return createAndActivatePlanRevisionV1({
     authorizedContext: authority.context,
     planRootId: command.planRootId,
     expectedActiveRevisionId: command.expectedActiveRevisionId,
