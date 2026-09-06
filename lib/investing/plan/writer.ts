@@ -1116,12 +1116,10 @@ async function resolveCreateAndActivateStaleRace(
     return fail("CONFLICT");
   }
 
-  return terminalSuccess(client, input.idempotencyRecordId, {
-    planRootId: row.plan_root_id,
-    planRevisionId: row.plan_revision_id,
-    activeVersion: row.revision_number,
-    planRevisionContentHash: row.plan_revision_content_hash,
-  }, true);
+  // Exact replay is handled earlier by the original idempotency key. A fresh
+  // idempotency record that arrives after another writer advanced the same
+  // predecessor is a stale writer and must lose, even when material bytes match.
+  return fail("CONFLICT");
 }
 
 async function dispatchExistingIdempotency(
