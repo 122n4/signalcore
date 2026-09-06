@@ -6,70 +6,13 @@ on:
       - fix/i4c-contract-reconciliation-20260906
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  writer-repair:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Patch stale writer material-equivalent replay
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('lib/investing/plan/writer.ts')
-          text = path.read_text()
-          start_marker = 'async function resolveCreateAndActivateStaleRace('
-          end_marker = '\nasync function dispatchExistingIdempotency('
-          start = text.find(start_marker)
-          end = text.find(end_marker, start)
-          if start < 0 or end < 0:
-              raise SystemExit('stale race function boundary missing')
-          segment = text[start:end]
-          old = (
-              '  return terminalSuccess(client, input.idempotencyRecordId, {\n'
-              '    planRootId: row.plan_root_id,\n'
-              '    planRevisionId: row.plan_revision_id,\n'
-              '    activeVersion: row.revision_number,\n'
-              '    planRevisionContentHash: row.plan_revision_content_hash,\n'
-              '  }, true);'
-          )
-          new = (
-              '  // Exact replay is handled earlier by the original idempotency key. A fresh\n'
-              '  // idempotency record that arrives after another writer advanced the same\n'
-              '  // predecessor is a stale writer and must lose, even when material bytes match.\n'
-              '  return fail("CONFLICT");'
-          )
-          if new in segment:
-              print('writer already repaired')
-              raise SystemExit(0)
-          count = segment.count(old)
-          if count != 1:
-              print(segment[-1200:])
-              raise SystemExit(f'expected one stale replay block, found {count}')
-          segment = segment.replace(old, new, 1)
-          path.write_text(text[:start] + segment + text[end:])
-          PY
-          git diff --check
-      - name: Commit repair if needed
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'No repair commit required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/investing/plan/writer.ts
-          git commit -m 'fix(investing): reject stale writer material-equivalent replay'
-          git push origin HEAD:fix/i4c-contract-reconciliation-20260906
-
   i4-tests:
     runs-on: ubuntu-latest
     steps:
