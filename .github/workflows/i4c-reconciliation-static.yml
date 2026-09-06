@@ -51,6 +51,31 @@ jobs:
       - name: Lint
         run: npm run lint
 
+  baseline-lint-reference:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact I4-B baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 812b2ea11f8696abcc55f00d70beff85f0701733
+      - name: Prove baseline SHA
+        run: test "$(git rev-parse HEAD)" = "812b2ea11f8696abcc55f00d70beff85f0701733"
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Baseline lint reference
+        shell: bash
+        run: |
+          set +e
+          npm run lint
+          status=$?
+          echo "BASELINE_LINT_EXIT=$status"
+          exit 0
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
