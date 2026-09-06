@@ -15,17 +15,6 @@ function canUseMemoryFallback() {
   return process.env.NODE_ENV !== "production" || process.env.ALLOW_MEMORY_FALLBACK === "1";
 }
 
-function isMissingSchemaError(msg: string) {
-  const m = String(msg || "").toLowerCase();
-  return (
-    m.includes("does not exist") ||
-    m.includes("relation") ||
-    m.includes("unknown column") ||
-    m.includes("column") ||
-    m.includes("schema cache")
-  );
-}
-
 function parseMaybeJSON(v: any) {
   if (!v) return null;
   if (typeof v === "object") return v;

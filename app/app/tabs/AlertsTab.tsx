@@ -157,7 +157,6 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
     snapshotDiscipline,
   } = useTradingWorkspace("trading");
   const {
-    instruments: followedInstruments,
     confirmEntry: confirmFollowedEntry,
     close: closeFollowedInstrument,
     getPosition: getFollowedPosition,
@@ -247,7 +246,7 @@ export default function AlertsTab({ locale = "en" }: AlertsTabProps) {
       entries.filter((entry) =>
         isFollowedInstrument(entry.instrument),
       ),
-    [entries, followedInstruments, isFollowedInstrument],
+    [entries, isFollowedInstrument],
   );
 
   if (status === "idle" || status === "loading") {

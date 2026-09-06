@@ -546,7 +546,6 @@ async function buildDatasetInventory(args: {
   root: string;
   storageTier: "canonical" | "staging";
 }): Promise<ResearchLocalArchiveInventoryDataset> {
-  const generatedAt = new Date().toISOString();
   const localDataset = args.instrument.localDataset;
   if (!localDataset) {
     return {
