@@ -37,16 +37,17 @@ jobs:
             planRevisionId: row.plan_revision_id,
             activeVersion: row.revision_number,
             planRevisionContentHash: row.plan_revision_content_hash,
-          }, true);'''
+          }, true);'''.replace('            ', '    ')
           new = '''  // Exact replay is handled earlier by the original idempotency key. A fresh
           // idempotency record that arrives after another writer advanced the same
           // predecessor is a stale writer and must lose, even when material bytes match.
-          return fail("CONFLICT");'''
+          return fail("CONFLICT");'''.replace('          //', '  //').replace('          return', '  return')
           if new in segment:
               print('writer already repaired')
               raise SystemExit(0)
           count = segment.count(old)
           if count != 1:
+              print(segment[-1200:])
               raise SystemExit(f'expected one stale replay block, found {count}')
           segment = segment.replace(old, new, 1)
           path.write_text(text[:start] + segment + text[end:])
