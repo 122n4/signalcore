@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool, TypeOverrides, type PoolClient } from "pg";
 import type {
   InvestingAuthorityDatabase,
   InvestingAuthorityQueryResult,
@@ -31,7 +31,22 @@ type PoolState = {
   pool: Pool;
 };
 
+const POSTGRES_TIMESTAMPTZ_OID = 1184;
+
 let poolState: PoolState | null = null;
+
+function createInvestingTypeOverrides() {
+  const types = new TypeOverrides();
+
+  // Financial/accounting lineage compares some PostgreSQL timestamps exactly.
+  // node-postgres' default timestamptz parser materializes JavaScript Date,
+  // which truncates PostgreSQL microseconds to milliseconds. Keep timestamptz
+  // as canonical PostgreSQL text so a DB -> runtime -> DB round trip preserves
+  // the exact instant instead of silently weakening equality evidence.
+  types.setTypeParser(POSTGRES_TIMESTAMPTZ_OID, (value: string) => value);
+
+  return types;
+}
 
 export function readInvestingDatabaseConfig(
   env: Record<string, string | undefined> = process.env,
@@ -97,6 +112,7 @@ export function getInvestingAuthorityDatabase(
       pool: new Pool({
         connectionString: config.connectionString,
         ssl: config.tls,
+        types: createInvestingTypeOverrides(),
       }),
     };
   } else if (poolState.connectionString !== config.connectionString) {
