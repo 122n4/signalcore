@@ -6,7 +6,7 @@ on:
       - fix/i4c-contract-reconciliation-20260906
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
@@ -14,9 +14,6 @@ env:
 
 jobs:
   writer-repair:
-    if: github.actor != 'github-actions[bot]' || github.event.head_commit.message != 'fix(investing): reject stale writer material-equivalent replay'
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,7 +23,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('lib/investing/plan/writer.ts')
           text = path.read_text()
           start_marker = 'async function resolveCreateAndActivateStaleRace('
@@ -49,13 +45,14 @@ jobs:
           if new in segment:
               print('writer already repaired')
               raise SystemExit(0)
-          if segment.count(old) != 1:
-              raise SystemExit(f'expected one stale replay block, found {segment.count(old)}')
+          count = segment.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one stale replay block, found {count}')
           segment = segment.replace(old, new, 1)
           path.write_text(text[:start] + segment + text[end:])
           PY
           git diff --check
-      - name: Commit repair
+      - name: Commit repair if needed
         shell: bash
         run: |
           if git diff --quiet; then
