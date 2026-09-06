@@ -628,7 +628,7 @@ export async function buildTradingMarketDataBackfillPlan(args: {
   const config = args.config ?? await loadResearchConfig();
   const from = args.from ?? defaultFromMonth(config);
   const to = args.to ?? defaultPreviousCompleteMonth();
-  const activeInstruments = (args.instruments?.length ? args.instruments : config.study.instruments)
+  const activeInstruments = (args.instruments !== undefined ? args.instruments : config.study.instruments)
     .map((instrument) => instrument.trim().toUpperCase())
     .filter(Boolean);
   const localDataDir = resolveLocalHistoricalBaseDir();

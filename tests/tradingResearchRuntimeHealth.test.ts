@@ -46,7 +46,7 @@ describe("trading research runtime health", () => {
         active_run_id: "run-runtime-canonical",
       },
     );
-    const statusPath = `${config.paths.runsDir}\\run-runtime-canonical\\status.json`;
+    const statusPath = path.join(config.paths.runsDir, "run-runtime-canonical", "status.json");
     await writeJsonAtomic(statusPath, {
       run_id: "run-runtime-canonical",
       task_id: task.id,
