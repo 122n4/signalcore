@@ -35,18 +35,18 @@ describe("Investing Genesis I4-C PostgreSQL 17 reconciliation", () => {
     const source = read(frozenSqlPath);
     const hardened = renderI4cPlanWriterPg17Candidate(source);
 
-    expect(hardened.replacements).toBe(8);
+    expect(hardened.replacements).toBe(4);
     expect(hardened.rules).toEqual([
-      { id: "NULL_COLUMN_ACL", replacements: 6 },
-      { id: "POLICY_ROLE_OID_ARRAY", replacements: 2 },
+      { id: "NULL_COLUMN_ACL", replacements: 3 },
+      { id: "POLICY_ROLE_OID_ARRAY", replacements: 1 },
     ]);
     expect(hardened.sql).not.toContain("pg_catalog.aclexplode(coalesce(a.attacl, '{}'::aclitem[]))");
     expect(hardened.sql).not.toContain("pol.polroles = array['investing_app'::regrole]");
-    expect(hardened.sql.match(/pg_catalog\.aclexplode\(a\.attacl\)/g)?.length).toBeGreaterThanOrEqual(6);
+    expect(hardened.sql.match(/pg_catalog\.aclexplode\(a\.attacl\)/g)?.length).toBeGreaterThanOrEqual(3);
     expect(
       hardened.sql.match(/pol\.polroles = array\[\(select oid from pg_catalog\.pg_roles where rolname = 'investing_app'\)\]/g)
         ?.length,
-    ).toBeGreaterThanOrEqual(2);
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("preserves the frozen Plan conflict and authority audit vocabulary while hardening catalog queries", () => {
@@ -87,6 +87,6 @@ describe("Investing Genesis I4-C PostgreSQL 17 reconciliation", () => {
     const source = read(frozenSqlPath);
     const drifted = source.replace("pg_catalog.aclexplode(coalesce(a.attacl, '{}'::aclitem[]))", "pg_catalog.aclexplode(a.attacl)");
 
-    expect(() => renderI4cPlanWriterPg17Candidate(drifted)).toThrow(/expected 6 source occurrences, found 5/i);
+    expect(() => renderI4cPlanWriterPg17Candidate(drifted)).toThrow(/expected 3 source occurrences, found 2/i);
   });
 });

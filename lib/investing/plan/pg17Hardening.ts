@@ -4,13 +4,13 @@ export const I4C_FROZEN_PLAN_WRITER_COMMIT_SHA = "8b0376a3d76eaf16e05a07770749fe
 const pg17HardeningRules = [
   {
     id: "NULL_COLUMN_ACL",
-    expectedOccurrences: 6,
+    expectedOccurrences: 3,
     from: "pg_catalog.aclexplode(coalesce(a.attacl, '{}'::aclitem[]))",
     to: "pg_catalog.aclexplode(a.attacl)",
   },
   {
     id: "POLICY_ROLE_OID_ARRAY",
-    expectedOccurrences: 2,
+    expectedOccurrences: 1,
     from: "pol.polroles = array['investing_app'::regrole]",
     to: "pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]",
   },

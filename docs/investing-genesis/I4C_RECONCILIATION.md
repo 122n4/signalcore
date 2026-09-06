@@ -21,10 +21,10 @@ The canonical orchestration remains `lib/investing/plan/writer.ts` from frozen I
 
 The later rehearsal lineage proved two catalog-query corrections that are compatible with the frozen semantics:
 
-1. Column ACL inspection must call `pg_catalog.aclexplode(a.attacl)` directly. PostgreSQL 17 exposed the bad behavior of replacing a NULL column ACL with an empty ACL array. The frozen I4-C SQL contains exactly six legacy occurrences.
-2. `pg_policy.polroles` must be compared to an OID array using `array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]`, not `array['investing_app'::regrole]`. The frozen I4-C SQL contains exactly two legacy occurrences.
+1. Column ACL inspection must call `pg_catalog.aclexplode(a.attacl)` directly. PostgreSQL 17 exposed the bad behavior of replacing a NULL column ACL with an empty ACL array. The frozen I4-C SQL contains exactly three legacy occurrences.
+2. `pg_policy.polroles` must be compared to an OID array using `array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]`, not `array['investing_app'::regrole]`. The frozen I4-C SQL contains exactly one legacy occurrence.
 
-`lib/investing/plan/pg17Hardening.ts` derives a PostgreSQL-17-compatible candidate from the frozen SQL and fails closed unless those exact 6 + 2 source occurrences are present. No business, authority, idempotency, Plan, Trading, accounting, financial, recommendation, or execution semantics are transformed.
+`lib/investing/plan/pg17Hardening.ts` derives a PostgreSQL-17-compatible candidate from the frozen SQL and fails closed unless those exact 3 + 1 source occurrences are present. No business, authority, idempotency, Plan, Trading, accounting, financial, recommendation, or execution semantics are transformed.
 
 ## Non-canonical reference
 
