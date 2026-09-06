@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer } from "react";
 
 import type { AutopilotMode } from "@/lib/signalcore/modes";
 import { normalizeMode } from "@/lib/signalcore/modes";
@@ -173,14 +173,11 @@ function shouldRefreshSnapshot(snapshot: DailyBundleSnapshot) {
 
 export function useDailyBundle(modeInput?: unknown) {
   const mode = useMemo(() => normalizeMode(modeInput), [modeInput]);
-  const [snapshot, setSnapshot] = useState<DailyBundleSnapshot>(() => readModeSnapshot(mode));
+  const [, forceRender] = useReducer((count: number) => count + 1, 0);
+  const snapshot = readModeSnapshot(mode);
 
   useEffect(() => {
-    setSnapshot(readModeSnapshot(mode));
-
-    const unsubscribe = subscribeToMode(mode, () => {
-      setSnapshot(readModeSnapshot(mode));
-    });
+    const unsubscribe = subscribeToMode(mode, forceRender);
 
     const nextSnapshot = readModeSnapshot(mode);
     if (shouldRefreshSnapshot(nextSnapshot)) {
