@@ -817,7 +817,8 @@ describe("Investing Genesis I2-B AuthorizedInvestingContext", () => {
       tls: { rejectUnauthorized: true },
     });
 
-    expect(readFile(transportPath)).toContain('import { Pool, type PoolClient } from "pg"');
+    expect(readFile(transportPath)).toContain('import { Pool, TypeOverrides, type PoolClient } from "pg"');
+    expect(readFile(transportPath)).toContain("types.setTypeParser(POSTGRES_TIMESTAMPTZ_OID");
     expect(readFile(transportPath)).toContain('parsed.search !== ""');
     expect(readFile(transportPath)).toContain('parsed.hash !== ""');
     expect(readFile(transportPath)).toContain("ssl: config.tls");
