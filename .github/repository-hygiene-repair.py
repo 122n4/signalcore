@@ -12,6 +12,11 @@ def replace_once(path: str, old: str, new: str) -> None:
 
 replace_once(
     "app/app/tabs/AlertsTab.tsx",
+    "    instruments: followedInstruments,\n",
+    "",
+)
+replace_once(
+    "app/app/tabs/AlertsTab.tsx",
     "    [entries, followedInstruments, isFollowedInstrument],",
     "    [entries, isFollowedInstrument],",
 )
@@ -39,11 +44,6 @@ replace_once(
     "",
 )
 
-replace_once(
-    "lib/trading/research/runner.ts",
-    "  ResearchPostCycleOpportunityOutputs,\n",
-    "",
-)
 replace_once(
     "lib/trading/research/runner.ts",
     "  let latestOpportunityOutputs: ResearchPostCycleOpportunityOutputs | null = null;\n",
