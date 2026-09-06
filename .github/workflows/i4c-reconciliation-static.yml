@@ -124,3 +124,41 @@ jobs:
         with:
           name: i4-build-diagnostics
           path: i4-build.log
+
+  i0-i4-pg17-rehearsal:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      PG17_REHEARSAL_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      SYNTRAKE_I3_SYNTHETIC_REHEARSAL_ENABLED: "true"
+      SYNTRAKE_I3_REHEARSAL_PROJECT_REF: local-pg17
+      VERCEL_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prove rehearsal SHA
+        run: git rev-parse HEAD
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: PostgreSQL version
+        run: psql "$PG17_REHEARSAL_URL" -v ON_ERROR_STOP=1 -c "select version();"
+      - name: I0 through I4 complete PostgreSQL 17 rehearsal
+        run: npx vitest run tests/investingGenesisI0ToI4Pg17Rehearsal.test.ts --reporter=verbose
