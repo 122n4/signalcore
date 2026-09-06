@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { Pool, type PoolClient } from "pg";
+import { Pool, TypeOverrides, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -42,6 +42,7 @@ const connectionString = process.env.PG17_REHEARSAL_URL ?? "";
 const demoProjectRef = "local-pg17";
 const primarySubject = "user_pg17_i0_i4_primary";
 const secondarySubject = "user_pg17_i0_i4_secondary";
+const POSTGRES_TIMESTAMPTZ_OID = 1184;
 
 const canonicalFiles = [
   ["supabase/migrations/20260822140500_recover_zero_genesis_shared_preconditions.sql", "65891aa2b1e2707ba2d27db31114c90b844ad332"],
@@ -316,7 +317,10 @@ async function financialSnapshot() {
 
 beforeAll(async () => {
   if (!connectionString) throw new Error("PG17_REHEARSAL_URL is required");
-  adminPool = new Pool({ connectionString, max: 16 });
+
+  const types = new TypeOverrides();
+  types.setTypeParser(POSTGRES_TIMESTAMPTZ_OID, (value: string) => value);
+  adminPool = new Pool({ connectionString, max: 16, types });
   adminClient = await adminPool.connect();
 
   vi.mocked(resolveVerifiedClerkIdentity).mockImplementation(async () => ({
@@ -386,7 +390,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
       baseCurrency: "EUR",
     });
     expect(bootstrap.ok).toBe(true);
-    if (!bootstrap.ok) throw new Error(`I2 bootstrap failed: ${bootstrap.code}`);
+    if (bootstrap.ok !== true) throw new Error("I2 bootstrap failed");
     expect(bootstrap.replayed).toBe(false);
 
     const bootstrapReplay = await bootstrapInitialPersonalInvestingAccount({
@@ -401,7 +405,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
       correlationId: "corr-i0-i4-authority-0001",
     });
     expect(authorityBeforeI3.ok).toBe(true);
-    if (!authorityBeforeI3.ok) throw new Error(`I2 authority resolve failed: ${authorityBeforeI3.code}`);
+    if (authorityBeforeI3.ok !== true) throw new Error("I2 authority resolve failed");
     expect(isAuthorizedInvestingContext(authorityBeforeI3.context)).toBe(true);
 
     await seedInitialPaperCashFunding(authorityBeforeI3.context, "100000");
@@ -423,7 +427,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
       correlationId: "corr-i0-i4-authority-0002",
     });
     expect(authority.ok).toBe(true);
-    if (!authority.ok) throw new Error(`I3 authority resolve failed: ${authority.code}`);
+    if (authority.ok !== true) throw new Error("I3 authority resolve failed");
     expect(isAuthorizedInvestingContext(authority.context)).toBe(true);
 
     const effectiveAt = new Date().toISOString();
@@ -446,8 +450,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
       sourceReference: "I0_I4_PG17_BUY_1",
     };
     const buy = await accountSyntheticI3Fill(buyInput, i3Env);
-    expect(buy.ok).toBe(true);
-    if (!buy.ok) throw new Error(`I3 BUY failed: ${buy.code}`);
+    if (buy.ok !== true) throw new Error("I3 BUY failed");
     expect(buy.replayed).toBe(false);
 
     const buyReplay = await accountSyntheticI3Fill(buyInput, i3Env);
@@ -512,7 +515,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
     };
     const initialPlan = await initializeInvestingPlanForAccountV1(initInput);
     expect(initialPlan.ok).toBe(true);
-    if (!initialPlan.ok) throw new Error(`I4 initialize failed: ${initialPlan.code}`);
+    if (initialPlan.ok !== true) throw new Error("I4 initialize failed");
     expect(initialPlan.replayed).toBe(false);
     expect(initialPlan.activeVersion).toBe("1");
 
@@ -551,7 +554,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
     const revisionLoser = revisionResults[revisionLoserIndex]!;
     if (!revisionWinner.ok || revisionLoser.ok) throw new Error("I4 stale-writer split is invalid");
     expect(revisionWinner.activeVersion).toBe("2");
-    expect(revisionLoser.code).toBe("CONFLICT");
+    expect("code" in revisionLoser ? revisionLoser.code : null).toBe("CONFLICT");
 
     const winnerInput = revisionCalls[revisionWinnerIndex]!;
     const winnerReplay = await createAndActivateInvestingPlanRevisionForAccountV1(winnerInput);
@@ -596,7 +599,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
       baseCurrency: "EUR",
     });
     expect(secondaryBootstrap.ok).toBe(true);
-    if (!secondaryBootstrap.ok) throw new Error(`secondary bootstrap failed: ${secondaryBootstrap.code}`);
+    if (secondaryBootstrap.ok !== true) throw new Error("secondary bootstrap failed");
 
     const crossAccount = await createAndActivateInvestingPlanRevisionForAccountV1({
       accountId: secondaryBootstrap.accountId,
@@ -625,7 +628,7 @@ describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {
       correlationId: "corr-i0-i4-denial-context",
     });
     expect(denialContextResult.ok).toBe(true);
-    if (!denialContextResult.ok) throw new Error(`denial context resolution failed: ${denialContextResult.code}`);
+    if (denialContextResult.ok !== true) throw new Error("denial context resolution failed");
 
     await adminClient.query(
       "update investing.principals set state='DISABLED', disabled_at=transaction_timestamp() where principal_id=$1",
