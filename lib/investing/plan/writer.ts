@@ -1353,7 +1353,7 @@ async function writePlanDenialAudit(database: InvestingAuthorityDatabase, audit:
         "insert into investing.audit_events (",
         "correlation_id, actor_kind, actor_id, principal_id, operation_scope, tenant_id, account_id,",
         "action, object_type, object_id, outcome, reason_code, evidence, occurred_at",
-        ") values ($1, 'USER_PRINCIPAL', $2, $3, 'ACCOUNT_SCOPE', $4, $5, 'AUTHORITY_ACCESS_DENIED', 'ACCOUNT', $5, $6, $7, $8::jsonb, transaction_timestamp())",
+        ") values ($1, 'USER_PRINCIPAL', $2, $3, 'ACCOUNT_SCOPE', $4, $5::uuid, 'AUTHORITY_ACCESS_DENIED', 'ACCOUNT', $5::uuid::text, $6, $7, $8::jsonb, transaction_timestamp())",
       ].join(" "),
       [
         audit.correlationId,

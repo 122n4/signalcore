@@ -659,7 +659,7 @@ describe("Investing Genesis I4-C Plan writer candidate", () => {
     }
   });
 
-  it("replays the exact same-material successor winner for different-key create-and-activate races", async () => {
+  it("rejects different-key same-material stale create-and-activate writers", async () => {
     const writer = await loadWriter();
     const materialHash = writer.createAndActivatePlanMaterialRequestHash(baseContent, context, ids.planRootId, ids.activeRevisionId, "1");
     const winnerRevisionId = "99999999-9999-4999-8999-999999999999";
@@ -690,8 +690,10 @@ describe("Investing Genesis I4-C Plan writer candidate", () => {
       expectedActiveVersion: "1",
     });
 
-    expect(result).toMatchObject({ ok: true, replayed: true, planRevisionId: winnerRevisionId, activeVersion: "2" });
+    expect(result).toEqual({ ok: false, code: "CONFLICT" });
     const normalized = client.queries.map((query) => normalizeSql(query.text));
+    expect(normalized.some((query) => query.startsWith("insert into investing.audit_events"))).toBe(true);
+    expect(normalized.some((query) => query.startsWith("update investing.idempotency_records"))).toBe(true);
     expect(normalized.some((query) => query.startsWith("insert into investing.plan_revisions"))).toBe(false);
     expect(normalized.some((query) => query.startsWith("insert into investing.plan_revision_success_audit_bindings"))).toBe(false);
   });
