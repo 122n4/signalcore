@@ -6,83 +6,13 @@ on:
       - fix/i4c-contract-reconciliation-20260906
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  writer-repair:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Patch PG17 denial audit and stale writer contract test
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          writer_path = Path('lib/investing/plan/writer.ts')
-          writer = writer_path.read_text()
-          old_sql = (
-              "\") values ($1, 'USER_PRINCIPAL', $2, $3, 'ACCOUNT_SCOPE', $4, $5, "
-              "'AUTHORITY_ACCESS_DENIED', 'ACCOUNT', $5, $6, $7, $8::jsonb, transaction_timestamp())\","
-          )
-          new_sql = (
-              "\") values ($1, 'USER_PRINCIPAL', $2, $3, 'ACCOUNT_SCOPE', $4, $5::uuid, "
-              "'AUTHORITY_ACCESS_DENIED', 'ACCOUNT', $5::uuid::text, $6, $7, $8::jsonb, transaction_timestamp())\","
-          )
-          if new_sql not in writer:
-              count = writer.count(old_sql)
-              if count != 1:
-                  raise SystemExit(f'expected one PG17 denial SQL target, found {count}')
-              writer = writer.replace(old_sql, new_sql, 1)
-              writer_path.write_text(writer)
-          else:
-              print('PG17 denial SQL already repaired')
-
-          test_path = Path('tests/investingGenesisI4PlanWriterCandidate.test.ts')
-          test = test_path.read_text()
-          old_name = 'it("replays the exact same-material successor winner for different-key create-and-activate races", async () => {'
-          new_name = 'it("rejects different-key same-material stale create-and-activate writers", async () => {'
-          old_expect = (
-              '    expect(result).toMatchObject({ ok: true, replayed: true, planRevisionId: winnerRevisionId, activeVersion: "2" });\n'
-              '    const normalized = client.queries.map((query) => normalizeSql(query.text));'
-          )
-          new_expect = (
-              '    expect(result).toEqual({ ok: false, code: "CONFLICT" });\n'
-              '    const normalized = client.queries.map((query) => normalizeSql(query.text));\n'
-              '    expect(normalized.some((query) => query.startsWith("insert into investing.audit_events"))).toBe(true);\n'
-              '    expect(normalized.some((query) => query.startsWith("update investing.idempotency_records"))).toBe(true);'
-          )
-          if new_name not in test:
-              count = test.count(old_name)
-              if count != 1:
-                  raise SystemExit(f'expected one stale writer test name target, found {count}')
-              test = test.replace(old_name, new_name, 1)
-          if new_expect not in test:
-              count = test.count(old_expect)
-              if count != 1:
-                  raise SystemExit(f'expected one stale writer expectation target, found {count}')
-              test = test.replace(old_expect, new_expect, 1)
-          test_path.write_text(test)
-          PY
-          git diff --check
-      - name: Commit repair if needed
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'No repair commit required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/investing/plan/writer.ts tests/investingGenesisI4PlanWriterCandidate.test.ts
-          git commit -m 'fix(investing): repair PG17 denial audit and stale-writer contract test'
-          git push origin HEAD:fix/i4c-contract-reconciliation-20260906
-
   i4-tests:
     runs-on: ubuntu-latest
     steps:
