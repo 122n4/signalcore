@@ -32,16 +32,20 @@ jobs:
           if start < 0 or end < 0:
               raise SystemExit('stale race function boundary missing')
           segment = text[start:end]
-          old = '''  return terminalSuccess(client, input.idempotencyRecordId, {
-            planRootId: row.plan_root_id,
-            planRevisionId: row.plan_revision_id,
-            activeVersion: row.revision_number,
-            planRevisionContentHash: row.plan_revision_content_hash,
-          }, true);'''.replace('            ', '    ')
-          new = '''  // Exact replay is handled earlier by the original idempotency key. A fresh
-          // idempotency record that arrives after another writer advanced the same
-          // predecessor is a stale writer and must lose, even when material bytes match.
-          return fail("CONFLICT");'''.replace('          //', '  //').replace('          return', '  return')
+          old = (
+              '  return terminalSuccess(client, input.idempotencyRecordId, {\n'
+              '    planRootId: row.plan_root_id,\n'
+              '    planRevisionId: row.plan_revision_id,\n'
+              '    activeVersion: row.revision_number,\n'
+              '    planRevisionContentHash: row.plan_revision_content_hash,\n'
+              '  }, true);'
+          )
+          new = (
+              '  // Exact replay is handled earlier by the original idempotency key. A fresh\n'
+              '  // idempotency record that arrives after another writer advanced the same\n'
+              '  // predecessor is a stale writer and must lose, even when material bytes match.\n'
+              '  return fail("CONFLICT");'
+          )
           if new in segment:
               print('writer already repaired')
               raise SystemExit(0)
