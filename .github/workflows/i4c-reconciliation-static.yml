@@ -6,7 +6,7 @@ on:
       - fix/i4c-contract-reconciliation-20260906
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
@@ -15,8 +15,6 @@ env:
 jobs:
   repair-pg17-denial-and-stale-test:
     if: github.event.head_commit.message != 'fix(investing): repair PG17 denial audit and stale-writer contract test'
-    permissions:
-      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
