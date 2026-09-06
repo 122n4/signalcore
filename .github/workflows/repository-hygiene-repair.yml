@@ -1,13 +1,54 @@
 name: Repository Hygiene Repair
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - fix/i4c-contract-reconciliation-20260906
 
 permissions:
   contents: write
+
+env:
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
+  NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
   repair:
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "Manual-only while cleanup script is being narrowed"
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply residual warning cleanup
+        run: python3 .github/repository-hygiene-repair.py
+      - name: Audit all dependencies
+        run: npm audit --audit-level=low
+      - name: Audit production dependencies
+        run: npm run audit:prod
+      - name: Verify repository
+        run: npm run verify:ci
+      - name: Require zero ESLint warnings
+        run: npx eslint . --max-warnings=0
+      - name: Check repair surface
+        shell: bash
+        run: |
+          git diff --check
+          git diff --stat
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' app/app/tabs/AlertsTab.tsx lib/broker/store.ts lib/trading/research/localArchiveInventory.ts lib/trading/research/runner.ts | sort)"
+          printf '%s\n' "$changed"
+          test "$changed" = "$expected"
+      - name: Commit verified warning cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/app/tabs/AlertsTab.tsx lib/broker/store.ts lib/trading/research/localArchiveInventory.ts lib/trading/research/runner.ts
+          git commit -m "fix: clear remaining repository lint warnings"
+          git push origin HEAD:fix/i4c-contract-reconciliation-20260906
