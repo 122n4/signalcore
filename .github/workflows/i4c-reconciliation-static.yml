@@ -36,7 +36,7 @@ jobs:
           tests/investingGenesisI4PolicyRoleTypeContract.test.ts
           tests/investingGenesisI4PolicyFingerprintContract.test.ts
 
-  lint:
+  i4-lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -48,8 +48,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Lint
-        run: npm run lint
+      - name: Lint I4 reconciliation perimeter
+        run: npx eslint lib/investing/plan tests/investingGenesisI4*.test.ts
 
   baseline-lint-reference:
     runs-on: ubuntu-latest
