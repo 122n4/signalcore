@@ -25,7 +25,7 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Apply exact baseline repairs
+      - name: Apply exact lint repairs
         shell: bash
         run: |
           python3 - <<'PY'
@@ -39,86 +39,102 @@ jobs:
                   raise SystemExit(f"{path}: expected exactly 1 match, got {count}")
               p.write_text(text.replace(old, new, 1))
 
-          # Paper runner mocks: runtime contract gained reconcileCanonicalPaperTradeRuns.
-          p = "tests/paperRunnerConcurrency.test.ts"
-          replace_once(p,
-              "  reconcileCanonicalPaperTrades: vi.fn(),\n  recordPaperTradeRun: vi.fn(),",
-              "  reconcileCanonicalPaperTrades: vi.fn(),\n  reconcileCanonicalPaperTradeRuns: vi.fn(),\n  recordPaperTradeRun: vi.fn(),")
-          replace_once(p,
-              "  reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,\n  recordPaperTradeRun: mocks.recordPaperTradeRun,",
-              "  reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,\n  reconcileCanonicalPaperTradeRuns: mocks.reconcileCanonicalPaperTradeRuns,\n  recordPaperTradeRun: mocks.recordPaperTradeRun,")
-          replace_once(p,
-              "    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({ schemaReady: true, reconciled: 0, error: null });\n    mocks.settleCanonicalPaperRows",
-              "    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({ schemaReady: true, reconciled: 0, error: null });\n    mocks.reconcileCanonicalPaperTradeRuns.mockResolvedValue({ schemaReady: true, reconciled: 0, error: null });\n    mocks.settleCanonicalPaperRows")
+          replace_once(
+              "app/ops/page.tsx",
+              'import type { Metadata } from "next";\nimport { auth } from "@clerk/nextjs/server";',
+              'import type { Metadata } from "next";\nimport Link from "next/link";\nimport { auth } from "@clerk/nextjs/server";',
+          )
+          replace_once(
+              "app/ops/page.tsx",
+              '''            <a
+              href="/ops/trades"
+              className="rounded-full border border-amber-200/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100 transition hover:bg-amber-300/15"
+            >
+              Trade Ledger
+            </a>''',
+              '''            <Link
+              href="/ops/trades"
+              className="rounded-full border border-amber-200/30 bg-amber-300/10 px-4 py-2 text-sm font-bold text-amber-100 transition hover:bg-amber-300/15"
+            >
+              Trade Ledger
+            </Link>''',
+          )
 
-          p = "tests/paperSignalExecutionContract.test.ts"
-          replace_once(p,
-              "  reconcileCanonicalPaperTrades: vi.fn(),\n  releasePaperTradeLock: vi.fn(),",
-              "  reconcileCanonicalPaperTrades: vi.fn(),\n  reconcileCanonicalPaperTradeRuns: vi.fn(),\n  releasePaperTradeLock: vi.fn(),")
-          replace_once(p,
-              "  reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,\n  recordPaperTradeRun: mocks.recordPaperTradeRun,",
-              "  reconcileCanonicalPaperTrades: mocks.reconcileCanonicalPaperTrades,\n  reconcileCanonicalPaperTradeRuns: mocks.reconcileCanonicalPaperTradeRuns,\n  recordPaperTradeRun: mocks.recordPaperTradeRun,")
-          replace_once(p,
-              "    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({\n      schemaReady: true,\n      error: null,\n      reconciled: 0,\n    });\n    mocks.settleCanonicalPaperRows",
-              "    mocks.reconcileCanonicalPaperTrades.mockResolvedValue({\n      schemaReady: true,\n      error: null,\n      reconciled: 0,\n    });\n    mocks.reconcileCanonicalPaperTradeRuns.mockResolvedValue({\n      schemaReady: true,\n      error: null,\n      reconciled: 0,\n    });\n    mocks.settleCanonicalPaperRows")
+          replace_once(
+              "app/ops/trades/page.tsx",
+              'import type { Metadata } from "next";\nimport { auth } from "@clerk/nextjs/server";',
+              'import type { Metadata } from "next";\nimport Link from "next/link";\nimport { auth } from "@clerk/nextjs/server";',
+          )
+          replace_once(
+              "app/ops/trades/page.tsx",
+              '''              <a href="/ops/trades" className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold text-white">
+                Reset
+              </a>''',
+              '''              <Link href="/ops/trades" className="rounded-xl border border-white/10 px-4 py-2 text-sm font-bold text-white">
+                Reset
+              </Link>''',
+          )
 
-          # Explicit [] means staged-only; only undefined means default active instruments.
-          replace_once("lib/trading/research/marketDataBackfill.ts",
-              "  const activeInstruments = (args.instruments?.length ? args.instruments : config.study.instruments)",
-              "  const activeInstruments = (args.instruments !== undefined ? args.instruments : config.study.instruments)")
+          replace_once(
+              "lib/signalcore/useDailyBundle.ts",
+              'import { useCallback, useEffect, useMemo, useState } from "react";',
+              'import { useCallback, useEffect, useMemo, useReducer } from "react";',
+          )
+          replace_once(
+              "lib/signalcore/useDailyBundle.ts",
+              '''  const [snapshot, setSnapshot] = useState<DailyBundleSnapshot>(() => readModeSnapshot(mode));
 
-          # Runtime artifact paths are OS-portable; test must use the same contract.
-          replace_once("tests/tradingResearchRuntimeHealth.test.ts",
-              '    const statusPath = `${config.paths.runsDir}\\\\run-runtime-canonical\\\\status.json`;',
-              '    const statusPath = path.join(config.paths.runsDir, "run-runtime-canonical", "status.json");')
+  useEffect(() => {
+    setSnapshot(readModeSnapshot(mode));
+
+    const unsubscribe = subscribeToMode(mode, () => {
+      setSnapshot(readModeSnapshot(mode));
+    });
+
+    const nextSnapshot = readModeSnapshot(mode);''',
+              '''  const [, forceRender] = useReducer((count: number) => count + 1, 0);
+  const snapshot = readModeSnapshot(mode);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToMode(mode, forceRender);
+
+    const nextSnapshot = readModeSnapshot(mode);''',
+          )
+
+          replace_once(
+              "lib/trading/research/localArchiveInventory.ts",
+              "  let sizeBytes = 0;",
+              "  const sizeBytes = 0;",
+          )
           PY
-      - name: Targeted six-failure verification
-        run: >-
-          npx vitest run
-          tests/paperRunnerConcurrency.test.ts
-          tests/paperSignalExecutionContract.test.ts
-          tests/tradingMarketDataBackfill.test.ts
-          tests/tradingResearchRuntimeHealth.test.ts
-      - name: Capture global lint debt
+      - name: Refresh vulnerable dev transitive lock entries without force
         shell: bash
         run: |
-          set +e
-          npm run lint
-          echo "LINT_EXIT=$?"
-          exit 0
-      - name: Capture full npm advisory graph
-        shell: bash
-        run: |
-          set +e
-          npm audit --json > /tmp/npm-audit.json
-          audit_status=$?
-          node - <<'NODE'
-          const fs = require('fs');
-          const x = JSON.parse(fs.readFileSync('/tmp/npm-audit.json','utf8'));
-          console.log('AUDIT_METADATA=' + JSON.stringify(x.metadata?.vulnerabilities ?? null));
-          const rows = Object.entries(x.vulnerabilities ?? {}).map(([name,v]) => ({
-            name,
-            severity: v.severity,
-            direct: v.isDirect,
-            via: (v.via ?? []).map(z => typeof z === 'string' ? z : {source:z.source,name:z.name,severity:z.severity,title:z.title,range:z.range}),
-            range: v.range,
-            fixAvailable: v.fixAvailable,
-          }));
-          console.log('AUDIT_VULNERABILITIES=' + JSON.stringify(rows));
-          NODE
-          echo "AUDIT_EXIT=$audit_status"
-          exit 0
-      - name: Commit verified repairs
+          npm audit fix --package-lock-only
+          npm ci
+          npm audit --audit-level=low
+          npm run audit:prod
+      - name: Full repository verification
+        run: npm run verify:ci
+      - name: Prove only intended files changed
         shell: bash
         run: |
           git diff --check
+          changed="$(git diff --name-only | sort)"
+          printf '%s\n' "$changed"
+          expected="$(printf '%s\n' \
+            app/ops/page.tsx \
+            app/ops/trades/page.tsx \
+            lib/signalcore/useDailyBundle.ts \
+            lib/trading/research/localArchiveInventory.ts \
+            package-lock.json | sort)"
+          test "$changed" = "$expected"
+      - name: Commit verified hygiene repairs
+        shell: bash
+        run: |
           git diff --stat
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/paperRunnerConcurrency.test.ts tests/paperSignalExecutionContract.test.ts lib/trading/research/marketDataBackfill.ts tests/tradingResearchRuntimeHealth.test.ts
-          if git diff --cached --quiet; then
-            echo "No repair changes to commit"
-            exit 0
-          fi
-          git commit -m "fix: clear canonical repository test baseline"
+          git add app/ops/page.tsx app/ops/trades/page.tsx lib/signalcore/useDailyBundle.ts lib/trading/research/localArchiveInventory.ts package-lock.json
+          git commit -m "fix: close repository lint and dev dependency debt"
           git push origin HEAD:fix/i4c-contract-reconciliation-20260906
