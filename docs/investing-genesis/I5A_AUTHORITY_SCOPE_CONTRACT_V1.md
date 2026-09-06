@@ -1,28 +1,28 @@
 # Syntrake Investing Genesis I5-A — Authority + Scope Contract V1
 
-Status: `WORKING CONTRACT — NOT FROZEN`
+Status: `WORKING CONTRACT — INDEPENDENT AUDIT APPLIED — NOT FROZEN`
 
 Canonical predecessor: `5de091fcfe1f595d781f6cbc4eaa49ed49341398` (`I4 = FROZEN`).
 
-I5 design branch at the start of this contract: `design/i5-research-lab-canonical-20260906` @ `1e6f3e123e9f90a7f098f3dfef7d0f2c1c898240`.
+I5 design branch before this contract was introduced: `design/i5-research-lab-canonical-20260906` @ `1e6f3e123e9f90a7f098f3dfef7d0f2c1c898240`.
 
 Product source: `SYNTRAKE_I5_RESEARCH_LAB_CANONICAL_BUILD_SPEC.md`, authoritative as a product/source specification for the **Research Lab / I5 only**. It is not authority for I6 or any other future Investing slice.
 
-This contract closes the I5-A authority/scope design boundary. It does **not** authorize schema, migrations, runtime implementation, merge, production deploy, production DDL/DML, financial writes, broker access, paper execution, live execution, or recommendations.
+This contract defines the I5-A authority/scope design boundary. It does **not** authorize schema, migrations, runtime implementation, merge, production deploy, production DDL/DML, financial writes, broker access, paper execution, live execution, or recommendations.
 
 ---
 
-# 1. Evidence classification at contract creation
+# 1. Evidence classification
 
 The distinction below is mandatory.
 
-## REAL / inherited runtime at I4
+## 1.1 REAL / inherited runtime at I4
 
 At the exact I4 predecessor, the runtime has a server-only runtime-branded `AuthorizedInvestingContext` and a real authority resolver for:
 
 ```text
-ACTOR_KIND       = USER_PRINCIPAL
-OPERATION_SCOPE  = ACCOUNT_SCOPE
+ACTOR_KIND        = USER_PRINCIPAL
+OPERATION_SCOPE   = ACCOUNT_SCOPE
 RESOLVE_OPERATION = ACCOUNT_CONTEXT_RESOLVE
 CAPABILITY        = ACCOUNT_AUTHORITY_READ
 ```
@@ -36,14 +36,14 @@ The resolver:
 5. resolves exactly one ACTIVE OWNER TenantMembership;
 6. resolves exactly one ACTIVE OWNER AccountAccess;
 7. validates the complete authority tuple;
-8. requires active authority lifecycle state;
-9. emits a runtime-branded context that cannot be reconstructed by ordinary client JSON.
+8. validates tenant lifecycle and relationship consistency;
+9. emits a runtime-branded context that ordinary client JSON cannot reconstruct.
 
 I4 material Plan writes additionally revalidate authority under lock inside the mutation transaction before the material effect.
 
-## DESIGNED IN I0/I1, RUNTIME UNAVAILABLE AT I4
+## 1.2 DESIGNED IN I0/I1, RUNTIME UNAVAILABLE AT I4
 
-I0/I1 already define the concepts:
+I0/I1 already define:
 
 ```text
 USER_PRINCIPAL
@@ -56,7 +56,7 @@ DOMAIN_SCOPE
 
 but the I4 runtime type currently materializes only `USER_PRINCIPAL + ACCOUNT_SCOPE`.
 
-Therefore, for I5 at the time of this contract:
+Therefore at the start of I5:
 
 ```text
 USER_PRINCIPAL + ACCOUNT_SCOPE = REAL PREDECESSOR CAPABILITY
@@ -65,7 +65,7 @@ USER_PRINCIPAL + DOMAIN_SCOPE  = DESIGN TARGET / RUNTIME UNAVAILABLE
 SYSTEM_ACTOR + scoped authority = DESIGN TARGET / RUNTIME UNAVAILABLE
 ```
 
-No I5 implementation may relabel a design-target authority path as REAL before implementation and a real authority rehearsal prove it.
+No I5 document or implementation may relabel a design-target authority path as REAL before implementation and real rehearsal evidence prove it.
 
 ---
 
@@ -84,13 +84,14 @@ source context != authorization
 conversation state != authorization
 idempotency != authorization
 RLS != authorization decision
+research state != financial authority
 ```
 
 `AuthorizedInvestingContext` remains the single canonical Investing authority family.
 
 I5 MUST NOT create a parallel public authority type that can be fabricated from persisted IDs or request JSON.
 
-The candidate `CanonicalResearchScope` from earlier I5 working documents is therefore reclassified as:
+The candidate `CanonicalResearchScope` from earlier I5 working documents is therefore classified as:
 
 ```text
 PERSISTED / DERIVED SCOPE EVIDENCE ONLY
@@ -98,7 +99,7 @@ NOT AN AUTHORITY TOKEN
 NOT ACCEPTABLE AS REPOSITORY AUTHORIZATION
 ```
 
-A Research repository/service that performs a privileged scoped effect must require authority emitted by the canonical server authority boundary, not merely a scope-shaped object.
+A privileged Research repository/service must require authority emitted by the canonical server authority boundary, not merely a scope-shaped object.
 
 ---
 
@@ -117,7 +118,7 @@ The future authority family must remain:
 - evidence-bearing;
 - revalidated where the operation class requires transaction-time proof.
 
-Conceptual union only — exact TypeScript implementation belongs to the later runtime slice:
+Conceptual union only — exact TypeScript implementation belongs to a later implementation slice:
 
 ```text
 AuthorizedInvestingContext =
@@ -129,7 +130,7 @@ AuthorizedInvestingContext =
   | SystemDomainAuthorizedContext
 ```
 
-Absence of tenant/account identity never promotes a request to a broader scope.
+Absence of tenant/account identity never promotes a request to a broader scope:
 
 ```text
 missing accountId != TENANT_SCOPE
@@ -154,22 +155,24 @@ accountId
 
 Rules:
 
-- `accountId` is untrusted selector only;
+- `accountId` is an untrusted selector only;
 - tenant is derived from the canonical account;
 - client `tenantId` is not needed for ACCOUNT_SCOPE ownership;
-- an unexpected client `tenantId` on an ACCOUNT_SCOPE command fails strict command validation or authority resolution;
+- an unexpected client `tenantId` on an ACCOUNT_SCOPE command fails strict validation or authority resolution;
 - account/tenant mismatch never falls back to another account or tenant;
-- multiplicity where one authority row is required fails closed.
+- multiplicity where exactly one authority row is required fails closed.
 
 ## 4.2 TENANT_SCOPE selector
 
-A genuine I5 TENANT_SCOPE user operation may accept:
+I5 V1 user TENANT_SCOPE commands require an explicit:
 
 ```text
 tenantId
 ```
 
-only as an untrusted selector.
+as an untrusted selector.
+
+I5 V1 does not silently auto-pick a tenant from conversation state, browser state, `organizationId`, or “the first membership”.
 
 Canonical flow:
 
@@ -184,9 +187,7 @@ verified Clerk identity
   -> branded AuthorizedInvestingContext
 ```
 
-I5 V1 does not derive tenant authority from `organizationId`, `userId`, conversation state, browser state, or an arbitrary persisted Research object.
-
-If future product UX supplies an external organization selector, a separately accepted server-side mapping to canonical Tenant is required. The external organization identifier itself is not ownership proof.
+If future product UX supplies an external organization selector, a separately accepted server-side mapping to canonical Tenant is required. The external identifier itself is not ownership proof.
 
 ## 4.3 DOMAIN_SCOPE
 
@@ -200,7 +201,9 @@ explicit domain operation
 + verified USER_PRINCIPAL or trusted SYSTEM_ACTOR path
 ```
 
-I5 V1 permits DOMAIN_SCOPE only for the narrow operations explicitly listed by this contract.
+I5 V1 DOMAIN_SCOPE is limited to **I5-owned global Research reference state**, such as versioned Research templates and ontology/reference definitions.
+
+I5-A1 does not claim global market-data authority.
 
 ---
 
@@ -208,11 +211,11 @@ I5 V1 permits DOMAIN_SCOPE only for the narrow operations explicitly listed by t
 
 ## 5.1 USER_PRINCIPAL
 
-Canonical source of user identity remains verified Clerk identity resolved to exactly one Principal.
+Canonical user identity remains verified Clerk identity resolved to exactly one Principal.
 
-A user authority context contains `principal_id` and appropriate membership/access evidence for the operation scope.
+A user authority context contains `principal_id` and the membership/access evidence required by scope.
 
-Client values such as these are never actor proof:
+These client values are never actor proof:
 
 ```text
 userId
@@ -257,7 +260,16 @@ No source context may widen scope.
 
 `PURE_RESEARCH` and `TEST_PORTFOLIO` MUST NOT receive placeholder or synthetic account IDs.
 
-`USER_PORTFOLIO` MUST NOT downgrade to tenant scope merely because account authority fails.
+`USER_PORTFOLIO` MUST NOT downgrade to tenant scope because account authority fails.
+
+Research execution environment is a separate scientific dimension:
+
+```text
+HISTORICAL_BACKTEST
+SIMULATION
+```
+
+It is not an authority scope. `PAPER`, broker demo, and live execution remain outside I5 execution authority.
 
 ---
 
@@ -265,7 +277,7 @@ No source context may widen scope.
 
 Every material I5 application operation has a stable versioned operation token.
 
-Initial user-facing/scoped operation tokens:
+Initial user/scoped operations:
 
 ```text
 RESEARCH_INVESTIGATION_CREATE_V1
@@ -291,7 +303,7 @@ RESEARCH_TEMPLATE_READ_V1
 RESEARCH_ONTOLOGY_READ_V1
 ```
 
-Initial internal/system operation tokens:
+Initial internal/system operations:
 
 ```text
 RESEARCH_JOB_CLAIM_V1
@@ -301,7 +313,9 @@ RESEARCH_DATASET_SNAPSHOT_CREATE_V1
 RESEARCH_ARTIFACT_PERSIST_V1
 RESEARCH_RESULT_PUBLISH_V1
 RESEARCH_JOB_TERMINALIZE_V1
-RESEARCH_DOMAIN_DATA_ACQUIRE_V1
+
+RESEARCH_TEMPLATE_VERSION_PUBLISH_V1
+RESEARCH_ONTOLOGY_VERSION_PUBLISH_V1
 ```
 
 Adding an operation token is an authority-contract change, not a free-form string addition.
@@ -312,7 +326,7 @@ Adding an operation token is an authority-contract change, not a free-form strin
 
 Operation and capability are separate dimensions.
 
-Initial I5 capability families:
+Initial capability families:
 
 ```text
 RESEARCH_READ
@@ -320,22 +334,24 @@ RESEARCH_MUTATE
 RESEARCH_RUN_REQUEST
 RESEARCH_ACCOUNT_CONTEXT_PROJECT
 RESEARCH_REFERENCE_READ
+RESEARCH_REFERENCE_PUBLISH
 RESEARCH_WORKER_EXECUTE
 RESEARCH_RESULT_PUBLISH
-RESEARCH_DOMAIN_DATA_ACQUIRE
 ```
 
 A capability never grants wider ownership scope than the authorized context.
 
 A context for one operation/capability MUST NOT be reused as generic Research authority.
 
-`ACCOUNT_AUTHORITY_READ` from the I4 resolver is predecessor evidence for account authority resolution; it is not, by itself, permission to perform every I5 Research operation.
+`ACCOUNT_AUTHORITY_READ` from the I4 resolver is predecessor evidence for account authority resolution. It is not permission to perform every I5 Research operation or read arbitrary financial truth.
+
+Entitlement checks may deny an otherwise-owned Research operation, but entitlement never proves ownership or widens scope.
 
 ---
 
 # 9. Canonical operation/scope/capability matrix
 
-`inherits Investigation` means the object selector must resolve server-side to exactly one Investigation and the operation must prove the same canonical scope tuple as that Investigation.
+`inherits Investigation` means the selector must resolve server-side to exactly one Investigation and the operation must prove the same canonical scope tuple as that Investigation.
 
 | operation | actor | scope | capability | material effect |
 |---|---|---|---|---|
@@ -349,26 +365,27 @@ A context for one operation/capability MUST NOT be reused as generic Research au
 | canonicalize/create Spec revision | USER_PRINCIPAL | inherits Investigation | RESEARCH_MUTATE | yes |
 | create Experiment | USER_PRINCIPAL | inherits Investigation | RESEARCH_MUTATE | yes |
 | create ExperimentPlan | USER_PRINCIPAL | inherits Investigation | RESEARCH_MUTATE | yes |
-| create AccountResearchContextSnapshot | USER_PRINCIPAL | ACCOUNT_SCOPE only | RESEARCH_ACCOUNT_CONTEXT_PROJECT | yes |
+| create AccountResearchContextSnapshot | USER_PRINCIPAL | ACCOUNT_SCOPE only | RESEARCH_ACCOUNT_CONTEXT_PROJECT | yes, Research projection only |
 | queue Run | USER_PRINCIPAL | inherits Investigation | RESEARCH_RUN_REQUEST | yes |
 | cancel Run | USER_PRINCIPAL | inherits Investigation | RESEARCH_RUN_REQUEST | yes |
 | read Run/Result | USER_PRINCIPAL | inherits Investigation | RESEARCH_READ | no |
 | create Comparison | USER_PRINCIPAL | inherits Investigation | RESEARCH_MUTATE | yes |
 | create Challenge | USER_PRINCIPAL | inherits Investigation | RESEARCH_MUTATE | yes |
 | read Evidence | USER_PRINCIPAL | inherits Investigation | RESEARCH_READ | no |
-| request Explanation | USER_PRINCIPAL | inherits Investigation | RESEARCH_READ | no scientific mutation |
+| request Explanation | USER_PRINCIPAL | inherits Investigation | RESEARCH_READ | no canonical scientific mutation |
 | read ResearchTemplateVersion | USER_PRINCIPAL | DOMAIN_SCOPE | RESEARCH_REFERENCE_READ | no |
 | read ontology/reference definitions | USER_PRINCIPAL | DOMAIN_SCOPE | RESEARCH_REFERENCE_READ | no |
-| claim ResearchJob | SYSTEM_ACTOR | scope derived from canonical Job->Run->Investigation | RESEARCH_WORKER_EXECUTE | yes, operational |
+| publish template version | SYSTEM_ACTOR | DOMAIN_SCOPE | RESEARCH_REFERENCE_PUBLISH | yes, I5 reference state only |
+| publish ontology/reference version | SYSTEM_ACTOR | DOMAIN_SCOPE | RESEARCH_REFERENCE_PUBLISH | yes, I5 reference state only |
+| claim ResearchJob | SYSTEM_ACTOR | scope derived from canonical Job -> Run -> Investigation | RESEARCH_WORKER_EXECUTE | yes, operational |
 | execute Run | SYSTEM_ACTOR | inherited canonical Run scope | RESEARCH_WORKER_EXECUTE | yes, scientific attempt |
 | validate Run | SYSTEM_ACTOR | inherited canonical Run scope | RESEARCH_WORKER_EXECUTE | yes, scientific state |
 | create scoped DatasetSnapshot for Run | SYSTEM_ACTOR | inherited canonical Run scope | RESEARCH_WORKER_EXECUTE | yes |
 | persist scoped artifact | SYSTEM_ACTOR | inherited canonical Run scope | RESEARCH_WORKER_EXECUTE | yes |
 | publish Result | SYSTEM_ACTOR | inherited canonical Run scope | RESEARCH_RESULT_PUBLISH | yes |
 | terminalize Job/Run attempt | SYSTEM_ACTOR | inherited canonical Run scope | RESEARCH_WORKER_EXECUTE | yes |
-| acquire/update shared domain market/reference data | SYSTEM_ACTOR | DOMAIN_SCOPE | RESEARCH_DOMAIN_DATA_ACQUIRE | yes, domain data only |
 
-A user command never obtains `RESEARCH_WORKER_EXECUTE`, `RESEARCH_RESULT_PUBLISH`, or `RESEARCH_DOMAIN_DATA_ACQUIRE`.
+A user command never obtains `RESEARCH_WORKER_EXECUTE`, `RESEARCH_RESULT_PUBLISH`, or `RESEARCH_REFERENCE_PUBLISH`.
 
 A worker never obtains generic `RESEARCH_MUTATE` for arbitrary Investigations.
 
@@ -378,7 +395,7 @@ A worker never obtains generic `RESEARCH_MUTATE` for arbitrary Investigations.
 
 Research object IDs are selectors, not authority.
 
-Before any scoped operation, the server must resolve the complete canonical ownership chain.
+Before any scoped operation, the server resolves the complete canonical ownership chain.
 
 At minimum:
 
@@ -393,46 +410,53 @@ Result -> Run -> Investigation
 Comparison -> owning Investigation
 EvidenceObjectRef -> Result/Run/Investigation ownership binding
 AccountResearchContextSnapshot -> Investigation + canonical Account scope
+DatasetSnapshot -> Run/Investigation ownership binding in I5 V1
 ```
 
 All material relationships required by the operation must agree on the same canonical scope.
 
-A selector that resolves to:
+A selector resolving to another tenant/account/investigation, inconsistent duplicate ownership rows, or a mixed-scope object graph fails closed.
 
-- another tenant;
-- another account;
-- another Investigation;
-- inconsistent duplicate ownership rows;
-- a mixed-scope object graph;
+No repository may query merely by object ID and trust returned tenant/account fields afterward.
 
-fails closed.
-
-No repository may query merely by object ID and trust the returned row's tenant/account fields after the fact.
-
-For scoped storage, queries must bind canonical authority evidence and object ownership in the same operation.
+For scoped storage, queries bind canonical authority evidence and object ownership in the same operation.
 
 ---
 
 # 11. DatasetSnapshot authority boundary
 
-I5 `DatasetSnapshot` is scientific input, not automatic market-truth authority.
+I5 `DatasetSnapshot` is scientific input. Its existence does **not** make I5 a market-truth authority.
 
-For I5 V1, a DatasetSnapshot consumed by a Run is a **scoped Research object** bound to the owning Run/Investigation scope.
+For I5 V1, the DatasetSnapshot consumed by a Run is a scoped Research object bound to the owning Run/Investigation scope.
 
-Underlying market/reference series may originate from separately governed DOMAIN_SCOPE data objects, but:
+The worker may assemble that immutable snapshot only after claiming the canonical scoped Run/job and only from data inputs admitted by the later I5-A5 data contract.
+
+Mandatory separation:
 
 ```text
-DOMAIN data authority != tenant Research authority
-DOMAIN data object != scoped DatasetSnapshot ownership
+Research authority != market-data authority
+DatasetSnapshot scientific identity != source market-truth authority
+worker Research capability != unrestricted data-provider capability
 ```
 
-The system worker may compose an immutable scoped DatasetSnapshot from authorized domain data references only after it has claimed the canonical scoped Run/job.
+I5-A1 does not define or claim a global market-data ingestion/catalog mutation capability.
+
+The authority, adapter, provenance, licensing, source-truth and instrument-resolution boundary used to obtain market data is deliberately deferred to **I5-A5 Data / DatasetSnapshot boundary design** and must remain compatible with I0 domain-isolation law.
+
+Until A5 closes it:
+
+```text
+I5 MARKET-DATA AUTHORITY = UNRESOLVED
+I5 GLOBAL MARKET-DATA WRITE CAPABILITY = NOT DEFINED
+```
+
+This does not permit invented or ad-hoc data. It means the Research Lab must consume data through a separately accepted boundary rather than silently becoming that authority itself.
 
 A client cannot upload `tenantId`, `accountId`, provider IDs, prices, balances, or arbitrary series and thereby make them canonical Research data.
 
 Cross-Investigation or cross-tenant DatasetSnapshot reuse is `OUT_OF_I5_V1_AUTHORITY` unless a later explicit immutable sharing/content-addressing contract proves it safe.
 
-This ownership rule may require amendment of the earlier candidate `DatasetSnapshotV1` type during I5-A5. That earlier type is not yet frozen.
+This ownership decision may require amendment of the earlier candidate `DatasetSnapshotV1` type during I5-A5. That type is not frozen.
 
 ---
 
@@ -448,7 +472,7 @@ Canonical V1 sequence:
 USER_PRINCIPAL
   -> ACCOUNT_SCOPE authority
   -> RESEARCH_ACCOUNT_CONTEXT_SNAPSHOT_CREATE_V1
-  -> same-operation proof of narrow financial-read entitlement/capability
+  -> same-operation proof of narrow financial-read capability/policy
   -> immutable AccountResearchContextSnapshot
   -> scoped Run references exact snapshot
   -> worker reads snapshot, not live account state
@@ -460,16 +484,20 @@ The account-context projection capability is narrow. It does not mean:
 ACCOUNT_AUTHORITY_READ => read every ledger/lot/position/cash table arbitrarily
 ```
 
-Before implementation, I5-A5/I5-A6 must define the exact allowed projection fields and canonical source references.
+Before implementation, I5-A5/I5-A6 must define exact projection fields and canonical source references.
 
 Mandatory rules:
 
-- no client financial values become canonical by submission;
+- no client financial value becomes canonical merely by submission;
 - every projected material value preserves source lineage and truth dimensions;
 - snapshot creation revalidates account authority at the financial-read boundary;
+- the snapshot has an exact `as_of` boundary;
+- account FROZEN/CLOSED state must never be presented as fresh/current merely because historical truth remains readable;
 - replay uses the same immutable snapshot;
 - Research cannot mutate Plan, ledger, cash, lots, positions, accounting, orders, fills, or broker state;
 - a worker executing a Run does not need generic live-account read access once the immutable snapshot exists.
+
+If the required financial read is not canonically available, the Research input is `UNAVAILABLE`; it is never synthesized as zero/current state.
 
 ---
 
@@ -488,7 +516,7 @@ These improve conversational ergonomics only.
 
 Every selected object is re-resolved and re-authorized before use.
 
-The source-spec examples `userId` and `requestedBy` are explicitly non-canonical authority shapes in I5.
+The source-spec examples `userId`, `organizationId`, and `requestedBy` are explicitly non-canonical authority shapes in I5.
 
 A command such as:
 
@@ -496,7 +524,7 @@ A command such as:
 "testa 15%"
 ```
 
-may resolve a target Experiment from conversation state, but the resulting structured action must still pass current server-side authority for the resolved Investigation before any durable effect.
+may resolve a target Experiment from conversation state, but the resulting typed action must pass current server authority for the resolved Investigation before any durable effect.
 
 ---
 
@@ -529,9 +557,11 @@ serviceRole
 
 `tenantId` is admitted only on genuine TENANT_SCOPE selector contracts.
 
-`accountId` is admitted only on genuine ACCOUNT_SCOPE selector contracts or where an operation explicitly selects an account for server-side authorization.
+`accountId` is admitted only on genuine ACCOUNT_SCOPE selector contracts or an operation that explicitly selects an account for server-side authorization.
 
-Unexpected authority-shaped fields fail strict validation; they are never ignored and later trusted accidentally.
+Unexpected authority-shaped fields fail strict validation. They are never ignored and later trusted accidentally.
+
+External content, documents, model output, market-data payloads, and prompt text are data. None can issue capabilities or alter authority policy.
 
 ---
 
@@ -539,11 +569,11 @@ Unexpected authority-shaped fields fail strict validation; they are never ignore
 
 Request-time authority is insufficient for material Research writes.
 
-Material I5 mutations must revalidate the required authority/lifecycle evidence in the same database transaction that commits the material effect.
+Material I5 mutations revalidate required authority/lifecycle evidence in the same database transaction that commits the material effect.
 
-## USER_PRINCIPAL + TENANT_SCOPE
+## 15.1 USER_PRINCIPAL + TENANT_SCOPE
 
-At minimum revalidate:
+At minimum:
 
 ```text
 Principal ACTIVE
@@ -554,9 +584,9 @@ object ownership tuple unchanged
 material predecessor/CAS evidence where applicable
 ```
 
-## USER_PRINCIPAL + ACCOUNT_SCOPE
+## 15.2 USER_PRINCIPAL + ACCOUNT_SCOPE
 
-At minimum revalidate:
+At minimum:
 
 ```text
 Principal ACTIVE
@@ -564,15 +594,17 @@ Tenant ACTIVE
 TenantMembership ACTIVE + OWNER
 Account belongs to canonical Tenant
 AccountAccess ACTIVE + OWNER
-Account lifecycle permits the exact operation
+Account lifecycle policy permits the exact Research operation
 operation/capability permitted
 object ownership tuple unchanged
 material predecessor/CAS evidence where applicable
 ```
 
-## SYSTEM_ACTOR scoped worker effect
+`Account ACTIVE` is not a blanket prerequisite for every Research-only operation. The exact operation policy is section 16.
 
-At minimum revalidate:
+## 15.3 SYSTEM_ACTOR scoped worker effect
+
+At minimum:
 
 ```text
 SYSTEM_ACTOR is registered/trusted
@@ -580,20 +612,21 @@ operation/capability permitted
 ResearchJob resolves to exact Run
 Run resolves to exact Investigation scope
 current WorkerAttempt owns exact live lease/attempt when required
-Tenant remains eligible for the system effect
+Tenant lifecycle permits the system effect
 Account relationship remains canonically bound when ACCOUNT_SCOPE
 terminal publication has not already been won by another attempt
+cancellation has not already won the terminal race
 ```
 
-Worker authority does not depend on a fabricated or stale user principal.
+Worker authority does not depend on a fabricated user principal or on the initiating user's stale request-time context.
 
 ---
 
 # 16. Lifecycle policy for Research authority
 
-Normal new Research mutations require active ownership authority.
+This section deliberately separates financial account lifecycle from scientific Research authority.
 
-## Tenant lifecycle
+## 16.1 Tenant lifecycle
 
 For normal user Research operations:
 
@@ -602,35 +635,60 @@ Tenant ACTIVE = required
 Tenant SUSPENDED/CLOSED = deny
 ```
 
-No I5 user path silently invents a historical-access exception for an inactive Tenant.
+A normal I5 user path does not invent a historical-access exception for an inactive Tenant.
 
-## USER_PORTFOLIO account lifecycle
+A SYSTEM_ACTOR must not publish a new scoped Result while the owning Tenant is SUSPENDED/CLOSED. The attempt/job is terminalized with operational authority/lifecycle evidence; this is not converted into `SCIENTIFIC_FAILURE`.
 
-Initial I5 V1 policy:
+## 16.2 USER_PORTFOLIO account lifecycle
+
+I1 defines FROZEN/CLOSED primarily around financial mutation/execution. I5 Research is neither broker execution nor account financial mutation.
+
+Therefore account state alone does not erase scientific history or automatically prohibit Research-only work.
+
+Canonical I5 V1 policy:
 
 ```text
 Account ACTIVE:
-  normal authorized Research reads/mutations/runs permitted
+  authorized Research read/mutation/run operations may proceed
 
-Account FROZEN/CLOSED:
-  no new AccountResearchContextSnapshot
-  no new USER_PORTFOLIO Experiment/Run requiring account context
-  no new account-derived Research mutation
-  historical Research read may be permitted if current tenant/membership/access authority still exists
-  cancellation of an already queued/running Research job may be permitted as a safety operation
+Account FROZEN:
+  no financial mutation or broker/account execution
+  Research-only objects may still be read/created/versioned if current tenant/membership/access authority permits
+  historical/account-context projection may be allowed only by the narrow read policy and exact as_of/truth metadata
+  BACKTEST/SIMULATION may use immutable admitted inputs
+
+Account CLOSED:
+  no new financial mutation or broker/account execution
+  historical Research remains preserved
+  Research-only objects may remain readable and may be versioned only while current tenant/membership/access authority and operation policy permit
+  account-context projection is historical-only when the underlying financial read contract permits it; it must never imply a live/current account
+  BACKTEST/SIMULATION may use immutable admitted historical inputs
 ```
 
-A worker that already owns an authorized Run and uses only immutable captured inputs may finalize scientific history after account freeze/close only if the exact worker/result-publication policy permits it and no new financial truth is read or mutated.
+If a FROZEN/CLOSED account's required financial truth cannot be read under the narrow projection contract, `AccountResearchContextSnapshot` creation fails closed/returns `UNAVAILABLE`. It is not replaced with zeroes or stale values presented as current.
 
-This is historical Research behavior, not financial account mutation.
+## 16.3 Worker completion after account state change
 
-Exact state-transition tests are required before runtime freeze.
+A SYSTEM_ACTOR may complete/validate/publish an already-authorized ACCOUNT_SCOPE Research Run after the account transitions to FROZEN or CLOSED **only when all are true**:
+
+1. owning Tenant remains ACTIVE;
+2. canonical Account -> Tenant relationship is unchanged;
+3. Run/Experiment/Spec/DatasetSnapshot ownership remains internally consistent;
+4. the Run uses immutable captured inputs and requires no new live financial read;
+5. no account financial mutation, order, fill, cash/position/ledger mutation or broker action occurs;
+6. current WorkerAttempt owns the live authoritative lease/effect;
+7. cancellation has not already terminalized the Run;
+8. Result publication CAS/idempotency has not already been won.
+
+The initiating user's later membership/access revocation does not turn the SYSTEM_ACTOR into that user and does not itself fabricate or destroy worker authority. It does prevent that user from subsequently accessing protected Research unless current user authority independently permits access.
+
+This is scientific-history completion, not financial execution.
 
 ---
 
 # 17. Worker claim and effect authority
 
-`ResearchJob`, `WorkerAttempt`, and `Run` remain separate objects.
+`ResearchJob`, `WorkerAttempt`, and `Run` are separate objects.
 
 Canonical authority chain:
 
@@ -652,43 +710,49 @@ The authoritative scope is derived from canonical Research ownership.
 
 Claiming one job never authorizes reading/writing another Run or Investigation.
 
-`service_role` or queue credentials provide transport/execution capability only.
+`service_role`, queue credentials, storage credentials, or process identity provide transport capability only.
 
 ---
 
-# 18. Domain data authority split
+# 18. Market-data / Research authority boundary
 
-The Research Lab requires data but does not obtain unrestricted domain authority from a user Run.
+The source Research Lab requires DatasetSnapshots and provenance. That requirement does **not** authorize I5 to become the global market-data source of truth.
 
-Two separate operations exist conceptually:
-
-## A. DOMAIN data acquisition/reference maintenance
+I5-A1 therefore defines only this side of the boundary:
 
 ```text
-SYSTEM_ACTOR
-DOMAIN_SCOPE
-RESEARCH_DOMAIN_DATA_ACQUIRE
+scoped SYSTEM_ACTOR Run authority
+  -> admitted data-boundary inputs
+  -> deterministic validation/provenance
+  -> scoped immutable DatasetSnapshot
 ```
 
-This may acquire or maintain shared market/reference data under separately accepted data contracts.
-
-It does not own a tenant Investigation and cannot mutate tenant Research merely because it owns data-acquisition capability.
-
-## B. scoped Research DatasetSnapshot assembly
+The other side is intentionally unresolved until I5-A5:
 
 ```text
-SYSTEM_ACTOR worker
-canonical Job -> Run -> Investigation scope
-RESEARCH_WORKER_EXECUTE
+where canonical prices/series originate
+which adapter owns retrieval
+how instrument/proxy identity is authorized
+which market-data objects are domain-global
+which source/licensing/provenance rules apply
+which neutral primitive, if any, may be imported under I0
 ```
 
-This composes exact authorized domain data refs into the immutable scoped DatasetSnapshot required by the Run.
-
-The split prevents both of these invalid escalations:
+I5-A1 makes **no assignment to another future I-slice**. It records only:
 
 ```text
-user Research authority -> unrestricted domain data write
-DOMAIN data capability -> unrestricted tenant Research write
+GLOBAL MARKET-DATA AUTHORITY OWNERSHIP = UNRESOLVED HERE
+I5 GLOBAL MARKET-DATA WRITE AUTHORITY = NOT CLAIMED
+```
+
+I5-owned DOMAIN_SCOPE remains limited to Research reference state such as templates/ontology and their explicit publication/read capabilities.
+
+This separation prevents:
+
+```text
+Research user authority -> unrestricted market-data write
+worker Research authority -> unrestricted provider/catalog mutation
+market-data transport privilege -> tenant Research authority
 ```
 
 ---
@@ -702,7 +766,7 @@ Rules:
 - authority/scope is proven independently of idempotency;
 - same key + same material request may replay the exact durable historical result;
 - same key + different material request conflicts;
-- new key never selects another actor's result merely because content is equal;
+- new key never selects another actor's result because content is equal;
 - replay never bypasses current ownership/access checks required to disclose the historical result;
 - a stale/forged context cannot become valid because an idempotency record exists;
 - worker retries replay the same scientific effect only after exact Job/Run/Attempt authority validation.
@@ -713,7 +777,7 @@ Rules:
 
 ResearchScientificEvent and InvestingAuditEvent remain separate.
 
-Every material authority decision must preserve enough operational audit evidence to answer:
+Every material authority decision preserves enough operational evidence to answer:
 
 ```text
 who/what acted?
@@ -727,17 +791,17 @@ why was it allowed/denied/failed/conflicted?
 which correlation ID joins the evidence?
 ```
 
-Denied or rolled-back authority decisions must not disappear merely because the material transaction rolled back.
+Denied or rolled-back authority decisions must not disappear because the material transaction rolled back.
 
 Audit mechanism failure never converts denial/ambiguity into success.
 
-Do not use the financial ledger as the Research authority audit.
+Do not use the financial ledger as Research authority audit.
 
 ---
 
 # 21. Fail-closed error policy
 
-I5 inherits I1 authority classifications and may add operation-specific Research validation errors without weakening disclosure rules.
+I5 inherits I1 authority classifications and may add operation-specific Research validation errors without weakening non-disclosure.
 
 Authority-level internal classifications include:
 
@@ -756,25 +820,27 @@ INTERNAL_ERROR
 
 Unauthorized/missing/cross-tenant/cross-account object selectors must not reveal protected object existence externally.
 
-A mixed-scope Research object graph is `INTERNAL_ERROR` when it proves canonical persisted corruption and `FORBIDDEN_OR_NOT_FOUND` when it is merely an unauthorized selector attempt; exact external mapping must preserve non-disclosure.
+A mixed-scope Research object graph is `INTERNAL_ERROR` when it proves persisted canonical corruption and `FORBIDDEN_OR_NOT_FOUND` when it is an unauthorized selector attempt; exact external mapping preserves non-disclosure.
 
 No ambiguity is resolved by `LIMIT 1`, first-row selection, tenant fallback, account fallback, or client hints.
+
+Data/financial unavailability is not an authorization success and is not converted to zero.
 
 ---
 
 # 22. RLS / database transport law
 
-RLS, PostgreSQL roles, dedicated application roles, Data API configuration, service-role transport, direct PostgreSQL transport, worker credentials, and storage credentials are enforcement/transport mechanisms.
+RLS, PostgreSQL roles, dedicated application roles, Data API configuration, service-role transport, direct PostgreSQL transport, worker credentials, storage credentials, and queue credentials are enforcement/transport mechanisms.
 
 They are not end-user or SYSTEM_ACTOR authorization decisions.
 
-I5 repositories must remain fail-closed if called without the required canonical authority evidence even when the database credential could technically perform the query.
+I5 repositories remain fail-closed if called without required canonical authority evidence even when the credential could technically execute the query.
 
 Any future RLS/policy implementation is defense in depth and must agree with the same canonical actor/scope context.
 
 ---
 
-# 23. Threat cases required before A1 freeze
+# 23. Threat cases required by the future implementation rehearsal
 
 At minimum, future authority tests/rehearsal must prove:
 
@@ -785,31 +851,36 @@ At minimum, future authority tests/rehearsal must prove:
 5. tenant A cannot read tenant B's Experiment/Result/Evidence by ID;
 6. ACCOUNT_SCOPE derives tenant from canonical account;
 7. account selector + injected tenant selector cannot alter canonical tenant;
-8. PURE_RESEARCH cannot receive/fabricate account authority;
-9. TEST_PORTFOLIO cannot receive/fabricate account authority;
-10. USER_PORTFOLIO without canonical account authority fails closed;
-11. revoked TenantMembership loses user Research authority;
-12. revoked AccountAccess loses USER_PORTFOLIO authority;
-13. stale user authority loses a material-write race after revocation;
-14. fake SYSTEM_ACTOR is rejected;
-15. real SYSTEM_ACTOR with wrong capability is rejected;
-16. worker for Run A cannot read/write Run B;
-17. expired/superseded WorkerAttempt cannot publish Result;
-18. double worker claim produces one authoritative live claim;
-19. completion-vs-cancellation race has one terminal scientific effect;
-20. service-role-only repository invocation is rejected;
-21. conversation active IDs do not bypass ownership checks;
-22. cross-Investigation Spec/Experiment/Run combinations fail closed;
-23. DatasetSnapshot from another owning scope cannot be attached in V1;
-24. client-submitted financial values cannot become AccountResearchContextSnapshot truth;
-25. account freeze/close blocks new account-derived Research but does not rewrite existing scientific history;
-26. exact historical replay does not create a new material effect;
-27. idempotency key reuse by a different actor/scope cannot reveal prior result;
-28. DOMAIN data capability cannot mutate tenant Research;
-29. scoped worker capability cannot mutate DOMAIN data catalog unless separately authorized;
-30. denied authority audit remains durable when the material transaction rolls back.
+8. TENANT_SCOPE does not choose the first membership or conversation tenant implicitly;
+9. PURE_RESEARCH cannot receive/fabricate account authority;
+10. TEST_PORTFOLIO cannot receive/fabricate account authority;
+11. USER_PORTFOLIO without canonical account authority fails closed;
+12. revoked TenantMembership loses user Research authority;
+13. revoked AccountAccess loses USER_PORTFOLIO user authority;
+14. stale user authority loses a material-write race after revocation;
+15. fake SYSTEM_ACTOR is rejected;
+16. real SYSTEM_ACTOR with wrong capability is rejected;
+17. worker for Run A cannot read/write Run B;
+18. expired/superseded WorkerAttempt cannot publish Result;
+19. double worker claim produces one authoritative live claim;
+20. completion-vs-cancellation race has one terminal scientific effect;
+21. service-role-only repository invocation is rejected;
+22. conversation active IDs do not bypass ownership checks;
+23. cross-Investigation Spec/Experiment/Run combinations fail closed;
+24. DatasetSnapshot from another owning scope cannot be attached in V1;
+25. client-submitted financial values cannot become AccountResearchContextSnapshot truth;
+26. FROZEN/CLOSED account state never permits financial mutation/execution through Research;
+27. FROZEN/CLOSED historical projection never relabels stale/historical truth as current;
+28. valid immutable Run may finalize after account freeze/close only under section 16.3 conditions;
+29. inactive Tenant blocks new scoped Result publication;
+30. exact historical replay does not create a new material effect;
+31. idempotency key reuse by a different actor/scope cannot reveal prior result;
+32. I5 Research authority cannot mutate global market-data truth merely through worker/system credentials;
+33. I5 DOMAIN reference publication capability cannot mutate tenant Research;
+34. external content/model/data payload cannot inject authority/capability policy;
+35. denied authority audit remains durable when the material transaction rolls back.
 
-New failures relative to the exact accepted baseline block freeze.
+New failures relative to the exact accepted baseline block implementation acceptance.
 
 ---
 
@@ -822,9 +893,11 @@ Specific amendments:
 1. `CanonicalResearchScope` is not an authority object; it is derived/persisted evidence only.
 2. `DatasetSnapshotV1` requires an owning-scope decision consistent with section 11 before I5-A5 freeze.
 3. source-spec `userId`, `organizationId`, and `requestedBy` examples are non-canonical authority shapes.
-4. source-spec `ResearchConversationState.userId` is non-authoritative and must not be used as ownership evidence.
+4. source-spec `ResearchConversationState.userId` is non-authoritative and must not be ownership evidence.
 5. USER_PORTFOLIO account context requires a separately named narrow projection capability; generic account authority read is insufficient financial-data authority.
 6. SYSTEM_ACTOR worker authority requires canonical Job/Run scope + narrow capability + attempt/lease evidence; service role is never enough.
+7. I5 does not claim global market-data authority merely because its Runs require DatasetSnapshots.
+8. Account FROZEN/CLOSED is not silently equated with “Research forbidden”; Research-only behavior follows the explicit operation policy in section 16 and never mutates financial truth.
 
 ---
 
@@ -832,36 +905,50 @@ Specific amendments:
 
 This document deliberately does not pretend runtime support exists.
 
-As of the I4 predecessor:
+At the I4 predecessor:
 
 ```text
-TENANT_SCOPE user resolver             = UNAVAILABLE
-DOMAIN_SCOPE user resolver             = UNAVAILABLE
-SYSTEM_ACTOR registry/resolver         = UNAVAILABLE
-I5 Research operation capabilities     = UNAVAILABLE
-Research repositories/schema           = UNAVAILABLE
-Research worker lease authority runtime = UNAVAILABLE
+TENANT_SCOPE user resolver               = UNAVAILABLE
+DOMAIN_SCOPE user resolver               = UNAVAILABLE
+SYSTEM_ACTOR registry/resolver           = UNAVAILABLE
+I5 Research operation capabilities       = UNAVAILABLE
+Research repositories/schema             = UNAVAILABLE
+Research worker lease authority runtime  = UNAVAILABLE
 AccountResearchContext projection runtime = UNAVAILABLE
+I5 market-data adapter/authority boundary = UNRESOLVED
 ```
 
-These are implementation gates, not reasons to weaken authority semantics.
+These are implementation/design gates, not reasons to weaken authority semantics.
 
 ---
 
-# 26. A1 implementation/freeze gates
+# 26. Design gate versus future runtime proof
 
-Before I5-A1 can be declared frozen or authorize dependent schema/runtime design, independent evidence must prove:
+I5-A1 is a **design contract** inside the wider I5-A design campaign.
 
-1. exact future branded context union/types are non-client-constructible;
-2. TENANT_SCOPE user resolver follows canonical Principal -> Tenant -> Membership resolution;
-3. ACCOUNT_SCOPE remains compatible with the frozen I1/I4 account-before-membership law;
+It may become `DESIGN ACCEPTED` after:
+
+1. independent contradiction audit against I0/I1/I4 and the I5 source specification;
+2. exact operation/scope/capability matrix review;
+3. confirmation that it does not claim Trading, market-truth, paper/live execution, recommendation, or other non-I5 authority;
+4. confirmation that no unresolved authority ambiguity is hidden as a default;
+5. docs-only diff audit;
+6. branch CI has no new failure versus the exact accepted baseline.
+
+`DESIGN ACCEPTED` for A1 does **not** authorize runtime/schema implementation and does not mean overall I5-A is frozen.
+
+Future runtime implementation acceptance must additionally prove:
+
+1. exact branded context union/types are non-client-constructible;
+2. TENANT_SCOPE resolver follows Principal -> Tenant -> Membership resolution;
+3. ACCOUNT_SCOPE remains compatible with frozen account-before-membership law;
 4. SYSTEM_ACTOR identity registry and capability policy are exact;
-5. operation tokens and capability matrix are mechanically enforced;
-6. strict client parsers reject authority-shaped fields;
-7. material write paths revalidate authority transactionally;
+5. operation tokens/capability matrix are mechanically enforced;
+6. strict parsers reject authority-shaped fields;
+7. material writes revalidate authority transactionally;
 8. worker claim/effect authority derives scope from canonical Job/Run/Investigation;
-9. user/account Research-context projection has a narrow read contract;
-10. object ownership relationships are scope-safe and fail closed;
+9. account Research-context projection has a narrow read contract;
+10. object ownership relationships are scope-safe/fail-closed;
 11. audit denial durability is proven;
 12. concurrency/revocation threat cases pass on real PostgreSQL where applicable;
 13. Trading/Investing isolation remains intact;
@@ -878,10 +965,11 @@ No migration/schema/runtime implementation is authorized merely by this document
 I4 CANONICAL PREDECESSOR
   5de091fcfe1f595d781f6cbc4eaa49ed49341398
 
-I5-A1 AUTHORITY / SCOPE DESIGN
-  CORE DECISIONS = DEFINED
+I5-A1 AUTHORITY / SCOPE
+  CORE DESIGN DECISIONS = DEFINED + INDEPENDENT AUDIT CORRECTIONS APPLIED
   STATUS = WORKING CONTRACT
-  FREEZE = NO
+  DESIGN ACCEPTANCE = PENDING FINAL DIFF/CI AUDIT
+  OVERALL I5-A FREEZE = NO
 
 REAL PREDECESSOR AUTHORITY
   USER_PRINCIPAL + ACCOUNT_SCOPE = YES
@@ -890,6 +978,10 @@ I5 REQUIRED AUTHORITY EXTENSIONS
   USER_PRINCIPAL + TENANT_SCOPE = DESIGN TARGET / RUNTIME UNAVAILABLE
   USER_PRINCIPAL + DOMAIN_SCOPE = DESIGN TARGET / RUNTIME UNAVAILABLE
   SYSTEM_ACTOR scoped authority = DESIGN TARGET / RUNTIME UNAVAILABLE
+
+I5 DOMAIN_SCOPE OWNERSHIP
+  RESEARCH TEMPLATE/ONTOLOGY REFERENCE STATE = IN I5
+  GLOBAL MARKET-DATA AUTHORITY = NOT CLAIMED / UNRESOLVED HERE
 
 PARALLEL RESEARCH AUTHORITY TYPE
   FORBIDDEN
