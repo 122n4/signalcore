@@ -6,73 +6,13 @@ on:
       - fix/i4c-contract-reconciliation-20260906
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuY2kuZHVtbXkk
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
-  global-ci-regression-repair:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Patch only the two Investing test regressions
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          i2 = Path('tests/investingGenesisI2AuthorizedContext.test.ts')
-          text = i2.read_text()
-          old = '    expect(readFile(transportPath)).toContain(\'import { Pool, type PoolClient } from "pg"\');'
-          new = '    expect(readFile(transportPath)).toContain(\'import { Pool, TypeOverrides, type PoolClient } from "pg"\');\n    expect(readFile(transportPath)).toContain("types.setTypeParser(POSTGRES_TIMESTAMPTZ_OID");'
-          if new not in text:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'expected one I2 transport assertion target, found {count}')
-              text = text.replace(old, new, 1)
-              i2.write_text(text)
-
-          rehearsal = Path('tests/investingGenesisI0ToI4Pg17Rehearsal.test.ts')
-          text = rehearsal.read_text()
-          old_hook = 'beforeAll(async () => {\n  if (!connectionString) throw new Error("PG17_REHEARSAL_URL is required");'
-          new_hook = 'beforeAll(async () => {\n  if (!connectionString) return;'
-          if new_hook not in text:
-              count = text.count(old_hook)
-              if count != 1:
-                  raise SystemExit(f'expected one PG17 beforeAll target, found {count}')
-              text = text.replace(old_hook, new_hook, 1)
-
-          old_describe = 'describe("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {'
-          new_describe = '(connectionString ? describe : describe.skip)("Investing Genesis I0 -> I4 complete PostgreSQL 17 rehearsal", () => {'
-          if new_describe not in text:
-              count = text.count(old_describe)
-              if count != 1:
-                  raise SystemExit(f'expected one PG17 describe target, found {count}')
-              text = text.replace(old_describe, new_describe, 1)
-          rehearsal.write_text(text)
-          PY
-          git diff --check
-      - name: Targeted regression verification
-        run: |
-          npm ci
-          npx vitest run tests/investingGenesisI2AuthorizedContext.test.ts tests/investingGenesisI0ToI4Pg17Rehearsal.test.ts
-      - name: Commit repair if needed
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'No repair commit required.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/investingGenesisI2AuthorizedContext.test.ts tests/investingGenesisI0ToI4Pg17Rehearsal.test.ts
-          test "$(git diff --cached --name-only | wc -l)" -eq 2
-          git commit -m 'test(investing): align global CI with PG17 rehearsal hardening'
-          git push origin HEAD:fix/i4c-contract-reconciliation-20260906
-
   i4-tests:
     runs-on: ubuntu-latest
     steps:
