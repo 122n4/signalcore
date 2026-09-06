@@ -1,0 +1,69 @@
+name: I4 PG17 Denial + Stale Test Repair
+
+on:
+  push:
+    branches:
+      - fix/i4c-contract-reconciliation-20260906
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]' || github.event.head_commit.message != 'fix(investing): repair PG17 denial audit and stale-writer contract test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Apply exact fail-closed repairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          writer_path = Path('lib/investing/plan/writer.ts')
+          writer = writer_path.read_text()
+          old_sql = "\") values ($1, 'USER_PRINCIPAL', $2, $3, 'ACCOUNT_SCOPE', $4, $5, 'AUTHORITY_ACCESS_DENIED', 'ACCOUNT', $5, $6, $7, $8::jsonb, transaction_timestamp())\"," 
+          new_sql = "\") values ($1, 'USER_PRINCIPAL', $2, $3, 'ACCOUNT_SCOPE', $4, $5::uuid, 'AUTHORITY_ACCESS_DENIED', 'ACCOUNT', $5::uuid::text, $6, $7, $8::jsonb, transaction_timestamp())\"," 
+          if writer.count(old_sql) != 1:
+              raise SystemExit(f'expected exactly one denial SQL target, found {writer.count(old_sql)}')
+          writer = writer.replace(old_sql, new_sql, 1)
+          if old_sql in writer:
+              raise SystemExit('legacy denial SQL remained after repair')
+          writer_path.write_text(writer)
+
+          test_path = Path('tests/investingGenesisI4PlanWriterCandidate.test.ts')
+          test = test_path.read_text()
+          old_name = 'it("replays the exact same-material successor winner for different-key create-and-activate races", async () => {'
+          new_name = 'it("rejects different-key same-material stale create-and-activate writers", async () => {'
+          if test.count(old_name) != 1:
+              raise SystemExit(f'expected exactly one stale test name target, found {test.count(old_name)}')
+          test = test.replace(old_name, new_name, 1)
+
+          old_expect = '    expect(result).toMatchObject({ ok: true, replayed: true, planRevisionId: winnerRevisionId, activeVersion: "2" });\n    const normalized = client.queries.map((query) => normalizeSql(query.text));'
+          new_expect = '    expect(result).toEqual({ ok: false, code: "CONFLICT" });\n    const normalized = client.queries.map((query) => normalizeSql(query.text));\n    expect(normalized.some((query) => query.startsWith("insert into investing.audit_events"))).toBe(true);\n    expect(normalized.some((query) => query.startsWith("update investing.idempotency_records"))).toBe(true);'
+          if test.count(old_expect) != 1:
+              raise SystemExit(f'expected exactly one stale expectation target, found {test.count(old_expect)}')
+          test = test.replace(old_expect, new_expect, 1)
+          test_path.write_text(test)
+          PY
+          git diff --check
+          git diff -- lib/investing/plan/writer.ts tests/investingGenesisI4PlanWriterCandidate.test.ts
+      - name: Install
+        run: npm ci
+      - name: Targeted I4 regression tests
+        run: npx vitest run tests/investingGenesisI4PlanWriterCandidate.test.ts tests/investingGenesisI4PlanServiceBoundary.test.ts tests/investingGenesisI4PlanWriterPg17Reconciliation.test.ts
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/investing/plan/writer.ts tests/investingGenesisI4PlanWriterCandidate.test.ts
+          if git diff --cached --quiet; then
+            echo 'No source/test repair required.'
+            exit 0
+          fi
+          git commit -m 'fix(investing): repair PG17 denial audit and stale-writer contract test'
+          git push origin HEAD:fix/i4c-contract-reconciliation-20260906
