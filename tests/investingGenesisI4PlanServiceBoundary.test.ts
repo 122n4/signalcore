@@ -5,14 +5,14 @@ vi.mock("@/lib/investing/authority/context", () => ({
   resolveAuthorizedInvestingAccountContext: vi.fn(),
 }));
 vi.mock("@/lib/investing/plan/writer", () => ({
-  initializeInvestingPlanV1: vi.fn(),
-  createAndActivateInvestingPlanRevisionV1: vi.fn(),
+  initializePlanV1: vi.fn(),
+  createAndActivatePlanRevisionV1: vi.fn(),
 }));
 
 import { resolveAuthorizedInvestingAccountContext } from "@/lib/investing/authority/context";
 import {
-  createAndActivateInvestingPlanRevisionV1,
-  initializeInvestingPlanV1,
+  createAndActivatePlanRevisionV1,
+  initializePlanV1,
   type PlanContentV1,
 } from "@/lib/investing/plan/writer";
 import {
@@ -61,7 +61,7 @@ describe("I4 canonical Plan service authority boundary", () => {
       ok: true,
       context: authorizedContext,
     } as never);
-    vi.mocked(initializeInvestingPlanV1).mockResolvedValue(success);
+    vi.mocked(initializePlanV1).mockResolvedValue(success);
 
     const result = await initializeInvestingPlanForAccountV1({
       accountId,
@@ -72,15 +72,15 @@ describe("I4 canonical Plan service authority boundary", () => {
 
     expect(resolveAuthorizedInvestingAccountContext).toHaveBeenCalledTimes(1);
     expect(resolveAuthorizedInvestingAccountContext).toHaveBeenCalledWith({ accountId, correlationId });
-    expect(initializeInvestingPlanV1).toHaveBeenCalledTimes(1);
-    expect(initializeInvestingPlanV1).toHaveBeenCalledWith({
+    expect(initializePlanV1).toHaveBeenCalledTimes(1);
+    expect(initializePlanV1).toHaveBeenCalledWith({
       authorizedContext,
       correlationId,
       idempotencyKey,
       content,
     });
     expect(vi.mocked(resolveAuthorizedInvestingAccountContext).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(initializeInvestingPlanV1).mock.invocationCallOrder[0],
+      vi.mocked(initializePlanV1).mock.invocationCallOrder[0],
     );
     expect(result).toBe(success);
   });
@@ -90,7 +90,7 @@ describe("I4 canonical Plan service authority boundary", () => {
       ok: true,
       context: authorizedContext,
     } as never);
-    vi.mocked(createAndActivateInvestingPlanRevisionV1).mockResolvedValue(success);
+    vi.mocked(createAndActivatePlanRevisionV1).mockResolvedValue(success);
 
     const result = await createAndActivateInvestingPlanRevisionForAccountV1({
       accountId,
@@ -103,7 +103,7 @@ describe("I4 canonical Plan service authority boundary", () => {
     });
 
     expect(resolveAuthorizedInvestingAccountContext).toHaveBeenCalledWith({ accountId, correlationId });
-    expect(createAndActivateInvestingPlanRevisionV1).toHaveBeenCalledWith({
+    expect(createAndActivatePlanRevisionV1).toHaveBeenCalledWith({
       authorizedContext,
       correlationId,
       idempotencyKey,
@@ -136,7 +136,7 @@ describe("I4 canonical Plan service authority boundary", () => {
 
     expect(result).toEqual({ ok: false, code: "VALIDATION_ERROR" });
     expect(resolveAuthorizedInvestingAccountContext).not.toHaveBeenCalled();
-    expect(initializeInvestingPlanV1).not.toHaveBeenCalled();
+    expect(initializePlanV1).not.toHaveBeenCalled();
   });
 
   it("does not invoke the writer when canonical authority resolution denies access", async () => {
@@ -155,7 +155,7 @@ describe("I4 canonical Plan service authority boundary", () => {
     });
 
     expect(result).toBe(denial);
-    expect(initializeInvestingPlanV1).not.toHaveBeenCalled();
+    expect(initializePlanV1).not.toHaveBeenCalled();
   });
 
   it("propagates writer conflict without fallback, mutation retry, or authority substitution", async () => {
@@ -164,7 +164,7 @@ describe("I4 canonical Plan service authority boundary", () => {
       context: authorizedContext,
     } as never);
     const conflict = Object.freeze({ ok: false as const, code: "CONFLICT" as const });
-    vi.mocked(createAndActivateInvestingPlanRevisionV1).mockResolvedValue(conflict);
+    vi.mocked(createAndActivatePlanRevisionV1).mockResolvedValue(conflict);
 
     const result = await createAndActivateInvestingPlanRevisionForAccountV1({
       accountId,
@@ -178,6 +178,6 @@ describe("I4 canonical Plan service authority boundary", () => {
 
     expect(result).toBe(conflict);
     expect(resolveAuthorizedInvestingAccountContext).toHaveBeenCalledTimes(1);
-    expect(createAndActivateInvestingPlanRevisionV1).toHaveBeenCalledTimes(1);
+    expect(createAndActivatePlanRevisionV1).toHaveBeenCalledTimes(1);
   });
 });
