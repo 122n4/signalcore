@@ -13,6 +13,61 @@ env:
   NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
+  writer-repair:
+    if: github.actor != 'github-actions[bot]' || github.event.head_commit.message != 'fix(investing): reject stale writer material-equivalent replay'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Patch stale writer material-equivalent replay
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/investing/plan/writer.ts')
+          text = path.read_text()
+          start_marker = 'async function resolveCreateAndActivateStaleRace('
+          end_marker = '\nasync function dispatchExistingIdempotency('
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('stale race function boundary missing')
+          segment = text[start:end]
+          old = '''  return terminalSuccess(client, input.idempotencyRecordId, {
+            planRootId: row.plan_root_id,
+            planRevisionId: row.plan_revision_id,
+            activeVersion: row.revision_number,
+            planRevisionContentHash: row.plan_revision_content_hash,
+          }, true);'''
+          new = '''  // Exact replay is handled earlier by the original idempotency key. A fresh
+          // idempotency record that arrives after another writer advanced the same
+          // predecessor is a stale writer and must lose, even when material bytes match.
+          return fail("CONFLICT");'''
+          if new in segment:
+              print('writer already repaired')
+              raise SystemExit(0)
+          if segment.count(old) != 1:
+              raise SystemExit(f'expected one stale replay block, found {segment.count(old)}')
+          segment = segment.replace(old, new, 1)
+          path.write_text(text[:start] + segment + text[end:])
+          PY
+          git diff --check
+      - name: Commit repair
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No repair commit required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/investing/plan/writer.ts
+          git commit -m 'fix(investing): reject stale writer material-equivalent replay'
+          git push origin HEAD:fix/i4c-contract-reconciliation-20260906
+
   i4-tests:
     runs-on: ubuntu-latest
     steps:
