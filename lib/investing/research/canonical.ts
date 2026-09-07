@@ -390,8 +390,8 @@ export function canonicalRunInputBytesV1(input: RunInputHashPayloadV1): Buffer {
   return syntrakeCanonicalJsonBytesV1(canonicalRunInputHashPayloadV1(input));
 }
 
-export function runInputPreimageV1(input: RunInputHashPayloadV1): Buffer {
-  return Buffer.concat([Buffer.from("SYNTRAKE:RUN_INPUT:V1\n", "utf8"), canonicalRunInputBytesV1(input)]);
+export function i5A2TestOnlyRunInputPreimageV1(input: RunInputHashPayloadV1): Buffer {
+  return runInputPreimageV1(input);
 }
 
 export function hashRunInputV1(input: RunInputHashPayloadV1): CanonicalSha256HexV1 {
@@ -409,6 +409,10 @@ export function hashRunInputV1(input: RunInputHashPayloadV1): CanonicalSha256Hex
     throw new Error("required nested scientific domain still hashing-disabled");
   }
   return sha256HexV1(runInputPreimageV1(input));
+}
+
+function runInputPreimageV1(input: RunInputHashPayloadV1): Buffer {
+  return Buffer.concat([Buffer.from("SYNTRAKE:RUN_INPUT:V1\n", "utf8"), canonicalRunInputBytesV1(input)]);
 }
 
 export function i5A2TestOnlyEvidenceObjectPreimageV1(

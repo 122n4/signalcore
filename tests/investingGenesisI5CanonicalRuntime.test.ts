@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { ESLint } from "eslint";
+import path from "node:path";
 import {
   assertHashDomainAdmittedForHashingV1,
   assertHashRefDomainV1,
@@ -17,7 +19,6 @@ import {
   hashRefV1,
   hashRunInputV1,
   immutableBehaviorTokenV1,
-  runInputPreimageV1,
   sha256HexV1,
   type HashRefV1,
   type RunInputHashPayloadV1,
@@ -29,6 +30,7 @@ import {
   i5A2TestOnlyCanonicalJsonEscapingVectorV1,
   i5A2TestOnlyCanonicalTextVectorHashV1,
   i5A2TestOnlyCanonicalTextVectorJsonV1,
+  i5A2TestOnlyRunInputPreimageV1,
 } from "../lib/investing/research/canonical";
 
 const hexA = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -160,7 +162,9 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
 
     expect(bytes.toString("utf8")).toBe(expectedRunInputJson);
     expect(reorderedBytes.equals(bytes)).toBe(true);
-    expect(sha256HexV1(runInputPreimageV1(runInputVector))).toBe("48605C6D47930999F42958C52851B45B18EDBF35F2045628BF108A31F89352B6");
+    expect(sha256HexV1(i5A2TestOnlyRunInputPreimageV1(runInputVector))).toBe(
+      "48605C6D47930999F42958C52851B45B18EDBF35F2045628BF108A31F89352B6",
+    );
     expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
     expect(() =>
       canonicalRunInputBytesV1({
@@ -252,18 +256,36 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect("syntrakeCanonicalJsonBytesV1" in publicResearchCanonical).toBe(false);
     expect("structuredHashPreimageV1" in publicResearchCanonical).toBe(false);
     expect("canonicalTestHashV1" in publicResearchCanonical).toBe(false);
+    expect("runInputPreimageV1" in publicResearchCanonical).toBe(false);
     expect("evidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
     expect("hashEvidenceObjectV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyCanonicalJsonEscapingVectorV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyEvidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyEvidenceObjectHashV1" in publicResearchCanonical).toBe(false);
+    expect("i5A2TestOnlyRunInputPreimageV1" in publicResearchCanonical).toBe(false);
     expect(() => assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_DRAFT:V1")).toThrow(
       "hash domain declared but hashing disabled",
     );
     expect(() => canonicalRunInputBytesV1({ arbitraryMap: { x: "y" } } as never)).toThrow("undeclared field arbitraryMap");
     expect(() => canonicalRunInputBytesV1([] as never)).toThrow("expected closed plain object");
-    expect(() => runInputPreimageV1({ schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1", bytes: "{}" } as never)).toThrow(
-      "undeclared field bytes",
+    expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
+  });
+
+  it("enforces production source use of the public I5 research barrel", async () => {
+    const eslint = new ESLint({ cwd: path.resolve(__dirname, "..") });
+    const [blocked] = await eslint.lintText(
+      [
+        'import { i5A2TestOnlyRunInputPreimageV1 } from "./research/canonical";',
+        "void i5A2TestOnlyRunInputPreimageV1;",
+      ].join("\n"),
+      { filePath: path.resolve(__dirname, "..", "lib", "investing", "forbidden-production-import.ts") },
     );
+    const [allowed] = await eslint.lintText(
+      ['import { canonicalRunInputBytesV1 } from "./research";', "void canonicalRunInputBytesV1;"].join("\n"),
+      { filePath: path.resolve(__dirname, "..", "lib", "investing", "allowed-production-import.ts") },
+    );
+
+    expect(blocked?.messages.some((message) => message.ruleId === "no-restricted-imports")).toBe(true);
+    expect(allowed?.messages.some((message) => message.ruleId === "no-restricted-imports")).toBe(false);
   });
 });

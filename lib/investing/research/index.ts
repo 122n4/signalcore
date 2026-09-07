@@ -16,7 +16,6 @@ export {
   hashRefV1,
   hashRunInputV1,
   immutableBehaviorTokenV1,
-  runInputPreimageV1,
   sha256HexV1,
   type CanonicalDateV1,
   type CanonicalDecimalV1,
