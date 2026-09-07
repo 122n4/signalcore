@@ -68,15 +68,20 @@ const hypothesisVector: HypothesisHashPayloadInputV1 = {
   observableDefinitionRequirements: [
     {
       description: "12-month momentum total return is defined by a later owner contract before execution.",
-      state: "RESOLVED",
+      state: "UNRESOLVED",
     },
   ],
+};
+
+const hypothesisWithoutObservableRequirements: HypothesisHashPayloadInputV1 = {
+  ...hypothesisVector,
+  observableDefinitionRequirements: [],
 };
 
 const expectedBlockedDraftJson =
   '{"constraints":[{"question":"Which investable universe definition controls large-cap US equities?","state":"MATERIAL_UNRESOLVED"},{"proposedValue":"Monthly rebalance","question":"Confirm monthly rebalance cadence.","state":"CONFIRMATION_REQUIRED"}],"interpretedObjective":{"state":"USER_SUPPLIED","value":"Evaluate whether large-cap momentum improves risk-adjusted returns."},"rawIntent":"Backtest a momentum approach for large-cap US equities.","schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}';
 const expectedHypothesisJson =
-  '{"falsifiable":true,"measurable":true,"nullHypothesis":"Positive 12-month momentum does not outperform after costs.","observableDefinitionRequirements":[{"description":"12-month momentum total return is defined by a later owner contract before execution.","state":"RESOLVED"}],"rationale":"Momentum effect is observable through historical total-return series.","schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1","statement":"Large-cap equities with positive 12-month momentum outperform equal-weight large-cap universe after costs."}';
+  '{"falsifiable":true,"measurable":true,"nullHypothesis":"Positive 12-month momentum does not outperform after costs.","observableDefinitionRequirements":[{"description":"12-month momentum total return is defined by a later owner contract before execution.","state":"UNRESOLVED"}],"rationale":"Momentum effect is observable through historical total-return series.","schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1","statement":"Large-cap equities with positive 12-month momentum outperform equal-weight large-cap universe after costs."}';
 
 function ref(hashDomain: HashRefV1["hashDomain"], hashHex: string): HashRefV1 {
   return hashRefV1({
@@ -158,7 +163,7 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
 
   it("freezes Hypothesis canonical bytes/hash without Draft predecessor lineage", () => {
     expect(canonicalHypothesisBytesV1(hypothesisVector).toString("utf8")).toBe(expectedHypothesisJson);
-    expect(hashHypothesisV1(hypothesisVector)).toBe("B42B60EDD30320A2F221DEA6388228E7DAC82A7C8F8E5AAFD02212B8C4E0D6A4");
+    expect(hashHypothesisV1(hypothesisVector)).toBe("21F8FD6C1906DB4F1188A1D4FD6ED1E426A4C10201E320C0683BA38470E1D1CF");
     expect(canonicalHypothesisBytesV1(hypothesisVector).toString("utf8")).not.toContain("sourceDraftRevisionId");
     expect(hashHypothesisV1({ ...hypothesisVector, statement: "A changed hypothesis statement." })).not.toBe(
       hashHypothesisV1(hypothesisVector),
@@ -169,14 +174,14 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
     const withoutHypothesis = specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" });
     const withHypothesis = specCandidate(draftProof(closedDraftVector), {
       kind: "EXPLICIT_HYPOTHESIS",
-      hypothesis: hypothesisProof(hypothesisVector),
+      hypothesis: hypothesisProof(hypothesisWithoutObservableRequirements),
     });
 
     expect(canonicalResearchSpecCandidateBytesV1(withoutHypothesis).toString("utf8")).toBe(
       '{"hypothesisBinding":{"kind":"NO_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize a candidate research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68A6262EAF4E0583BE7F4BB90F7098CF8EE44BA1B4C51C0B9044934DC385973B","hashVersion":"SYNTRAKE_SHA256_V1"},"status":"CANDIDATE_ONLY"}',
     );
     expect(canonicalResearchSpecCandidateBytesV1(withHypothesis).toString("utf8")).toBe(
-      '{"hypothesisBinding":{"hypothesis":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:HYPOTHESIS:V1","hashHex":"B42B60EDD30320A2F221DEA6388228E7DAC82A7C8F8E5AAFD02212B8C4E0D6A4","hashVersion":"SYNTRAKE_SHA256_V1"},"kind":"EXPLICIT_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize a candidate research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68A6262EAF4E0583BE7F4BB90F7098CF8EE44BA1B4C51C0B9044934DC385973B","hashVersion":"SYNTRAKE_SHA256_V1"},"status":"CANDIDATE_ONLY"}',
+      '{"hypothesisBinding":{"hypothesis":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:HYPOTHESIS:V1","hashHex":"F01F559FD3E11C6FF019EB6D05B30FF61D04E58C1231F2417C6FAA2C386D7A05","hashVersion":"SYNTRAKE_SHA256_V1"},"kind":"EXPLICIT_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize a candidate research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68A6262EAF4E0583BE7F4BB90F7098CF8EE44BA1B4C51C0B9044934DC385973B","hashVersion":"SYNTRAKE_SHA256_V1"},"status":"CANDIDATE_ONLY"}',
     );
     expect("hashResearchSpecV1" in await import("../lib/investing/research")).toBe(false);
   });
@@ -217,7 +222,12 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
       canonicalResearchSpecCandidateBytesV1(
         specCandidate(draftProof(closedDraftVector), { kind: "EXPLICIT_HYPOTHESIS", hypothesis: hypothesisProof(unresolved) }),
       ),
-    ).toThrow("unresolved observable definitions block ResearchSpec candidate promotion");
+    ).toThrow("observable definitions require immutable owner proof before ResearchSpec candidate promotion");
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1(
+        specCandidate(draftProof(closedDraftVector), { kind: "EXPLICIT_HYPOTHESIS", hypothesis: hypothesisProof(hypothesisVector) }),
+      ),
+    ).toThrow("observable definitions require immutable owner proof before ResearchSpec candidate promotion");
     expect(() =>
       canonicalResearchSpecCandidateBytesV1(
         specCandidate(draftProof(closedDraftVector), {
@@ -307,6 +317,18 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
         ],
       }),
     );
+    expect(() => hashResearchDraftV1({ ...closedDraftVector, constraints: [closedDraftVector.constraints[0]!, closedDraftVector.constraints[0]!] })).toThrow(
+      "duplicate constraints element",
+    );
+    expect(() =>
+      hashHypothesisV1({
+        ...hypothesisVector,
+        observableDefinitionRequirements: [
+          hypothesisVector.observableDefinitionRequirements[0]!,
+          hypothesisVector.observableDefinitionRequirements[0]!,
+        ],
+      }),
+    ).toThrow("duplicate observableDefinitionRequirements element");
   });
 
   it("proves deterministic A3 sibling/downstream invalidation transitions touched by A4", () => {

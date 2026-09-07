@@ -90,11 +90,13 @@ export function canonicalResearchDraftHashPayloadV1(input: ResearchDraftHashPayl
   assertClosedPlainObject(input, new Set(["schemaVersion", "rawIntent", "interpretedObjective", "constraints"]));
   if (input.schemaVersion !== "RESEARCH_DRAFT_HASH_PAYLOAD_V1") throw new Error("invalid ResearchDraft schemaVersion");
   if (!Array.isArray(input.constraints)) throw new Error("constraints must be an ORDERED_SEQUENCE array");
+  const constraints = input.constraints.map(canonicalMaterialSemanticFieldV1);
+  rejectDuplicateCanonicalElements("constraints", constraints);
   return {
     schemaVersion: input.schemaVersion,
     rawIntent: canonicalTextV1(input.rawIntent, { minBytes: 1, maxBytes: 4096 }),
     interpretedObjective: canonicalMaterialSemanticFieldV1(input.interpretedObjective),
-    constraints: input.constraints.map(canonicalMaterialSemanticFieldV1),
+    constraints,
   };
 }
 
@@ -127,12 +129,15 @@ export function canonicalHypothesisHashPayloadV1(input: HypothesisHashPayloadInp
     throw new Error("observableDefinitionRequirements must be an ORDERED_SEQUENCE array");
   }
 
+  const observableDefinitionRequirements = input.observableDefinitionRequirements.map(canonicalObservableRequirementV1);
+  rejectDuplicateCanonicalElements("observableDefinitionRequirements", observableDefinitionRequirements);
+
   const payload: Record<string, CanonicalJsonValue> = {
     schemaVersion: input.schemaVersion,
     statement: canonicalTextV1(input.statement, { minBytes: 1, maxBytes: 4096 }),
     falsifiable: input.falsifiable,
     measurable: input.measurable,
-    observableDefinitionRequirements: input.observableDefinitionRequirements.map(canonicalObservableRequirementV1),
+    observableDefinitionRequirements,
   };
   if (input.nullHypothesis !== undefined) payload.nullHypothesis = canonicalTextV1(input.nullHypothesis, { minBytes: 1, maxBytes: 4096 });
   if (input.rationale !== undefined) payload.rationale = canonicalTextV1(input.rationale, { minBytes: 1, maxBytes: 4096 });
@@ -224,8 +229,8 @@ function canonicalHypothesisProofV1(input: HypothesisProofV1): HashRefV1 {
   if (ref.hashDomain !== "SYNTRAKE:HYPOTHESIS:V1") throw new Error("wrong-domain ResearchSpec hypothesis");
   if (hashHypothesisV1(input.payload) !== ref.hashHex) throw new Error("Hypothesis proof hash mismatch");
   if (input.payload.measurable !== true) throw new Error("measurable=false blocks ResearchSpec candidate promotion");
-  if (input.payload.observableDefinitionRequirements.some((requirement) => requirement.state === "UNRESOLVED")) {
-    throw new Error("unresolved observable definitions block ResearchSpec candidate promotion");
+  if (input.payload.observableDefinitionRequirements.length > 0) {
+    throw new Error("observable definitions require immutable owner proof before ResearchSpec candidate promotion");
   }
   return ref;
 }
@@ -277,6 +282,15 @@ function canonicalObservableRequirementV1(input: ObservableDefinitionRequirement
     description: canonicalTextV1(input.description, { minBytes: 1, maxBytes: 4096 }),
     state: canonicalTokenV1(input.state, observableRequirementStatesV1),
   };
+}
+
+function rejectDuplicateCanonicalElements(name: string, elements: readonly CanonicalJsonValue[]) {
+  const seen = new Set<string>();
+  for (const element of elements) {
+    const canonical = i5ResearchInternalCanonicalJsonBytesV1(element).toString("utf8");
+    if (seen.has(canonical)) throw new Error(`duplicate ${name} element`);
+    seen.add(canonical);
+  }
 }
 
 function isBlockingMaterialField(input: MaterialSemanticFieldV1) {
