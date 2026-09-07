@@ -11,45 +11,6 @@ const eslintConfig = defineConfig([
       "react/no-unescaped-entities": "off",
     },
   },
-  {
-    files: ["app/**/*.{js,jsx,ts,tsx}", "components/**/*.{js,jsx,ts,tsx}", "lib/**/*.{js,jsx,ts,tsx}"],
-    ignores: ["lib/investing/research/index.ts", "lib/investing/research/canonical.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [
-            {
-              name: "@/lib/investing/research/canonical",
-              message: "Production code must use the I5 research barrel; canonical.ts contains internal/test-only admission helpers.",
-            },
-            {
-              name: "./canonical",
-              message: "Production code must use the I5 research barrel; canonical.ts contains internal/test-only admission helpers.",
-            },
-            {
-              name: "./research/canonical",
-              message: "Production code must use the I5 research barrel; canonical.ts contains internal/test-only admission helpers.",
-            },
-            {
-              name: "../research/canonical",
-              message: "Production code must use the I5 research barrel; canonical.ts contains internal/test-only admission helpers.",
-            },
-            {
-              name: "../lib/investing/research/canonical",
-              message: "Production code must use the I5 research barrel; canonical.ts contains internal/test-only admission helpers.",
-            },
-          ],
-          patterns: [
-            {
-              group: ["**/lib/investing/research/canonical"],
-              message: "Production code must use the I5 research barrel; canonical.ts contains internal/test-only admission helpers.",
-            },
-          ],
-        },
-      ],
-    },
-  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

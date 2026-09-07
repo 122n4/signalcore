@@ -97,6 +97,7 @@ type GraphViolation = {
     | "UNRESOLVED_INTERNAL_MODULE_REFERENCE"
     | "EXCLUDED_REPOSITORY_MODULE_REFERENCE"
     | "OUTSIDE_REPOSITORY_MODULE_REFERENCE"
+    | "I5_RESEARCH_CANONICAL_DEEP_IMPORT_NOT_ALLOWED"
     | "SYMBOLIC_LINK_SOURCE_NOT_ALLOWED"
     | "GIT_SUBMODULE_SOURCE_NOT_ALLOWED";
   chain: string[];
@@ -308,6 +309,8 @@ function readTsconfigCompilerOptions() {
 }
 
 const compilerOptions = readTsconfigCompilerOptions();
+const i5ResearchCanonicalModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "canonical.ts"));
+const i5ResearchPublicBarrelPath = normalizeRelativePath(path.join("lib", "investing", "research", "index.ts"));
 
 function scriptKindFor(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -505,6 +508,15 @@ function isDefinitelyInternalSpecifier(fromFile: string, specifier: string, virt
   return isInsideRepo(candidate) && hasVirtualOrPhysicalSourceCandidate(candidate, virtualFiles);
 }
 
+function canReferenceI5ResearchCanonicalModule(fromFile: string) {
+  const normalized = normalizeRelativePath(fromFile);
+  return normalized === i5ResearchPublicBarrelPath || normalized === i5ResearchCanonicalModulePath || isExcludedSourcePath(normalized);
+}
+
+function isForbiddenI5ResearchCanonicalReference(fromFile: string, toFile: string) {
+  return normalizeRelativePath(toFile) === i5ResearchCanonicalModulePath && !canReferenceI5ResearchCanonicalModule(fromFile);
+}
+
 function classifyModuleReference(
   fromFile: string,
   specifier: string,
@@ -631,6 +643,13 @@ function buildGraph(sources: SourceFileInput[], extraVirtualFiles = new Map<stri
 
       const resolved = classifyStaticReference(relativePath, reference, resolutionHost, virtualFiles);
       if (resolved.kind === "INTERNAL_REPOSITORY_MODULE") {
+        if (isForbiddenI5ResearchCanonicalReference(relativePath, resolved.relativePath)) {
+          violations.push({
+            code: "I5_RESEARCH_CANONICAL_DEEP_IMPORT_NOT_ALLOWED",
+            chain: [relativePath, resolved.relativePath],
+            specifier: reference.specifier,
+          });
+        }
         edges.push(resolved.relativePath);
         continue;
       }
@@ -889,6 +908,32 @@ describe("Investing Genesis architecture boundaries", () => {
     ]);
 
     expect(violations).toEqual([]);
+  });
+
+  it("blocks production deep imports of I5 canonical internals by resolved path and allows the public barrel", () => {
+    const forbiddenCases = [
+      source("lib/investing/static-direct.ts", 'import x from "./research/canonical";'),
+      source("lib/investing/feature/static-deeper.ts", 'import x from "../research/canonical";'),
+      source("lib/investing/alias-canonical.ts", 'import x from "@/lib/investing/research/canonical";'),
+      source("lib/investing/dynamic-canonical.ts", 'async function load() { return import("./research/canonical"); }'),
+      source("lib/investing/require-canonical.ts", 'const x = require("./research/canonical");'),
+      source("lib/investing/module-require-canonical.ts", 'const x = module.require("./research/canonical");'),
+      source("lib/investing/import-equals-canonical.ts", 'import x = require("./research/canonical");'),
+    ];
+
+    for (const forbiddenCase of forbiddenCases) {
+      expectViolation(
+        [forbiddenCase],
+        "I5_RESEARCH_CANONICAL_DEEP_IMPORT_NOT_ALLOWED",
+        [forbiddenCase.relativePath, i5ResearchCanonicalModulePath],
+      );
+    }
+
+    const barrelViolations = analyzeArchitectureGraph([
+      source("lib/investing/barrel-consumer.ts", 'import { canonicalRunInputBytesV1 } from "./research";'),
+    ]);
+
+    expect(barrelViolations).toEqual([]);
   });
 
   it("blocks Investing to Trading direct and transitive graph paths", () => {

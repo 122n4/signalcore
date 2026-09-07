@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { ESLint } from "eslint";
-import path from "node:path";
 import {
   assertHashDomainAdmittedForHashingV1,
   assertHashRefDomainV1,
@@ -269,23 +267,5 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect(() => canonicalRunInputBytesV1({ arbitraryMap: { x: "y" } } as never)).toThrow("undeclared field arbitraryMap");
     expect(() => canonicalRunInputBytesV1([] as never)).toThrow("expected closed plain object");
     expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
-  });
-
-  it("enforces production source use of the public I5 research barrel", async () => {
-    const eslint = new ESLint({ cwd: path.resolve(__dirname, "..") });
-    const [blocked] = await eslint.lintText(
-      [
-        'import { i5A2TestOnlyRunInputPreimageV1 } from "./research/canonical";',
-        "void i5A2TestOnlyRunInputPreimageV1;",
-      ].join("\n"),
-      { filePath: path.resolve(__dirname, "..", "lib", "investing", "forbidden-production-import.ts") },
-    );
-    const [allowed] = await eslint.lintText(
-      ['import { canonicalRunInputBytesV1 } from "./research";', "void canonicalRunInputBytesV1;"].join("\n"),
-      { filePath: path.resolve(__dirname, "..", "lib", "investing", "allowed-production-import.ts") },
-    );
-
-    expect(blocked?.messages.some((message) => message.ruleId === "no-restricted-imports")).toBe(true);
-    expect(allowed?.messages.some((message) => message.ruleId === "no-restricted-imports")).toBe(false);
   });
 });
