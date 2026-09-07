@@ -37,14 +37,15 @@ export type HashRefV1 = Readonly<{
 
 type DomainAdmissionState =
   | "DECLARED_BUT_HASHING_DISABLED"
+  | "OWNER_PAYLOAD_EXACT"
   | "PREIMAGE_ENVELOPE_EXACT"
   | "CONTENT_PREIMAGE_EXACT"
   | "TEST_ONLY";
 
 const hashDomainAdmission = {
-  "SYNTRAKE:RESEARCH_DRAFT:V1": "DECLARED_BUT_HASHING_DISABLED",
-  "SYNTRAKE:HYPOTHESIS:V1": "DECLARED_BUT_HASHING_DISABLED",
-  "SYNTRAKE:RESEARCH_SPEC:V1": "DECLARED_BUT_HASHING_DISABLED",
+  "SYNTRAKE:RESEARCH_DRAFT:V1": "OWNER_PAYLOAD_EXACT",
+  "SYNTRAKE:HYPOTHESIS:V1": "OWNER_PAYLOAD_EXACT",
+  "SYNTRAKE:RESEARCH_SPEC:V1": "OWNER_PAYLOAD_EXACT",
   "SYNTRAKE:RESEARCH_IR:V1": "DECLARED_BUT_HASHING_DISABLED",
   "SYNTRAKE:EXPERIMENT:V1": "DECLARED_BUT_HASHING_DISABLED",
   "SYNTRAKE:EXPERIMENT_PARAMETERS:V1": "DECLARED_BUT_HASHING_DISABLED",
@@ -284,6 +285,10 @@ function syntrakeCanonicalJsonBytesV1(value: CanonicalJsonValue): Buffer {
   return Buffer.from(syntrakeCanonicalJsonV1(value), "utf8");
 }
 
+export function i5ResearchInternalCanonicalJsonBytesV1(value: CanonicalJsonValue): Buffer {
+  return syntrakeCanonicalJsonBytesV1(value);
+}
+
 export function sha256HexV1(bytes: Uint8Array): CanonicalSha256HexV1 {
   return createHash("sha256").update(bytes).digest("hex").toUpperCase() as CanonicalSha256HexV1;
 }
@@ -293,32 +298,8 @@ function structuredHashPreimageV1(domain: HashDomainV1, canonicalJsonBytes: Uint
   return Buffer.concat([Buffer.from(`${domain}\n`, "utf8"), Buffer.from(canonicalJsonBytes)]);
 }
 
-function canonicalTestHashV1(payload: CanonicalJsonValue): CanonicalSha256HexV1 {
-  const bytes = syntrakeCanonicalJsonBytesV1(payload);
-  return sha256HexV1(structuredHashPreimageV1("SYNTRAKE:CANONICAL_TEST:V1", bytes));
-}
-
-export function i5A2TestOnlyCanonicalTextVectorJsonV1(text: string): string {
-  return syntrakeCanonicalJsonV1({
-    schemaVersion: "CANONICAL_TEXT_VECTOR_V1",
-    text: canonicalTextV1(text),
-  });
-}
-
-export function i5A2TestOnlyCanonicalTextVectorHashV1(text: string): CanonicalSha256HexV1 {
-  return canonicalTestHashV1({
-    schemaVersion: "CANONICAL_TEXT_VECTOR_V1",
-    text: canonicalTextV1(text),
-  });
-}
-
-export function i5A2TestOnlyCanonicalJsonEscapingVectorV1(): string {
-  return syntrakeCanonicalJsonV1({
-    "\ud83d\ude00": "emoji-key",
-    a: "\b\t\n\f\r\u0000\u001f/\u2028\u2029\u00e9",
-    aa: true,
-    b: null,
-  });
+export function i5ResearchInternalStructuredHashPreimageV1(domain: HashDomainV1, payload: CanonicalJsonValue): Buffer {
+  return structuredHashPreimageV1(domain, syntrakeCanonicalJsonBytesV1(payload));
 }
 
 export function canonicalRunInputHashPayloadV1(input: RunInputHashPayloadV1): CanonicalJsonValue {
@@ -390,10 +371,6 @@ export function canonicalRunInputBytesV1(input: RunInputHashPayloadV1): Buffer {
   return syntrakeCanonicalJsonBytesV1(canonicalRunInputHashPayloadV1(input));
 }
 
-export function i5A2TestOnlyRunInputPreimageV1(input: RunInputHashPayloadV1): Buffer {
-  return runInputPreimageV1(input);
-}
-
 export function hashRunInputV1(input: RunInputHashPayloadV1): CanonicalSha256HexV1 {
   canonicalRunInputHashPayloadV1(input);
   const hashRefs = [
@@ -413,51 +390,6 @@ export function hashRunInputV1(input: RunInputHashPayloadV1): CanonicalSha256Hex
 
 function runInputPreimageV1(input: RunInputHashPayloadV1): Buffer {
   return Buffer.concat([Buffer.from("SYNTRAKE:RUN_INPUT:V1\n", "utf8"), canonicalRunInputBytesV1(input)]);
-}
-
-export function i5A2TestOnlyEvidenceObjectPreimageV1(
-  descriptor: EvidenceContentDescriptorV1,
-  contentBytes: Uint8Array,
-): Buffer {
-  return evidenceObjectPreimageV1(descriptor, contentBytes);
-}
-
-export function i5A2TestOnlyEvidenceObjectHashV1(
-  descriptor: EvidenceContentDescriptorV1,
-  contentBytes: Uint8Array,
-): CanonicalSha256HexV1 {
-  return hashEvidenceObjectV1(descriptor, contentBytes);
-}
-
-function evidenceObjectPreimageV1(descriptor: EvidenceContentDescriptorV1, contentBytes: Uint8Array): Buffer {
-  const payload = canonicalEvidenceDescriptorPayloadV1(descriptor, contentBytes.byteLength);
-  return Buffer.concat([
-    Buffer.from("SYNTRAKE:EVIDENCE_OBJECT:V1\n", "utf8"),
-    syntrakeCanonicalJsonBytesV1(payload),
-    Buffer.from("\n", "utf8"),
-    Buffer.from(contentBytes),
-  ]);
-}
-
-function hashEvidenceObjectV1(descriptor: EvidenceContentDescriptorV1, contentBytes: Uint8Array): CanonicalSha256HexV1 {
-  return sha256HexV1(evidenceObjectPreimageV1(descriptor, contentBytes));
-}
-
-function canonicalEvidenceDescriptorPayloadV1(
-  descriptor: EvidenceContentDescriptorV1,
-  actualContentByteLength: number,
-): CanonicalJsonValue {
-  assertClosedPlainObject(descriptor, new Set(["schemaVersion", "kind", "artifactSchemaVersion", "format", "contentByteLength"]));
-  if (descriptor.schemaVersion !== "EVIDENCE_CONTENT_DESCRIPTOR_V1") throw new Error("invalid Evidence descriptor schemaVersion");
-  const contentByteLength = canonicalIntegerV1(descriptor.contentByteLength, { min: "0", allowNegative: false });
-  if (contentByteLength !== String(actualContentByteLength)) throw new Error("Evidence contentByteLength mismatch");
-  return {
-    schemaVersion: descriptor.schemaVersion,
-    kind: canonicalEvidenceKindV1(descriptor.kind),
-    artifactSchemaVersion: immutableBehaviorTokenV1(descriptor.artifactSchemaVersion),
-    format: canonicalTextV1(descriptor.format, { minBytes: 1 }),
-    contentByteLength,
-  };
 }
 
 function canonicalMaterialPolicies(policies: readonly MaterialPolicyRefV1[]): CanonicalJsonValue {
@@ -510,10 +442,6 @@ function canonicalResearchEnvironmentV1(value: string): CanonicalTokenV1 {
 
 function canonicalResearchSourceContextV1(value: string): CanonicalTokenV1 {
   return canonicalTokenV1(value, researchSourceContextsV1);
-}
-
-function canonicalEvidenceKindV1(value: string): CanonicalTokenV1 {
-  return canonicalTokenV1(value, new Set(["ENGINE_LOG_SUMMARY"]));
 }
 
 function canonicalRunInputAsciiIdentifierV1(value: string, name: string): CanonicalTokenV1 {

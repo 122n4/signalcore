@@ -310,7 +310,6 @@ function readTsconfigCompilerOptions() {
 
 const compilerOptions = readTsconfigCompilerOptions();
 const i5ResearchCanonicalModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "canonical.ts"));
-const i5ResearchPublicBarrelPath = normalizeRelativePath(path.join("lib", "investing", "research", "index.ts"));
 
 function scriptKindFor(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -510,7 +509,7 @@ function isDefinitelyInternalSpecifier(fromFile: string, specifier: string, virt
 
 function canReferenceI5ResearchCanonicalModule(fromFile: string) {
   const normalized = normalizeRelativePath(fromFile);
-  return normalized === i5ResearchPublicBarrelPath || normalized === i5ResearchCanonicalModulePath || isExcludedSourcePath(normalized);
+  return isUnderRoot(normalized, path.join("lib", "investing", "research")) || isExcludedSourcePath(normalized);
 }
 
 function isForbiddenI5ResearchCanonicalReference(fromFile: string, toFile: string) {
@@ -932,8 +931,12 @@ describe("Investing Genesis architecture boundaries", () => {
     const barrelViolations = analyzeArchitectureGraph([
       source("lib/investing/barrel-consumer.ts", 'import { canonicalRunInputBytesV1 } from "./research";'),
     ]);
+    const researchPackageInternalViolations = analyzeArchitectureGraph([
+      source("lib/investing/research/semantic.ts", 'import { canonicalTextV1 } from "./canonical";'),
+    ]);
 
     expect(barrelViolations).toEqual([]);
+    expect(researchPackageInternalViolations).toEqual([]);
   });
 
   it("blocks Investing to Trading direct and transitive graph paths", () => {

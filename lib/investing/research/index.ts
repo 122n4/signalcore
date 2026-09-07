@@ -35,3 +35,24 @@ export {
   type RunInputHashPayloadV1,
   type RunTypeV1,
 } from "./canonical";
+
+export {
+  type A3PointerEffectInputV1,
+  type HypothesisHashPayloadInputV1,
+  type InvestigationPointersV1,
+  type MaterialSemanticFieldV1,
+  type ObservableDefinitionRequirementV1,
+  type ResearchDraftHashPayloadInputV1,
+  type ResearchSpecHashPayloadInputV1,
+  type ResearchSpecHypothesisBindingV1,
+} from "./semantic";
+
+export {
+  applyA3PointerEffectV1,
+  canonicalHypothesisBytesV1,
+  canonicalResearchDraftBytesV1,
+  canonicalResearchSpecBytesV1,
+  hashHypothesisV1,
+  hashResearchDraftV1,
+  hashResearchSpecV1,
+} from "./semantic";
