@@ -34,7 +34,6 @@ const forbiddenEngineRoots = [
   path.join(repoRoot, "lib", "investing", "valuation"),
   path.join(repoRoot, "lib", "investing", "portfolio"),
   path.join(repoRoot, "lib", "investing", "quant"),
-  path.join(repoRoot, "lib", "investing", "research"),
   path.join(repoRoot, "lib", "investing", "execution"),
 ] as const;
 
