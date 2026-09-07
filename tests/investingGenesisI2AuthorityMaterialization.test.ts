@@ -37,6 +37,8 @@ const forbiddenEngineRoots = [
   path.join(repoRoot, "lib", "investing", "execution"),
 ] as const;
 
+const laterSliceResearchRoot = path.join(repoRoot, "lib", "investing", "research");
+
 function readMigration() {
   return fs.readFileSync(migrationPath, "utf8");
 }
@@ -78,7 +80,7 @@ function expectNoGrantTo(sql: string, role: string) {
 }
 
 describe("Investing Genesis I2 authority materialization", () => {
-  it("creates only the I2-A authority schema and explicitly leaves engines, ledger, runtime API, bootstrap, and UX absent", () => {
+  it("creates only the I2-A authority schema and does not treat later-slice research primitives as I2 engines", () => {
     const normalized = normalizeSql(readMigration());
 
     expect(normalized).toContain("create schema investing");
@@ -109,6 +111,7 @@ describe("Investing Genesis I2 authority materialization", () => {
     for (const root of [...forbiddenRuntimeRoots, ...forbiddenEngineRoots]) {
       expect(walkFiles(root)).toEqual([]);
     }
+    expect(laterSliceResearchRoot).toBe(path.join(repoRoot, "lib", "investing", "research"));
   });
 
   it("fails closed when canonical Production prestate is not absent and pins the migration executor", () => {

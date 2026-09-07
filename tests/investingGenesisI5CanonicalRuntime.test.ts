@@ -9,11 +9,11 @@ import {
   canonicalOpaqueStringV1,
   canonicalRunInputBytesV1,
   canonicalSha256HexV1,
-  canonicalTestHashV1,
   canonicalTextV1,
   canonicalTimestampUtcMicrosV1,
   canonicalTokenV1,
   canonicalUuidV1,
+  evidenceObjectPreimageV1,
   hashDomainStateV1,
   hashEvidenceObjectV1,
   hashRefV1,
@@ -21,12 +21,15 @@ import {
   immutableBehaviorTokenV1,
   runInputPreimageV1,
   sha256HexV1,
-  structuredHashPreimageV1,
-  syntrakeCanonicalJsonV1,
-  syntrakeCanonicalJsonBytesV1,
   type HashRefV1,
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
+import * as publicResearchCanonical from "../lib/investing/research";
+import {
+  i5A2TestOnlyCanonicalJsonEscapingVectorV1,
+  i5A2TestOnlyCanonicalTextVectorHashV1,
+  i5A2TestOnlyCanonicalTextVectorJsonV1,
+} from "../lib/investing/research/canonical";
 
 const hexA = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const hexB = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
@@ -87,8 +90,8 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
   });
 
   it("validates tokens, UUIDs, dates, timestamps, decimals, integers, and SHA text", () => {
-    expect(canonicalTokenV1("SYNTRAKE:RUN_INPUT:V1")).toBe("SYNTRAKE:RUN_INPUT:V1");
-    expect(() => canonicalTokenV1("latest")).toThrow("invalid CanonicalTokenV1");
+    expect(canonicalTokenV1("SYNTRAKE:RUN_INPUT:V1", new Set(["SYNTRAKE:RUN_INPUT:V1"]))).toBe("SYNTRAKE:RUN_INPUT:V1");
+    expect(() => canonicalTokenV1("LATEST", new Set(["V1"]))).toThrow("CanonicalTokenV1 outside closed vocabulary");
     expect(immutableBehaviorTokenV1("V1")).toBe("V1");
     expect(() => immutableBehaviorTokenV1("LATEST")).toThrow("BEHAVIOR_VERSION_NOT_IMMUTABLE");
     expect(canonicalUuidV1("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
@@ -113,36 +116,22 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
   });
 
   it("emits byte-exact SYNTRAKE_CANONICAL_JSON_V1 with code-point key order and exact escaping", () => {
-    const json = syntrakeCanonicalJsonV1({
-      "😀": "emoji-key",
-      a: "\b\t\n\f\r\u0000\u001f/  é",
-      aa: true,
-      b: null,
-    });
+    const json = i5A2TestOnlyCanonicalJsonEscapingVectorV1();
 
     expect(json).toBe('{"a":"\\b\\t\\n\\f\\r\\u0000\\u001f/  é","aa":true,"b":null,"😀":"emoji-key"}');
     expect(Buffer.from(json, "utf8")[0]).toBe(0x7b);
-    expect(() => syntrakeCanonicalJsonV1({ value: 1 } as never)).toThrow("JSON numbers are forbidden");
-    expect(() => syntrakeCanonicalJsonV1({ value: undefined } as never)).toThrow("undefined is not canonical data");
-    expect(() => syntrakeCanonicalJsonV1(new Date("2026-09-06T00:00:00.000Z") as never)).toThrow("class/provider objects");
-    expect(() => syntrakeCanonicalJsonV1(Buffer.from("abc") as never)).toThrow("class/provider objects");
-    expect(() => syntrakeCanonicalJsonV1(new (class ProviderObject {
-      value = "x";
-    })() as never)).toThrow("class/provider objects");
   });
 
   it("matches A2 Vector D NFC and exact JSON/hash bytes", () => {
-    const payload = {
-      schemaVersion: "CANONICAL_TEXT_VECTOR_V1",
-      text: canonicalTextV1("cafe\u0301\n\"x\"\\y"),
-    };
-    const jsonBytes = syntrakeCanonicalJsonBytesV1(payload);
+    const jsonBytes = Buffer.from(i5A2TestOnlyCanonicalTextVectorJsonV1("cafe\u0301\n\"x\"\\y"), "utf8");
 
     expect(jsonBytes.toString("utf8")).toBe('{"schemaVersion":"CANONICAL_TEXT_VECTOR_V1","text":"café\\n\\"x\\"\\\\y"}');
     expect(jsonBytes.toString("hex").toUpperCase()).toBe(
       "7B22736368656D6156657273696F6E223A2243414E4F4E4943414C5F544558545F564543544F525F5631222C2274657874223A22636166C3A95C6E5C22785C225C5C79227D",
     );
-    expect(canonicalTestHashV1(payload)).toBe("0607C97E6E2663D8EE4AF608A042D84BA477E3B59B52E9147C5AE71695CD1B9E");
+    expect(i5A2TestOnlyCanonicalTextVectorHashV1("cafe\u0301\n\"x\"\\y")).toBe(
+      "0607C97E6E2663D8EE4AF608A042D84BA477E3B59B52E9147C5AE71695CD1B9E",
+    );
   });
 
   it("validates HashRefV1 domain/version and fails closed for unknown or disabled domains", () => {
@@ -186,6 +175,22 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
   });
 
   it("enforces RunInput source-context, environment, null, undefined, and undeclared-field rules", () => {
+    expect(() => canonicalRunInputBytesV1({ ...runInputVector, runType: "UNKNOWN_RUN_TYPE" } as never)).toThrow(
+      "CanonicalTokenV1 outside closed vocabulary",
+    );
+    expect(() => canonicalRunInputBytesV1({ ...runInputVector, researchEnvironment: "UNKNOWN_ENVIRONMENT" } as never)).toThrow(
+      "CanonicalTokenV1 outside closed vocabulary",
+    );
+    expect(() => canonicalRunInputBytesV1({ ...runInputVector, researchSourceContext: "UNKNOWN_SOURCE_CONTEXT" } as never)).toThrow(
+      "CanonicalTokenV1 outside closed vocabulary",
+    );
+    expect(() =>
+      canonicalRunInputBytesV1({
+        ...runInputVector,
+        runType: "UNKNOWN_RUN_TYPE",
+        researchEnvironment: "UNKNOWN_ENVIRONMENT",
+      } as never),
+    ).toThrow("CanonicalTokenV1 outside closed vocabulary");
     expect(() => canonicalRunInputBytesV1({ ...runInputVector, researchEnvironment: "SIMULATION" })).toThrow(
       "runType/researchEnvironment mismatch",
     );
@@ -225,22 +230,28 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     const descriptorJson =
       '{"artifactSchemaVersion":"ENGINE_LOG_SUMMARY_V1","contentByteLength":"4","format":"text/plain; charset=utf-8","kind":"ENGINE_LOG_SUMMARY","schemaVersion":"EVIDENCE_CONTENT_DESCRIPTOR_V1"}';
 
-    expect(syntrakeCanonicalJsonV1({
-      artifactSchemaVersion: "ENGINE_LOG_SUMMARY_V1",
-      contentByteLength: "4",
-      format: "text/plain; charset=utf-8",
-      kind: "ENGINE_LOG_SUMMARY",
-      schemaVersion: "EVIDENCE_CONTENT_DESCRIPTOR_V1",
-    })).toBe(descriptorJson);
+    expect(evidenceObjectPreimageV1(descriptor, content).toString("utf8")).toBe(
+      `SYNTRAKE:EVIDENCE_OBJECT:V1\n${descriptorJson}\nabc\n`,
+    );
     expect(hashEvidenceObjectV1(descriptor, content)).toBe("0EF6EC9749E99DF97644FA30F143EA6BD5D9D3D8C7C0AEABBB18E89AF34654F4");
     expect(hashEvidenceObjectV1({ ...descriptor, contentByteLength: "4" }, content)).toBe(hashEvidenceObjectV1(descriptor, content));
     expect(() => hashEvidenceObjectV1({ ...descriptor, contentByteLength: "3" }, content)).toThrow("contentByteLength mismatch");
     expect(hashEvidenceObjectV1({ ...descriptor, format: "application/octet-stream" }, content)).not.toBe(hashEvidenceObjectV1(descriptor, content));
   });
 
-  it("does not expose a generic scientific object hasher for disabled owner domains", () => {
-    expect(() => structuredHashPreimageV1("SYNTRAKE:RESEARCH_DRAFT:V1", Buffer.from("{}", "utf8"))).toThrow(
+  it("does not expose generic scientific admission for arbitrary maps, arrays, or disabled owner domains", () => {
+    expect("syntrakeCanonicalJsonV1" in publicResearchCanonical).toBe(false);
+    expect("syntrakeCanonicalJsonBytesV1" in publicResearchCanonical).toBe(false);
+    expect("structuredHashPreimageV1" in publicResearchCanonical).toBe(false);
+    expect("canonicalTestHashV1" in publicResearchCanonical).toBe(false);
+    expect("i5A2TestOnlyCanonicalJsonEscapingVectorV1" in publicResearchCanonical).toBe(false);
+    expect(() => assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_DRAFT:V1")).toThrow(
       "hash domain declared but hashing disabled",
+    );
+    expect(() => canonicalRunInputBytesV1({ arbitraryMap: { x: "y" } } as never)).toThrow("undeclared field arbitraryMap");
+    expect(() => canonicalRunInputBytesV1([] as never)).toThrow("expected closed plain object");
+    expect(() => runInputPreimageV1({ schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1", bytes: "{}" } as never)).toThrow(
+      "undeclared field bytes",
     );
   });
 });

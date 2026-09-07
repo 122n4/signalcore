@@ -70,6 +70,10 @@ const mutableBehaviorAliases = new Set([
   "rolling",
 ]);
 
+const runTypesV1 = new Set(["HISTORICAL_BACKTEST", "SIMULATION", "SENSITIVITY", "REPRODUCIBILITY_CHECK"]);
+const researchEnvironmentsV1 = new Set(["HISTORICAL_BACKTEST", "SIMULATION"]);
+const researchSourceContextsV1 = new Set(["PURE_RESEARCH", "TEST_PORTFOLIO", "USER_PORTFOLIO"]);
+
 export type CanonicalJsonValue =
   | null
   | boolean
@@ -137,15 +141,14 @@ export function canonicalOpaqueStringV1(
   return value as CanonicalOpaqueStringV1;
 }
 
-export function canonicalTokenV1(value: string, allowed?: ReadonlySet<string>): CanonicalTokenV1 {
+export function canonicalTokenV1(value: string, allowed: ReadonlySet<string>): CanonicalTokenV1 {
   assertString(value, "CanonicalTokenV1");
-  if (!/^[A-Z0-9:_-]+$/u.test(value)) throw new Error("invalid CanonicalTokenV1");
-  if (allowed && !allowed.has(value)) throw new Error("CanonicalTokenV1 outside closed vocabulary");
+  if (!allowed.has(value)) throw new Error("CanonicalTokenV1 outside closed vocabulary");
   return value as CanonicalTokenV1;
 }
 
 export function immutableBehaviorTokenV1(value: string): CanonicalTokenV1 {
-  const token = canonicalTokenV1(value);
+  const token = canonicalRunInputAsciiIdentifierV1(value, "CanonicalTokenV1");
   if (mutableBehaviorAliases.has(value.toLowerCase())) {
     throw new Error("BEHAVIOR_VERSION_NOT_IMMUTABLE");
   }
@@ -273,11 +276,11 @@ export function assertHashDomainAdmittedForHashingV1(domain: HashDomainV1) {
   return state;
 }
 
-export function syntrakeCanonicalJsonV1(value: CanonicalJsonValue): string {
+function syntrakeCanonicalJsonV1(value: CanonicalJsonValue): string {
   return emitCanonicalJson(value, []);
 }
 
-export function syntrakeCanonicalJsonBytesV1(value: CanonicalJsonValue): Buffer {
+function syntrakeCanonicalJsonBytesV1(value: CanonicalJsonValue): Buffer {
   return Buffer.from(syntrakeCanonicalJsonV1(value), "utf8");
 }
 
@@ -285,14 +288,37 @@ export function sha256HexV1(bytes: Uint8Array): CanonicalSha256HexV1 {
   return createHash("sha256").update(bytes).digest("hex").toUpperCase() as CanonicalSha256HexV1;
 }
 
-export function structuredHashPreimageV1(domain: HashDomainV1, canonicalJsonBytes: Uint8Array): Buffer {
+function structuredHashPreimageV1(domain: HashDomainV1, canonicalJsonBytes: Uint8Array): Buffer {
   assertHashDomainAdmittedForHashingV1(domain);
   return Buffer.concat([Buffer.from(`${domain}\n`, "utf8"), Buffer.from(canonicalJsonBytes)]);
 }
 
-export function canonicalTestHashV1(payload: CanonicalJsonValue): CanonicalSha256HexV1 {
+function canonicalTestHashV1(payload: CanonicalJsonValue): CanonicalSha256HexV1 {
   const bytes = syntrakeCanonicalJsonBytesV1(payload);
   return sha256HexV1(structuredHashPreimageV1("SYNTRAKE:CANONICAL_TEST:V1", bytes));
+}
+
+export function i5A2TestOnlyCanonicalTextVectorJsonV1(text: string): string {
+  return syntrakeCanonicalJsonV1({
+    schemaVersion: "CANONICAL_TEXT_VECTOR_V1",
+    text: canonicalTextV1(text),
+  });
+}
+
+export function i5A2TestOnlyCanonicalTextVectorHashV1(text: string): CanonicalSha256HexV1 {
+  return canonicalTestHashV1({
+    schemaVersion: "CANONICAL_TEXT_VECTOR_V1",
+    text: canonicalTextV1(text),
+  });
+}
+
+export function i5A2TestOnlyCanonicalJsonEscapingVectorV1(): string {
+  return syntrakeCanonicalJsonV1({
+    "\ud83d\ude00": "emoji-key",
+    a: "\b\t\n\f\r\u0000\u001f/\u2028\u2029\u00e9",
+    aa: true,
+    b: null,
+  });
 }
 
 export function canonicalRunInputHashPayloadV1(input: RunInputHashPayloadV1): CanonicalJsonValue {
@@ -333,9 +359,9 @@ export function canonicalRunInputHashPayloadV1(input: RunInputHashPayloadV1): Ca
 
   const payload: Record<string, CanonicalJsonValue> = {
     schemaVersion: input.schemaVersion,
-    runType: canonicalTokenV1(input.runType),
-    researchEnvironment: canonicalTokenV1(input.researchEnvironment),
-    researchSourceContext: canonicalTokenV1(input.researchSourceContext),
+    runType: canonicalRunTypeV1(input.runType),
+    researchEnvironment: canonicalResearchEnvironmentV1(input.researchEnvironment),
+    researchSourceContext: canonicalResearchSourceContextV1(input.researchSourceContext),
     researchSpec,
     researchIr,
     experiment,
@@ -412,7 +438,7 @@ function canonicalEvidenceDescriptorPayloadV1(
   if (contentByteLength !== String(actualContentByteLength)) throw new Error("Evidence contentByteLength mismatch");
   return {
     schemaVersion: descriptor.schemaVersion,
-    kind: canonicalTokenV1(descriptor.kind),
+    kind: canonicalEvidenceKindV1(descriptor.kind),
     artifactSchemaVersion: immutableBehaviorTokenV1(descriptor.artifactSchemaVersion),
     format: canonicalTextV1(descriptor.format, { minBytes: 1 }),
     contentByteLength,
@@ -424,7 +450,7 @@ function canonicalMaterialPolicies(policies: readonly MaterialPolicyRefV1[]): Ca
   const seen = new Set<string>();
   const normalized = policies.map((policy) => {
     assertClosedPlainObject(policy, new Set(["policyId", "policyVersion"]));
-    const policyId = canonicalTokenV1(policy.policyId);
+    const policyId = canonicalRunInputAsciiIdentifierV1(policy.policyId, "material policy id");
     if (seen.has(policyId)) throw new Error("duplicate policyId");
     seen.add(policyId);
     return {
@@ -436,8 +462,8 @@ function canonicalMaterialPolicies(policies: readonly MaterialPolicyRefV1[]): Ca
 }
 
 function validateRunEnvironment(runType: RunTypeV1, researchEnvironment: ResearchEnvironmentV1) {
-  canonicalTokenV1(runType);
-  canonicalTokenV1(researchEnvironment);
+  canonicalRunTypeV1(runType);
+  canonicalResearchEnvironmentV1(researchEnvironment);
   if (runType === "HISTORICAL_BACKTEST" && researchEnvironment !== "HISTORICAL_BACKTEST") {
     throw new Error("runType/researchEnvironment mismatch");
   }
@@ -450,13 +476,35 @@ function validateRunEnvironment(runType: RunTypeV1, researchEnvironment: Researc
 }
 
 function validateAccountResearchContext(sourceContext: ResearchSourceContextV1, accountContext: HashRefV1 | undefined) {
-  canonicalTokenV1(sourceContext);
+  canonicalResearchSourceContextV1(sourceContext);
   if (sourceContext === "USER_PORTFOLIO" && accountContext === undefined) {
     throw new Error("accountResearchContext required for USER_PORTFOLIO");
   }
   if ((sourceContext === "PURE_RESEARCH" || sourceContext === "TEST_PORTFOLIO") && accountContext !== undefined) {
     throw new Error("accountResearchContext must be absent");
   }
+}
+
+function canonicalRunTypeV1(value: string): CanonicalTokenV1 {
+  return canonicalTokenV1(value, runTypesV1);
+}
+
+function canonicalResearchEnvironmentV1(value: string): CanonicalTokenV1 {
+  return canonicalTokenV1(value, researchEnvironmentsV1);
+}
+
+function canonicalResearchSourceContextV1(value: string): CanonicalTokenV1 {
+  return canonicalTokenV1(value, researchSourceContextsV1);
+}
+
+function canonicalEvidenceKindV1(value: string): CanonicalTokenV1 {
+  return canonicalTokenV1(value, new Set(["ENGINE_LOG_SUMMARY"]));
+}
+
+function canonicalRunInputAsciiIdentifierV1(value: string, name: string): CanonicalTokenV1 {
+  assertString(value, name);
+  if (!/^[A-Z0-9_]+$/u.test(value)) throw new Error(`invalid ${name}`);
+  return value as CanonicalTokenV1;
 }
 
 function assertString(value: string, name: string) {
