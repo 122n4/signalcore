@@ -3,13 +3,13 @@ import {
   canonicalTextV1,
   immutableBehaviorTokenV1,
   i5ResearchInternalCanonicalJsonBytesV1,
-  i5ResearchInternalStructuredHashPreimageV1,
   sha256HexV1,
   type CanonicalJsonValue,
   type EvidenceContentDescriptorV1,
   type RunInputHashPayloadV1,
 } from "../../lib/investing/research/canonical";
 import { canonicalRunInputBytesV1 } from "../../lib/investing/research";
+import { ownerStructuredHashPreimageV1 } from "../../lib/investing/research/scientificPreimage";
 
 export function i5A2TestOnlyCanonicalTextVectorJsonV1(text: string): string {
   return i5ResearchInternalCanonicalJsonBytesV1({
@@ -20,7 +20,7 @@ export function i5A2TestOnlyCanonicalTextVectorJsonV1(text: string): string {
 
 export function i5A2TestOnlyCanonicalTextVectorHashV1(text: string) {
   return sha256HexV1(
-    i5ResearchInternalStructuredHashPreimageV1("SYNTRAKE:CANONICAL_TEST:V1", {
+    ownerStructuredHashPreimageV1("SYNTRAKE:CANONICAL_TEST:V1", {
       schemaVersion: "CANONICAL_TEXT_VECTOR_V1",
       text: canonicalTextV1(text),
     }),

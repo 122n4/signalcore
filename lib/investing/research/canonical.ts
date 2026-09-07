@@ -45,7 +45,7 @@ type DomainAdmissionState =
 const hashDomainAdmission = {
   "SYNTRAKE:RESEARCH_DRAFT:V1": "OWNER_PAYLOAD_EXACT",
   "SYNTRAKE:HYPOTHESIS:V1": "OWNER_PAYLOAD_EXACT",
-  "SYNTRAKE:RESEARCH_SPEC:V1": "OWNER_PAYLOAD_EXACT",
+  "SYNTRAKE:RESEARCH_SPEC:V1": "DECLARED_BUT_HASHING_DISABLED",
   "SYNTRAKE:RESEARCH_IR:V1": "DECLARED_BUT_HASHING_DISABLED",
   "SYNTRAKE:EXPERIMENT:V1": "DECLARED_BUT_HASHING_DISABLED",
   "SYNTRAKE:EXPERIMENT_PARAMETERS:V1": "DECLARED_BUT_HASHING_DISABLED",
@@ -291,15 +291,6 @@ export function i5ResearchInternalCanonicalJsonBytesV1(value: CanonicalJsonValue
 
 export function sha256HexV1(bytes: Uint8Array): CanonicalSha256HexV1 {
   return createHash("sha256").update(bytes).digest("hex").toUpperCase() as CanonicalSha256HexV1;
-}
-
-function structuredHashPreimageV1(domain: HashDomainV1, canonicalJsonBytes: Uint8Array): Buffer {
-  assertHashDomainAdmittedForHashingV1(domain);
-  return Buffer.concat([Buffer.from(`${domain}\n`, "utf8"), Buffer.from(canonicalJsonBytes)]);
-}
-
-export function i5ResearchInternalStructuredHashPreimageV1(domain: HashDomainV1, payload: CanonicalJsonValue): Buffer {
-  return structuredHashPreimageV1(domain, syntrakeCanonicalJsonBytesV1(payload));
 }
 
 export function canonicalRunInputHashPayloadV1(input: RunInputHashPayloadV1): CanonicalJsonValue {

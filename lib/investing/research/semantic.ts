@@ -1,15 +1,14 @@
 import {
-  canonicalOpaqueStringV1,
   canonicalTextV1,
   canonicalTokenV1,
   hashRefV1,
   i5ResearchInternalCanonicalJsonBytesV1,
-  i5ResearchInternalStructuredHashPreimageV1,
   sha256HexV1,
   type CanonicalJsonValue,
   type CanonicalSha256HexV1,
   type HashRefV1,
 } from "./canonical";
+import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";
 
 const materialFieldStatesV1 = new Set([
   "USER_SUPPLIED",
@@ -49,17 +48,27 @@ export type HypothesisHashPayloadInputV1 = Readonly<{
   observableDefinitionRequirements: readonly ObservableDefinitionRequirementV1[];
 }>;
 
-export type ResearchSpecHypothesisBindingV1 =
+export type ResearchDraftProofV1 = Readonly<{
+  ref: HashRefV1;
+  payload: ResearchDraftHashPayloadInputV1;
+}>;
+
+export type HypothesisProofV1 = Readonly<{
+  ref: HashRefV1;
+  payload: HypothesisHashPayloadInputV1;
+}>;
+
+export type ResearchSpecCandidateHypothesisBindingV1 =
   | Readonly<{ kind: "NO_HYPOTHESIS" }>
-  | Readonly<{ kind: "EXPLICIT_HYPOTHESIS"; hypothesis: HashRefV1; hypothesisMeasurable: boolean; unresolvedObservableDefinitions: readonly string[] }>
+  | Readonly<{ kind: "EXPLICIT_HYPOTHESIS"; hypothesis: HypothesisProofV1 }>
   | Readonly<{ kind: "INFER_ACTIVE_HYPOTHESIS" }>;
 
-export type ResearchSpecHashPayloadInputV1 = Readonly<{
-  schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1";
-  sourceDraft: HashRefV1;
-  hypothesisBinding: ResearchSpecHypothesisBindingV1;
+export type ResearchSpecCandidateInputV1 = Readonly<{
+  schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1";
+  sourceDraft: ResearchDraftProofV1;
+  hypothesisBinding: ResearchSpecCandidateHypothesisBindingV1;
   objective: MaterialSemanticFieldV1;
-  executionIntent: "EXECUTABLE";
+  status: "CANDIDATE_ONLY";
 }>;
 
 export type InvestigationPointersV1 = Readonly<{
@@ -80,7 +89,7 @@ export type A3PointerEffectInputV1 = Readonly<{
 export function canonicalResearchDraftHashPayloadV1(input: ResearchDraftHashPayloadInputV1): CanonicalJsonValue {
   assertClosedPlainObject(input, new Set(["schemaVersion", "rawIntent", "interpretedObjective", "constraints"]));
   if (input.schemaVersion !== "RESEARCH_DRAFT_HASH_PAYLOAD_V1") throw new Error("invalid ResearchDraft schemaVersion");
-  if (!Array.isArray(input.constraints)) throw new Error("constraints must be an array");
+  if (!Array.isArray(input.constraints)) throw new Error("constraints must be an ORDERED_SEQUENCE array");
   return {
     schemaVersion: input.schemaVersion,
     rawIntent: canonicalTextV1(input.rawIntent, { minBytes: 1, maxBytes: 4096 }),
@@ -94,7 +103,7 @@ export function canonicalResearchDraftBytesV1(input: ResearchDraftHashPayloadInp
 }
 
 function researchDraftPreimageV1(input: ResearchDraftHashPayloadInputV1): Buffer {
-  return i5ResearchInternalStructuredHashPreimageV1("SYNTRAKE:RESEARCH_DRAFT:V1", canonicalResearchDraftHashPayloadV1(input));
+  return ownerStructuredHashPreimageV1("SYNTRAKE:RESEARCH_DRAFT:V1", canonicalResearchDraftHashPayloadV1(input));
 }
 
 export function hashResearchDraftV1(input: ResearchDraftHashPayloadInputV1): CanonicalSha256HexV1 {
@@ -115,7 +124,7 @@ export function canonicalHypothesisHashPayloadV1(input: HypothesisHashPayloadInp
   if (typeof input.falsifiable !== "boolean") throw new Error("falsifiable must be boolean");
   if (typeof input.measurable !== "boolean") throw new Error("measurable must be boolean");
   if (!Array.isArray(input.observableDefinitionRequirements)) {
-    throw new Error("observableDefinitionRequirements must be an array");
+    throw new Error("observableDefinitionRequirements must be an ORDERED_SEQUENCE array");
   }
 
   const payload: Record<string, CanonicalJsonValue> = {
@@ -135,41 +144,37 @@ export function canonicalHypothesisBytesV1(input: HypothesisHashPayloadInputV1):
 }
 
 function hypothesisPreimageV1(input: HypothesisHashPayloadInputV1): Buffer {
-  return i5ResearchInternalStructuredHashPreimageV1("SYNTRAKE:HYPOTHESIS:V1", canonicalHypothesisHashPayloadV1(input));
+  return ownerStructuredHashPreimageV1("SYNTRAKE:HYPOTHESIS:V1", canonicalHypothesisHashPayloadV1(input));
 }
 
 export function hashHypothesisV1(input: HypothesisHashPayloadInputV1): CanonicalSha256HexV1 {
   return sha256HexV1(hypothesisPreimageV1(input));
 }
 
-export function canonicalResearchSpecHashPayloadV1(input: ResearchSpecHashPayloadInputV1): CanonicalJsonValue {
-  assertClosedPlainObject(input, new Set(["schemaVersion", "sourceDraft", "hypothesisBinding", "objective", "executionIntent"]));
-  if (input.schemaVersion !== "RESEARCH_SPEC_HASH_PAYLOAD_V1") throw new Error("invalid ResearchSpec schemaVersion");
-  if (input.executionIntent !== "EXECUTABLE") throw new Error("ResearchSpec executionIntent must be EXECUTABLE");
-  const sourceDraft = hashRefV1(input.sourceDraft);
-  if (sourceDraft.hashDomain !== "SYNTRAKE:RESEARCH_DRAFT:V1") throw new Error("wrong-domain ResearchSpec sourceDraft");
+export function canonicalResearchSpecCandidatePayloadV1(input: ResearchSpecCandidateInputV1): CanonicalJsonValue {
+  assertClosedPlainObject(input, new Set(["schemaVersion", "sourceDraft", "hypothesisBinding", "objective", "status"]));
+  if (input.schemaVersion !== "RESEARCH_SPEC_CANDIDATE_V1") throw new Error("invalid ResearchSpecCandidate schemaVersion");
+  if (input.status !== "CANDIDATE_ONLY") throw new Error("ResearchSpec remains candidate-only until A8/A9 material owners freeze execution payloads");
+  const sourceDraft = canonicalResearchDraftProofV1(input.sourceDraft);
+  assertDraftReadyForSpecPromotion(input.sourceDraft.payload);
   const objective = canonicalMaterialSemanticFieldV1(input.objective);
-  if (isBlockingMaterialField(input.objective)) throw new Error("unresolved material ambiguity blocks executable ResearchSpec");
+  if (isBlockingMaterialField(input.objective)) throw new Error("unresolved material ambiguity blocks ResearchSpec candidate promotion");
 
   return {
     schemaVersion: input.schemaVersion,
     sourceDraft,
-    hypothesisBinding: canonicalResearchSpecHypothesisBindingV1(input.hypothesisBinding),
+    hypothesisBinding: canonicalResearchSpecCandidateHypothesisBindingV1(input.hypothesisBinding),
     objective,
-    executionIntent: input.executionIntent,
+    status: input.status,
   };
 }
 
-export function canonicalResearchSpecBytesV1(input: ResearchSpecHashPayloadInputV1): Buffer {
-  return i5ResearchInternalCanonicalJsonBytesV1(canonicalResearchSpecHashPayloadV1(input));
+export function canonicalResearchSpecCandidateBytesV1(input: ResearchSpecCandidateInputV1): Buffer {
+  return i5ResearchInternalCanonicalJsonBytesV1(canonicalResearchSpecCandidatePayloadV1(input));
 }
 
-function researchSpecPreimageV1(input: ResearchSpecHashPayloadInputV1): Buffer {
-  return i5ResearchInternalStructuredHashPreimageV1("SYNTRAKE:RESEARCH_SPEC:V1", canonicalResearchSpecHashPayloadV1(input));
-}
-
-export function hashResearchSpecV1(input: ResearchSpecHashPayloadInputV1): CanonicalSha256HexV1 {
-  return sha256HexV1(researchSpecPreimageV1(input));
+export function assertResearchSpecHashingDisabledV1(): never {
+  throw new Error("ResearchSpec scientific hashing disabled until complete execution-material owner payloads are frozen");
 }
 
 export function applyA3PointerEffectV1(input: A3PointerEffectInputV1): InvestigationPointersV1 {
@@ -177,14 +182,15 @@ export function applyA3PointerEffectV1(input: A3PointerEffectInputV1): Investiga
   canonicalTokenV1(input.kind, a3PointerEffectKindsV1);
   const predecessor = canonicalInvestigationPointersV1(input.predecessor);
   if (input.kind === "DRAFT_REVISION") {
+    rejectPresent(input.newHypothesis, "newHypothesis");
+    rejectPresent(input.newSpec, "newSpec");
     if (input.newDraft === undefined) throw new Error("newDraft required");
     return { activeDraft: canonicalId(input.newDraft), activeHypothesis: predecessor.activeHypothesis, activeSpec: null, activeExperiment: null };
   }
   if (input.kind === "HYPOTHESIS_REVISION") {
+    rejectPresent(input.newDraft, "newDraft");
+    rejectPresent(input.newSpec, "newSpec");
     if (input.newHypothesis === undefined) throw new Error("newHypothesis required");
-    if (predecessor.activeSpec && predecessor.activeSpec.hypothesis !== null && predecessor.activeSpec.hypothesis !== predecessor.activeHypothesis) {
-      throw new Error("impossible active Spec/Hypothesis mismatch");
-    }
     const keepSpec = predecessor.activeSpec !== null && predecessor.activeSpec.hypothesis === null;
     return {
       activeDraft: predecessor.activeDraft,
@@ -193,6 +199,8 @@ export function applyA3PointerEffectV1(input: A3PointerEffectInputV1): Investiga
       activeExperiment: keepSpec ? predecessor.activeExperiment : null,
     };
   }
+  rejectPresent(input.newDraft, "newDraft");
+  rejectPresent(input.newHypothesis, "newHypothesis");
   if (input.newSpec === undefined) throw new Error("newSpec required");
   const newSpec = canonicalActiveSpecPointerV1(input.newSpec);
   if (newSpec.sourceDraft !== predecessor.activeDraft) throw new Error("ResearchSpec sourceDraft must equal active Draft");
@@ -200,6 +208,26 @@ export function applyA3PointerEffectV1(input: A3PointerEffectInputV1): Investiga
     throw new Error("ResearchSpec hypothesis must equal active Hypothesis");
   }
   return { activeDraft: predecessor.activeDraft, activeHypothesis: predecessor.activeHypothesis, activeSpec: newSpec, activeExperiment: null };
+}
+
+function canonicalResearchDraftProofV1(input: ResearchDraftProofV1): HashRefV1 {
+  assertClosedPlainObject(input, new Set(["ref", "payload"]));
+  const ref = hashRefV1(input.ref);
+  if (ref.hashDomain !== "SYNTRAKE:RESEARCH_DRAFT:V1") throw new Error("wrong-domain ResearchSpec sourceDraft");
+  if (hashResearchDraftV1(input.payload) !== ref.hashHex) throw new Error("ResearchDraft proof hash mismatch");
+  return ref;
+}
+
+function canonicalHypothesisProofV1(input: HypothesisProofV1): HashRefV1 {
+  assertClosedPlainObject(input, new Set(["ref", "payload"]));
+  const ref = hashRefV1(input.ref);
+  if (ref.hashDomain !== "SYNTRAKE:HYPOTHESIS:V1") throw new Error("wrong-domain ResearchSpec hypothesis");
+  if (hashHypothesisV1(input.payload) !== ref.hashHex) throw new Error("Hypothesis proof hash mismatch");
+  if (input.payload.measurable !== true) throw new Error("measurable=false blocks ResearchSpec candidate promotion");
+  if (input.payload.observableDefinitionRequirements.some((requirement) => requirement.state === "UNRESOLVED")) {
+    throw new Error("unresolved observable definitions block ResearchSpec candidate promotion");
+  }
+  return ref;
 }
 
 function canonicalMaterialSemanticFieldV1(input: MaterialSemanticFieldV1): CanonicalJsonValue {
@@ -211,12 +239,7 @@ function canonicalMaterialSemanticFieldV1(input: MaterialSemanticFieldV1): Canon
   }
   if (input.state === "POLICY_DEFAULT_APPLIED") {
     assertExactKeys(input, new Set(["state", "value", "policyId", "policyVersion"]));
-    return {
-      state: input.state,
-      value: canonicalTextV1(input.value, { minBytes: 1, maxBytes: 4096 }),
-      policyId: canonicalClosedAsciiToken(input.policyId, "policyId"),
-      policyVersion: canonicalImmutableVersion(input.policyVersion),
-    };
+    throw new Error("POLICY_DEFAULT_APPLIED requires immutable owner policy identity proof");
   }
   if (input.state === "MATERIAL_UNRESOLVED") {
     assertExactKeys(input, new Set(["state", "question"]));
@@ -230,21 +253,22 @@ function canonicalMaterialSemanticFieldV1(input: MaterialSemanticFieldV1): Canon
   };
 }
 
-function canonicalResearchSpecHypothesisBindingV1(input: ResearchSpecHypothesisBindingV1): CanonicalJsonValue {
-  assertClosedPlainObject(input, new Set(["kind", "hypothesis", "hypothesisMeasurable", "unresolvedObservableDefinitions"]));
+function assertDraftReadyForSpecPromotion(input: ResearchDraftHashPayloadInputV1) {
+  if (isBlockingMaterialField(input.interpretedObjective) || input.constraints.some(isBlockingMaterialField)) {
+    throw new Error("ResearchDraft material blockers prevent ResearchSpec candidate promotion");
+  }
+}
+
+function canonicalResearchSpecCandidateHypothesisBindingV1(input: ResearchSpecCandidateHypothesisBindingV1): CanonicalJsonValue {
+  assertClosedPlainObject(input, new Set(["kind", "hypothesis"]));
   canonicalTokenV1(input.kind, specHypothesisBindingKindsV1);
   if (input.kind === "INFER_ACTIVE_HYPOTHESIS") throw new Error("Hypothesis dependency must be explicit");
   if (input.kind === "NO_HYPOTHESIS") {
     assertExactKeys(input, new Set(["kind"]));
     return { kind: input.kind };
   }
-  assertExactKeys(input, new Set(["kind", "hypothesis", "hypothesisMeasurable", "unresolvedObservableDefinitions"]));
-  const hypothesis = hashRefV1(input.hypothesis);
-  if (hypothesis.hashDomain !== "SYNTRAKE:HYPOTHESIS:V1") throw new Error("wrong-domain ResearchSpec hypothesis");
-  if (input.hypothesisMeasurable !== true) throw new Error("measurable=false blocks executable ResearchSpec");
-  if (!Array.isArray(input.unresolvedObservableDefinitions)) throw new Error("unresolvedObservableDefinitions must be an array");
-  if (input.unresolvedObservableDefinitions.length > 0) throw new Error("unresolved observable definitions block executable ResearchSpec");
-  return { kind: input.kind, hypothesis };
+  assertExactKeys(input, new Set(["kind", "hypothesis"]));
+  return { kind: input.kind, hypothesis: canonicalHypothesisProofV1(input.hypothesis) };
 }
 
 function canonicalObservableRequirementV1(input: ObservableDefinitionRequirementV1): CanonicalJsonValue {
@@ -256,23 +280,14 @@ function canonicalObservableRequirementV1(input: ObservableDefinitionRequirement
 }
 
 function isBlockingMaterialField(input: MaterialSemanticFieldV1) {
-  return input.state === "MATERIAL_UNRESOLVED" || input.state === "CONFIRMATION_REQUIRED";
-}
-
-function canonicalImmutableVersion(value: string) {
-  if (/^(?:latest|current|stable|production|default|active|rolling)$/iu.test(value)) {
-    throw new Error("BEHAVIOR_VERSION_NOT_IMMUTABLE");
-  }
-  return canonicalOpaqueStringV1(value, { minBytes: 1, maxBytes: 128 });
-}
-
-function canonicalClosedAsciiToken(value: string, name: string) {
-  if (typeof value !== "string" || !/^[A-Z0-9_]+$/u.test(value)) throw new Error(`invalid ${name}`);
-  return value;
+  return input.state === "MATERIAL_UNRESOLVED" || input.state === "CONFIRMATION_REQUIRED" || input.state === "POLICY_DEFAULT_APPLIED";
 }
 
 function canonicalInvestigationPointersV1(input: InvestigationPointersV1): InvestigationPointersV1 {
   assertClosedPlainObject(input, new Set(["activeDraft", "activeHypothesis", "activeSpec", "activeExperiment"]));
+  if (input.activeSpec === null && input.activeExperiment !== null) {
+    throw new Error("impossible active Experiment without active Spec");
+  }
   const activeSpec = input.activeSpec === null ? null : canonicalActiveSpecPointerV1(input.activeSpec);
   if (activeSpec && activeSpec.sourceDraft !== input.activeDraft) throw new Error("impossible active Spec/Draft mismatch");
   if (activeSpec && activeSpec.hypothesis !== null && activeSpec.hypothesis !== input.activeHypothesis) {
@@ -305,8 +320,13 @@ function canonicalId(value: string) {
   return value;
 }
 
+function rejectPresent(value: unknown, field: string) {
+  if (value !== undefined) throw new Error(`contradictory command field ${field}`);
+}
+
 function assertClosedPlainObject(value: unknown, allowedKeys: ReadonlySet<string>) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("expected closed plain object");
+  if (Object.getPrototypeOf(value) !== Object.prototype) throw new Error("expected plain object");
   for (const key of Object.keys(value as Record<string, unknown>)) {
     if (!allowedKeys.has(key)) throw new Error(`undeclared field ${key}`);
     if ((value as Record<string, unknown>)[key] === undefined) throw new Error(`undefined is not canonical data at ${key}`);

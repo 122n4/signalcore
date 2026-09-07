@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   applyA3PointerEffectV1,
+  assertResearchSpecHashingDisabledV1,
   canonicalHypothesisBytesV1,
   canonicalResearchDraftBytesV1,
-  canonicalResearchSpecBytesV1,
+  canonicalResearchSpecCandidateBytesV1,
   hashDomainStateV1,
   hashHypothesisV1,
   hashRefV1,
   hashResearchDraftV1,
-  hashResearchSpecV1,
   hashRunInputV1,
   type HashRefV1,
   type HypothesisHashPayloadInputV1,
   type ResearchDraftHashPayloadInputV1,
-  type ResearchSpecHashPayloadInputV1,
+  type ResearchSpecCandidateInputV1,
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
 
 const disabledHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-const draftVector: ResearchDraftHashPayloadInputV1 = {
+const blockedDraftVector: ResearchDraftHashPayloadInputV1 = {
   schemaVersion: "RESEARCH_DRAFT_HASH_PAYLOAD_V1",
   rawIntent: "Backtest a momentum approach for large-cap US equities.",
   interpretedObjective: {
@@ -39,6 +39,25 @@ const draftVector: ResearchDraftHashPayloadInputV1 = {
   ],
 };
 
+const closedDraftVector: ResearchDraftHashPayloadInputV1 = {
+  schemaVersion: "RESEARCH_DRAFT_HASH_PAYLOAD_V1",
+  rawIntent: "Backtest a momentum approach for large-cap US equities.",
+  interpretedObjective: {
+    state: "USER_SUPPLIED",
+    value: "Evaluate whether large-cap momentum improves risk-adjusted returns.",
+  },
+  constraints: [
+    {
+      state: "USER_SUPPLIED",
+      value: "Large-cap US equities universe remains a later owner-bound execution input.",
+    },
+    {
+      state: "USER_SUPPLIED",
+      value: "Monthly rebalance is confirmed as semantic research intent only.",
+    },
+  ],
+};
+
 const hypothesisVector: HypothesisHashPayloadInputV1 = {
   schemaVersion: "HYPOTHESIS_HASH_PAYLOAD_V1",
   statement: "Large-cap equities with positive 12-month momentum outperform equal-weight large-cap universe after costs.",
@@ -54,14 +73,10 @@ const hypothesisVector: HypothesisHashPayloadInputV1 = {
   ],
 };
 
-const expectedDraftJson =
+const expectedBlockedDraftJson =
   '{"constraints":[{"question":"Which investable universe definition controls large-cap US equities?","state":"MATERIAL_UNRESOLVED"},{"proposedValue":"Monthly rebalance","question":"Confirm monthly rebalance cadence.","state":"CONFIRMATION_REQUIRED"}],"interpretedObjective":{"state":"USER_SUPPLIED","value":"Evaluate whether large-cap momentum improves risk-adjusted returns."},"rawIntent":"Backtest a momentum approach for large-cap US equities.","schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}';
 const expectedHypothesisJson =
   '{"falsifiable":true,"measurable":true,"nullHypothesis":"Positive 12-month momentum does not outperform after costs.","observableDefinitionRequirements":[{"description":"12-month momentum total return is defined by a later owner contract before execution.","state":"RESOLVED"}],"rationale":"Momentum effect is observable through historical total-return series.","schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1","statement":"Large-cap equities with positive 12-month momentum outperform equal-weight large-cap universe after costs."}';
-const expectedSpecWithoutHypothesisJson =
-  '{"executionIntent":"EXECUTABLE","hypothesisBinding":{"kind":"NO_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize an executable research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_HASH_PAYLOAD_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68B1DB1599A1C7C6D8BB611910759E8A34BDDFA271DEFA7774759105DDA3ABD3","hashVersion":"SYNTRAKE_SHA256_V1"}}';
-const expectedSpecWithHypothesisJson =
-  '{"executionIntent":"EXECUTABLE","hypothesisBinding":{"hypothesis":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:HYPOTHESIS:V1","hashHex":"B42B60EDD30320A2F221DEA6388228E7DAC82A7C8F8E5AAFD02212B8C4E0D6A4","hashVersion":"SYNTRAKE_SHA256_V1"},"kind":"EXPLICIT_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize an executable research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_HASH_PAYLOAD_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68B1DB1599A1C7C6D8BB611910759E8A34BDDFA271DEFA7774759105DDA3ABD3","hashVersion":"SYNTRAKE_SHA256_V1"}}';
 
 function ref(hashDomain: HashRefV1["hashDomain"], hashHex: string): HashRefV1 {
   return hashRefV1({
@@ -72,16 +87,27 @@ function ref(hashDomain: HashRefV1["hashDomain"], hashHex: string): HashRefV1 {
   });
 }
 
-function specVector(hypothesisBinding: ResearchSpecHashPayloadInputV1["hypothesisBinding"]): ResearchSpecHashPayloadInputV1 {
+function draftProof(payload: ResearchDraftHashPayloadInputV1) {
+  return { ref: ref("SYNTRAKE:RESEARCH_DRAFT:V1", hashResearchDraftV1(payload)), payload };
+}
+
+function hypothesisProof(payload: HypothesisHashPayloadInputV1) {
+  return { ref: ref("SYNTRAKE:HYPOTHESIS:V1", hashHypothesisV1(payload)), payload };
+}
+
+function specCandidate(
+  sourceDraft: ResearchSpecCandidateInputV1["sourceDraft"],
+  hypothesisBinding: ResearchSpecCandidateInputV1["hypothesisBinding"],
+): ResearchSpecCandidateInputV1 {
   return {
-    schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1",
-    sourceDraft: ref("SYNTRAKE:RESEARCH_DRAFT:V1", hashResearchDraftV1(draftVector)),
+    schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1",
+    sourceDraft,
     hypothesisBinding,
     objective: {
       state: "USER_SUPPLIED",
-      value: "Canonicalize an executable research specification for large-cap momentum.",
+      value: "Canonicalize a candidate research specification for large-cap momentum.",
     },
-    executionIntent: "EXECUTABLE",
+    status: "CANDIDATE_ONLY",
   };
 }
 
@@ -103,29 +129,30 @@ const runInputVector: RunInputHashPayloadV1 = {
 };
 
 describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime", () => {
-  it("admits owner-specific Draft, Hypothesis, and ResearchSpec hash domains without enabling future domains", () => {
+  it("admits owner-specific Draft and Hypothesis hash domains while keeping ResearchSpec/future domains disabled", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_DRAFT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:HYPOTHESIS:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:DATASET_SNAPSHOT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:METRIC_REQUEST_SET:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:EXECUTION_CONFIG:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(() => assertResearchSpecHashingDisabledV1()).toThrow("ResearchSpec scientific hashing disabled");
   });
 
   it("freezes Draft canonical bytes/hash while preserving raw intent separate from interpretation", () => {
-    expect(canonicalResearchDraftBytesV1(draftVector).toString("utf8")).toBe(expectedDraftJson);
-    expect(`SYNTRAKE:RESEARCH_DRAFT:V1\n${expectedDraftJson}`).toBe(
-      `SYNTRAKE:RESEARCH_DRAFT:V1\n${canonicalResearchDraftBytesV1(draftVector).toString("utf8")}`,
+    expect(canonicalResearchDraftBytesV1(blockedDraftVector).toString("utf8")).toBe(expectedBlockedDraftJson);
+    expect(`SYNTRAKE:RESEARCH_DRAFT:V1\n${expectedBlockedDraftJson}`).toBe(
+      `SYNTRAKE:RESEARCH_DRAFT:V1\n${canonicalResearchDraftBytesV1(blockedDraftVector).toString("utf8")}`,
     );
-    expect(hashResearchDraftV1(draftVector)).toBe("68B1DB1599A1C7C6D8BB611910759E8A34BDDFA271DEFA7774759105DDA3ABD3");
+    expect(hashResearchDraftV1(blockedDraftVector)).toBe("68B1DB1599A1C7C6D8BB611910759E8A34BDDFA271DEFA7774759105DDA3ABD3");
 
-    expect(hashResearchDraftV1({ ...draftVector, rawIntent: "Caf\u00e9 momentum intent" })).toBe(
-      hashResearchDraftV1({ ...draftVector, rawIntent: "Cafe\u0301 momentum intent" }),
+    expect(hashResearchDraftV1({ ...blockedDraftVector, rawIntent: "Caf\u00e9 momentum intent" })).toBe(
+      hashResearchDraftV1({ ...blockedDraftVector, rawIntent: "Cafe\u0301 momentum intent" }),
     );
-    expect(hashResearchDraftV1({ ...draftVector, interpretedObjective: { state: "USER_SUPPLIED", value: "Different semantic objective." } })).not.toBe(
-      hashResearchDraftV1(draftVector),
+    expect(hashResearchDraftV1({ ...blockedDraftVector, interpretedObjective: { state: "USER_SUPPLIED", value: "Different semantic objective." } })).not.toBe(
+      hashResearchDraftV1(blockedDraftVector),
     );
   });
 
@@ -138,118 +165,148 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
     );
   });
 
-  it("freezes executable ResearchSpec bytes/hash with and without explicit Hypothesis", () => {
-    const withoutHypothesis = specVector({ kind: "NO_HYPOTHESIS" });
-    const withHypothesis = specVector({
+  it("validates candidate ResearchSpec bytes through Draft/Hypothesis content proofs without emitting a scientific Spec hash", async () => {
+    const withoutHypothesis = specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" });
+    const withHypothesis = specCandidate(draftProof(closedDraftVector), {
       kind: "EXPLICIT_HYPOTHESIS",
-      hypothesis: ref("SYNTRAKE:HYPOTHESIS:V1", hashHypothesisV1(hypothesisVector)),
-      hypothesisMeasurable: true,
-      unresolvedObservableDefinitions: [],
+      hypothesis: hypothesisProof(hypothesisVector),
     });
 
-    expect(canonicalResearchSpecBytesV1(withoutHypothesis).toString("utf8")).toBe(expectedSpecWithoutHypothesisJson);
-    expect(hashResearchSpecV1(withoutHypothesis)).toBe("0D5646D1DA010CB08A53B6F02E7A41C2F3333F4278F7F8389CC594A36D105277");
-    expect(canonicalResearchSpecBytesV1(withHypothesis).toString("utf8")).toBe(expectedSpecWithHypothesisJson);
-    expect(hashResearchSpecV1(withHypothesis)).toBe("59438FCB8C9CF45A87A869D75D2C143B630A07765EE94477B9287021DC69BDDA");
-    expect(hashResearchSpecV1(withHypothesis)).not.toBe(hashResearchSpecV1(withoutHypothesis));
-  });
-
-  it("excludes record identity, timestamps, actor IDs, correlation IDs, and persistence metadata from scientific identity", () => {
-    const wrapperA = {
-      researchDraftRevisionId: "11111111-1111-4111-8111-111111111111",
-      createdAt: "2026-09-07T10:00:00.000000Z",
-      actorId: "principal-a",
-      correlationId: "corr-a",
-      payload: draftVector,
-    };
-    const wrapperB = {
-      ...wrapperA,
-      researchDraftRevisionId: "22222222-2222-4222-8222-222222222222",
-      createdAt: "2026-09-07T11:00:00.000000Z",
-      actorId: "principal-b",
-      correlationId: "corr-b",
-    };
-
-    expect(hashResearchDraftV1(wrapperA.payload)).toBe(hashResearchDraftV1(wrapperB.payload));
-    expect(() => hashResearchDraftV1({ ...draftVector, researchDraftRevisionId: wrapperA.researchDraftRevisionId } as never)).toThrow(
-      "undeclared field researchDraftRevisionId",
+    expect(canonicalResearchSpecCandidateBytesV1(withoutHypothesis).toString("utf8")).toBe(
+      '{"hypothesisBinding":{"kind":"NO_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize a candidate research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68A6262EAF4E0583BE7F4BB90F7098CF8EE44BA1B4C51C0B9044934DC385973B","hashVersion":"SYNTRAKE_SHA256_V1"},"status":"CANDIDATE_ONLY"}',
     );
+    expect(canonicalResearchSpecCandidateBytesV1(withHypothesis).toString("utf8")).toBe(
+      '{"hypothesisBinding":{"hypothesis":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:HYPOTHESIS:V1","hashHex":"B42B60EDD30320A2F221DEA6388228E7DAC82A7C8F8E5AAFD02212B8C4E0D6A4","hashVersion":"SYNTRAKE_SHA256_V1"},"kind":"EXPLICIT_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize a candidate research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68A6262EAF4E0583BE7F4BB90F7098CF8EE44BA1B4C51C0B9044934DC385973B","hashVersion":"SYNTRAKE_SHA256_V1"},"status":"CANDIDATE_ONLY"}',
+    );
+    expect("hashResearchSpecV1" in await import("../lib/investing/research")).toBe(false);
   });
 
-  it("rejects ambiguous/default/confirmation states that would make an executable Spec invented", () => {
-    expect(() => canonicalResearchSpecBytesV1(specVector({ kind: "INFER_ACTIVE_HYPOTHESIS" }))).toThrow(
+  it("proves Draft closure by recomputing payload hash and inspecting material blockers", () => {
+    expect(() => canonicalResearchSpecCandidateBytesV1(specCandidate(draftProof(blockedDraftVector), { kind: "NO_HYPOTHESIS" }))).toThrow(
+      "ResearchDraft material blockers prevent ResearchSpec candidate promotion",
+    );
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1(
+        specCandidate(
+          draftProof({ ...closedDraftVector, interpretedObjective: { state: "CONFIRMATION_REQUIRED", proposedValue: "Proceed", question: "Confirm?" } }),
+          { kind: "NO_HYPOTHESIS" },
+        ),
+      ),
+    ).toThrow("ResearchDraft material blockers prevent ResearchSpec candidate promotion");
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1({
+        ...specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" }),
+        sourceDraft: { ref: ref("SYNTRAKE:RESEARCH_DRAFT:V1", disabledHash), payload: closedDraftVector },
+      }),
+    ).toThrow("ResearchDraft proof hash mismatch");
+  });
+
+  it("derives Hypothesis truth from proof payload instead of caller metadata", () => {
+    const notMeasurable = { ...hypothesisVector, measurable: false };
+    const unresolved = {
+      ...hypothesisVector,
+      observableDefinitionRequirements: [{ description: "Owner definition still missing.", state: "UNRESOLVED" as const }],
+    };
+
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1(
+        specCandidate(draftProof(closedDraftVector), { kind: "EXPLICIT_HYPOTHESIS", hypothesis: hypothesisProof(notMeasurable) }),
+      ),
+    ).toThrow("measurable=false blocks ResearchSpec candidate promotion");
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1(
+        specCandidate(draftProof(closedDraftVector), { kind: "EXPLICIT_HYPOTHESIS", hypothesis: hypothesisProof(unresolved) }),
+      ),
+    ).toThrow("unresolved observable definitions block ResearchSpec candidate promotion");
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1(
+        specCandidate(draftProof(closedDraftVector), {
+          kind: "EXPLICIT_HYPOTHESIS",
+          hypothesis: hypothesisProof(notMeasurable),
+          hypothesisMeasurable: true,
+        } as never),
+      ),
+    ).toThrow("undeclared field hypothesisMeasurable");
+  });
+
+  it("rejects ambiguous/default/confirmation states and unproven immutable policy default naming", () => {
+    expect(() => canonicalResearchSpecCandidateBytesV1(specCandidate(draftProof(closedDraftVector), { kind: "INFER_ACTIVE_HYPOTHESIS" }))).toThrow(
       "Hypothesis dependency must be explicit",
     );
     expect(() =>
-      canonicalResearchSpecBytesV1({
-        ...specVector({ kind: "NO_HYPOTHESIS" }),
+      canonicalResearchSpecCandidateBytesV1({
+        ...specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" }),
         objective: { state: "MATERIAL_UNRESOLVED", question: "Which universe controls execution?" },
       }),
-    ).toThrow("unresolved material ambiguity blocks executable ResearchSpec");
+    ).toThrow("unresolved material ambiguity blocks ResearchSpec candidate promotion");
     expect(() =>
-      canonicalResearchSpecBytesV1({
-        ...specVector({ kind: "NO_HYPOTHESIS" }),
+      canonicalResearchSpecCandidateBytesV1({
+        ...specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" }),
         objective: { state: "CONFIRMATION_REQUIRED", proposedValue: "Monthly rebalance", question: "Confirm cadence?" },
       }),
-    ).toThrow("unresolved material ambiguity blocks executable ResearchSpec");
+    ).toThrow("unresolved material ambiguity blocks ResearchSpec candidate promotion");
     expect(() =>
-      canonicalResearchSpecBytesV1({
-        ...specVector({ kind: "NO_HYPOTHESIS" }),
-        objective: {
-          state: "POLICY_DEFAULT_APPLIED",
-          value: "Apply default universe",
-          policyId: "UNIVERSE_POLICY",
-          policyVersion: "latest",
-        },
+      hashResearchDraftV1({
+        ...closedDraftVector,
+        constraints: [{ state: "POLICY_DEFAULT_APPLIED", value: "Apply default universe", policyId: "UNIVERSE_POLICY", policyVersion: "POLICY_V1" }],
       }),
-    ).toThrow("BEHAVIOR_VERSION_NOT_IMMUTABLE");
+    ).toThrow("POLICY_DEFAULT_APPLIED requires immutable owner policy identity proof");
   });
 
-  it("rejects unknown fields, undefined, JSON-number-like values, null misuse, and wrong-domain refs", () => {
-    expect(() => canonicalResearchDraftBytesV1({ ...draftVector, rawIntent: undefined } as never)).toThrow(
+  it("rejects unknown fields, undefined, JSON-number-like values, null misuse, class-shaped objects, and wrong-domain refs", () => {
+    class DraftLike {
+      schemaVersion = "RESEARCH_DRAFT_HASH_PAYLOAD_V1";
+      rawIntent = closedDraftVector.rawIntent;
+      interpretedObjective = closedDraftVector.interpretedObjective;
+      constraints = closedDraftVector.constraints;
+    }
+
+    expect(() => canonicalResearchDraftBytesV1({ ...closedDraftVector, rawIntent: undefined } as never)).toThrow(
       "undefined is not canonical data at rawIntent",
     );
-    expect(() => canonicalResearchDraftBytesV1({ ...draftVector, extra: "nope" } as never)).toThrow("undeclared field extra");
-    expect(() => canonicalResearchDraftBytesV1({ ...draftVector, rawIntent: 1 } as never)).toThrow("CanonicalTextV1 must be string");
+    expect(() => canonicalResearchDraftBytesV1({ ...closedDraftVector, extra: "nope" } as never)).toThrow("undeclared field extra");
+    expect(() => canonicalResearchDraftBytesV1({ ...closedDraftVector, rawIntent: 1 } as never)).toThrow("CanonicalTextV1 must be string");
+    expect(() => canonicalResearchDraftBytesV1(new DraftLike() as never)).toThrow("expected plain object");
     expect(() => canonicalHypothesisBytesV1({ ...hypothesisVector, nullHypothesis: null } as never)).toThrow(
       "CanonicalTextV1 must be string",
     );
-    expect(() => canonicalResearchSpecBytesV1({ ...specVector({ kind: "NO_HYPOTHESIS" }), sourceDraft: ref("SYNTRAKE:HYPOTHESIS:V1", disabledHash) })).toThrow(
-      "wrong-domain ResearchSpec sourceDraft",
-    );
     expect(() =>
-      canonicalResearchSpecBytesV1(
-        specVector({
+      canonicalResearchSpecCandidateBytesV1({
+        ...specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" }),
+        sourceDraft: { ref: ref("SYNTRAKE:HYPOTHESIS:V1", disabledHash), payload: closedDraftVector },
+      }),
+    ).toThrow("wrong-domain ResearchSpec sourceDraft");
+    expect(() =>
+      canonicalResearchSpecCandidateBytesV1(
+        specCandidate(draftProof(closedDraftVector), {
           kind: "EXPLICIT_HYPOTHESIS",
-          hypothesis: ref("SYNTRAKE:RESEARCH_DRAFT:V1", hashResearchDraftV1(draftVector)),
-          hypothesisMeasurable: true,
-          unresolvedObservableDefinitions: [],
+          hypothesis: { ref: ref("SYNTRAKE:RESEARCH_DRAFT:V1", hashResearchDraftV1(closedDraftVector)), payload: hypothesisVector },
         }),
       ),
     ).toThrow("wrong-domain ResearchSpec hypothesis");
   });
 
-  it("blocks executable Spec when Hypothesis is not measurable or observable definitions remain unresolved", () => {
-    expect(() =>
-      canonicalResearchSpecBytesV1(
-        specVector({
-          kind: "EXPLICIT_HYPOTHESIS",
-          hypothesis: ref("SYNTRAKE:HYPOTHESIS:V1", hashHypothesisV1({ ...hypothesisVector, measurable: false })),
-          hypothesisMeasurable: false,
-          unresolvedObservableDefinitions: [],
-        }),
-      ),
-    ).toThrow("measurable=false blocks executable ResearchSpec");
-    expect(() =>
-      canonicalResearchSpecBytesV1(
-        specVector({
-          kind: "EXPLICIT_HYPOTHESIS",
-          hypothesis: ref("SYNTRAKE:HYPOTHESIS:V1", hashHypothesisV1(hypothesisVector)),
-          hypothesisMeasurable: true,
-          unresolvedObservableDefinitions: ["define investable universe"],
-        }),
-      ),
-    ).toThrow("unresolved observable definitions block executable ResearchSpec");
+  it("treats Draft constraints and Hypothesis observable requirements as ORDERED_SEQUENCE material identity", () => {
+    expect(hashResearchDraftV1({ ...closedDraftVector, constraints: [...closedDraftVector.constraints].reverse() })).not.toBe(
+      hashResearchDraftV1(closedDraftVector),
+    );
+    expect(
+      hashHypothesisV1({
+        ...hypothesisVector,
+        observableDefinitionRequirements: [
+          { description: "First resolved observable.", state: "RESOLVED" },
+          { description: "Second resolved observable.", state: "RESOLVED" },
+        ],
+      }),
+    ).not.toBe(
+      hashHypothesisV1({
+        ...hypothesisVector,
+        observableDefinitionRequirements: [
+          { description: "Second resolved observable.", state: "RESOLVED" },
+          { description: "First resolved observable.", state: "RESOLVED" },
+        ],
+      }),
+    );
   });
 
   it("proves deterministic A3 sibling/downstream invalidation transitions touched by A4", () => {
@@ -309,9 +366,19 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
         newHypothesis: "hypothesis-2",
       }),
     ).toThrow("impossible active Spec/Hypothesis mismatch");
+    expect(() =>
+      applyA3PointerEffectV1({
+        kind: "DRAFT_REVISION",
+        predecessor: { activeDraft: "draft-1", activeHypothesis: "hypothesis-1", activeSpec: null, activeExperiment: "experiment-1" },
+        newDraft: "draft-2",
+      }),
+    ).toThrow("impossible active Experiment without active Spec");
+    expect(() =>
+      applyA3PointerEffectV1({ kind: "DRAFT_REVISION", predecessor, newDraft: "draft-2", newHypothesis: "hypothesis-2" }),
+    ).toThrow("contradictory command field newHypothesis");
   });
 
-  it("keeps RunInput hashing blocked while later nested domains remain disabled", () => {
+  it("keeps RunInput hashing blocked while ResearchSpec and later nested domains remain disabled", () => {
     expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
   });
 });

@@ -137,11 +137,11 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
   it("validates HashRefV1 domain/version and fails closed for unknown or disabled domains", () => {
     const researchSpec = ref("SYNTRAKE:RESEARCH_SPEC:V1", hexA);
 
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:RUN_INPUT:V1")).toBe("PREIMAGE_ENVELOPE_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EVIDENCE_OBJECT:V1")).toBe("CONTENT_PREIMAGE_EXACT");
     expect(() => canonicalHashDomainV1("SYNTRAKE:UNKNOWN:V1")).toThrow("unknown hash domain");
-    expect(assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(() => assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_SPEC:V1")).toThrow("hashing disabled");
     expect(() => assertHashRefDomainV1(researchSpec, "SYNTRAKE:HYPOTHESIS:V1")).toThrow("wrong-domain HashRefV1");
     expect(() => hashRefV1({ hashAlgorithm: "SHA-512", hashDomain: "SYNTRAKE:RESEARCH_SPEC:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hexA })).toThrow(
       "invalid hash algorithm",
@@ -256,6 +256,7 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect("canonicalTestHashV1" in publicResearchCanonical).toBe(false);
     expect("i5ResearchInternalCanonicalJsonBytesV1" in publicResearchCanonical).toBe(false);
     expect("i5ResearchInternalStructuredHashPreimageV1" in publicResearchCanonical).toBe(false);
+    expect("ownerStructuredHashPreimageV1" in publicResearchCanonical).toBe(false);
     expect("runInputPreimageV1" in publicResearchCanonical).toBe(false);
     expect("evidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
     expect("hashEvidenceObjectV1" in publicResearchCanonical).toBe(false);
