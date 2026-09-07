@@ -13,9 +13,7 @@ import {
   canonicalTimestampUtcMicrosV1,
   canonicalTokenV1,
   canonicalUuidV1,
-  evidenceObjectPreimageV1,
   hashDomainStateV1,
-  hashEvidenceObjectV1,
   hashRefV1,
   hashRunInputV1,
   immutableBehaviorTokenV1,
@@ -26,6 +24,8 @@ import {
 } from "../lib/investing/research";
 import * as publicResearchCanonical from "../lib/investing/research";
 import {
+  i5A2TestOnlyEvidenceObjectHashV1,
+  i5A2TestOnlyEvidenceObjectPreimageV1,
   i5A2TestOnlyCanonicalJsonEscapingVectorV1,
   i5A2TestOnlyCanonicalTextVectorHashV1,
   i5A2TestOnlyCanonicalTextVectorJsonV1,
@@ -230,13 +230,21 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     const descriptorJson =
       '{"artifactSchemaVersion":"ENGINE_LOG_SUMMARY_V1","contentByteLength":"4","format":"text/plain; charset=utf-8","kind":"ENGINE_LOG_SUMMARY","schemaVersion":"EVIDENCE_CONTENT_DESCRIPTOR_V1"}';
 
-    expect(evidenceObjectPreimageV1(descriptor, content).toString("utf8")).toBe(
+    expect(i5A2TestOnlyEvidenceObjectPreimageV1(descriptor, content).toString("utf8")).toBe(
       `SYNTRAKE:EVIDENCE_OBJECT:V1\n${descriptorJson}\nabc\n`,
     );
-    expect(hashEvidenceObjectV1(descriptor, content)).toBe("0EF6EC9749E99DF97644FA30F143EA6BD5D9D3D8C7C0AEABBB18E89AF34654F4");
-    expect(hashEvidenceObjectV1({ ...descriptor, contentByteLength: "4" }, content)).toBe(hashEvidenceObjectV1(descriptor, content));
-    expect(() => hashEvidenceObjectV1({ ...descriptor, contentByteLength: "3" }, content)).toThrow("contentByteLength mismatch");
-    expect(hashEvidenceObjectV1({ ...descriptor, format: "application/octet-stream" }, content)).not.toBe(hashEvidenceObjectV1(descriptor, content));
+    expect(i5A2TestOnlyEvidenceObjectHashV1(descriptor, content)).toBe(
+      "0EF6EC9749E99DF97644FA30F143EA6BD5D9D3D8C7C0AEABBB18E89AF34654F4",
+    );
+    expect(i5A2TestOnlyEvidenceObjectHashV1({ ...descriptor, contentByteLength: "4" }, content)).toBe(
+      i5A2TestOnlyEvidenceObjectHashV1(descriptor, content),
+    );
+    expect(() => i5A2TestOnlyEvidenceObjectHashV1({ ...descriptor, contentByteLength: "3" }, content)).toThrow(
+      "contentByteLength mismatch",
+    );
+    expect(i5A2TestOnlyEvidenceObjectHashV1({ ...descriptor, format: "application/octet-stream" }, content)).not.toBe(
+      i5A2TestOnlyEvidenceObjectHashV1(descriptor, content),
+    );
   });
 
   it("does not expose generic scientific admission for arbitrary maps, arrays, or disabled owner domains", () => {
@@ -244,7 +252,11 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect("syntrakeCanonicalJsonBytesV1" in publicResearchCanonical).toBe(false);
     expect("structuredHashPreimageV1" in publicResearchCanonical).toBe(false);
     expect("canonicalTestHashV1" in publicResearchCanonical).toBe(false);
+    expect("evidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
+    expect("hashEvidenceObjectV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyCanonicalJsonEscapingVectorV1" in publicResearchCanonical).toBe(false);
+    expect("i5A2TestOnlyEvidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
+    expect("i5A2TestOnlyEvidenceObjectHashV1" in publicResearchCanonical).toBe(false);
     expect(() => assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_DRAFT:V1")).toThrow(
       "hash domain declared but hashing disabled",
     );

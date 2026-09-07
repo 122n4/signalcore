@@ -411,7 +411,21 @@ export function hashRunInputV1(input: RunInputHashPayloadV1): CanonicalSha256Hex
   return sha256HexV1(runInputPreimageV1(input));
 }
 
-export function evidenceObjectPreimageV1(descriptor: EvidenceContentDescriptorV1, contentBytes: Uint8Array): Buffer {
+export function i5A2TestOnlyEvidenceObjectPreimageV1(
+  descriptor: EvidenceContentDescriptorV1,
+  contentBytes: Uint8Array,
+): Buffer {
+  return evidenceObjectPreimageV1(descriptor, contentBytes);
+}
+
+export function i5A2TestOnlyEvidenceObjectHashV1(
+  descriptor: EvidenceContentDescriptorV1,
+  contentBytes: Uint8Array,
+): CanonicalSha256HexV1 {
+  return hashEvidenceObjectV1(descriptor, contentBytes);
+}
+
+function evidenceObjectPreimageV1(descriptor: EvidenceContentDescriptorV1, contentBytes: Uint8Array): Buffer {
   const payload = canonicalEvidenceDescriptorPayloadV1(descriptor, contentBytes.byteLength);
   return Buffer.concat([
     Buffer.from("SYNTRAKE:EVIDENCE_OBJECT:V1\n", "utf8"),
@@ -421,10 +435,7 @@ export function evidenceObjectPreimageV1(descriptor: EvidenceContentDescriptorV1
   ]);
 }
 
-export function hashEvidenceObjectV1(
-  descriptor: EvidenceContentDescriptorV1,
-  contentBytes: Uint8Array,
-): CanonicalSha256HexV1 {
+function hashEvidenceObjectV1(descriptor: EvidenceContentDescriptorV1, contentBytes: Uint8Array): CanonicalSha256HexV1 {
   return sha256HexV1(evidenceObjectPreimageV1(descriptor, contentBytes));
 }
 
