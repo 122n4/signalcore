@@ -50,6 +50,30 @@ export {
 } from "./semantic";
 
 export {
+  type AggregateNodeV1,
+  type BenchmarkNodeV1,
+  type BooleanExpressionV1,
+  type CanonicalLiteralV1,
+  type ConditionOnNodeV1,
+  type DataFieldRefV1,
+  type EnterNodeV1,
+  type ExitNodeV1,
+  type FilterNodeV1,
+  type GroupNodeV1,
+  type HistoricalExecutionNodeV1,
+  type LagNodeV1,
+  type MetricRequestNodeV1,
+  type NormalizeNodeV1,
+  type RankNodeV1,
+  type RebalanceNodeV1,
+  type ResearchIrV1,
+  type ResearchOperationV1,
+  type TakeNodeV1,
+  type UniverseNodeV1,
+  type WeightNodeV1,
+} from "./researchIr";
+
+export {
   applyA3PointerEffectV1,
   assertResearchSpecHashingDisabledV1,
   canonicalHypothesisBytesV1,
@@ -58,3 +82,9 @@ export {
   hashHypothesisV1,
   hashResearchDraftV1,
 } from "./semantic";
+
+export {
+  canonicalResearchIrBytesV1,
+  canonicalResearchIrPayloadV1,
+  hashResearchIrV1,
+} from "./researchIr";

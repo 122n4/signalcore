@@ -264,9 +264,8 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect("i5A2TestOnlyEvidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyEvidenceObjectHashV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyRunInputPreimageV1" in publicResearchCanonical).toBe(false);
-    expect(() => assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_IR:V1")).toThrow(
-      "hash domain declared but hashing disabled",
-    );
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(() => canonicalRunInputBytesV1({ arbitraryMap: { x: "y" } } as never)).toThrow("undeclared field arbitraryMap");
     expect(() => canonicalRunInputBytesV1([] as never)).toThrow("expected closed plain object");
     expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
