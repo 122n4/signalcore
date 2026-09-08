@@ -1,0 +1,258 @@
+{
+  "vectors": [
+    {
+      "name": "PURE_RESEARCH",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "TENANT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "PURE_RESEARCH"
+      },
+      "command": {
+        "operation": "RESEARCH_INVESTIGATION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001"
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_INVESTIGATION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=TENANT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=-\u0000source_context=PURE_RESEARCH",
+      "byteLength": 303,
+      "hashHex": "6127F9500EDE8AA4BC26378573BD03981FD40ADF372ADADACC0B52972789DF0F"
+    },
+    {
+      "name": "TEST_PORTFOLIO",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "TENANT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "TEST_PORTFOLIO"
+      },
+      "command": {
+        "operation": "RESEARCH_INVESTIGATION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001"
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_INVESTIGATION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=TENANT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=-\u0000source_context=TEST_PORTFOLIO",
+      "byteLength": 304,
+      "hashHex": "EE753AACE262495A99D36F58365207B43CD6241329F2EBB6F7947F34B3720C03"
+    },
+    {
+      "name": "USER_PORTFOLIO",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "ACCOUNT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "USER_PORTFOLIO",
+        "accountId": "00000003-0000-0000-0000-000000000000"
+      },
+      "command": {
+        "operation": "RESEARCH_INVESTIGATION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001"
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_INVESTIGATION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=ACCOUNT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=00000003-0000-0000-0000-000000000000\u0000source_context=USER_PORTFOLIO",
+      "byteLength": 340,
+      "hashHex": "7B245FD1FB7F0003645934A9CC4833B9652C3A43C835770A6114B4347805609A"
+    },
+    {
+      "name": "DRAFT_FIRST",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "TENANT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "PURE_RESEARCH"
+      },
+      "command": {
+        "operation": "RESEARCH_DRAFT_REVISION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001",
+        "investigationId": "00000004-0000-0000-0000-000000000000",
+        "content": {
+          "ref": {
+            "hashAlgorithm": "SHA-256",
+            "hashDomain": "SYNTRAKE:RESEARCH_DRAFT:V1",
+            "hashVersion": "SYNTRAKE_SHA256_V1",
+            "hashHex": "5E3E551D80FE17EA861C558AC18C92ACCBCE6D447FE084F173836CC9C83652B5"
+          },
+          "payload": {
+            "constraints": [],
+            "interpretedObjective": {
+              "question": "Which assets?",
+              "state": "MATERIAL_UNRESOLVED"
+            },
+            "rawIntent": "Compare two assets",
+            "schemaVersion": "RESEARCH_DRAFT_HASH_PAYLOAD_V1"
+          }
+        },
+        "expectedPointers": {
+          "expectedActivePointerVersion": "0",
+          "expectedResearchDraftRevisionId": null,
+          "expectedHypothesisRevisionId": null,
+          "expectedResearchSpecRevisionId": null,
+          "expectedExperimentId": null
+        },
+        "expectedRoot": {
+          "state": "ABSENT"
+        }
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_DRAFT_REVISION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=TENANT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=-\u0000source_context=PURE_RESEARCH\u0000investigation=00000004-0000-0000-0000-000000000000\u0000content_algorithm=SHA-256\u0000content_domain=SYNTRAKE:RESEARCH_DRAFT:V1\u0000content_version=SYNTRAKE_SHA256_V1\u0000content=5E3E551D80FE17EA861C558AC18C92ACCBCE6D447FE084F173836CC9C83652B5\u0000expected_active_pointer_version=0\u0000expected_draft=-\u0000expected_hypothesis=-\u0000expected_spec=-\u0000expected_experiment=-\u0000root_state=ABSENT\u0000expected_root=-\u0000expected_head=-\u0000expected_head_number=-",
+      "byteLength": 715,
+      "hashHex": "562977B65F27F911AC28695EC6CB197177F7BF78150A6F5966D28F46F330A893"
+    },
+    {
+      "name": "DRAFT_SUCCESSOR",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "TENANT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "PURE_RESEARCH"
+      },
+      "command": {
+        "operation": "RESEARCH_DRAFT_REVISION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001",
+        "investigationId": "00000004-0000-0000-0000-000000000000",
+        "content": {
+          "ref": {
+            "hashAlgorithm": "SHA-256",
+            "hashDomain": "SYNTRAKE:RESEARCH_DRAFT:V1",
+            "hashVersion": "SYNTRAKE_SHA256_V1",
+            "hashHex": "5E3E551D80FE17EA861C558AC18C92ACCBCE6D447FE084F173836CC9C83652B5"
+          },
+          "payload": {
+            "constraints": [],
+            "interpretedObjective": {
+              "question": "Which assets?",
+              "state": "MATERIAL_UNRESOLVED"
+            },
+            "rawIntent": "Compare two assets",
+            "schemaVersion": "RESEARCH_DRAFT_HASH_PAYLOAD_V1"
+          }
+        },
+        "expectedPointers": {
+          "expectedActivePointerVersion": "4",
+          "expectedResearchDraftRevisionId": "00000005-0000-0000-0000-000000000000",
+          "expectedHypothesisRevisionId": "00000006-0000-0000-0000-000000000000",
+          "expectedResearchSpecRevisionId": null,
+          "expectedExperimentId": null
+        },
+        "expectedRoot": {
+          "state": "PRESENT",
+          "rootId": "00000007-0000-0000-0000-000000000000",
+          "headRevisionId": "00000005-0000-0000-0000-000000000000",
+          "headRevisionNumber": "2"
+        }
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_DRAFT_REVISION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=TENANT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=-\u0000source_context=PURE_RESEARCH\u0000investigation=00000004-0000-0000-0000-000000000000\u0000content_algorithm=SHA-256\u0000content_domain=SYNTRAKE:RESEARCH_DRAFT:V1\u0000content_version=SYNTRAKE_SHA256_V1\u0000content=5E3E551D80FE17EA861C558AC18C92ACCBCE6D447FE084F173836CC9C83652B5\u0000expected_active_pointer_version=4\u0000expected_draft=00000005-0000-0000-0000-000000000000\u0000expected_hypothesis=00000006-0000-0000-0000-000000000000\u0000expected_spec=-\u0000expected_experiment=-\u0000root_state=PRESENT\u0000expected_root=00000007-0000-0000-0000-000000000000\u0000expected_head=00000005-0000-0000-0000-000000000000\u0000expected_head_number=2",
+      "byteLength": 856,
+      "hashHex": "6094B77CA1A7A0546CBA6402E8E6C41267087307BBE33D9BDA3F5BD625696986"
+    },
+    {
+      "name": "HYPOTHESIS_FIRST",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "TENANT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "PURE_RESEARCH"
+      },
+      "command": {
+        "operation": "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001",
+        "investigationId": "00000004-0000-0000-0000-000000000000",
+        "content": {
+          "ref": {
+            "hashAlgorithm": "SHA-256",
+            "hashDomain": "SYNTRAKE:HYPOTHESIS:V1",
+            "hashVersion": "SYNTRAKE_SHA256_V1",
+            "hashHex": "AC60349C2147B3D1518B5BDC243F928162A826D417FDED46F65E3D7FD914180C"
+          },
+          "payload": {
+            "falsifiable": false,
+            "measurable": false,
+            "observableDefinitionRequirements": [],
+            "schemaVersion": "HYPOTHESIS_HASH_PAYLOAD_V1",
+            "statement": "Asset A outperforms asset B"
+          }
+        },
+        "expectedPointers": {
+          "expectedActivePointerVersion": "0",
+          "expectedResearchDraftRevisionId": null,
+          "expectedHypothesisRevisionId": null,
+          "expectedResearchSpecRevisionId": null,
+          "expectedExperimentId": null
+        },
+        "expectedRoot": {
+          "state": "ABSENT"
+        }
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_HYPOTHESIS_REVISION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=TENANT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=-\u0000source_context=PURE_RESEARCH\u0000investigation=00000004-0000-0000-0000-000000000000\u0000content_algorithm=SHA-256\u0000content_domain=SYNTRAKE:HYPOTHESIS:V1\u0000content_version=SYNTRAKE_SHA256_V1\u0000content=AC60349C2147B3D1518B5BDC243F928162A826D417FDED46F65E3D7FD914180C\u0000expected_active_pointer_version=0\u0000expected_draft=-\u0000expected_hypothesis=-\u0000expected_spec=-\u0000expected_experiment=-\u0000root_state=ABSENT\u0000expected_root=-\u0000expected_head=-\u0000expected_head_number=-",
+      "byteLength": 716,
+      "hashHex": "D8C5FAB87E67C6CDF2B4223937FBE2EB12AD9D08251A2A3CC1311E34AD35EE3E"
+    },
+    {
+      "name": "HYPOTHESIS_SUCCESSOR",
+      "scope": {
+        "actorKind": "USER_PRINCIPAL",
+        "actorId": "user_i5_fixture",
+        "principalId": "00000001-0000-0000-0000-000000000000",
+        "operationScope": "TENANT_SCOPE",
+        "tenantId": "00000002-0000-0000-0000-000000000000",
+        "sourceContext": "PURE_RESEARCH"
+      },
+      "command": {
+        "operation": "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
+        "idempotencyKey": "idempotency-key-0001",
+        "correlationId": "correlation-id-0001",
+        "investigationId": "00000004-0000-0000-0000-000000000000",
+        "content": {
+          "ref": {
+            "hashAlgorithm": "SHA-256",
+            "hashDomain": "SYNTRAKE:HYPOTHESIS:V1",
+            "hashVersion": "SYNTRAKE_SHA256_V1",
+            "hashHex": "AC60349C2147B3D1518B5BDC243F928162A826D417FDED46F65E3D7FD914180C"
+          },
+          "payload": {
+            "falsifiable": false,
+            "measurable": false,
+            "observableDefinitionRequirements": [],
+            "schemaVersion": "HYPOTHESIS_HASH_PAYLOAD_V1",
+            "statement": "Asset A outperforms asset B"
+          }
+        },
+        "expectedPointers": {
+          "expectedActivePointerVersion": "4",
+          "expectedResearchDraftRevisionId": "00000005-0000-0000-0000-000000000000",
+          "expectedHypothesisRevisionId": "00000006-0000-0000-0000-000000000000",
+          "expectedResearchSpecRevisionId": null,
+          "expectedExperimentId": null
+        },
+        "expectedRoot": {
+          "state": "PRESENT",
+          "rootId": "00000007-0000-0000-0000-000000000000",
+          "headRevisionId": "00000006-0000-0000-0000-000000000000",
+          "headRevisionNumber": "2"
+        }
+      },
+      "preimageUtf8": "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1\u0000RESEARCH_HYPOTHESIS_REVISION_CREATE_V1\u0000actor_kind=USER_PRINCIPAL\u0000actor_utf8_hex=757365725F69355F66697874757265\u0000principal=00000001-0000-0000-0000-000000000000\u0000scope=TENANT_SCOPE\u0000tenant=00000002-0000-0000-0000-000000000000\u0000account=-\u0000source_context=PURE_RESEARCH\u0000investigation=00000004-0000-0000-0000-000000000000\u0000content_algorithm=SHA-256\u0000content_domain=SYNTRAKE:HYPOTHESIS:V1\u0000content_version=SYNTRAKE_SHA256_V1\u0000content=AC60349C2147B3D1518B5BDC243F928162A826D417FDED46F65E3D7FD914180C\u0000expected_active_pointer_version=4\u0000expected_draft=00000005-0000-0000-0000-000000000000\u0000expected_hypothesis=00000006-0000-0000-0000-000000000000\u0000expected_spec=-\u0000expected_experiment=-\u0000root_state=PRESENT\u0000expected_root=00000007-0000-0000-0000-000000000000\u0000expected_head=00000006-0000-0000-0000-000000000000\u0000expected_head_number=2",
+      "byteLength": 857,
+      "hashHex": "A11FF2284FA667C52E0413A34159B165F266E70A300DCC826AFCF2969B512154"
+    }
+  ],
+  "oneByteMutation": {
+    "vector": "PURE_RESEARCH",
+    "offset": 302,
+    "replacementByte": 73,
+    "hashHex": "1A66276D1083862BB7BB74CC297EFD9B4DA7BBC6954C733E8FECF25719E40432"
+  }
+}
