@@ -50,20 +50,13 @@ export {
 } from "./semantic";
 
 export {
-  type AggregateNodeV1,
   type BenchmarkNodeV1,
   type BooleanExpressionV1,
   type CanonicalLiteralV1,
-  type ConditionOnNodeV1,
   type DataFieldRefV1,
   type EnterNodeV1,
   type ExitNodeV1,
   type FilterNodeV1,
-  type GroupNodeV1,
-  type HistoricalExecutionNodeV1,
-  type LagNodeV1,
-  type MetricRequestNodeV1,
-  type NormalizeNodeV1,
   type RankNodeV1,
   type RebalanceNodeV1,
   type ResearchIrV1,

@@ -4,11 +4,11 @@ Status: `CANDIDATE OWNER CONTRACT - IMPLEMENTATION SOURCE FOR A5`
 
 Canonical predecessor: `0c1f5cc0592e950fe2d0120df707c87ea1fd741a`.
 
-Purpose: admit a narrow, deterministic `SYNTRAKE:RESEARCH_IR:V1` scientific hash payload without inheriting ambiguous working-draft IR shapes.
+Purpose: admit a narrow, deterministic, engine-independent `SYNTRAKE:RESEARCH_IR:V1` scientific hash payload without inheriting ambiguous working-draft IR shapes.
 
-This contract supersedes `I5A_RESEARCH_IR_HASH_CONTRACT_V1.md` only for the exact runtime subset below. The older file remains audit history and is not controlling where it conflicts with A2/A4/A5.
+This contract supersedes `I5A_RESEARCH_IR_HASH_CONTRACT_V1.md` only for the exact A5 runtime subset below. The older file remains audit history and is not controlling where it conflicts with A2/A4/A5.
 
-## 1. Non-scope
+## 1. Non-Scope
 
 A5 does not implement or define:
 
@@ -16,14 +16,15 @@ A5 does not implement or define:
 - ontology compilation;
 - LLM/provider interpretation;
 - Experiment, DatasetSnapshot, MetricRequestSet, ExecutionConfig, Result, EvidenceObject admission;
-- persistence, database schema, migrations, workers, queues, Trading, financial authority, or recommendations;
+- engine, adapter, execution implementation, cost methodology, slippage methodology, contribution methodology, workers or queues;
+- persistence, database schema, migrations, Supabase, Trading, financial authority, or recommendations;
 - `ENGINE_STATE`.
 
 `SYNTRAKE:RESEARCH_SPEC:V1` and all future nested domains remain hashing-disabled unless their own owner contract later admits them.
 
 ## 2. Hash Domain Admission
 
-`SYNTRAKE:RESEARCH_IR:V1` moves from `DECLARED_BUT_HASHING_DISABLED` to `OWNER_PAYLOAD_EXACT` only for this payload:
+`SYNTRAKE:RESEARCH_IR:V1` is `OWNER_PAYLOAD_EXACT` only for:
 
 ```text
 RESEARCH_IR_HASH_PAYLOAD_V1
@@ -36,7 +37,13 @@ SYNTRAKE:RESEARCH_IR:V1
 <SYNTRAKE_CANONICAL_JSON_V1 bytes of RESEARCH_IR_HASH_PAYLOAD_V1>
 ```
 
-The newline after `V1` is one LF byte. The digest is `SHA-256` rendered as uppercase 64-character hexadecimal text under `SYNTRAKE_SHA256_V1`.
+The separator after `V1` is one LF byte. The digest is `SHA-256` rendered as uppercase 64-character hexadecimal text under `SYNTRAKE_SHA256_V1`.
+
+Corrected A5 golden hash:
+
+```text
+265D8F6AAC35DB919EC130EE978F1831383E74BC2F625230D61EB81C0F27B44F
+```
 
 ## 3. Top-Level Payload
 
@@ -45,18 +52,39 @@ Required exact fields:
 ```ts
 {
   schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1";
-  irVersion: "I5A_RESEARCH_IR_OWNER_CONTRACT_V1";
+  irVersion: "RESEARCH_IR_V1";
   universe: UniverseNodeV1;
   pipeline: ResearchOperationV1[];
-  execution: HistoricalExecutionNodeV1;
+  benchmark: BenchmarkNodeV1;
+  testPeriod: { startDate: string; endDate: string };
+  valuationCurrency: CurrencyV1;
+  startingCapital: {
+    amount: DecimalMoneyAmountV1;
+    currency: CurrencyV1;
+    origin: "SIMULATED";
+  };
 }
 ```
 
 No other field is admitted. `null`, `undefined`, JSON numbers, functions, class instances, provider-native objects, arbitrary maps and executable strings fail closed.
 
-`pipeline` is `ORDERED_SEQUENCE`, length `1..64`. Operation order is scientific identity. Exact duplicate canonical operation elements are forbidden.
+`ENGINE_STATE`, execution adapters, engine versions, cost model versions and slippage model versions are absent because A5 does not own their immutable implementation behavior.
 
-## 4. Universe
+## 4. Resource Bounds
+
+The runtime must fail closed before stack or memory exhaustion:
+
+- `pipeline`: `ORDERED_SEQUENCE`, length `1..64`;
+- recursive AST depth: maximum `16`;
+- total visited AST nodes: maximum `256`;
+- canonical payload byte length: maximum `32768`;
+- `instrumentIds`: `UNORDERED_SET`, length `1..512`;
+- `FIXED_TARGETS.targets`: `UNORDERED_SET`, length `1..512`;
+- `AND` / `OR` clauses: `ORDERED_SEQUENCE`, length `2..16`.
+
+Exact duplicate canonical elements are forbidden for every admitted ordered sequence unless this contract explicitly says otherwise. A5 grants no duplicate exception.
+
+## 5. Universe
 
 Only admitted V1 universe:
 
@@ -67,7 +95,7 @@ Only admitted V1 universe:
 }
 ```
 
-`instrumentIds` is an `UNORDERED_SET`, length `1..512`, sorted by deterministic ASCII/UTF-8 byte lexical order after validation. Exact duplicate instrument IDs are forbidden.
+`instrumentIds` is an `UNORDERED_SET`, sorted by deterministic ASCII/UTF-8 byte lexical order after validation. Exact duplicates are forbidden.
 
 Instrument IDs are opaque canonical strings with byte length `1..64` and grammar:
 
@@ -77,46 +105,82 @@ Instrument IDs are opaque canonical strings with byte length `1..64` and grammar
 
 This is not market-data authority and does not prove an instrument exists. Later DatasetSnapshot/owner slices must resolve scientific data admission.
 
-## 5. Scalar Nodes
+## 6. Scalar And Numeric Owner Bounds
 
 All financial/scientific decimals and integers are JSON strings. JavaScript numeric values are not admitted for canonical numbers.
 
-Decimals use A2 `CanonicalDecimalV1`. `-0`, `+1`, leading zero forms, exponent notation, commas, NaN and Infinity are invalid.
-
-Dates use `YYYY-MM-DD` Gregorian calendar text. Timestamps are absent from A5 IR.
-
-Allowed currencies:
+Currency vocabulary:
 
 ```text
 USD EUR GBP CHF CAD AUD JPY
 ```
 
-## 6. Data Fields And Expressions
+Canonical decimal/integer field bounds:
+
+| Field | Sign | Min | Max | Max integer digits | Max scale | Unit semantics |
+| --- | --- | --- | --- | --- | --- | --- |
+| `DECIMAL` literal, `unit=RATIO` | negative allowed | `-1` | `100` | `3` | `8` | return/ratio value, not percent text |
+| `DECIMAL` literal, `unit=VALUATION_CURRENCY_PER_INSTRUMENT` | non-negative | `0` | `9999999999999999.99999999` | `16` | `8` | valuation-currency quote per instrument |
+| `INTEGER` literal, `unit=SHARES` | non-negative | `0` | `1000000000000` | bounded by max | `0` | share/count quantity |
+| `TAKE.count` | positive | `1` | `10000` | bounded by max | `0` | selected row count |
+| `FIXED_TARGETS.weight` | non-negative | `0` | `1` | `1` | `8` | portfolio target fraction of 1 |
+| `startingCapital.amount` | positive | `0.01` | `9999999999999999.99` | `16` | `2` | simulated starting cash in declared currency |
+
+Invalid examples include `-0`, `+1`, leading zero forms, exponent notation, commas, NaN, Infinity, wrong unit tokens, values below min, values above max and excess scale.
+
+## 7. Data Fields And Value Categories
 
 `DataFieldRefV1`:
 
 ```ts
 {
   type: "DATA_FIELD_REF";
-  fieldId: "ADJUSTED_CLOSE" | "TOTAL_RETURN" | "VOLUME" | "MOMENTUM_12M";
+  fieldId:
+    | "ADJUSTED_CLOSE"
+    | "TOTAL_RETURN"
+    | "VOLUME"
+    | "MOMENTUM_12M"
+    | "OBSERVATION_DATE";
   fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1";
 }
 ```
 
-This reference is an IR vocabulary handle only. It does not establish observable methodology or DatasetSnapshot availability.
+Value categories:
 
-`BooleanExpressionV1` admits only structured:
+| Field | Category |
+| --- | --- |
+| `ADJUSTED_CLOSE` | `DECIMAL_PRICE` |
+| `TOTAL_RETURN` | `DECIMAL_RETURN_RATIO` |
+| `MOMENTUM_12M` | `DECIMAL_RETURN_RATIO` |
+| `VOLUME` | `INTEGER_VOLUME` |
+| `OBSERVATION_DATE` | `DATE` |
 
-- `COMPARE`;
-- `AND`;
-- `OR`;
-- `NOT`.
+These references are IR vocabulary handles only. They do not establish observable methodology or DatasetSnapshot availability.
 
-`AND` and `OR` clauses are `ORDERED_SEQUENCE`, length `2..16`, and exact duplicate canonical clauses are forbidden.
+## 8. Literals And Comparisons
+
+Admitted literal categories:
+
+- `DECIMAL` with unit `RATIO` -> `DECIMAL_RETURN_RATIO`;
+- `DECIMAL` with unit `VALUATION_CURRENCY_PER_INSTRUMENT` -> `DECIMAL_PRICE`;
+- `INTEGER` with unit `SHARES` -> `INTEGER_VOLUME`;
+- `BOOLEAN`;
+- `DATE`;
+- `ENUM` with value `INCLUDED | EXCLUDED`.
+
+`COMPARE` requires identical left/right value categories. Therefore nonsensical forms such as volume-vs-date, price-vs-boolean and return-vs-enum fail closed.
+
+`BOOLEAN` and `ENUM` comparisons admit only `EQ` and `NEQ`. Other categories admit:
+
+```text
+EQ NEQ GT GTE LT LTE
+```
+
+`AND` and `OR` clauses are ordered diagnostic sequences; order is scientific identity.
 
 No SQL, JavaScript, expression-language, provider-native, prompt, code, or arbitrary formula string is admitted.
 
-## 7. Supported Operations
+## 9. Supported Operations
 
 Only these pipeline operations are admitted:
 
@@ -126,19 +190,16 @@ Only these pipeline operations are admitted:
 - `WEIGHT`;
 - `ENTER`;
 - `EXIT`;
-- `REBALANCE`;
-- `BENCHMARK`.
+- `REBALANCE`.
 
-`CONDITION_ON`, `GROUP`, `LAG`, `AGGREGATE`, `NORMALIZE`, `METRIC_REQUEST`, `CANONICAL_UNIVERSE_REF`, contributions and other working-draft nodes remain unsupported and fail closed in A5.
-
-`TAKE.count` is a string integer in `1..10000`.
+Unsupported working-draft nodes including `CONDITION_ON`, `GROUP`, `LAG`, `AGGREGATE`, `NORMALIZE`, `METRIC_REQUEST`, `CANONICAL_UNIVERSE_REF`, contributions, execution nodes, cost nodes and slippage nodes fail closed and are absent from the supported A5 public type surface.
 
 `WEIGHT` admits:
 
 - `{ type: "WEIGHT", method: "EQUAL" }`;
 - `{ type: "WEIGHT", method: "FIXED_TARGETS", targets: FixedWeightTargetV1[] }`.
 
-`FIXED_TARGETS.targets` is an `UNORDERED_SET`, length `1..512`, sorted by instrument ID byte order. Instrument IDs are unique. Weights are decimals in `0..1`, scale at most 8. The canonical scaled sum must equal exactly `1.00000000`; no tolerance is admitted.
+`FIXED_TARGETS.targets` is sorted by instrument ID byte order. Instrument IDs are unique. Weights must sum exactly to `1.00000000`; no tolerance is admitted.
 
 `REBALANCE.schedule` admits:
 
@@ -146,48 +207,29 @@ Only these pipeline operations are admitted:
 DAILY WEEKLY MONTHLY QUARTERLY ANNUAL
 ```
 
-`BENCHMARK` admits explicit `NONE` or explicit `INSTRUMENT`.
+## 10. Benchmark
 
-## 8. Execution Node
-
-Only:
+Benchmark is a required top-level selector with exactly one of:
 
 ```ts
-{
-  type: "HISTORICAL_EXECUTION";
-  adapterId: "HISTORICAL_EXECUTION_ADAPTER_V1";
-  testPeriod: { startDate: string; endDate: string };
-  valuationCurrency: Currency;
-  startingCapital: { amount: string; currency: Currency; origin: "SIMULATED" };
-  transactionCostModel: TransactionCostModelNodeV1;
-  slippageModel: SlippageModelNodeV1;
-}
+{ type: "BENCHMARK"; benchmark: "NONE" }
+{ type: "BENCHMARK"; benchmark: "INSTRUMENT"; instrumentId: InstrumentIdV1 }
 ```
+
+Benchmark is not a pipeline operation, not repeatable, and never implicitly absent/defaulted.
+
+## 11. Test Period And Starting Capital
+
+Dates use `YYYY-MM-DD` Gregorian calendar text.
 
 `testPeriod.startDate <= testPeriod.endDate`.
 
-`startingCapital.origin` must be `SIMULATED`. Missing capital is not zero. Missing cost/slippage is not zero.
+`startingCapital.origin` must be `SIMULATED`. Missing capital is not zero and real account capital is never inferred.
 
-Cost model:
-
-```ts
-{ model: "EXPLICIT_ZERO"; modelVersion: "TRANSACTION_COST_EXPLICIT_ZERO_V1" }
-{ model: "PROPORTIONAL_BPS"; bps: string; modelVersion: "TRANSACTION_COST_PROPORTIONAL_BPS_V1" }
-```
-
-Slippage model:
-
-```ts
-{ model: "EXPLICIT_ZERO"; modelVersion: "SLIPPAGE_EXPLICIT_ZERO_V1" }
-{ model: "PROPORTIONAL_BPS"; bps: string; modelVersion: "SLIPPAGE_PROPORTIONAL_BPS_V1" }
-```
-
-Basis points are canonical decimals in `0..10000`, scale at most 4.
-
-## 9. Replay And Boundaries
+## 12. Replay And Boundaries
 
 For the same admitted semantic IR, canonical bytes and hash are byte-identical across TypeScript and PostgreSQL implementations that implement A2 canonical JSON and this owner payload.
 
-IDs, timestamps, worker metadata, queue metadata, UI state, conversation state and explanation prose are absent from the scientific payload.
+IDs, timestamps, worker metadata, queue metadata, UI state, conversation state, explanation prose, engine state and mutable execution behavior tokens are absent from the scientific payload.
 
 RunInput hashing remains blocked until all required nested scientific domains besides IR are admitted by their own owner contracts.
