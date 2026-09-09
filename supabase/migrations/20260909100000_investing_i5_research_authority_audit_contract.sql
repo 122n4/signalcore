@@ -364,6 +364,54 @@ create policy pre_authority_audit_events_i2b_i5_insert
     )
   );
 
+drop policy audit_events_i2b_authority_denial_insert on investing.audit_events;
+
+create policy audit_events_i2b_authority_denial_insert
+  on investing.audit_events
+  for insert
+  to investing_app
+  with check (
+    (
+      current_setting('syntrake.investing.operation', true) is distinct from 'RESEARCH_INVESTIGATION_CREATE_V1'
+      or current_setting('syntrake.investing.capability', true) is distinct from 'RESEARCH_MUTATE'
+    )
+    and coalesce(evidence ->> 'operation', '') <> 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and coalesce(evidence ->> 'capability', '') <> 'RESEARCH_MUTATE'
+    and not (evidence ? 'source_context')
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id is not null
+    and tenant_id is not null
+    and account_id is not null
+    and operation_scope = 'ACCOUNT_SCOPE'
+    and action = 'AUTHORITY_ACCESS_DENIED'
+    and object_type = 'ACCOUNT'
+    and object_id = account_id::text
+    and (
+      (
+        outcome = 'DENIED'
+        and reason_code in ('TENANT_INACTIVE', 'MEMBERSHIP_INACTIVE', 'ACCESS_INACTIVE')
+      )
+      or (
+        outcome = 'FAILED'
+        and reason_code in (
+          'DUPLICATE_ACTIVE_MEMBERSHIP',
+          'DUPLICATE_ACTIVE_ACCOUNT_ACCESS',
+          'AUTHORITY_TUPLE_MISMATCH'
+        )
+      )
+    )
+    and exists (
+      select 1
+      from investing.principals p
+      where p.principal_id = audit_events.principal_id
+        and p.external_provider = 'CLERK'
+        and p.external_subject = current_setting('syntrake.investing.actor_id', true)
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+    )
+  );
+
 create policy audit_events_i5_research_investigation_create_denial_insert
   on investing.audit_events
   for insert
@@ -485,6 +533,7 @@ begin
     and c.relname = 'pre_authority_audit_events'
     and pol.polname = 'pre_authority_audit_events_i2b_i5_insert'
     and pol.polcmd = 'a'
+    and pol.polpermissive
     and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
 
   if v_bad_count <> 1 then
@@ -504,6 +553,7 @@ begin
       'audit_events_i5_research_investigation_create_denial_insert'
     )
     and pol.polcmd = 'a'
+    and pol.polpermissive
     and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
 
   if v_bad_count <> 3 then
@@ -524,6 +574,50 @@ begin
 
   if v_bad_count <> 0 then
     raise exception 'I5 Research authority audit postcondition violation: audit policies must be INSERT-only and investing_app-only';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname in ('pre_authority_audit_events', 'audit_events')
+    and pol.polname in (
+      'pre_authority_audit_events_i2b_i5_insert',
+      'audit_events_i2b_authority_denial_insert',
+      'audit_events_i2c_bootstrap_insert',
+      'audit_events_i5_research_investigation_create_denial_insert'
+    )
+    and not pol.polpermissive;
+
+  if v_bad_count <> 0 then
+    raise exception 'I5 Research authority audit postcondition violation: owned audit policies must declare the intended permissive OR model';
+  end if;
+
+  select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    )
+    into v_policy_expr
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'audit_events'
+    and pol.polname = 'audit_events_i2b_authority_denial_insert';
+
+  if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s+is\s+distinct\s+from\s+''research_investigation_create_v1'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s+is\s+distinct\s+from\s+''research_mutate'''
+    or v_policy_expr !~ 'coalesce\s*\(\s*evidence\s*->>\s*''operation''\s*,\s*''''\s*\)\s*<>\s*''research_investigation_create_v1'''
+    or v_policy_expr !~ 'coalesce\s*\(\s*evidence\s*->>\s*''capability''\s*,\s*''''\s*\)\s*<>\s*''research_mutate'''
+    or v_policy_expr !~ 'not\s+\(\s*evidence\s*\?\s*''source_context''\s*\)'
+    or v_policy_expr !~ 'operation_scope\s*=\s*''account_scope'''
+    or v_policy_expr !~ 'object_type\s*=\s*''account'''
+    or v_policy_expr !~ 'object_id\s*=\s*\(?account_id\)?' then
+    raise exception 'I5 Research authority audit postcondition violation: I2-B denial policy is not disjoint from I5 Research authority';
   end if;
 
   select pg_catalog.regexp_replace(

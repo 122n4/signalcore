@@ -38,6 +38,163 @@ function sliceBetween(source: string, start: string, end: string) {
   return source.slice(startIndex, endIndex);
 }
 
+type SessionContext = {
+  operation?: string;
+  capability?: string;
+  actorId: string;
+  principalId: string;
+  tenantId?: string;
+  accountId?: string;
+  externalProvider: "CLERK";
+  externalSubject: string;
+};
+
+type AuditRow = {
+  actorKind: "USER_PRINCIPAL" | "SYSTEM_ACTOR";
+  actorId: string;
+  principalId: string | null;
+  operationScope: "ACCOUNT_SCOPE" | "TENANT_SCOPE" | "DOMAIN_SCOPE";
+  tenantId: string | null;
+  accountId: string | null;
+  action: string;
+  objectType: string;
+  objectId: string | null;
+  outcome: "DENIED" | "FAILED" | "SUCCEEDED" | "CONFLICT";
+  reasonCode: string | null;
+  evidence: Record<string, string | undefined>;
+};
+
+const modelIds = {
+  principalId: "11111111-1111-4111-8111-111111111111",
+  tenantId: "22222222-2222-4222-8222-222222222222",
+  accountId: "33333333-3333-4333-8333-333333333333",
+};
+
+const i2bSession: SessionContext = {
+  operation: "ACCOUNT_CONTEXT_RESOLVE",
+  capability: "ACCOUNT_AUTHORITY_READ",
+  actorId: "user_clerk_123",
+  principalId: modelIds.principalId,
+  tenantId: modelIds.tenantId,
+  accountId: modelIds.accountId,
+  externalProvider: "CLERK",
+  externalSubject: "user_clerk_123",
+};
+
+const i5Session: SessionContext = {
+  ...i2bSession,
+  operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+  capability: "RESEARCH_MUTATE",
+};
+
+const i2bAccountDenialRow: AuditRow = {
+  actorKind: "USER_PRINCIPAL",
+  actorId: "user_clerk_123",
+  principalId: modelIds.principalId,
+  operationScope: "ACCOUNT_SCOPE",
+  tenantId: modelIds.tenantId,
+  accountId: modelIds.accountId,
+  action: "AUTHORITY_ACCESS_DENIED",
+  objectType: "ACCOUNT",
+  objectId: modelIds.accountId,
+  outcome: "DENIED",
+  reasonCode: "ACCESS_INACTIVE",
+  evidence: {},
+};
+
+function oldI2bDenialPolicy(row: AuditRow, session: SessionContext) {
+  return (
+    row.actorKind === "USER_PRINCIPAL" &&
+    row.actorId === session.actorId &&
+    row.principalId !== null &&
+    row.tenantId !== null &&
+    row.accountId !== null &&
+    row.operationScope === "ACCOUNT_SCOPE" &&
+    row.action === "AUTHORITY_ACCESS_DENIED" &&
+    row.objectType === "ACCOUNT" &&
+    row.objectId === row.accountId &&
+    ((row.outcome === "DENIED" &&
+      ["TENANT_INACTIVE", "MEMBERSHIP_INACTIVE", "ACCESS_INACTIVE"].includes(row.reasonCode ?? "")) ||
+      (row.outcome === "FAILED" &&
+        ["DUPLICATE_ACTIVE_MEMBERSHIP", "DUPLICATE_ACTIVE_ACCOUNT_ACCESS", "AUTHORITY_TUPLE_MISMATCH"].includes(
+          row.reasonCode ?? "",
+        ))) &&
+    row.principalId === session.principalId &&
+    session.externalProvider === "CLERK" &&
+    session.externalSubject === session.actorId
+  );
+}
+
+function correctedI2bDenialPolicy(row: AuditRow, session: SessionContext) {
+  const isI5ResearchSession =
+    session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" && session.capability === "RESEARCH_MUTATE";
+  const isResearchShapedEvidence =
+    row.evidence.operation === "RESEARCH_INVESTIGATION_CREATE_V1" ||
+    row.evidence.capability === "RESEARCH_MUTATE" ||
+    Object.hasOwn(row.evidence, "source_context");
+  return !isI5ResearchSession && !isResearchShapedEvidence && oldI2bDenialPolicy(row, session);
+}
+
+function i2cBootstrapPolicy(row: AuditRow, session: SessionContext) {
+  return (
+    session.operation === "INITIAL_PERSONAL_BOOTSTRAP" &&
+    session.capability === "AUTHORITY_BOOTSTRAP" &&
+    row.actorKind === "USER_PRINCIPAL" &&
+    row.actorId === session.actorId &&
+    row.principalId === session.principalId &&
+    row.action.startsWith("AUTHORITY_BOOTSTRAP_")
+  );
+}
+
+function i5ResearchDenialPolicy(row: AuditRow, session: SessionContext) {
+  if (
+    session.operation !== "RESEARCH_INVESTIGATION_CREATE_V1" ||
+    session.capability !== "RESEARCH_MUTATE" ||
+    row.actorKind !== "USER_PRINCIPAL" ||
+    row.actorId !== session.actorId ||
+    row.principalId !== session.principalId ||
+    row.action !== "AUTHORITY_ACCESS_DENIED" ||
+    row.evidence.operation !== "RESEARCH_INVESTIGATION_CREATE_V1" ||
+    row.evidence.capability !== "RESEARCH_MUTATE"
+  ) {
+    return false;
+  }
+
+  if (row.operationScope === "TENANT_SCOPE") {
+    return (
+      row.tenantId === session.tenantId &&
+      row.accountId === null &&
+      row.objectType === "TENANT" &&
+      row.objectId === row.tenantId &&
+      (row.evidence.source_context === "PURE_RESEARCH" || row.evidence.source_context === "TEST_PORTFOLIO") &&
+      ((row.outcome === "DENIED" && ["TENANT_INACTIVE", "MEMBERSHIP_INACTIVE"].includes(row.reasonCode ?? "")) ||
+        (row.outcome === "FAILED" &&
+          ["DUPLICATE_ACTIVE_MEMBERSHIP", "AUTHORITY_TUPLE_MISMATCH"].includes(row.reasonCode ?? "")))
+    );
+  }
+
+  return (
+    row.operationScope === "ACCOUNT_SCOPE" &&
+    row.tenantId === session.tenantId &&
+    row.accountId === session.accountId &&
+    row.objectType === "ACCOUNT" &&
+    row.objectId === row.accountId &&
+    row.evidence.source_context === "USER_PORTFOLIO" &&
+    ((row.outcome === "DENIED" &&
+      ["TENANT_INACTIVE", "MEMBERSHIP_INACTIVE", "ACCOUNT_INACTIVE", "ACCESS_INACTIVE"].includes(
+        row.reasonCode ?? "",
+      )) ||
+      (row.outcome === "FAILED" &&
+        ["DUPLICATE_ACTIVE_MEMBERSHIP", "DUPLICATE_ACTIVE_ACCOUNT_ACCESS", "AUTHORITY_TUPLE_MISMATCH"].includes(
+          row.reasonCode ?? "",
+        )))
+  );
+}
+
+function permissiveInsertAllowed(row: AuditRow, session: SessionContext, i2bPolicy: typeof oldI2bDenialPolicy) {
+  return i2bPolicy(row, session) || i2cBootstrapPolicy(row, session) || i5ResearchDenialPolicy(row, session);
+}
+
 describe("Investing Genesis I5 Research authority DB audit contract", () => {
   it("extends only the canonical audit contract surface and leaves runtime/persistence untouched", () => {
     const normalized = normalize(read(migrationPath));
@@ -150,6 +307,43 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).not.toMatch(/\bwith check\s*\(\s*true\s*\)/);
   });
 
+  it("models the permissive RLS algebra and closes the account-scope Research bypass through I2-B", () => {
+    const validI2bRow = { ...i2bAccountDenialRow };
+    const validI5AccountRow: AuditRow = {
+      ...i2bAccountDenialRow,
+      evidence: {
+        operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+        capability: "RESEARCH_MUTATE",
+        source_context: "USER_PORTFOLIO",
+      },
+    };
+
+    expect(permissiveInsertAllowed(validI2bRow, i2bSession, correctedI2bDenialPolicy)).toBe(true);
+    expect(permissiveInsertAllowed(validI5AccountRow, i5Session, correctedI2bDenialPolicy)).toBe(true);
+    expect(permissiveInsertAllowed(validI5AccountRow, i5Session, oldI2bDenialPolicy)).toBe(true);
+
+    for (const badEvidence of [
+      {},
+      { operation: "ACCOUNT_CONTEXT_RESOLVE", capability: "RESEARCH_MUTATE", source_context: "USER_PORTFOLIO" },
+      { operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: "ACCOUNT_AUTHORITY_READ", source_context: "USER_PORTFOLIO" },
+      { operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: "RESEARCH_MUTATE" },
+      { operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: "RESEARCH_MUTATE", source_context: "PURE_RESEARCH" },
+    ]) {
+      const malformedResearchRow = { ...validI5AccountRow, evidence: badEvidence };
+      expect(oldI2bDenialPolicy(malformedResearchRow, i5Session)).toBe(true);
+      expect(i5ResearchDenialPolicy(malformedResearchRow, i5Session)).toBe(false);
+      expect(permissiveInsertAllowed(malformedResearchRow, i5Session, oldI2bDenialPolicy)).toBe(true);
+      expect(permissiveInsertAllowed(malformedResearchRow, i5Session, correctedI2bDenialPolicy)).toBe(false);
+    }
+
+    expect(
+      permissiveInsertAllowed(validI5AccountRow, { ...i5Session, operation: "ACCOUNT_CONTEXT_RESOLVE" }, correctedI2bDenialPolicy),
+    ).toBe(false);
+    expect(
+      permissiveInsertAllowed(validI5AccountRow, { ...i5Session, capability: "ACCOUNT_AUTHORITY_READ" }, correctedI2bDenialPolicy),
+    ).toBe(false);
+  });
+
   it("keeps shared roles out, investing_app scoped, and RLS/FORCE RLS postconditioned", () => {
     const normalized = normalize(read(migrationPath));
 
@@ -161,6 +355,8 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(normalized).toContain("not c.relrowsecurity");
     expect(normalized).toContain("not c.relforcerowsecurity");
     expect(normalized).toContain("audit tables must remain owner/rls/force rls protected");
+    expect(normalized).toContain("pol.polpermissive");
+    expect(normalized).toContain("owned audit policies must declare the intended permissive or model");
   });
 
   it("scopes policy inventory checks to owned audit tables so accepted ledger policies are not false rejected", () => {
