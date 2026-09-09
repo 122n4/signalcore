@@ -366,6 +366,50 @@ create policy pre_authority_audit_events_i2b_i5_insert
     )
   );
 
+create policy tenants_i5_research_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.principals p
+      join investing.tenant_memberships tm
+        on tm.principal_id = p.principal_id
+       and tm.tenant_id = tenants.tenant_id
+      where p.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+    )
+  );
+
+create policy tenant_memberships_i5_research_authority_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and exists (
+      select 1
+      from investing.principals p
+      where p.principal_id = tenant_memberships.principal_id
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+    )
+  );
+
 drop policy audit_events_i2b_authority_denial_insert on investing.audit_events;
 
 create policy audit_events_i2b_authority_denial_insert
@@ -595,6 +639,30 @@ begin
     raise exception 'I5 Research authority audit postcondition violation: owned audit policies must declare the intended permissive OR model';
   end if;
 
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and (
+      (
+        c.relname = 'tenants'
+        and pol.polname = 'tenants_i5_research_authority_read'
+      )
+      or (
+        c.relname = 'tenant_memberships'
+        and pol.polname = 'tenant_memberships_i5_research_authority_read'
+      )
+    )
+    and pol.polcmd = 'r'
+    and pol.polpermissive
+    and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
+
+  if v_bad_count <> 2 then
+    raise exception 'I5 Research authority audit postcondition violation: expected exact Research tenant-scope read policies';
+  end if;
+
   select pg_catalog.regexp_replace(
       lower(coalesce(pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid), '')),
       '::text',
@@ -623,6 +691,57 @@ begin
   if v_policy_expr ~ 'is\s+distinct\s+from\s+''research_investigation_create_v1'''
     or v_policy_expr ~ 'is\s+distinct\s+from\s+''research_mutate''' then
     raise exception 'I5 Research authority audit postcondition violation: I2-B denial policy must not rely on broad NOT-Research fallback';
+  end if;
+
+  select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    )
+    into v_policy_expr
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'tenants'
+    and pol.polname = 'tenants_i5_research_authority_read';
+
+  if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    or v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
+    or v_policy_expr !~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    or v_policy_expr !~ 'p\.principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    or v_policy_expr !~ 'tm\.principal_id\s*=\s*p\.principal_id'
+    or v_policy_expr !~ 'tm\.tenant_id\s*=\s*tenants\.tenant_id'
+    or v_policy_expr !~ 'tm\.role\s*=\s*''owner'''
+    or v_policy_expr !~ 'p\.state\s*=\s*''active''' then
+    raise exception 'I5 Research authority audit postcondition violation: tenants Research read policy is not exact tenant-scope authority substrate';
+  end if;
+
+  select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    )
+    into v_policy_expr
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'tenant_memberships'
+    and pol.polname = 'tenant_memberships_i5_research_authority_read';
+
+  if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    or v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
+    or v_policy_expr !~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    or v_policy_expr !~ 'principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    or v_policy_expr !~ 'role\s*=\s*''owner'''
+    or v_policy_expr !~ 'p\.principal_id\s*=\s*tenant_memberships\.principal_id'
+    or v_policy_expr !~ 'p\.state\s*=\s*''active''' then
+    raise exception 'I5 Research authority audit postcondition violation: tenant_memberships Research read policy is not exact tenant-scope authority substrate';
   end if;
 
   select pg_catalog.regexp_replace(
@@ -700,6 +819,17 @@ begin
 
   if v_bad_count <> 0 then
     raise exception 'I5 Research authority audit postcondition violation: shared roles must not gain audit table privileges';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and table_name in ('tenants', 'tenant_memberships')
+    and grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role');
+
+  if v_bad_count <> 0 then
+    raise exception 'I5 Research authority audit postcondition violation: shared roles must not gain tenant authority read privileges';
   end if;
 
   select count(*)

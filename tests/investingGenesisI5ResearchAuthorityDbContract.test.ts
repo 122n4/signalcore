@@ -85,6 +85,25 @@ type PreAuthorityAuditRow = {
   reasonCode: string;
 };
 
+type AuthorityGraph = {
+  principal: {
+    principalId: string;
+    externalProvider: "CLERK";
+    externalSubject: string;
+    state: "ACTIVE" | "DISABLED";
+  };
+  tenant: {
+    tenantId: string;
+    state: "ACTIVE" | "SUSPENDED" | "CLOSED";
+  };
+  membership: {
+    tenantId: string;
+    principalId: string;
+    role: "OWNER";
+    state: "ACTIVE" | "REVOKED";
+  };
+};
+
 const modelIds = {
   principalId: "11111111-1111-4111-8111-111111111111",
   tenantId: "22222222-2222-4222-8222-222222222222",
@@ -163,6 +182,25 @@ const validI5PreAuthorityRow: PreAuthorityAuditRow = {
   selectorKind: "ACCOUNT_ID",
   resolutionStage: "ACCOUNT_ACCESS_LOOKUP",
   reasonCode: "ACCESS_INACTIVE",
+};
+
+const authorityGraph: AuthorityGraph = {
+  principal: {
+    principalId: modelIds.principalId,
+    externalProvider: "CLERK",
+    externalSubject: "user_clerk_123",
+    state: "ACTIVE",
+  },
+  tenant: {
+    tenantId: modelIds.tenantId,
+    state: "ACTIVE",
+  },
+  membership: {
+    tenantId: modelIds.tenantId,
+    principalId: modelIds.principalId,
+    role: "OWNER",
+    state: "ACTIVE",
+  },
 };
 
 function oldI2bDenialPolicy(row: AuditRow, session: SessionContext) {
@@ -256,6 +294,41 @@ function i5ResearchDenialPolicy(row: AuditRow, session: SessionContext) {
 
 function permissiveInsertAllowed(row: AuditRow, session: SessionContext, i2bPolicy: typeof oldI2bDenialPolicy) {
   return i2bPolicy(row, session) || i2cBootstrapPolicy(row, session) || i5ResearchDenialPolicy(row, session);
+}
+
+function i5TenantReadPolicy(graph: AuthorityGraph, session: SessionContext) {
+  return (
+    session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
+    session.capability === "RESEARCH_MUTATE" &&
+    (session.accountId ?? "") === "" &&
+    graph.tenant.tenantId === session.tenantId &&
+    graph.principal.principalId === session.principalId &&
+    graph.principal.externalProvider === session.externalProvider &&
+    graph.principal.externalSubject === session.externalSubject &&
+    graph.principal.state === "ACTIVE" &&
+    graph.membership.principalId === graph.principal.principalId &&
+    graph.membership.tenantId === graph.tenant.tenantId &&
+    graph.membership.role === "OWNER"
+  );
+}
+
+function i5TenantMembershipReadPolicy(graph: AuthorityGraph, session: SessionContext) {
+  return (
+    session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
+    session.capability === "RESEARCH_MUTATE" &&
+    (session.accountId ?? "") === "" &&
+    graph.membership.tenantId === session.tenantId &&
+    graph.membership.principalId === session.principalId &&
+    graph.membership.role === "OWNER" &&
+    graph.principal.principalId === graph.membership.principalId &&
+    graph.principal.externalProvider === session.externalProvider &&
+    graph.principal.externalSubject === session.externalSubject &&
+    graph.principal.state === "ACTIVE"
+  );
+}
+
+function i5TenantScopeAuditAllowed(row: AuditRow, session: SessionContext, graph: AuthorityGraph) {
+  return i5ResearchDenialPolicy(row, session) && i5TenantReadPolicy(graph, session) && i5TenantMembershipReadPolicy(graph, session);
 }
 
 function commonPreAuthorityChecks(row: PreAuthorityAuditRow) {
@@ -444,6 +517,91 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).toContain("join investing.accounts a");
     expect(policy).not.toContain("to service_role");
     expect(policy).not.toMatch(/\bwith check\s*\(\s*true\s*\)/);
+  });
+
+  it("adds exact Research tenant-scope read substrate without synthetic account authority", () => {
+    const normalized = normalize(read(migrationPath));
+    const tenantPolicy = sliceBetween(
+      normalized,
+      "create policy tenants_i5_research_authority_read",
+      "create policy tenant_memberships_i5_research_authority_read",
+    );
+    const membershipPolicy = sliceBetween(
+      normalized,
+      "create policy tenant_memberships_i5_research_authority_read",
+      "drop policy audit_events_i2b_authority_denial_insert",
+    );
+
+    for (const policy of [tenantPolicy, membershipPolicy]) {
+      expect(policy).toContain("for select");
+      expect(policy).toContain("to investing_app");
+      expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'research_investigation_create_v1'");
+      expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
+      expect(policy).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') = ''");
+      expect(policy).toContain("nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid");
+      expect(policy).toContain("nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid");
+      expect(policy).toContain("role = 'owner'");
+      expect(policy).toContain("p.state = 'active'");
+      expect(policy).not.toContain("account_id = nullif");
+      expect(policy).not.toContain("to service_role");
+    }
+
+    expect(tenantPolicy).toContain("join investing.tenant_memberships tm");
+    expect(tenantPolicy).toContain("tm.principal_id = p.principal_id");
+    expect(tenantPolicy).toContain("tm.tenant_id = tenants.tenant_id");
+    expect(membershipPolicy).toContain("p.principal_id = tenant_memberships.principal_id");
+    expect(normalized).toContain("tenants_i5_research_authority_read");
+    expect(normalized).toContain("tenant_memberships_i5_research_authority_read");
+    expect(normalized).toContain("expected exact research tenant-scope read policies");
+    expect(normalized).toContain("shared roles must not gain tenant authority read privileges");
+  });
+
+  it("models Research tenant-scope audit without account GUC and fails closed across principal and scope boundaries", () => {
+    const tenantDenialRow = {
+      ...i2bAccountDenialRow,
+      operationScope: "TENANT_SCOPE",
+      tenantId: modelIds.tenantId,
+      accountId: null,
+      objectType: "TENANT",
+      objectId: modelIds.tenantId,
+      reasonCode: "TENANT_INACTIVE",
+      evidence: {
+        operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+        capability: "RESEARCH_MUTATE",
+        source_context: "PURE_RESEARCH",
+      },
+    } satisfies AuditRow;
+    const tenantSession = { ...i5Session, accountId: undefined };
+
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, tenantSession, authorityGraph)).toBe(true);
+    expect(
+      i5TenantScopeAuditAllowed(
+        { ...tenantDenialRow, evidence: { ...tenantDenialRow.evidence, source_context: "TEST_PORTFOLIO" } },
+        tenantSession,
+        authorityGraph,
+      ),
+    ).toBe(true);
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, accountId: modelIds.accountId }, authorityGraph)).toBe(false);
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, operation: "ACCOUNT_CONTEXT_RESOLVE" }, authorityGraph)).toBe(false);
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, capability: "ACCOUNT_AUTHORITY_READ" }, authorityGraph)).toBe(false);
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, i2cSession, authorityGraph)).toBe(false);
+    expect(
+      i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, principalId: "44444444-4444-4444-8444-444444444444" }, authorityGraph),
+    ).toBe(false);
+    expect(
+      i5TenantScopeAuditAllowed({ ...tenantDenialRow, tenantId: "55555555-5555-4555-8555-555555555555" }, tenantSession, authorityGraph),
+    ).toBe(false);
+
+    const userPortfolioRow = {
+      ...tenantDenialRow,
+      operationScope: "ACCOUNT_SCOPE",
+      accountId: modelIds.accountId,
+      objectType: "ACCOUNT",
+      objectId: modelIds.accountId,
+      evidence: { ...tenantDenialRow.evidence, source_context: "USER_PORTFOLIO" },
+    } satisfies AuditRow;
+    expect(i5ResearchDenialPolicy(userPortfolioRow, tenantSession)).toBe(false);
+    expect(i5ResearchDenialPolicy(userPortfolioRow, { ...tenantSession, accountId: modelIds.accountId })).toBe(true);
   });
 
   it("accepts PostgreSQL 17-normalized evidence expressions without weakening operator/value checks", () => {
