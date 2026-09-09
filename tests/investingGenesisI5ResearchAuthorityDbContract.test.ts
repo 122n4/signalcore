@@ -30,6 +30,14 @@ function normalize(value: string) {
   return value.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--.*$/gm, "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+const pg17EvidenceRegex = {
+  i2bOperation:
+    /coalesce\s*\(\s*\(*\s*evidence\s*->>\s*'operation'\s*\)*\s*,\s*''\s*\)\s*<>\s*'research_investigation_create_v1'/,
+  i2bCapability: /coalesce\s*\(\s*\(*\s*evidence\s*->>\s*'capability'\s*\)*\s*,\s*''\s*\)\s*<>\s*'research_mutate'/,
+  i5Operation: /\(*\s*evidence\s*->>\s*'operation'\s*\)*\s*=\s*'research_investigation_create_v1'/,
+  i5Capability: /\(*\s*evidence\s*->>\s*'capability'\s*\)*\s*=\s*'research_mutate'/,
+};
+
 function sliceBetween(source: string, start: string, end: string) {
   const startIndex = source.indexOf(start);
   const endIndex = source.indexOf(end, startIndex + start.length);
@@ -436,6 +444,26 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).toContain("join investing.accounts a");
     expect(policy).not.toContain("to service_role");
     expect(policy).not.toMatch(/\bwith check\s*\(\s*true\s*\)/);
+  });
+
+  it("accepts PostgreSQL 17-normalized evidence expressions without weakening operator/value checks", () => {
+    expect("coalesce((evidence ->> 'operation'), '') <> 'research_investigation_create_v1'").toMatch(
+      pg17EvidenceRegex.i2bOperation,
+    );
+    expect("coalesce((evidence ->> 'capability'), '') <> 'research_mutate'").toMatch(pg17EvidenceRegex.i2bCapability);
+    expect("((evidence ->> 'operation') = 'research_investigation_create_v1')").toMatch(pg17EvidenceRegex.i5Operation);
+    expect("((evidence ->> 'capability') = 'research_mutate')").toMatch(pg17EvidenceRegex.i5Capability);
+
+    for (const malformed of [
+      ["coalesce((evidence ->> 'operation'), '') = 'research_investigation_create_v1'", pg17EvidenceRegex.i2bOperation],
+      ["coalesce((evidence ->> 'wrong_key'), '') <> 'research_investigation_create_v1'", pg17EvidenceRegex.i2bOperation],
+      ["coalesce((evidence ->> 'capability'), '') <> 'wrong_capability'", pg17EvidenceRegex.i2bCapability],
+      ["((evidence ->> 'operation') <> 'research_investigation_create_v1')", pg17EvidenceRegex.i5Operation],
+      ["((evidence ->> 'capability') = 'account_authority_read')", pg17EvidenceRegex.i5Capability],
+      ["'research_investigation_create_v1'", pg17EvidenceRegex.i5Operation],
+    ] as const) {
+      expect(malformed[0]).not.toMatch(malformed[1]);
+    }
   });
 
   it("models the effective permissive RLS algebra and fails closed for mixed authority tokens", () => {

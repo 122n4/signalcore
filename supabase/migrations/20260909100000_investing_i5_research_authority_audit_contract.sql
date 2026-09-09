@@ -611,8 +611,8 @@ begin
 
   if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''account_context_resolve'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''account_authority_read'''
-    or v_policy_expr !~ 'coalesce\s*\(\s*evidence\s*->>\s*''operation''\s*,\s*''''\s*\)\s*<>\s*''research_investigation_create_v1'''
-    or v_policy_expr !~ 'coalesce\s*\(\s*evidence\s*->>\s*''capability''\s*,\s*''''\s*\)\s*<>\s*''research_mutate'''
+    or v_policy_expr !~ 'coalesce\s*\(\s*\(*\s*evidence\s*->>\s*''operation''\s*\)*\s*,\s*''''\s*\)\s*<>\s*''research_investigation_create_v1'''
+    or v_policy_expr !~ 'coalesce\s*\(\s*\(*\s*evidence\s*->>\s*''capability''\s*\)*\s*,\s*''''\s*\)\s*<>\s*''research_mutate'''
     or v_policy_expr !~ 'not\s+\(\s*evidence\s*\?\s*''source_context''\s*\)'
     or v_policy_expr !~ 'operation_scope\s*=\s*''account_scope'''
     or v_policy_expr !~ 'object_type\s*=\s*''account'''
@@ -673,8 +673,8 @@ begin
     or v_policy_expr !~ 'operation_scope\s*=\s*''account_scope'''
     or v_policy_expr !~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     or v_policy_expr !~ 'object_type\s*=\s*''account'''
-    or v_policy_expr !~ 'evidence\s*->>\s*''operation''\s*=\s*''research_investigation_create_v1'''
-    or v_policy_expr !~ 'evidence\s*->>\s*''capability''\s*=\s*''research_mutate'''
+    or v_policy_expr !~ '\(*\s*evidence\s*->>\s*''operation''\s*\)*\s*=\s*''research_investigation_create_v1'''
+    or v_policy_expr !~ '\(*\s*evidence\s*->>\s*''capability''\s*\)*\s*=\s*''research_mutate'''
     or v_policy_expr !~ 'source_context' then
     raise exception 'I5 Research authority audit postcondition violation: canonical Research denial policy is not fail-closed';
   end if;
