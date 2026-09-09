@@ -102,6 +102,11 @@ type AuthorityGraph = {
     role: "OWNER";
     state: "ACTIVE" | "REVOKED";
   };
+  account: {
+    accountId: string;
+    tenantId: string;
+    initialPrincipalId: string;
+  };
 };
 
 const modelIds = {
@@ -201,6 +206,11 @@ const authorityGraph: AuthorityGraph = {
     role: "OWNER",
     state: "ACTIVE",
   },
+  account: {
+    accountId: modelIds.accountId,
+    tenantId: modelIds.tenantId,
+    initialPrincipalId: modelIds.principalId,
+  },
 };
 
 function oldI2bDenialPolicy(row: AuditRow, session: SessionContext) {
@@ -264,6 +274,7 @@ function i5ResearchDenialPolicy(row: AuditRow, session: SessionContext) {
   if (row.operationScope === "TENANT_SCOPE") {
     return (
       row.tenantId === session.tenantId &&
+      (session.accountId ?? "") === "" &&
       row.accountId === null &&
       row.objectType === "TENANT" &&
       row.objectId === row.tenantId &&
@@ -294,6 +305,47 @@ function i5ResearchDenialPolicy(row: AuditRow, session: SessionContext) {
 
 function permissiveInsertAllowed(row: AuditRow, session: SessionContext, i2bPolicy: typeof oldI2bDenialPolicy) {
   return i2bPolicy(row, session) || i2cBootstrapPolicy(row, session) || i5ResearchDenialPolicy(row, session);
+}
+
+function oldI2bTenantReadPolicy(graph: AuthorityGraph, session: SessionContext) {
+  return (
+    graph.tenant.tenantId === session.tenantId &&
+    graph.account.accountId === session.accountId &&
+    graph.account.tenantId === graph.tenant.tenantId &&
+    graph.account.initialPrincipalId === session.principalId &&
+    graph.principal.principalId === graph.account.initialPrincipalId &&
+    graph.principal.externalProvider === session.externalProvider &&
+    graph.principal.externalSubject === session.externalSubject &&
+    graph.principal.state === "ACTIVE"
+  );
+}
+
+function correctedI2bTenantReadPolicy(graph: AuthorityGraph, session: SessionContext) {
+  return (
+    session.operation === "ACCOUNT_CONTEXT_RESOLVE" &&
+    session.capability === "ACCOUNT_AUTHORITY_READ" &&
+    oldI2bTenantReadPolicy(graph, session)
+  );
+}
+
+function oldI2bTenantMembershipReadPolicy(graph: AuthorityGraph, session: SessionContext) {
+  return (
+    graph.membership.tenantId === session.tenantId &&
+    graph.membership.role === "OWNER" &&
+    graph.membership.state === "ACTIVE" &&
+    graph.principal.principalId === graph.membership.principalId &&
+    graph.principal.externalProvider === session.externalProvider &&
+    graph.principal.externalSubject === session.externalSubject &&
+    graph.principal.state === "ACTIVE"
+  );
+}
+
+function correctedI2bTenantMembershipReadPolicy(graph: AuthorityGraph, session: SessionContext) {
+  return (
+    session.operation === "ACCOUNT_CONTEXT_RESOLVE" &&
+    session.capability === "ACCOUNT_AUTHORITY_READ" &&
+    oldI2bTenantMembershipReadPolicy(graph, session)
+  );
 }
 
 function i5TenantReadPolicy(graph: AuthorityGraph, session: SessionContext) {
@@ -328,7 +380,10 @@ function i5TenantMembershipReadPolicy(graph: AuthorityGraph, session: SessionCon
 }
 
 function i5TenantScopeAuditAllowed(row: AuditRow, session: SessionContext, graph: AuthorityGraph) {
-  return i5ResearchDenialPolicy(row, session) && i5TenantReadPolicy(graph, session) && i5TenantMembershipReadPolicy(graph, session);
+  const tenantVisible = correctedI2bTenantReadPolicy(graph, session) || i5TenantReadPolicy(graph, session);
+  const membershipVisible =
+    correctedI2bTenantMembershipReadPolicy(graph, session) || i5TenantMembershipReadPolicy(graph, session);
+  return i5ResearchDenialPolicy(row, session) && tenantVisible && membershipVisible;
 }
 
 function commonPreAuthorityChecks(row: PreAuthorityAuditRow) {
@@ -504,6 +559,7 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).toContain("evidence ->> 'operation' = 'research_investigation_create_v1'");
     expect(policy).toContain("evidence ->> 'capability' = 'research_mutate'");
     expect(policy).toContain("operation_scope = 'tenant_scope'");
+    expect(policy).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') = ''");
     expect(policy).toContain("account_id is null");
     expect(policy).toContain("object_type = 'tenant'");
     expect(policy).toContain("object_id = tenant_id::text");
@@ -521,6 +577,16 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
 
   it("adds exact Research tenant-scope read substrate without synthetic account authority", () => {
     const normalized = normalize(read(migrationPath));
+    const i2bTenantPolicy = sliceBetween(
+      normalized,
+      "create policy tenants_i2b_authority_read",
+      "drop policy tenant_memberships_i2b_authority_read",
+    );
+    const i2bMembershipPolicy = sliceBetween(
+      normalized,
+      "create policy tenant_memberships_i2b_authority_read",
+      "create policy tenants_i5_research_authority_read",
+    );
     const tenantPolicy = sliceBetween(
       normalized,
       "create policy tenants_i5_research_authority_read",
@@ -531,6 +597,21 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       "create policy tenant_memberships_i5_research_authority_read",
       "drop policy audit_events_i2b_authority_denial_insert",
     );
+
+    expect(normalized).toContain("drop policy tenants_i2b_authority_read on investing.tenants");
+    expect(normalized).toContain("drop policy tenant_memberships_i2b_authority_read on investing.tenant_memberships");
+    for (const policy of [i2bTenantPolicy, i2bMembershipPolicy]) {
+      expect(policy).toContain("for select");
+      expect(policy).toContain("to investing_app");
+      expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'account_context_resolve'");
+      expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'account_authority_read'");
+      expect(policy).toContain("nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid");
+      expect(policy).toContain("p.state = 'active'");
+      expect(policy).not.toContain("research_investigation_create_v1");
+      expect(policy).not.toContain("research_mutate");
+      expect(policy).not.toContain("to service_role");
+    }
+    expect(i2bMembershipPolicy).toContain("role = 'owner'");
 
     for (const policy of [tenantPolicy, membershipPolicy]) {
       expect(policy).toContain("for select");
@@ -553,7 +634,32 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(normalized).toContain("tenants_i5_research_authority_read");
     expect(normalized).toContain("tenant_memberships_i5_research_authority_read");
     expect(normalized).toContain("expected exact research tenant-scope read policies");
+    expect(normalized).toContain("expected exact i2-b tenant/account-context read policies");
     expect(normalized).toContain("shared roles must not gain tenant authority read privileges");
+  });
+
+  it("models effective tenant read policy OR-composition and isolates stale Research account GUCs", () => {
+    const tenantSession = { ...i5Session, accountId: undefined };
+    const matchingAccountResearchSession = { ...i5Session, accountId: modelIds.accountId };
+    const unrelatedAccountResearchSession = {
+      ...i5Session,
+      accountId: "44444444-4444-4444-8444-444444444444",
+    };
+
+    expect(oldI2bTenantReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(true);
+    expect(oldI2bTenantMembershipReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(true);
+    expect(correctedI2bTenantReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(correctedI2bTenantMembershipReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(i5TenantReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(i5TenantMembershipReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(correctedI2bTenantReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
+    expect(correctedI2bTenantMembershipReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
+    expect(i5TenantReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
+    expect(i5TenantMembershipReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
+    expect(i5TenantReadPolicy(authorityGraph, tenantSession)).toBe(true);
+    expect(i5TenantMembershipReadPolicy(authorityGraph, tenantSession)).toBe(true);
+    expect(correctedI2bTenantReadPolicy(authorityGraph, i2bSession)).toBe(true);
+    expect(correctedI2bTenantMembershipReadPolicy(authorityGraph, i2bSession)).toBe(true);
   });
 
   it("models Research tenant-scope audit without account GUC and fails closed across principal and scope boundaries", () => {
@@ -582,6 +688,13 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       ),
     ).toBe(true);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, accountId: modelIds.accountId }, authorityGraph)).toBe(false);
+    expect(
+      i5TenantScopeAuditAllowed(
+        tenantDenialRow,
+        { ...tenantSession, accountId: "44444444-4444-4444-8444-444444444444" },
+        authorityGraph,
+      ),
+    ).toBe(false);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, operation: "ACCOUNT_CONTEXT_RESOLVE" }, authorityGraph)).toBe(false);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, capability: "ACCOUNT_AUTHORITY_READ" }, authorityGraph)).toBe(false);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, i2cSession, authorityGraph)).toBe(false);
