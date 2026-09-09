@@ -15,6 +15,12 @@ const i2bMigrationPath = path.join(
   "migrations",
   "20260825123000_investing_genesis_i2_authorized_context.sql",
 );
+const i2LedgerMigrationPath = path.join(
+  repoRoot,
+  "supabase",
+  "migrations",
+  "20260831221500_investing_genesis_i2_ledger_schema.sql",
+);
 
 function read(filePath: string) {
   return fs.readFileSync(filePath, "utf8");
@@ -155,6 +161,22 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(normalized).toContain("not c.relrowsecurity");
     expect(normalized).toContain("not c.relforcerowsecurity");
     expect(normalized).toContain("audit tables must remain owner/rls/force rls protected");
+  });
+
+  it("scopes policy inventory checks to owned audit tables so accepted ledger policies are not false rejected", () => {
+    const normalized = normalize(read(migrationPath));
+    const ledger = normalize(read(i2LedgerMigrationPath));
+    const postcondition = sliceBetween(normalized, "do $$ declare v_bad_count integer; v_policy_expr text;", "select pg_catalog.regexp_replace");
+
+    expect(ledger).toContain("create policy idempotency_records_i2_ledger_read");
+    expect(ledger).toContain("create policy ledger_transactions_i2_ledger_insert");
+    expect(postcondition).toContain("c.relname in ('pre_authority_audit_events', 'audit_events')");
+    expect(postcondition).toContain("unexpected policy on owned audit tables");
+    expect(postcondition).toContain("expected exact pre-authority audit policy");
+    expect(postcondition).toContain("expected exact canonical audit policies");
+    expect(postcondition).not.toContain("idempotency_records_i2_ledger_read");
+    expect(postcondition).not.toContain("ledger_accounts_i2_ledger_read");
+    expect(postcondition).not.toContain("ledger_transactions_i2_ledger_insert");
   });
 
   it("does not edit the accepted I2-B migration and intentionally supersedes only by additive migration", () => {
