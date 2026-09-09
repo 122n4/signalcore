@@ -371,10 +371,8 @@ create policy audit_events_i2b_authority_denial_insert
   for insert
   to investing_app
   with check (
-    (
-      current_setting('syntrake.investing.operation', true) is distinct from 'RESEARCH_INVESTIGATION_CREATE_V1'
-      or current_setting('syntrake.investing.capability', true) is distinct from 'RESEARCH_MUTATE'
-    )
+    current_setting('syntrake.investing.operation', true) = 'ACCOUNT_CONTEXT_RESOLVE'
+    and current_setting('syntrake.investing.capability', true) = 'ACCOUNT_AUTHORITY_READ'
     and coalesce(evidence ->> 'operation', '') <> 'RESEARCH_INVESTIGATION_CREATE_V1'
     and coalesce(evidence ->> 'capability', '') <> 'RESEARCH_MUTATE'
     and not (evidence ? 'source_context')
@@ -609,15 +607,20 @@ begin
     and c.relname = 'audit_events'
     and pol.polname = 'audit_events_i2b_authority_denial_insert';
 
-  if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s+is\s+distinct\s+from\s+''research_investigation_create_v1'''
-    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s+is\s+distinct\s+from\s+''research_mutate'''
+  if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''account_context_resolve'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''account_authority_read'''
     or v_policy_expr !~ 'coalesce\s*\(\s*evidence\s*->>\s*''operation''\s*,\s*''''\s*\)\s*<>\s*''research_investigation_create_v1'''
     or v_policy_expr !~ 'coalesce\s*\(\s*evidence\s*->>\s*''capability''\s*,\s*''''\s*\)\s*<>\s*''research_mutate'''
     or v_policy_expr !~ 'not\s+\(\s*evidence\s*\?\s*''source_context''\s*\)'
     or v_policy_expr !~ 'operation_scope\s*=\s*''account_scope'''
     or v_policy_expr !~ 'object_type\s*=\s*''account'''
     or v_policy_expr !~ 'object_id\s*=\s*\(?account_id\)?' then
-    raise exception 'I5 Research authority audit postcondition violation: I2-B denial policy is not disjoint from I5 Research authority';
+    raise exception 'I5 Research authority audit postcondition violation: I2-B denial policy is not positively gated to exact authority identity';
+  end if;
+
+  if v_policy_expr ~ 'is\s+distinct\s+from\s+''research_investigation_create_v1'''
+    or v_policy_expr ~ 'is\s+distinct\s+from\s+''research_mutate''' then
+    raise exception 'I5 Research authority audit postcondition violation: I2-B denial policy must not rely on broad NOT-Research fallback';
   end if;
 
   select pg_catalog.regexp_replace(

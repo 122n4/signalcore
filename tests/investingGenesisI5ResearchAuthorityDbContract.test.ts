@@ -87,6 +87,12 @@ const i5Session: SessionContext = {
   capability: "RESEARCH_MUTATE",
 };
 
+const i2cSession: SessionContext = {
+  ...i2bSession,
+  operation: "INITIAL_PERSONAL_BOOTSTRAP",
+  capability: "AUTHORITY_BOOTSTRAP",
+};
+
 const i2bAccountDenialRow: AuditRow = {
   actorKind: "USER_PRINCIPAL",
   actorId: "user_clerk_123",
@@ -100,6 +106,14 @@ const i2bAccountDenialRow: AuditRow = {
   outcome: "DENIED",
   reasonCode: "ACCESS_INACTIVE",
   evidence: {},
+};
+
+const i2cBootstrapRow: AuditRow = {
+  ...i2bAccountDenialRow,
+  action: "AUTHORITY_BOOTSTRAP_FAILED",
+  objectType: "ACCOUNT",
+  outcome: "DENIED",
+  reasonCode: "ACCESS_INACTIVE",
 };
 
 function oldI2bDenialPolicy(row: AuditRow, session: SessionContext) {
@@ -126,13 +140,13 @@ function oldI2bDenialPolicy(row: AuditRow, session: SessionContext) {
 }
 
 function correctedI2bDenialPolicy(row: AuditRow, session: SessionContext) {
-  const isI5ResearchSession =
-    session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" && session.capability === "RESEARCH_MUTATE";
+  const isExactI2bSession =
+    session.operation === "ACCOUNT_CONTEXT_RESOLVE" && session.capability === "ACCOUNT_AUTHORITY_READ";
   const isResearchShapedEvidence =
     row.evidence.operation === "RESEARCH_INVESTIGATION_CREATE_V1" ||
     row.evidence.capability === "RESEARCH_MUTATE" ||
     Object.hasOwn(row.evidence, "source_context");
-  return !isI5ResearchSession && !isResearchShapedEvidence && oldI2bDenialPolicy(row, session);
+  return isExactI2bSession && !isResearchShapedEvidence && oldI2bDenialPolicy(row, session);
 }
 
 function i2cBootstrapPolicy(row: AuditRow, session: SessionContext) {
@@ -282,8 +296,20 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
 
   it("adds a disjoint canonical Research denial policy with exact tenant and account scope semantics", () => {
     const normalized = normalize(read(migrationPath));
+    const i2bPolicy = sliceBetween(
+      normalized,
+      "create policy audit_events_i2b_authority_denial_insert",
+      "create policy audit_events_i5_research_investigation_create_denial_insert",
+    );
     const policy = sliceBetween(normalized, "create policy audit_events_i5_research_investigation_create_denial_insert", "reset role;");
 
+    expect(i2bPolicy).toContain("current_setting('syntrake.investing.operation', true) = 'account_context_resolve'");
+    expect(i2bPolicy).toContain("current_setting('syntrake.investing.capability', true) = 'account_authority_read'");
+    expect(i2bPolicy).toContain("coalesce(evidence ->> 'operation', '') <> 'research_investigation_create_v1'");
+    expect(i2bPolicy).toContain("coalesce(evidence ->> 'capability', '') <> 'research_mutate'");
+    expect(i2bPolicy).toContain("not (evidence ? 'source_context')");
+    expect(i2bPolicy).not.toContain("is distinct from 'research_investigation_create_v1'");
+    expect(i2bPolicy).not.toContain("is distinct from 'research_mutate'");
     expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'research_investigation_create_v1'");
     expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
     expect(policy).toContain("actor_kind = 'user_principal'");
@@ -307,7 +333,7 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).not.toMatch(/\bwith check\s*\(\s*true\s*\)/);
   });
 
-  it("models the permissive RLS algebra and closes the account-scope Research bypass through I2-B", () => {
+  it("models the effective permissive RLS algebra and fails closed for mixed authority tokens", () => {
     const validI2bRow = { ...i2bAccountDenialRow };
     const validI5AccountRow: AuditRow = {
       ...i2bAccountDenialRow,
@@ -318,8 +344,10 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       },
     };
 
+    expect(correctedI2bDenialPolicy(validI2bRow, i2bSession)).toBe(true);
     expect(permissiveInsertAllowed(validI2bRow, i2bSession, correctedI2bDenialPolicy)).toBe(true);
     expect(permissiveInsertAllowed(validI5AccountRow, i5Session, correctedI2bDenialPolicy)).toBe(true);
+    expect(permissiveInsertAllowed(i2cBootstrapRow, i2cSession, correctedI2bDenialPolicy)).toBe(true);
     expect(permissiveInsertAllowed(validI5AccountRow, i5Session, oldI2bDenialPolicy)).toBe(true);
 
     for (const badEvidence of [
@@ -336,12 +364,19 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       expect(permissiveInsertAllowed(malformedResearchRow, i5Session, correctedI2bDenialPolicy)).toBe(false);
     }
 
-    expect(
-      permissiveInsertAllowed(validI5AccountRow, { ...i5Session, operation: "ACCOUNT_CONTEXT_RESOLVE" }, correctedI2bDenialPolicy),
-    ).toBe(false);
-    expect(
-      permissiveInsertAllowed(validI5AccountRow, { ...i5Session, capability: "ACCOUNT_AUTHORITY_READ" }, correctedI2bDenialPolicy),
-    ).toBe(false);
+    for (const session of [
+      { ...i2bSession, operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: "ACCOUNT_AUTHORITY_READ" },
+      { ...i2bSession, operation: "ACCOUNT_CONTEXT_RESOLVE", capability: "RESEARCH_MUTATE" },
+      { ...i2bSession, operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: undefined },
+      { ...i2bSession, operation: undefined, capability: "RESEARCH_MUTATE" },
+      { ...i2bSession, operation: undefined, capability: undefined },
+    ]) {
+      expect(oldI2bDenialPolicy(validI2bRow, session)).toBe(true);
+      expect(i5ResearchDenialPolicy(validI2bRow, session)).toBe(false);
+      expect(permissiveInsertAllowed(validI2bRow, session, correctedI2bDenialPolicy)).toBe(false);
+    }
+
+    expect(permissiveInsertAllowed(validI5AccountRow, i2bSession, correctedI2bDenialPolicy)).toBe(false);
   });
 
   it("keeps shared roles out, investing_app scoped, and RLS/FORCE RLS postconditioned", () => {
@@ -357,6 +392,9 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(normalized).toContain("audit tables must remain owner/rls/force rls protected");
     expect(normalized).toContain("pol.polpermissive");
     expect(normalized).toContain("owned audit policies must declare the intended permissive or model");
+    expect(normalized).toContain("i2-b denial policy must not rely on broad not-research fallback");
+    expect(normalized).not.toContain("is distinct from 'research_investigation_create_v1'");
+    expect(normalized).not.toContain("is distinct from 'research_mutate'");
   });
 
   it("scopes policy inventory checks to owned audit tables so accepted ledger policies are not false rejected", () => {
