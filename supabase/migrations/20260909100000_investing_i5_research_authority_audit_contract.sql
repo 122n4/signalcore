@@ -342,7 +342,9 @@ create policy pre_authority_audit_events_i2b_i5_insert
     and length(correlation_id) between 16 and 512
     and (
       (
-        operation = 'ACCOUNT_CONTEXT_RESOLVE'
+        coalesce(current_setting('syntrake.investing.operation', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.capability', true), '') = ''
+        and operation = 'ACCOUNT_CONTEXT_RESOLVE'
         and operation_scope = 'ACCOUNT_SCOPE'
         and selector_kind = 'ACCOUNT_ID'
       )
@@ -637,7 +639,9 @@ begin
     and c.relname = 'pre_authority_audit_events'
     and pol.polname = 'pre_authority_audit_events_i2b_i5_insert';
 
-  if v_policy_expr !~ 'operation\s*=\s*''account_context_resolve'''
+  if v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
+    or v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
+    or v_policy_expr !~ 'operation\s*=\s*''account_context_resolve'''
     or v_policy_expr !~ 'operation_scope\s*=\s*''account_scope'''
     or v_policy_expr !~ 'selector_kind\s*=\s*''account_id'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''

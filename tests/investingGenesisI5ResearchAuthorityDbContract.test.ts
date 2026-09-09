@@ -64,6 +64,19 @@ type AuditRow = {
   evidence: Record<string, string | undefined>;
 };
 
+type PreAuthorityAuditRow = {
+  externalProvider: "CLERK";
+  externalSubjectHash: string;
+  correlationId: string;
+  operation: "ACCOUNT_CONTEXT_RESOLVE" | "RESEARCH_INVESTIGATION_CREATE_V1";
+  operationScope: "ACCOUNT_SCOPE" | "TENANT_SCOPE" | "DOMAIN_SCOPE";
+  selectorKind: "ACCOUNT_ID" | "TENANT_ID";
+  selectorHash: string;
+  resolutionStage: string;
+  outcome: "DENIED" | "ERROR" | "SUCCEEDED";
+  reasonCode: string;
+};
+
 const modelIds = {
   principalId: "11111111-1111-4111-8111-111111111111",
   tenantId: "22222222-2222-4222-8222-222222222222",
@@ -108,11 +121,39 @@ const i2bAccountDenialRow: AuditRow = {
   evidence: {},
 };
 
+const cleanPreAuthoritySession: SessionContext = {
+  ...i2bSession,
+  operation: undefined,
+  capability: undefined,
+};
+
 const i2cBootstrapRow: AuditRow = {
   ...i2bAccountDenialRow,
   action: "AUTHORITY_BOOTSTRAP_FAILED",
   objectType: "ACCOUNT",
   outcome: "DENIED",
+  reasonCode: "ACCESS_INACTIVE",
+};
+
+const validI2bPreAuthorityRow: PreAuthorityAuditRow = {
+  externalProvider: "CLERK",
+  externalSubjectHash: "a".repeat(64),
+  correlationId: "correlation-id-123456",
+  operation: "ACCOUNT_CONTEXT_RESOLVE",
+  operationScope: "ACCOUNT_SCOPE",
+  selectorKind: "ACCOUNT_ID",
+  selectorHash: "b".repeat(64),
+  resolutionStage: "ACCOUNT_SELECTOR_LOOKUP",
+  outcome: "DENIED",
+  reasonCode: "ACCOUNT_SELECTOR_NOT_ACCESSIBLE",
+};
+
+const validI5PreAuthorityRow: PreAuthorityAuditRow = {
+  ...validI2bPreAuthorityRow,
+  operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+  operationScope: "ACCOUNT_SCOPE",
+  selectorKind: "ACCOUNT_ID",
+  resolutionStage: "ACCOUNT_ACCESS_LOOKUP",
   reasonCode: "ACCESS_INACTIVE",
 };
 
@@ -209,6 +250,47 @@ function permissiveInsertAllowed(row: AuditRow, session: SessionContext, i2bPoli
   return i2bPolicy(row, session) || i2cBootstrapPolicy(row, session) || i5ResearchDenialPolicy(row, session);
 }
 
+function commonPreAuthorityChecks(row: PreAuthorityAuditRow) {
+  return (
+    row.externalProvider === "CLERK" &&
+    (row.outcome === "DENIED" || row.outcome === "ERROR") &&
+    /^[0-9a-f]{64}$/.test(row.externalSubjectHash) &&
+    /^[0-9a-f]{64}$/.test(row.selectorHash) &&
+    row.correlationId.length >= 16 &&
+    row.correlationId.length <= 512
+  );
+}
+
+function oldPreAuthorityPolicy(row: PreAuthorityAuditRow, session: SessionContext) {
+  return (
+    commonPreAuthorityChecks(row) &&
+    ((row.operation === "ACCOUNT_CONTEXT_RESOLVE" &&
+      row.operationScope === "ACCOUNT_SCOPE" &&
+      row.selectorKind === "ACCOUNT_ID") ||
+      (session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
+        session.capability === "RESEARCH_MUTATE" &&
+        row.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
+        ((row.operationScope === "TENANT_SCOPE" && row.selectorKind === "TENANT_ID") ||
+          (row.operationScope === "ACCOUNT_SCOPE" && row.selectorKind === "ACCOUNT_ID"))))
+  );
+}
+
+function correctedPreAuthorityPolicy(row: PreAuthorityAuditRow, session: SessionContext) {
+  const cleanI2bPreAuthoritySession = (session.operation ?? "") === "" && (session.capability ?? "") === "";
+  return (
+    commonPreAuthorityChecks(row) &&
+    ((cleanI2bPreAuthoritySession &&
+      row.operation === "ACCOUNT_CONTEXT_RESOLVE" &&
+      row.operationScope === "ACCOUNT_SCOPE" &&
+      row.selectorKind === "ACCOUNT_ID") ||
+      (session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
+        session.capability === "RESEARCH_MUTATE" &&
+        row.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
+        ((row.operationScope === "TENANT_SCOPE" && row.selectorKind === "TENANT_ID") ||
+          (row.operationScope === "ACCOUNT_SCOPE" && row.selectorKind === "ACCOUNT_ID"))))
+  );
+}
+
 describe("Investing Genesis I5 Research authority DB audit contract", () => {
   it("extends only the canonical audit contract surface and leaves runtime/persistence untouched", () => {
     const normalized = normalize(read(migrationPath));
@@ -280,6 +362,8 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
 
     expect(policy).toContain("for insert");
     expect(policy).toContain("to investing_app");
+    expect(policy).toContain("coalesce(current_setting('syntrake.investing.operation', true), '') = ''");
+    expect(policy).toContain("coalesce(current_setting('syntrake.investing.capability', true), '') = ''");
     expect(policy).toContain("operation = 'account_context_resolve'");
     expect(policy).toContain("operation_scope = 'account_scope'");
     expect(policy).toContain("selector_kind = 'account_id'");
@@ -292,6 +376,27 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).not.toMatch(/operation_scope\s+is\s+not\s+null/);
     expect(policy).not.toMatch(/selector_kind\s+is\s+not\s+null/);
     expect(policy).not.toMatch(/\bwith check\s*\(\s*true\s*\)/);
+  });
+
+  it("models pre-authority policy algebra and closes Research-to-I2-B operation confusion", () => {
+    expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, cleanPreAuthoritySession)).toBe(true);
+    expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, { ...cleanPreAuthoritySession, operation: "" })).toBe(true);
+    expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, { ...cleanPreAuthoritySession, capability: "" })).toBe(true);
+    expect(correctedPreAuthorityPolicy(validI5PreAuthorityRow, i5Session)).toBe(true);
+    expect(oldPreAuthorityPolicy(validI2bPreAuthorityRow, i5Session)).toBe(true);
+    expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, i5Session)).toBe(false);
+
+    for (const session of [
+      { ...i2bSession, operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: "ACCOUNT_AUTHORITY_READ" },
+      { ...i2bSession, operation: "ACCOUNT_CONTEXT_RESOLVE", capability: "RESEARCH_MUTATE" },
+      i2cSession,
+      { ...i2bSession, operation: "UNRELATED_OPERATION", capability: "UNRELATED_CAPABILITY" },
+      { ...i2bSession, operation: "ACCOUNT_CONTEXT_RESOLVE", capability: "ACCOUNT_AUTHORITY_READ" },
+    ]) {
+      expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, session)).toBe(false);
+    }
+
+    expect(correctedPreAuthorityPolicy(validI5PreAuthorityRow, cleanPreAuthoritySession)).toBe(false);
   });
 
   it("adds a disjoint canonical Research denial policy with exact tenant and account scope semantics", () => {
@@ -392,6 +497,8 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(normalized).toContain("audit tables must remain owner/rls/force rls protected");
     expect(normalized).toContain("pol.polpermissive");
     expect(normalized).toContain("owned audit policies must declare the intended permissive or model");
+    expect(normalized).toContain("coalesce(current_setting('syntrake.investing.operation', true), '') = ''");
+    expect(normalized).toContain("coalesce(current_setting('syntrake.investing.capability', true), '') = ''");
     expect(normalized).toContain("i2-b denial policy must not rely on broad not-research fallback");
     expect(normalized).not.toContain("is distinct from 'research_investigation_create_v1'");
     expect(normalized).not.toContain("is distinct from 'research_mutate'");
