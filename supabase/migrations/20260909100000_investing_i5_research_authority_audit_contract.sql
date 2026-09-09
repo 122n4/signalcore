@@ -366,6 +366,28 @@ create policy pre_authority_audit_events_i2b_i5_insert
     )
   );
 
+drop policy accounts_i2b_authority_read on investing.accounts;
+
+create policy accounts_i2b_authority_read
+  on investing.accounts
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'ACCOUNT_CONTEXT_RESOLVE'
+    and current_setting('syntrake.investing.capability', true) = 'ACCOUNT_AUTHORITY_READ'
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and accounts.initial_tenant_membership_id is not null
+    and exists (
+      select 1
+      from investing.principals p
+      where p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.principal_id = accounts.initial_principal_id
+        and p.state = 'ACTIVE'
+    )
+  );
+
 drop policy tenants_i2b_authority_read on investing.tenants;
 
 create policy tenants_i2b_authority_read
@@ -412,6 +434,34 @@ create policy tenant_memberships_i2b_authority_read
     )
   );
 
+drop policy account_access_i2b_authority_read on investing.account_access;
+
+create policy account_access_i2b_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'ACCOUNT_CONTEXT_RESOLVE'
+    and current_setting('syntrake.investing.capability', true) = 'ACCOUNT_AUTHORITY_READ'
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.principals p
+      join investing.tenant_memberships tm
+        on tm.principal_id = p.principal_id
+       and tm.tenant_id = account_access.tenant_id
+       and tm.tenant_membership_id = account_access.tenant_membership_id
+      where p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+    )
+  );
+
 create policy tenants_i5_research_authority_read
   on investing.tenants
   for select
@@ -453,6 +503,90 @@ create policy tenant_memberships_i5_research_authority_read
         and p.external_provider = current_setting('syntrake.investing.external_provider', true)
         and p.external_subject = current_setting('syntrake.investing.external_subject', true)
         and p.state = 'ACTIVE'
+    )
+  );
+
+create policy accounts_i5_research_account_authority_read
+  on investing.accounts
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.principals p
+      where p.principal_id = accounts.initial_principal_id
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+    )
+  );
+
+create policy tenants_i5_research_account_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.accounts a
+      where a.account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+        and a.tenant_id = tenants.tenant_id
+        and a.initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    )
+  );
+
+create policy tenant_memberships_i5_research_account_authority_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and exists (
+      select 1
+      from investing.accounts a
+      where a.account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+        and a.tenant_id = tenant_memberships.tenant_id
+        and a.initial_principal_id = tenant_memberships.principal_id
+    )
+  );
+
+create policy account_access_i5_research_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and exists (
+      select 1
+      from investing.accounts a
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = account_access.tenant_membership_id
+       and tm.tenant_id = account_access.tenant_id
+       and tm.principal_id = account_access.principal_id
+      where a.account_id = account_access.account_id
+        and a.tenant_id = account_access.tenant_id
+        and a.initial_principal_id = account_access.principal_id
+        and tm.role = 'OWNER'
     )
   );
 
@@ -718,6 +852,14 @@ begin
   where n.nspname = 'investing'
     and (
       (
+        c.relname = 'accounts'
+        and pol.polname = 'accounts_i2b_authority_read'
+      )
+      or (
+        c.relname = 'account_access'
+        and pol.polname = 'account_access_i2b_authority_read'
+      )
+      or (
         c.relname = 'tenants'
         and pol.polname = 'tenants_i2b_authority_read'
       )
@@ -730,8 +872,224 @@ begin
     and pol.polpermissive
     and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
 
+  if v_bad_count <> 4 then
+    raise exception 'I5 Research authority audit postcondition violation: expected exact I2-B account-context read policies';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and (
+      (
+        c.relname = 'accounts'
+        and pol.polname = 'accounts_i5_research_account_authority_read'
+      )
+      or (
+        c.relname = 'tenants'
+        and pol.polname = 'tenants_i5_research_account_authority_read'
+      )
+      or (
+        c.relname = 'tenant_memberships'
+        and pol.polname = 'tenant_memberships_i5_research_account_authority_read'
+      )
+      or (
+        c.relname = 'account_access'
+        and pol.polname = 'account_access_i5_research_account_authority_read'
+      )
+    )
+    and pol.polcmd = 'r'
+    and pol.polpermissive
+    and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
+
+  if v_bad_count <> 4 then
+    raise exception 'I5 Research authority audit postcondition violation: expected exact Research account-scope read policies';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join lateral (
+    select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    ) as expr
+  ) normalized
+  where n.nspname = 'investing'
+    and (
+      (
+        c.relname = 'accounts'
+        and pol.polname = 'accounts_i2b_authority_read'
+      )
+      or (
+        c.relname = 'account_access'
+        and pol.polname = 'account_access_i2b_authority_read'
+      )
+    )
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''account_context_resolve'''
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''account_authority_read'''
+    and normalized.expr ~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'p\.state\s*=\s*''active''';
+
   if v_bad_count <> 2 then
-    raise exception 'I5 Research authority audit postcondition violation: expected exact I2-B tenant/account-context read policies';
+    raise exception 'I5 Research authority audit postcondition violation: Account/AccountAccess I2-B read policies are not exact account-context substrate';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join lateral (
+    select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    ) as expr
+  ) normalized
+  where n.nspname = 'investing'
+    and (
+      (
+        c.relname = 'accounts'
+        and pol.polname = 'accounts_i5_research_account_authority_read'
+      )
+      or (
+        c.relname = 'tenants'
+        and pol.polname = 'tenants_i5_research_account_authority_read'
+      )
+      or (
+        c.relname = 'tenant_memberships'
+        and pol.polname = 'tenant_memberships_i5_research_account_authority_read'
+      )
+      or (
+        c.relname = 'account_access'
+        and pol.polname = 'account_access_i5_research_account_authority_read'
+      )
+    )
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    and normalized.expr ~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*<>\s*'''''
+    and normalized.expr !~ 'account_authority_read';
+
+  if v_bad_count <> 4 then
+    raise exception 'I5 Research authority audit postcondition violation: Research account-scope read policies are not exact operation/capability/account-present substrate';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join lateral (
+    select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    ) as expr
+  ) normalized
+  where n.nspname = 'investing'
+    and c.relname = 'accounts'
+    and pol.polname = 'accounts_i5_research_account_authority_read'
+    and normalized.expr ~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'initial_principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr !~ 'accounts\.state\s*=\s*''active''';
+
+  if v_bad_count <> 1 then
+    raise exception 'I5 Research authority audit postcondition violation: Research account read policy is not account-bound and lifecycle-visible';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join lateral (
+    select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    ) as expr
+  ) normalized
+  where n.nspname = 'investing'
+    and c.relname = 'tenants'
+    and pol.polname = 'tenants_i5_research_account_authority_read'
+    and normalized.expr ~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'a\.account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'a\.tenant_id\s*=\s*tenants\.tenant_id'
+    and normalized.expr ~ 'a\.initial_principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr !~ 'tenants\.state\s*=\s*''active''';
+
+  if v_bad_count <> 1 then
+    raise exception 'I5 Research authority audit postcondition violation: Research account-scope tenant read policy is not account/tenant-bound and lifecycle-visible';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join lateral (
+    select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    ) as expr
+  ) normalized
+  where n.nspname = 'investing'
+    and c.relname = 'tenant_memberships'
+    and pol.polname = 'tenant_memberships_i5_research_account_authority_read'
+    and normalized.expr ~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'role\s*=\s*''owner'''
+    and normalized.expr ~ 'a\.account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'a\.tenant_id\s*=\s*tenant_memberships\.tenant_id'
+    and normalized.expr ~ 'a\.initial_principal_id\s*=\s*tenant_memberships\.principal_id'
+    and normalized.expr !~ 'tenant_memberships\.state\s*=\s*''active''';
+
+  if v_bad_count <> 1 then
+    raise exception 'I5 Research authority audit postcondition violation: Research account-scope membership read policy is not account/member-bound and lifecycle-visible';
+  end if;
+
+  select count(*)
+    into v_bad_count
+  from pg_catalog.pg_policy pol
+  join pg_catalog.pg_class c on c.oid = pol.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  cross join lateral (
+    select pg_catalog.regexp_replace(
+      lower(coalesce(pg_catalog.pg_get_expr(pol.polqual, pol.polrelid), '')),
+      '::text',
+      '',
+      'g'
+    ) as expr
+  ) normalized
+  where n.nspname = 'investing'
+    and c.relname = 'account_access'
+    and pol.polname = 'account_access_i5_research_account_authority_read'
+    and normalized.expr ~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
+    and normalized.expr ~ 'role\s*=\s*''owner'''
+    and normalized.expr ~ 'a\.account_id\s*=\s*account_access\.account_id'
+    and normalized.expr ~ 'a\.tenant_id\s*=\s*account_access\.tenant_id'
+    and normalized.expr ~ 'a\.initial_principal_id\s*=\s*account_access\.principal_id'
+    and normalized.expr ~ 'tm\.tenant_membership_id\s*=\s*account_access\.tenant_membership_id'
+    and normalized.expr ~ 'tm\.tenant_id\s*=\s*account_access\.tenant_id'
+    and normalized.expr ~ 'tm\.principal_id\s*=\s*account_access\.principal_id'
+    and normalized.expr !~ 'account_access\.state\s*=\s*''active''';
+
+  if v_bad_count <> 1 then
+    raise exception 'I5 Research authority audit postcondition violation: Research account-access read policy is not account/member/access-bound and lifecycle-visible';
   end if;
 
   select pg_catalog.regexp_replace(
@@ -944,7 +1302,7 @@ begin
     into v_bad_count
   from information_schema.role_table_grants
   where table_schema = 'investing'
-    and table_name in ('tenants', 'tenant_memberships')
+    and table_name in ('principals', 'accounts', 'tenants', 'tenant_memberships', 'account_access')
     and grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role');
 
   if v_bad_count <> 0 then
