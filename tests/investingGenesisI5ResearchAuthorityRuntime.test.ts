@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  isAuthorizedResearchInvestigationCreateContext,
   isAuthorizedInvestingContext,
+  resolveAuthorizedInvestingAccountContext,
   resolveAuthorizedResearchInvestigationCreateContext,
+  type AuthorizedInvestingContext,
   type InvestingAuthorityTransactionClient,
 } from "../lib/investing/authority/context";
 import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
@@ -206,7 +209,9 @@ describe("Investing Genesis I5 Research investigation create authority runtime",
       tenantMembershipId: ids.membershipId,
     });
     expect("accountId" in result.context).toBe(false);
-    expect(isAuthorizedInvestingContext(result.context)).toBe(true);
+    expect("accountAccessId" in result.context).toBe(false);
+    expect(isAuthorizedResearchInvestigationCreateContext(result.context)).toBe(true);
+    expect(isAuthorizedInvestingContext(result.context)).toBe(false);
     expect(client?.queries.some((query) => query.text.includes("from investing.accounts"))).toBe(false);
     expect(client?.queries.some((query) => query.text.includes("from investing.account_access"))).toBe(false);
     expect(setConfigValues(client)).toContainEqual(["syntrake.investing.operation_scope", "TENANT_SCOPE"]);
@@ -226,6 +231,8 @@ describe("Investing Genesis I5 Research investigation create authority runtime",
       expect("sourceContext" in result.context).toBe(true);
       if (!("sourceContext" in result.context)) throw new Error("expected Research context");
       expect(result.context.sourceContext).toBe("TEST_PORTFOLIO");
+      expect(isAuthorizedResearchInvestigationCreateContext(result.context)).toBe(true);
+      expect(isAuthorizedInvestingContext(result.context)).toBe(false);
     }
   });
 
@@ -247,7 +254,8 @@ describe("Investing Genesis I5 Research investigation create authority runtime",
       accountId: ids.accountId,
       accountAccessId: ids.accessId,
     });
-    expect(isAuthorizedInvestingContext(result.context)).toBe(true);
+    expect(isAuthorizedResearchInvestigationCreateContext(result.context)).toBe(true);
+    expect(isAuthorizedInvestingContext(result.context)).toBe(false);
     expect(setConfigValues(client)).toContainEqual(["syntrake.investing.account_id", ids.accountId]);
     expect(setConfigValues(client)).toContainEqual(["syntrake.investing.tenant_id", ids.tenantId]);
   });
@@ -357,5 +365,30 @@ describe("Investing Genesis I5 Research investigation create authority runtime",
     expect(result).toMatchObject({ ok: false, code: "ACCESS_INACTIVE" });
     expect(setConfigValues(client)).toContainEqual(["syntrake.investing.operation_scope", "ACCOUNT_SCOPE"]);
     expect(setConfigValues(client)).not.toContainEqual(["syntrake.investing.operation_scope", "TENANT_SCOPE"]);
+  });
+
+  it("does not let I2 account authority pass the Research guard", async () => {
+    const client = new FakeResearchAuthorityClient();
+    mockClerkOk();
+    mockDatabaseSequence([client]);
+
+    const result = await resolveAuthorizedInvestingAccountContext({
+      accountId: ids.accountId,
+      correlationId: ids.correlationId,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected I2 account authority");
+    expect(isAuthorizedInvestingContext(result.context)).toBe(true);
+    expect(isAuthorizedResearchInvestigationCreateContext(result.context)).toBe(false);
+  });
+
+  it("keeps AuthorizedInvestingContext capability strictly I2-only", () => {
+    const i2Capability: AuthorizedInvestingContext["capability"] = "ACCOUNT_AUTHORITY_READ";
+    // @ts-expect-error Research mutate is not an I2 AuthorizedInvestingContext capability.
+    const invalidI2Capability: AuthorizedInvestingContext["capability"] = "RESEARCH_MUTATE";
+
+    expect(i2Capability).toBe("ACCOUNT_AUTHORITY_READ");
+    expect(invalidI2Capability).toBe("RESEARCH_MUTATE");
   });
 });

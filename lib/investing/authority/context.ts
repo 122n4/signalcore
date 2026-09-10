@@ -3,6 +3,9 @@ import { resolveVerifiedClerkIdentity } from "./clerk";
 import { getInvestingAuthorityDatabase } from "./transport";
 
 const authorizedInvestingContextRuntimeBrand = Symbol("AuthorizedInvestingContext");
+const authorizedResearchInvestigationCreateContextRuntimeBrand = Symbol(
+  "AuthorizedResearchInvestigationCreateContext",
+);
 const accountContextResolveOperation = "ACCOUNT_CONTEXT_RESOLVE";
 const accountAuthorityReadCapability = "ACCOUNT_AUTHORITY_READ";
 const researchInvestigationCreateOperation = "RESEARCH_INVESTIGATION_CREATE_V1";
@@ -12,13 +15,17 @@ const preAuthoritySelectorHashDomain = "SYNTRAKE_INVESTING_I2B_SELECTOR_V1";
 const researchPreAuthorityExternalSubjectHashDomain = "SYNTRAKE_INVESTING_I5_EXTERNAL_SUBJECT_V1";
 const researchPreAuthoritySelectorHashDomain = "SYNTRAKE_INVESTING_I5_SELECTOR_V1";
 
-type Brand = {
+type InvestingContextBrand = {
   readonly __authorizedInvestingContext: "AuthorizedInvestingContext";
 };
 
+type ResearchInvestigationCreateContextBrand = {
+  readonly __authorizedResearchInvestigationCreateContext: "AuthorizedResearchInvestigationCreateContext";
+};
+
 export type InvestingActorKind = "USER_PRINCIPAL" | "SYSTEM_ACTOR";
-export type InvestingOperationScope = "ACCOUNT_SCOPE" | "TENANT_SCOPE";
-export type InvestingCapability = typeof accountAuthorityReadCapability | typeof researchMutateCapability;
+export type InvestingOperationScope = "ACCOUNT_SCOPE";
+export type InvestingCapability = typeof accountAuthorityReadCapability;
 
 export type InvestingAuthorityFailureCode =
   | "UNAUTHENTICATED"
@@ -32,7 +39,7 @@ export type InvestingAuthorityFailureCode =
   | "INTERNAL_ERROR";
 
 export type AuthorizedInvestingContext = Readonly<
-  Brand & {
+  InvestingContextBrand & {
     actorKind: "USER_PRINCIPAL";
     actorId: string;
     principalId: string;
@@ -43,14 +50,14 @@ export type AuthorizedInvestingContext = Readonly<
     accountAccessId: string;
     correlationId: string;
     operation: typeof accountContextResolveOperation;
-    capability: InvestingCapability;
+    capability: typeof accountAuthorityReadCapability;
   }
 >;
 
 export type ResearchSourceContext = "PURE_RESEARCH" | "TEST_PORTFOLIO" | "USER_PORTFOLIO";
 
 export type AuthorizedResearchInvestigationCreateContext = Readonly<
-  Brand & {
+  ResearchInvestigationCreateContextBrand & {
     actorKind: "USER_PRINCIPAL";
     actorId: string;
     principalId: string;
@@ -264,7 +271,44 @@ export function isAuthorizedInvestingContext(value: unknown): value is Authorize
     value !== null &&
     (value as { [authorizedInvestingContextRuntimeBrand]?: boolean })[
       authorizedInvestingContextRuntimeBrand
-    ] === true
+    ] === true &&
+    (value as Partial<AuthorizedInvestingContext>).operation === accountContextResolveOperation &&
+    (value as Partial<AuthorizedInvestingContext>).capability === accountAuthorityReadCapability &&
+    (value as Partial<AuthorizedInvestingContext>).operationScope === "ACCOUNT_SCOPE" &&
+    typeof (value as Partial<AuthorizedInvestingContext>).accountId === "string" &&
+    typeof (value as Partial<AuthorizedInvestingContext>).accountAccessId === "string"
+  );
+}
+
+export function isAuthorizedResearchInvestigationCreateContext(
+  value: unknown,
+): value is AuthorizedResearchInvestigationCreateContext {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    (value as { [authorizedResearchInvestigationCreateContextRuntimeBrand]?: boolean })[
+      authorizedResearchInvestigationCreateContextRuntimeBrand
+    ] !== true ||
+    (value as Partial<AuthorizedResearchInvestigationCreateContext>).operation !==
+      researchInvestigationCreateOperation ||
+    (value as Partial<AuthorizedResearchInvestigationCreateContext>).capability !== researchMutateCapability
+  ) {
+    return false;
+  }
+
+  const context = value as Partial<AuthorizedResearchInvestigationCreateContext>;
+  if (
+    context.operationScope === "TENANT_SCOPE" &&
+    (context.sourceContext === "PURE_RESEARCH" || context.sourceContext === "TEST_PORTFOLIO")
+  ) {
+    return !("accountId" in context) && !("accountAccessId" in context);
+  }
+
+  return (
+    context.operationScope === "ACCOUNT_SCOPE" &&
+    context.sourceContext === "USER_PORTFOLIO" &&
+    typeof context.accountId === "string" &&
+    typeof context.accountAccessId === "string"
   );
 }
 
@@ -529,7 +573,7 @@ export async function resolveAuthorizedInvestingAccountContext(
 
     return {
       ok: true,
-      context: brandAuthorizedContext({
+      context: brandAuthorizedInvestingContext({
         actorKind: "USER_PRINCIPAL",
         actorId: verifiedAuth.externalSubject,
         principalId: principal.row.principal_id,
@@ -867,7 +911,7 @@ async function resolveResearchTenantScope(
 
   return {
     ok: true,
-    context: brandAuthorizedContext({
+    context: brandAuthorizedResearchInvestigationCreateContext({
       actorKind: "USER_PRINCIPAL",
       actorId: input.actorId,
       principalId: input.principal.principal_id,
@@ -1034,7 +1078,7 @@ async function resolveResearchAccountScope(
 
   return {
     ok: true,
-    context: brandAuthorizedContext({
+    context: brandAuthorizedResearchInvestigationCreateContext({
       actorKind: "USER_PRINCIPAL",
       actorId: input.actorId,
       principalId: input.principal.principal_id,
@@ -1196,16 +1240,24 @@ function validateTupleConsistency(input: {
   return null;
 }
 
-function brandAuthorizedContext<
-  Context extends
-    | Omit<AuthorizedInvestingContext, keyof Brand>
-    | Omit<AuthorizedResearchInvestigationCreateContext, keyof Brand>,
->(context: Context): Context & Brand {
+function brandAuthorizedInvestingContext(
+  context: Omit<AuthorizedInvestingContext, keyof InvestingContextBrand>,
+): AuthorizedInvestingContext {
   return Object.freeze({
     ...context,
     __authorizedInvestingContext: "AuthorizedInvestingContext",
     [authorizedInvestingContextRuntimeBrand]: true,
-  }) as unknown as Context & Brand;
+  }) as AuthorizedInvestingContext;
+}
+
+function brandAuthorizedResearchInvestigationCreateContext<
+  Context extends Omit<AuthorizedResearchInvestigationCreateContext, keyof ResearchInvestigationCreateContextBrand>,
+>(context: Context): Context & ResearchInvestigationCreateContextBrand {
+  return Object.freeze({
+    ...context,
+    __authorizedResearchInvestigationCreateContext: "AuthorizedResearchInvestigationCreateContext",
+    [authorizedResearchInvestigationCreateContextRuntimeBrand]: true,
+  }) as unknown as Context & ResearchInvestigationCreateContextBrand;
 }
 
 function researchCanonicalDenial(
