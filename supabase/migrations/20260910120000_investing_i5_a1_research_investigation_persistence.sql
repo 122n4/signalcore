@@ -7,7 +7,9 @@ do $$
 declare
   v_constraint_count integer;
   v_operation_constraint text;
+  v_operation_token_count integer;
   v_policy_count integer;
+  v_relation_count integer;
 begin
   if current_user <> 'postgres' then
     raise exception 'I5-A1 prestate violation: migration executor must be postgres, got %', current_user;
@@ -18,15 +20,28 @@ begin
     raise exception 'I5-A1 prestate violation: investing roles missing';
   end if;
 
-  if to_regclass('investing.principals') is null
-    or to_regclass('investing.tenants') is null
-    or to_regclass('investing.tenant_memberships') is null
-    or to_regclass('investing.accounts') is null
-    or to_regclass('investing.account_access') is null
-    or to_regclass('investing.idempotency_records') is null
-    or to_regclass('investing.audit_events') is null
-    or to_regclass('investing.pre_authority_audit_events') is null then
-    raise exception 'I5-A1 prestate violation: expected Genesis/I5 authority tables missing';
+  select count(*)
+  into v_relation_count
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname in (
+      'principals',
+      'tenants',
+      'tenant_memberships',
+      'accounts',
+      'account_access',
+      'idempotency_records',
+      'audit_events',
+      'pre_authority_audit_events'
+    )
+    and c.relkind in ('r', 'p')
+    and c.relowner = 'investing_owner'::regrole
+    and c.relrowsecurity
+    and c.relforcerowsecurity;
+
+  if v_relation_count <> 8 then
+    raise exception 'I5-A1 prestate violation: expected Genesis/I5 authority table structure mismatch: %', v_relation_count;
   end if;
 
   if to_regclass('investing.research_investigations') is not null then
@@ -63,6 +78,14 @@ begin
   end if;
 
   select count(*)
+  into v_operation_token_count
+  from pg_catalog.regexp_matches(v_operation_constraint, '''([A-Z0-9_]+)''', 'g');
+
+  if v_operation_token_count <> 2 then
+    raise exception 'I5-A1 prestate violation: idempotency operation vocabulary not exact: %', v_operation_constraint;
+  end if;
+
+  select count(*)
   into v_policy_count
   from pg_catalog.pg_policies
   where schemaname = 'investing'
@@ -76,6 +99,7 @@ begin
         and with_check ~ 'RESEARCH_MUTATE'
         and with_check ~ 'TENANT_SCOPE'
         and with_check ~ 'ACCOUNT_SCOPE'
+        and with_check ~ 'selector_kind'
       )
       or (
         tablename = 'audit_events'
@@ -84,27 +108,49 @@ begin
         and with_check ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
         and with_check ~ 'RESEARCH_MUTATE'
         and with_check ~ 'AUTHORITY_ACCESS_DENIED'
+        and with_check ~ 'operation_scope'
       )
       or (
         tablename = 'tenants'
-        and policyname in (
-          'tenants_i5_research_authority_read',
-          'tenants_i5_research_account_authority_read'
-        )
+        and policyname = 'tenants_i5_research_authority_read'
         and cmd = 'SELECT'
         and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
         and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'TENANT_SCOPE'
+        and qual ~ 'tenant_id'
+      )
+      or (
+        tablename = 'tenants'
+        and policyname = 'tenants_i5_research_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
       )
       or (
         tablename = 'tenant_memberships'
-        and policyname in (
-          'tenant_memberships_i5_research_authority_read',
-          'tenant_memberships_i5_research_account_authority_read'
-        )
+        and policyname = 'tenant_memberships_i5_research_authority_read'
         and cmd = 'SELECT'
         and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
         and qual ~ 'RESEARCH_MUTATE'
-        and qual ~ 'ACTIVE'
+        and qual ~ 'TENANT_SCOPE'
+        and qual ~ 'tenant_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
+      )
+      or (
+        tablename = 'tenant_memberships'
+        and policyname = 'tenant_memberships_i5_research_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
       )
       or (
         tablename = 'accounts'
@@ -113,6 +159,8 @@ begin
         and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
         and qual ~ 'RESEARCH_MUTATE'
         and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_id'
+        and qual ~ 'initial_principal_id'
       )
       or (
         tablename = 'account_access'
@@ -121,7 +169,11 @@ begin
         and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
         and qual ~ 'RESEARCH_MUTATE'
         and qual ~ 'ACCOUNT_SCOPE'
-        and qual ~ 'ACTIVE'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'OWNER'
       )
     );
 

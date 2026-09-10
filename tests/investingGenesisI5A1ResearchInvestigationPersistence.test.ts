@@ -309,6 +309,118 @@ function readMigration() {
   return fs.readFileSync(migrationPath, "utf8");
 }
 
+type PolicySnapshot = {
+  tablename: string;
+  policyname: string;
+  cmd: "SELECT" | "INSERT";
+  roles: readonly string[];
+  qual: string;
+  with_check: string;
+};
+
+const canonicalI5PolicySnapshots: PolicySnapshot[] = [
+  {
+    tablename: "pre_authority_audit_events",
+    policyname: "pre_authority_audit_events_i2b_i5_insert",
+    cmd: "INSERT",
+    roles: ["investing_app"],
+    qual: "",
+    with_check: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE TENANT_SCOPE ACCOUNT_SCOPE selector_kind",
+  },
+  {
+    tablename: "audit_events",
+    policyname: "audit_events_i5_research_investigation_create_denial_insert",
+    cmd: "INSERT",
+    roles: ["investing_app"],
+    qual: "",
+    with_check: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE AUTHORITY_ACCESS_DENIED operation_scope",
+  },
+  {
+    tablename: "tenants",
+    policyname: "tenants_i5_research_authority_read",
+    cmd: "SELECT",
+    roles: ["investing_app"],
+    qual: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE TENANT_SCOPE tenant_id",
+    with_check: "",
+  },
+  {
+    tablename: "tenant_memberships",
+    policyname: "tenant_memberships_i5_research_authority_read",
+    cmd: "SELECT",
+    roles: ["investing_app"],
+    qual: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE TENANT_SCOPE tenant_id principal_id OWNER",
+    with_check: "",
+  },
+  {
+    tablename: "accounts",
+    policyname: "accounts_i5_research_account_authority_read",
+    cmd: "SELECT",
+    roles: ["investing_app"],
+    qual: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE ACCOUNT_SCOPE account_id initial_principal_id",
+    with_check: "",
+  },
+  {
+    tablename: "tenants",
+    policyname: "tenants_i5_research_account_authority_read",
+    cmd: "SELECT",
+    roles: ["investing_app"],
+    qual: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE ACCOUNT_SCOPE account_id tenant_id",
+    with_check: "",
+  },
+  {
+    tablename: "tenant_memberships",
+    policyname: "tenant_memberships_i5_research_account_authority_read",
+    cmd: "SELECT",
+    roles: ["investing_app"],
+    qual: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE ACCOUNT_SCOPE account_id tenant_id principal_id OWNER",
+    with_check: "",
+  },
+  {
+    tablename: "account_access",
+    policyname: "account_access_i5_research_account_authority_read",
+    cmd: "SELECT",
+    roles: ["investing_app"],
+    qual: "RESEARCH_INVESTIGATION_CREATE_V1 RESEARCH_MUTATE ACCOUNT_SCOPE account_id tenant_id principal_id tenant_membership_id OWNER",
+    with_check: "",
+  },
+];
+
+function canonicalPrestatePolicyCount(policies: readonly PolicySnapshot[]) {
+  return policies.filter((policy) => {
+    if (policy.roles.length !== 1 || policy.roles[0] !== "investing_app") return false;
+    const qual = policy.qual.toLowerCase();
+    const check = policy.with_check.toLowerCase();
+    if (
+      policy.tablename === "pre_authority_audit_events" &&
+      policy.policyname === "pre_authority_audit_events_i2b_i5_insert" &&
+      policy.cmd === "INSERT"
+    ) {
+      return ["research_investigation_create_v1", "research_mutate", "tenant_scope", "account_scope", "selector_kind"].every((needle) => check.includes(needle));
+    }
+    if (
+      policy.tablename === "audit_events" &&
+      policy.policyname === "audit_events_i5_research_investigation_create_denial_insert" &&
+      policy.cmd === "INSERT"
+    ) {
+      return ["research_investigation_create_v1", "research_mutate", "authority_access_denied", "operation_scope"].every((needle) => check.includes(needle));
+    }
+    if (policy.cmd !== "SELECT") return false;
+    const policyExpectations: Record<string, string[]> = {
+      tenants_i5_research_authority_read: ["research_investigation_create_v1", "research_mutate", "tenant_scope", "tenant_id"],
+      tenant_memberships_i5_research_authority_read: ["research_investigation_create_v1", "research_mutate", "tenant_scope", "tenant_id", "principal_id", "owner"],
+      accounts_i5_research_account_authority_read: ["research_investigation_create_v1", "research_mutate", "account_scope", "account_id", "initial_principal_id"],
+      tenants_i5_research_account_authority_read: ["research_investigation_create_v1", "research_mutate", "account_scope", "account_id", "tenant_id"],
+      tenant_memberships_i5_research_account_authority_read: ["research_investigation_create_v1", "research_mutate", "account_scope", "account_id", "tenant_id", "principal_id", "owner"],
+      account_access_i5_research_account_authority_read: ["research_investigation_create_v1", "research_mutate", "account_scope", "account_id", "tenant_id", "principal_id", "tenant_membership_id", "owner"],
+    };
+    return (policyExpectations[policy.policyname] ?? []).every((needle) => qual.includes(needle));
+  }).length;
+}
+
+function operationTokenCount(constraint: string) {
+  return Array.from(constraint.matchAll(/'([A-Z0-9_]+)'/g)).length;
+}
+
 describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -602,6 +714,11 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(sql).toContain("if current_user <> 'postgres' then");
     expect(sql).not.toContain("session_user in ('anon', 'authenticated', 'service_role', 'investing_app')");
     expect(sql).toContain("set local role investing_owner");
+    expect(sql).toContain("c.relkind in ('r', 'p')");
+    expect(sql).toContain("c.relowner = 'investing_owner'::regrole");
+    expect(sql).toContain("c.relrowsecurity");
+    expect(sql).toContain("c.relforcerowsecurity");
+    expect(sql).toContain("if v_relation_count <> 8 then");
     for (const table of [
       "principals",
       "tenants",
@@ -612,7 +729,7 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
       "audit_events",
       "pre_authority_audit_events",
     ]) {
-      expect(sql).toContain(`to_regclass('investing.${table}') is null`);
+      expect(sql).toContain(`'${table}'`);
     }
     expect(rawSql).not.toMatch(/research_authority_sessions|research_authority_denials|research_authority_sessions_operation_check/);
     expect(sql).toContain("v_constraint_count <> 1");
@@ -620,6 +737,7 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(sql).toContain("v_operation_constraint !~ 'initial_personal_bootstrap'");
     expect(sql).toContain("v_operation_constraint !~ 'initial_paper_cash_funding'");
     expect(sql).toContain("v_operation_constraint ~ 'research_investigation_create_v1'");
+    expect(sql).toContain("v_operation_token_count <> 2");
     for (const policy of [
       "pre_authority_audit_events_i2b_i5_insert",
       "audit_events_i5_research_investigation_create_denial_insert",
@@ -639,6 +757,14 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(sql).toContain("qual ~ 'research_mutate'");
     expect(sql).toContain("qual ~ 'account_scope'");
     expect(sql).toContain("if v_policy_count <> 8 then");
+    const accountAccessPrestate = sql.slice(
+      sql.indexOf("tablename = 'account_access'"),
+      sql.indexOf("if v_policy_count <> 8 then"),
+    );
+    expect(accountAccessPrestate).toContain("policyname = 'account_access_i5_research_account_authority_read'");
+    expect(accountAccessPrestate).toContain("qual ~ 'tenant_membership_id'");
+    expect(accountAccessPrestate).toContain("qual ~ 'owner'");
+    expect(accountAccessPrestate).not.toContain("qual ~ 'active'");
     expect(sql).toContain("add constraint account_access_identity_tuple_key unique (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)");
     expect(sql).toContain("create table investing.research_investigations");
     expect(sql).toContain("constraint research_investigations_account_access_tuple_fk foreign key (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)");
@@ -664,5 +790,46 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(sql).not.toContain("public.research_lab_decisions");
     expect(sql).not.toContain("to service_role");
     expect(sql).not.toMatch(/\busing\s*\(\s*true\s*\)|\bwith check\s*\(\s*true\s*\)/);
+  });
+
+  it("models the canonical I5 prestate policy count as exactly eight lifecycle-aware policies", () => {
+    expect(canonicalPrestatePolicyCount(canonicalI5PolicySnapshots)).toBe(8);
+    const accountAccess = canonicalI5PolicySnapshots.find((policy) => policy.policyname === "account_access_i5_research_account_authority_read");
+
+    expect(accountAccess?.qual.toLowerCase()).toContain("tenant_membership_id");
+    expect(accountAccess?.qual.toLowerCase()).toContain("owner");
+    expect(accountAccess?.qual.toLowerCase()).not.toContain("active");
+  });
+
+  it("models missing or materially altered predecessor I5 policies as prestate failures", () => {
+    const missingAccessPolicy = canonicalI5PolicySnapshots.filter((policy) => policy.policyname !== "account_access_i5_research_account_authority_read");
+    const alteredOperation = canonicalI5PolicySnapshots.map((policy) =>
+      policy.policyname === "tenants_i5_research_authority_read"
+        ? { ...policy, qual: policy.qual.replace("RESEARCH_INVESTIGATION_CREATE_V1", "ACCOUNT_CONTEXT_RESOLVE") }
+        : policy,
+    );
+    const alteredScope = canonicalI5PolicySnapshots.map((policy) =>
+      policy.policyname === "accounts_i5_research_account_authority_read"
+        ? { ...policy, qual: policy.qual.replace("ACCOUNT_SCOPE", "TENANT_SCOPE") }
+        : policy,
+    );
+    const alteredRole = canonicalI5PolicySnapshots.map((policy) =>
+      policy.policyname === "pre_authority_audit_events_i2b_i5_insert"
+        ? { ...policy, roles: ["authenticated"] }
+        : policy,
+    );
+
+    expect(canonicalPrestatePolicyCount(missingAccessPolicy)).toBe(7);
+    expect(canonicalPrestatePolicyCount(alteredOperation)).toBe(7);
+    expect(canonicalPrestatePolicyCount(alteredScope)).toBe(7);
+    expect(canonicalPrestatePolicyCount(alteredRole)).toBe(7);
+  });
+
+  it("models idempotency operation prestate as exact and fails with a third unexpected token", () => {
+    const canonicalConstraint = "CHECK (operation IN ('INITIAL_PERSONAL_BOOTSTRAP', 'INITIAL_PAPER_CASH_FUNDING'))";
+    const driftedConstraint = "CHECK (operation IN ('INITIAL_PERSONAL_BOOTSTRAP', 'INITIAL_PAPER_CASH_FUNDING', 'SOMETHING_ELSE'))";
+
+    expect(operationTokenCount(canonicalConstraint)).toBe(2);
+    expect(operationTokenCount(driftedConstraint)).toBe(3);
   });
 });
