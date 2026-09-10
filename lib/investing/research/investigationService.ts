@@ -7,7 +7,6 @@ import {
 } from "../authority/context";
 import {
   createResearchInvestigationV1,
-  type ResearchInvestigationCreateContentV1,
   type ResearchInvestigationCreateResult,
 } from "./investigationWriter";
 
@@ -19,14 +18,12 @@ export type CreateResearchInvestigationServiceInput =
       tenantId: string;
       idempotencyKey: string;
       correlationId: string;
-      content: ResearchInvestigationCreateContentV1;
     }>
   | Readonly<{
       sourceContext: "USER_PORTFOLIO";
       accountId: string;
       idempotencyKey: string;
       correlationId: string;
-      content: ResearchInvestigationCreateContentV1;
     }>;
 
 export type ResearchInvestigationCreateServiceResult =
@@ -38,7 +35,6 @@ const tenantScopeKeys = new Set([
   "tenantId",
   "idempotencyKey",
   "correlationId",
-  "content",
 ]);
 
 const accountScopeKeys = new Set([
@@ -46,10 +42,7 @@ const accountScopeKeys = new Set([
   "accountId",
   "idempotencyKey",
   "correlationId",
-  "content",
 ]);
-
-const contentKeys = new Set(["initialQuestion"]);
 
 export async function createResearchInvestigationForCurrentUserV1(
   input: unknown,
@@ -78,7 +71,6 @@ export async function createResearchInvestigationForCurrentUserV1(
     authorizedContext: authority.context,
     idempotencyKey: command.idempotencyKey,
     correlationId: command.correlationId,
-    content: command.content,
   });
 }
 
@@ -98,14 +90,11 @@ function parseCreateResearchInvestigationCommand(
     ) {
       return null;
     }
-    const content = parseContent(record.content);
-    if (!content) return null;
     return Object.freeze({
       sourceContext: base.sourceContext,
       tenantId: record.tenantId,
       idempotencyKey: record.idempotencyKey,
       correlationId: record.correlationId,
-      content,
     });
   }
 
@@ -119,24 +108,15 @@ function parseCreateResearchInvestigationCommand(
     ) {
       return null;
     }
-    const content = parseContent(record.content);
-    if (!content) return null;
     return Object.freeze({
       sourceContext: "USER_PORTFOLIO",
       accountId: record.accountId,
       idempotencyKey: record.idempotencyKey,
       correlationId: record.correlationId,
-      content,
     });
   }
 
   return null;
-}
-
-function parseContent(input: unknown): ResearchInvestigationCreateContentV1 | null {
-  const record = asStrictRecord(input, contentKeys);
-  if (!record || typeof record.initialQuestion !== "string") return null;
-  return Object.freeze({ initialQuestion: record.initialQuestion });
 }
 
 function asStrictRecord(input: unknown, allowedKeys: ReadonlySet<string>): UnknownRecord | null {

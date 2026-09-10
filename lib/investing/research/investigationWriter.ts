@@ -1,29 +1,25 @@
 import "server-only";
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   isAuthorizedResearchInvestigationCreateContext,
   type AuthorizedResearchInvestigationCreateContext,
   type InvestingAuthorityTransactionClient,
 } from "../authority/context";
 import { getInvestingAuthorityDatabase } from "../authority/transport";
+import {
+  investigationCreateMaterialIdentityV1,
+  type ResearchMaterialScopeEvidenceV1,
+} from "./materialRequest";
 
 const operation = "RESEARCH_INVESTIGATION_CREATE_V1";
 const capability = "RESEARCH_MUTATE";
-const contentSchemaVersion = "SYNTRAKE_INVESTING_I5_A1_RESEARCH_INVESTIGATION_CONTENT_V1";
-const contentHashDomain = "SYNTRAKE_INVESTING_I5_A1_RESEARCH_INVESTIGATION_CONTENT_V1";
-const materialHashDomain = "SYNTRAKE_INVESTING_I5_A1_RESEARCH_INVESTIGATION_CREATE_REQUEST_V1";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export type ResearchInvestigationCreateContentV1 = Readonly<{
-  initialQuestion: string;
-}>;
 
 export type CreateResearchInvestigationV1Input = Readonly<{
   authorizedContext: AuthorizedResearchInvestigationCreateContext;
   idempotencyKey: string;
   correlationId: string;
-  content: ResearchInvestigationCreateContentV1;
 }>;
 
 export type ResearchInvestigationCreateSuccess = Readonly<{
@@ -31,7 +27,6 @@ export type ResearchInvestigationCreateSuccess = Readonly<{
   replayed: boolean;
   investigationId: string;
   materialRequestHash: string;
-  contentHash: string;
   idempotencyRecordId: string;
 }>;
 
@@ -59,13 +54,19 @@ export type ResearchInvestigationCreateResult =
 type PreparedInput = {
   idempotencyKey: string;
   correlationId: string;
-  initialQuestion: string;
-  contentHash: string;
   materialRequestHash: string;
 };
 
 type IdempotencyRow = {
   idempotency_record_id: string;
+  actor_kind: "USER_PRINCIPAL";
+  actor_id: string;
+  operation_scope: "TENANT_SCOPE" | "ACCOUNT_SCOPE";
+  operation: typeof operation;
+  principal_id: string;
+  tenant_id: string;
+  account_id: string | null;
+  idempotency_key: string;
   material_request_hash: string;
   status: "STARTED" | "SUCCEEDED" | "FAILED" | "CONFLICT";
   canonical_result_reference: unknown;
@@ -74,7 +75,6 @@ type IdempotencyRow = {
 type InvestigationRow = {
   research_investigation_id: string;
   material_request_hash: string;
-  initial_question_hash: string;
   idempotency_record_id: string;
 };
 
@@ -114,7 +114,6 @@ const transactionContextKeys = [
   "syntrake.investing.idempotency_record_id",
   "syntrake.investing.material_request_hash",
   "syntrake.investing.research_investigation_id",
-  "syntrake.investing.research_initial_question_hash",
 ] as const;
 
 export async function createResearchInvestigationV1(
@@ -140,8 +139,11 @@ export async function createResearchInvestigationV1(
       if (existing.ok === false) return existing;
       if (existing.row) return dispatchExistingIdempotency(client, input.authorizedContext, prepared, existing.row);
 
-      const idempotency = await createIdempotency(client, input.authorizedContext, prepared);
+      const idempotency = await lockOrCreateIdempotency(client, input.authorizedContext, prepared);
       if (idempotency.ok === false) return idempotency;
+      if (idempotency.existing) {
+        return dispatchExistingIdempotency(client, input.authorizedContext, prepared, idempotency.row);
+      }
 
       const investigationId = randomUUID();
       await setTransactionConfig(client, "research_investigation_id", investigationId);
@@ -150,9 +152,8 @@ export async function createResearchInvestigationV1(
           "insert into investing.research_investigations (",
           "research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,",
           "tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context,",
-          "content_schema_version, initial_question, initial_question_hash, material_request_hash,",
-          "idempotency_record_id, idempotency_key, correlation_id",
-          ") values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)",
+          "material_request_hash, idempotency_record_id, idempotency_key, correlation_id",
+          ") values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
         ].join(" "),
         [
           investigationId,
@@ -166,9 +167,6 @@ export async function createResearchInvestigationV1(
           operation,
           capability,
           input.authorizedContext.sourceContext,
-          contentSchemaVersion,
-          prepared.initialQuestion,
-          prepared.contentHash,
           prepared.materialRequestHash,
           idempotency.row.idempotency_record_id,
           prepared.idempotencyKey,
@@ -181,7 +179,6 @@ export async function createResearchInvestigationV1(
         replayed: false,
         investigationId,
         materialRequestHash: prepared.materialRequestHash,
-        contentHash: prepared.contentHash,
       });
     });
   } catch {
@@ -191,31 +188,42 @@ export async function createResearchInvestigationV1(
 
 function prepareInput(input: CreateResearchInvestigationV1Input): PreparedInput | null {
   if (!validOpaque(input.idempotencyKey, 16, 512) || !validOpaque(input.correlationId, 16, 512)) return null;
-  if (!isClosedRecord(input.content, ["initialQuestion"])) return null;
-  const initialQuestion = input.content.initialQuestion.trim();
-  if (!validOpaque(initialQuestion, 1, 4096)) return null;
-  const contentBytes = Buffer.from([contentHashDomain, `initial_question=${initialQuestion}`].join("\0"), "utf8");
-  const contentHash = sha256Hex(contentBytes);
-  const materialRequestHash = sha256Hex(
-    Buffer.from(
-      [
-        materialHashDomain,
-        operation,
-        `actor_kind=${input.authorizedContext.actorKind}`,
-        `actor_id=${input.authorizedContext.actorId}`,
-        `principal_id=${input.authorizedContext.principalId}`,
-        `operation_scope=${input.authorizedContext.operationScope}`,
-        `tenant_id=${input.authorizedContext.tenantId}`,
-        `account_id=${"accountId" in input.authorizedContext ? input.authorizedContext.accountId : "-"}`,
-        `source_context=${input.authorizedContext.sourceContext}`,
-        `idempotency_key=${input.idempotencyKey}`,
-        `content_schema_version=${contentSchemaVersion}`,
-        `initial_question_hash=${contentHash}`,
-      ].join("\0"),
-      "utf8",
-    ),
-  );
-  return { idempotencyKey: input.idempotencyKey, correlationId: input.correlationId, initialQuestion, contentHash, materialRequestHash };
+  try {
+    const identity = investigationCreateMaterialIdentityV1(scopeEvidence(input.authorizedContext), {
+      operation,
+      idempotencyKey: input.idempotencyKey,
+      correlationId: input.correlationId,
+    });
+    return {
+      idempotencyKey: input.idempotencyKey,
+      correlationId: input.correlationId,
+      materialRequestHash: identity.materialRequestHash,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function scopeEvidence(context: AuthorizedResearchInvestigationCreateContext): ResearchMaterialScopeEvidenceV1 {
+  if (context.operationScope === "TENANT_SCOPE") {
+    return {
+      actorKind: context.actorKind,
+      actorId: context.actorId,
+      principalId: context.principalId,
+      operationScope: "TENANT_SCOPE",
+      tenantId: context.tenantId,
+      sourceContext: context.sourceContext,
+    };
+  }
+  return {
+    actorKind: context.actorKind,
+    actorId: context.actorId,
+    principalId: context.principalId,
+    operationScope: "ACCOUNT_SCOPE",
+    tenantId: context.tenantId,
+    accountId: context.accountId,
+    sourceContext: context.sourceContext,
+  };
 }
 
 async function revalidateAuthority(
@@ -308,9 +316,10 @@ async function findExistingIdempotency(
     context.operationScope === "TENANT_SCOPE"
       ? [context.actorId, context.principalId, context.tenantId, operation, prepared.idempotencyKey]
       : [context.actorId, context.principalId, context.tenantId, operation, context.accountId, prepared.idempotencyKey];
-  const row = await client.query<IdempotencyRow>(
+  const selected = await client.query<IdempotencyRow>(
     [
-      "select idempotency_record_id, material_request_hash, status, canonical_result_reference",
+      "select idempotency_record_id, actor_kind, actor_id, operation_scope, operation, principal_id, tenant_id, account_id,",
+      "idempotency_key, material_request_hash, status, canonical_result_reference",
       "from investing.idempotency_records",
       "where actor_kind = 'USER_PRINCIPAL' and actor_id = $1 and principal_id = $2",
       `and tenant_id = $3 and operation_scope = '${context.operationScope}' and operation = $4 and ${accountPredicate}`,
@@ -318,19 +327,22 @@ async function findExistingIdempotency(
     ].join(" "),
     values,
   );
-  if (row.rows.length > 1) return fail("INTERNAL_ERROR");
-  if (row.rows.length === 0) return { ok: true, row: null };
-  await setTransactionConfig(client, "idempotency_record_id", row.rows[0]!.idempotency_record_id);
-  return { ok: true, row: row.rows[0]! };
+  if (selected.rows.length > 1) return fail("INTERNAL_ERROR");
+  if (selected.rows.length === 0) return { ok: true, row: null };
+  const row = selected.rows[0]!;
+  await setTransactionConfig(client, "idempotency_record_id", row.idempotency_record_id);
+  return idempotencyBelongsToContext(row, context, prepared.idempotencyKey)
+    ? { ok: true, row }
+    : fail("CONFLICT");
 }
 
-async function createIdempotency(
+async function lockOrCreateIdempotency(
   client: InvestingAuthorityTransactionClient,
   context: AuthorizedResearchInvestigationCreateContext,
   prepared: PreparedInput,
-): Promise<{ ok: true; row: { idempotency_record_id: string } } | ResearchInvestigationCreateFailure> {
-  const idempotencyRecordId = randomUUID();
-  await setTransactionConfig(client, "idempotency_record_id", idempotencyRecordId);
+): Promise<{ ok: true; existing: boolean; row: IdempotencyRow } | ResearchInvestigationCreateFailure> {
+  const candidateId = randomUUID();
+  await setTransactionConfig(client, "idempotency_record_id", candidateId);
   const inserted = await client.query(
     [
       "insert into investing.idempotency_records (",
@@ -340,7 +352,7 @@ async function createIdempotency(
       "on conflict (actor_kind, actor_id, operation_scope, operation, idempotency_key) do nothing",
     ].join(" "),
     [
-      idempotencyRecordId,
+      candidateId,
       prepared.idempotencyKey,
       prepared.materialRequestHash,
       prepared.correlationId,
@@ -352,8 +364,22 @@ async function createIdempotency(
       "accountId" in context ? context.accountId : null,
     ],
   );
-  if (inserted.rowCount !== 1) return fail("CONFLICT");
-  return { ok: true, row: { idempotency_record_id: idempotencyRecordId } };
+  if (inserted.rowCount !== 0 && inserted.rowCount !== 1) return fail("INTERNAL_ERROR");
+
+  if (inserted.rowCount === 0) {
+    const existing = await findExistingIdempotency(client, context, prepared);
+    if (existing.ok === false) return existing;
+    if (!existing.row) return fail("CONFLICT");
+    return { ok: true, existing: true, row: existing.row };
+  }
+
+  const created = await findExistingIdempotency(client, context, prepared);
+  if (created.ok === false) return created;
+  if (!created.row || created.row.idempotency_record_id !== candidateId || created.row.status !== "STARTED") {
+    return fail("INTERNAL_ERROR");
+  }
+  if (created.row.material_request_hash !== prepared.materialRequestHash) return fail("INTERNAL_ERROR");
+  return { ok: true, existing: false, row: created.row };
 }
 
 async function dispatchExistingIdempotency(
@@ -362,14 +388,16 @@ async function dispatchExistingIdempotency(
   prepared: PreparedInput,
   row: IdempotencyRow,
 ): Promise<ResearchInvestigationCreateResult> {
+  if (!idempotencyBelongsToContext(row, context, prepared.idempotencyKey)) return fail("CONFLICT");
   if (row.material_request_hash !== prepared.materialRequestHash) return fail("CONFLICT");
   if (row.status !== "SUCCEEDED") return fail("INTERNAL_ERROR");
   const reference = parseReference(row.canonical_result_reference);
   if (!reference) return fail("INTERNAL_ERROR");
+  await setTransactionConfig(client, "research_investigation_id", reference.investigationId);
   const investigation = await exactlyOne(
     client.query<InvestigationRow>(
       [
-        "select research_investigation_id, material_request_hash, initial_question_hash, idempotency_record_id",
+        "select research_investigation_id, material_request_hash, idempotency_record_id",
         "from investing.research_investigations",
         "where research_investigation_id = $1 and tenant_id = $2",
         context.operationScope === "TENANT_SCOPE" ? "and account_id is null" : "and account_id = $3",
@@ -383,7 +411,6 @@ async function dispatchExistingIdempotency(
   if (investigation.ok === false) return investigation;
   if (
     investigation.row.material_request_hash !== prepared.materialRequestHash ||
-    investigation.row.initial_question_hash !== prepared.contentHash ||
     investigation.row.idempotency_record_id !== row.idempotency_record_id
   ) {
     return fail("INTERNAL_ERROR");
@@ -393,7 +420,6 @@ async function dispatchExistingIdempotency(
     replayed: true,
     investigationId: investigation.row.research_investigation_id,
     materialRequestHash: prepared.materialRequestHash,
-    contentHash: prepared.contentHash,
     idempotencyRecordId: row.idempotency_record_id,
   };
 }
@@ -406,7 +432,6 @@ async function completeIdempotency(
   const reference = {
     research_investigation_id: input.investigationId,
     material_request_hash: input.materialRequestHash,
-    initial_question_hash: input.contentHash,
   };
   const updated = await client.query(
     [
@@ -449,7 +474,7 @@ async function withTransaction(
       try {
         await client.release(destroyClient);
       } catch {
-        // Release failure leaves the caller fail-closed if it happened before commit.
+        // The transaction has already failed closed or committed before release.
       }
     }
   }
@@ -483,7 +508,6 @@ async function setTransactionContext(
   await setTransactionConfig(client, "correlation_id", prepared.correlationId);
   await setTransactionConfig(client, "idempotency_key", prepared.idempotencyKey);
   await setTransactionConfig(client, "material_request_hash", prepared.materialRequestHash);
-  await setTransactionConfig(client, "research_initial_question_hash", prepared.contentHash);
 }
 
 async function setTransactionConfig(client: InvestingAuthorityTransactionClient, key: string, value: string) {
@@ -500,6 +524,25 @@ async function exactlyOne<Row>(
   return { ok: true, row: result.rows[0]! };
 }
 
+function idempotencyBelongsToContext(
+  row: IdempotencyRow,
+  context: AuthorizedResearchInvestigationCreateContext,
+  idempotencyKey: string,
+) {
+  return (
+    row.actor_kind === "USER_PRINCIPAL" &&
+    row.actor_id === context.actorId &&
+    row.principal_id === context.principalId &&
+    row.tenant_id === context.tenantId &&
+    row.operation_scope === context.operationScope &&
+    row.operation === operation &&
+    row.idempotency_key === idempotencyKey &&
+    (context.operationScope === "TENANT_SCOPE"
+      ? row.account_id === null
+      : row.account_id === context.accountId)
+  );
+}
+
 function parseReference(value: unknown): { investigationId: string } | null {
   if (!value || typeof value !== "object") return null;
   const reference = value as Record<string, unknown>;
@@ -508,18 +551,9 @@ function parseReference(value: unknown): { investigationId: string } | null {
     : null;
 }
 
-function isClosedRecord<T extends string>(value: unknown, keys: readonly T[]): value is Record<T, string> {
-  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return false;
-  return Object.keys(value).every((key) => keys.includes(key as T)) && keys.every((key) => typeof (value as Record<T, unknown>)[key] === "string");
-}
-
 function validOpaque(value: string, min: number, max: number) {
   const bytes = Buffer.byteLength(value, "utf8");
   return bytes >= min && bytes <= max;
-}
-
-function sha256Hex(bytes: Buffer) {
-  return createHash("sha256").update(bytes).digest("hex").toUpperCase();
 }
 
 function fail(code: ResearchInvestigationCreateFailureCode): ResearchInvestigationCreateFailure {

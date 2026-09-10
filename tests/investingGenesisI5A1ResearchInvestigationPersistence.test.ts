@@ -6,6 +6,7 @@ import type {
   InvestingAuthorityDatabase,
   InvestingAuthorityTransactionClient,
 } from "../lib/investing/authority/context";
+import { investigationCreateMaterialIdentityV1 } from "../lib/investing/research/materialRequest";
 
 vi.mock("server-only", () => ({}));
 
@@ -60,6 +61,7 @@ type DmlKey = "idempotencyInsert" | "investigationInsert" | "idempotencyUpdate";
 type FakeState = {
   idempotency: Row[];
   investigations: Row[];
+  reservations?: Map<string, Row>;
 };
 
 const tenantContextValue = {
@@ -99,8 +101,6 @@ const accountContext = {
   sourceContext: "USER_PORTFOLIO",
 } as never;
 
-const baseContent = Object.freeze({ initialQuestion: "Which quality signals deserve a research investigation?" });
-
 class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClient {
   readonly queries: QueryRecord[] = [];
   readonly config = new Map<string, string>();
@@ -123,6 +123,9 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
 
     if (sql === "begin") return { rows: [] as T[], rowCount: null };
     if (sql === "rollback") {
+      for (const row of this.pendingIdempotency) {
+        this.reservations().delete(this.idempotencyKey(row));
+      }
       this.pendingIdempotency = [];
       this.pendingInvestigations = [];
       this.pendingUpdates = [];
@@ -138,6 +141,9 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
           row.canonical_result_reference = update.reference;
           row.completed_at = "now";
         }
+      }
+      for (const row of this.pendingIdempotency) {
+        this.reservations().delete(this.idempotencyKey(row));
       }
       this.pendingIdempotency = [];
       this.pendingInvestigations = [];
@@ -159,9 +165,11 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
       return rows<T>(this.rows.access ?? [{ account_access_id: ids.accessId, account_id: ids.accountId, tenant_id: ids.tenantId, tenant_membership_id: ids.membershipId, principal_id: ids.principalId, state: "ACTIVE" }]);
     }
     if (sql.startsWith("select idempotency_record_id") && sql.includes("from investing.idempotency_records")) {
-      const row = this.state.idempotency.find((entry) => {
-        return entry.actor_id === values[0] && entry.principal_id === values[1] && entry.tenant_id === values[2] && entry.operation === values[3] && entry.idempotency_key === values.at(-1);
-      });
+      const key = this.idempotencyKeyFromQuery(values);
+      let row = [...this.state.idempotency, ...this.pendingIdempotency].find((entry) => this.idempotencyKey(entry) === key);
+      if (!row && this.reservations().has(key)) {
+        row = await this.waitForCommittedIdempotency(key);
+      }
       return rows<T>(row ? [row] : []);
     }
     if (sql.startsWith("insert into investing.idempotency_records")) {
@@ -180,10 +188,12 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
         status: "STARTED",
         canonical_result_reference: null,
       };
-      const keyConflict = this.state.idempotency.some((entry) => {
-        return entry.actor_kind === row.actor_kind && entry.actor_id === row.actor_id && entry.operation_scope === row.operation_scope && entry.operation === row.operation && entry.idempotency_key === row.idempotency_key;
-      });
+      const key = this.idempotencyKey(row);
+      const keyConflict =
+        [...this.state.idempotency, ...this.pendingIdempotency].some((entry) => this.idempotencyKey(entry) === key) ||
+        this.reservations().has(key);
       if (keyConflict) return { rows: [] as T[], rowCount: 0 };
+      this.reservations().set(key, row);
       this.pendingIdempotency.push(row);
       return { rows: [] as T[], rowCount: this.dmlRowCount("idempotencyInsert", 1) };
     }
@@ -201,13 +211,10 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
         operation: values[8],
         capability: values[9],
         source_context: values[10],
-        content_schema_version: values[11],
-        initial_question: values[12],
-        initial_question_hash: values[13],
-        material_request_hash: values[14],
-        idempotency_record_id: values[15],
-        idempotency_key: values[16],
-        correlation_id: values[17],
+        material_request_hash: values[11],
+        idempotency_record_id: values[12],
+        idempotency_key: values[13],
+        correlation_id: values[14],
       });
       return { rows: [] as T[], rowCount: this.dmlRowCount("investigationInsert", 1) };
     }
@@ -216,7 +223,7 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
       return { rows: [] as T[], rowCount: this.dmlRowCount("idempotencyUpdate", 1) };
     }
     if (sql.startsWith("select research_investigation_id") && sql.includes("from investing.research_investigations")) {
-      const row = this.state.investigations.find((entry) => {
+      const row = [...this.state.investigations, ...this.pendingInvestigations].find((entry) => {
         const accountMatches = values.length === 2 ? entry.account_id === null : entry.account_id === values[2];
         return entry.research_investigation_id === values[0] && entry.tenant_id === values[1] && accountMatches;
       });
@@ -232,6 +239,34 @@ class FakeResearchPersistenceClient implements InvestingAuthorityTransactionClie
 
   private dmlRowCount(key: DmlKey, fallback: number) {
     return Object.prototype.hasOwnProperty.call(this.dml, key) ? this.dml[key] ?? null : fallback;
+  }
+
+  private reservations() {
+    this.state.reservations ??= new Map<string, Row>();
+    return this.state.reservations;
+  }
+
+  private idempotencyKey(row: Row) {
+    return [
+      row.actor_kind,
+      row.actor_id,
+      row.operation_scope,
+      row.operation,
+      row.idempotency_key,
+    ].join("\0");
+  }
+
+  private idempotencyKeyFromQuery(values: readonly unknown[]) {
+    return ["USER_PRINCIPAL", values[0], values.length === 5 ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", values[3], values.at(-1)].join("\0");
+  }
+
+  private async waitForCommittedIdempotency(key: string) {
+    for (let index = 0; index < 50; index += 1) {
+      const row = this.state.idempotency.find((entry) => this.idempotencyKey(entry) === key);
+      if (row) return row;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    return undefined;
   }
 }
 
@@ -289,7 +324,6 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
         authorizedContext: context,
         idempotencyKey: ids.idempotencyKey,
         correlationId: ids.correlationId,
-        content: baseContent,
       });
 
       expect(result).toMatchObject({ ok: true, replayed: false });
@@ -316,7 +350,6 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
       authorizedContext: accountContext,
       idempotencyKey: ids.idempotencyKey,
       correlationId: ids.correlationId,
-      content: baseContent,
     });
 
     expect(result).toMatchObject({ ok: true, replayed: false });
@@ -346,7 +379,6 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
       authorizedContext: accountContext,
       idempotencyKey: ids.idempotencyKey,
       correlationId: ids.correlationId,
-      content: baseContent,
     });
 
     expect(result).toMatchObject({ ok: false, code });
@@ -362,13 +394,33 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     const writer = await loadWriter();
     writer.getInvestingAuthorityDatabase.mockReturnValueOnce(mockDatabase([firstClient])).mockReturnValueOnce(mockDatabase([secondClient]));
 
-    const first = await writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent });
-    const second = await writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent });
+    const first = await writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId });
+    const second = await writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId });
 
     expect(first).toMatchObject({ ok: true, replayed: false });
     expect(second).toMatchObject({ ok: true, replayed: true });
     expect(state.investigations).toHaveLength(1);
     expect(second.ok && first.ok && second.investigationId === first.investigationId).toBe(true);
+  });
+
+  it("converges concurrent creates with the same key and same material to one Investigation", async () => {
+    const state: FakeState = { idempotency: [], investigations: [], reservations: new Map() };
+    const firstClient = new FakeResearchPersistenceClient(state);
+    const secondClient = new FakeResearchPersistenceClient(state);
+    const writer = await loadWriter();
+    writer.getInvestingAuthorityDatabase.mockReturnValueOnce(mockDatabase([firstClient])).mockReturnValueOnce(mockDatabase([secondClient]));
+
+    const [first, second] = await Promise.all([
+      writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId }),
+      writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId }),
+    ]);
+
+    expect([first, second].filter((result) => result.ok && result.replayed === false)).toHaveLength(1);
+    expect([first, second].filter((result) => result.ok && result.replayed === true)).toHaveLength(1);
+    expect(first.ok && second.ok && first.investigationId === second.investigationId).toBe(true);
+    expect(state.idempotency).toHaveLength(1);
+    expect(state.investigations).toHaveLength(1);
+    expect(secondClient.queries.some((query) => normalizeSql(query.text).includes("on conflict"))).toBe(true);
   });
 
   it("rejects the same idempotency key with different material and creates no second investigation", async () => {
@@ -378,17 +430,66 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     const writer = await loadWriter();
     writer.getInvestingAuthorityDatabase.mockReturnValueOnce(mockDatabase([firstClient])).mockReturnValueOnce(mockDatabase([secondClient]));
 
-    await writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent });
+    await writer.createResearchInvestigationV1({ authorizedContext: tenantContext, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId });
     const conflict = await writer.createResearchInvestigationV1({
-      authorizedContext: tenantContext,
+      authorizedContext: testPortfolioContext,
       idempotencyKey: ids.idempotencyKey,
       correlationId: ids.correlationId,
-      content: { initialQuestion: "A materially different question" },
     });
 
     expect(conflict).toEqual({ ok: false, code: "CONFLICT" });
     expect(state.idempotency).toHaveLength(1);
     expect(state.investigations).toHaveLength(1);
+  });
+
+  it("keeps materialRequestHash invariant to idempotencyKey and correlationId metadata", () => {
+    const scope = {
+      actorKind: "USER_PRINCIPAL",
+      actorId: "user_clerk_i5_a1",
+      principalId: ids.principalId,
+      operationScope: "TENANT_SCOPE",
+      tenantId: ids.tenantId,
+      sourceContext: "PURE_RESEARCH",
+    } as const;
+    const first = investigationCreateMaterialIdentityV1(scope, {
+      operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+      idempotencyKey: ids.idempotencyKey,
+      correlationId: ids.correlationId,
+    });
+    const second = investigationCreateMaterialIdentityV1(scope, {
+      operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+      idempotencyKey: ids.otherIdempotencyKey,
+      correlationId: "corr-i5-a1-0000002",
+    });
+
+    expect(second.materialRequestHash).toBe(first.materialRequestHash);
+  });
+
+  it("uses the canonical I5 material identity contract for persistence hashing", async () => {
+    const client = new FakeResearchPersistenceClient();
+    const writer = await loadWriter();
+    writer.getInvestingAuthorityDatabase.mockReturnValue(mockDatabase([client]));
+
+    const result = await writer.createResearchInvestigationV1({
+      authorizedContext: accountContext,
+      idempotencyKey: ids.idempotencyKey,
+      correlationId: ids.correlationId,
+    });
+    const expected = investigationCreateMaterialIdentityV1({
+      actorKind: "USER_PRINCIPAL",
+      actorId: "user_clerk_i5_a1",
+      principalId: ids.principalId,
+      operationScope: "ACCOUNT_SCOPE",
+      tenantId: ids.tenantId,
+      accountId: ids.accountId,
+      sourceContext: "USER_PORTFOLIO",
+    }, {
+      operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+      idempotencyKey: "metadata-only-does-not-change-material",
+      correlationId: "metadata-only-correlation",
+    });
+
+    expect(result).toMatchObject({ ok: true, materialRequestHash: expected.materialRequestHash });
   });
 
   it("rolls back both investigation and idempotency effects when completion fails", async () => {
@@ -400,7 +501,6 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
       authorizedContext: tenantContext,
       idempotencyKey: ids.idempotencyKey,
       correlationId: ids.correlationId,
-      content: baseContent,
     });
 
     expect(result).toEqual({ ok: false, code: "INTERNAL_ERROR" });
@@ -426,7 +526,6 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
         authorizedContext: authorizedContext as never,
         idempotencyKey: ids.idempotencyKey,
         correlationId: ids.correlationId,
-        content: baseContent,
       });
       expect(result).toEqual({ ok: false, code: "VALIDATION_ERROR" });
     }
@@ -451,7 +550,7 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
 
     void i2Context;
     // @ts-expect-error I2 authority proof is not accepted by the Research Investigation writer.
-    void writer.createResearchInvestigationV1({ authorizedContext: i2Context, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent });
+    void writer.createResearchInvestigationV1({ authorizedContext: i2Context, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId });
   });
 
   it("keeps the public service parser closed and rejects authority injection", async () => {
@@ -459,10 +558,10 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     service.resolveAuthorizedResearchInvestigationCreateContext.mockResolvedValue({ ok: true, context: tenantContext });
 
     for (const command of [
-      { sourceContext: "PURE_RESEARCH", tenantId: ids.tenantId, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent, principalId: ids.principalId },
-      { sourceContext: "PURE_RESEARCH", tenantId: ids.tenantId, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: { ...baseContent, accountId: ids.accountId } },
-      { sourceContext: "USER_PORTFOLIO", idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent },
-      { sourceContext: "USER_PORTFOLIO", accountId: ids.accountId, tenantId: ids.tenantId, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, content: baseContent },
+      { sourceContext: "PURE_RESEARCH", tenantId: ids.tenantId, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, principalId: ids.principalId },
+      { sourceContext: "PURE_RESEARCH", tenantId: ids.tenantId, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId, rawIntent: "belongs in I5-A2 draft" },
+      { sourceContext: "USER_PORTFOLIO", idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId },
+      { sourceContext: "USER_PORTFOLIO", accountId: ids.accountId, tenantId: ids.tenantId, idempotencyKey: ids.idempotencyKey, correlationId: ids.correlationId },
     ]) {
       const result = await service.createResearchInvestigationForCurrentUserV1(command);
       expect(result).toEqual({ ok: false, code: "VALIDATION_ERROR" });
@@ -483,7 +582,6 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
       accountId: ids.accountId,
       idempotencyKey: ids.idempotencyKey,
       correlationId: ids.correlationId,
-      content: baseContent,
     });
 
     expect(result).toMatchObject({ ok: false, code: "ACCESS_INACTIVE" });
@@ -496,9 +594,15 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
   });
 
   it("pins SQL authority, RLS, grants, and legacy exclusions for independent PG17 rehearsal", () => {
+    const rawSql = readMigration();
     const sql = normalizeSql(readMigration());
 
+    expect(sql.startsWith("begin;")).toBe(true);
+    expect(sql.endsWith("commit;")).toBe(true);
+    expect(sql).toContain("set local role investing_owner");
+    expect(sql).toContain("add constraint account_access_identity_tuple_key unique (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)");
     expect(sql).toContain("create table investing.research_investigations");
+    expect(sql).toContain("constraint research_investigations_account_access_tuple_fk foreign key (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)");
     expect(sql).toContain("alter table investing.research_investigations enable row level security");
     expect(sql).toContain("alter table investing.research_investigations force row level security");
     expect(sql).toContain("grant select, insert on table investing.research_investigations to investing_app");
@@ -514,6 +618,7 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(sql).toContain("account_id::text = current_setting('syntrake.investing.account_id', true)");
     expect(sql).toContain("if v_bad_grants <> 0 then");
     expect(sql).toContain("p.prosecdef");
+    expect(rawSql).not.toMatch(/initial_question|initialQuestion|rawIntent|content_schema_version|research_initial_question_hash/);
     expect(sql).not.toContain("investing_research_");
     expect(sql).not.toContain("public.research_lab_state");
     expect(sql).not.toContain("public.research_lab_runs");

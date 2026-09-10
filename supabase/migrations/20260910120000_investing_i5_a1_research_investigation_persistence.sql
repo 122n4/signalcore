@@ -1,10 +1,48 @@
 -- I5-A1 Research Investigation Create Persistence.
 -- Additive only: preserves Genesis/I2 authority and I5 research authority/audit contract.
 
+begin;
+
 do $$
 declare
   v_operation_constraint text;
 begin
+  if to_regrole('investing_owner') is null
+    or to_regrole('investing_app') is null then
+    raise exception 'I5-A1 prestate violation: investing roles missing';
+  end if;
+
+  if session_user in ('anon', 'authenticated', 'service_role', 'investing_app') then
+    raise exception 'I5-A1 prestate violation: migration executor cannot be runtime/shared role: %', session_user;
+  end if;
+
+  if to_regclass('investing.principals') is null
+    or to_regclass('investing.tenants') is null
+    or to_regclass('investing.tenant_memberships') is null
+    or to_regclass('investing.accounts') is null
+    or to_regclass('investing.account_access') is null
+    or to_regclass('investing.idempotency_records') is null
+    or to_regclass('investing.research_authority_sessions') is null
+    or to_regclass('investing.research_authority_denials') is null then
+    raise exception 'I5-A1 prestate violation: expected Genesis/I5 authority tables missing';
+  end if;
+
+  if to_regclass('investing.research_investigations') is not null then
+    raise exception 'I5-A1 prestate violation: investing.research_investigations already exists';
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.pg_constraint con
+    join pg_catalog.pg_class c on c.oid = con.conrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = 'account_access'
+      and con.conname = 'account_access_identity_tuple_key'
+  ) then
+    raise exception 'I5-A1 prestate violation: account_access composite identity key already exists';
+  end if;
+
   select pg_catalog.pg_get_constraintdef(con.oid, true)
   into v_operation_constraint
   from pg_catalog.pg_constraint con
@@ -20,8 +58,17 @@ begin
     raise exception 'I5-A1 prestate violation: unexpected idempotency operation vocabulary: %', v_operation_constraint;
   end if;
 
-  if to_regclass('investing.research_investigations') is not null then
-    raise exception 'I5-A1 prestate violation: investing.research_investigations already exists';
+  if exists (
+    select 1
+    from pg_catalog.pg_constraint con
+    join pg_catalog.pg_class c on c.oid = con.conrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = 'research_authority_sessions'
+      and con.conname = 'research_authority_sessions_operation_check'
+      and pg_catalog.pg_get_constraintdef(con.oid, true) !~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+  ) then
+    raise exception 'I5-A1 prestate violation: I5 research authority operation contract missing';
   end if;
 end $$;
 
@@ -38,6 +85,10 @@ alter table investing.idempotency_records
     'RESEARCH_INVESTIGATION_CREATE_V1'
   ));
 
+alter table investing.account_access
+  add constraint account_access_identity_tuple_key
+  unique (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id);
+
 create table investing.research_investigations (
   research_investigation_id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references investing.tenants (tenant_id),
@@ -51,9 +102,6 @@ create table investing.research_investigations (
   operation text not null,
   capability text not null,
   source_context text not null,
-  content_schema_version text not null,
-  initial_question text not null,
-  initial_question_hash text not null,
   material_request_hash text not null,
   idempotency_record_id uuid not null references investing.idempotency_records (idempotency_record_id),
   idempotency_key text not null,
@@ -66,9 +114,9 @@ create table investing.research_investigations (
   constraint research_investigations_membership_tuple_fk
     foreign key (tenant_membership_id, tenant_id, principal_id)
     references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
-  constraint research_investigations_account_access_fk
-    foreign key (account_access_id)
-    references investing.account_access (account_access_id),
+  constraint research_investigations_account_access_tuple_fk
+    foreign key (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
+    references investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id),
   constraint research_investigations_one_per_idempotency_key
     unique (actor_kind, actor_id, operation_scope, operation, idempotency_key),
   constraint research_investigations_one_per_idempotency_record_key
@@ -98,15 +146,8 @@ create table investing.research_investigations (
         and account_access_id is not null
       )
     ),
-  constraint research_investigations_content_schema_version_check
-    check (content_schema_version = 'SYNTRAKE_INVESTING_I5_A1_RESEARCH_INVESTIGATION_CONTENT_V1'),
-  constraint research_investigations_initial_question_check
-    check (char_length(initial_question) between 1 and 4096),
-  constraint research_investigations_hashes_check
-    check (
-      initial_question_hash ~ '^[A-F0-9]{64}$'
-      and material_request_hash ~ '^[A-F0-9]{64}$'
-    ),
+  constraint research_investigations_hash_check
+    check (material_request_hash ~ '^[A-F0-9]{64}$'),
   constraint research_investigations_opaque_ids_check
     check (
       char_length(actor_id) between 1 and 256
@@ -267,8 +308,6 @@ create policy research_investigations_i5_create_insert
     and idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
     and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
-    and initial_question_hash = current_setting('syntrake.investing.research_initial_question_hash', true)
-    and content_schema_version = 'SYNTRAKE_INVESTING_I5_A1_RESEARCH_INVESTIGATION_CONTENT_V1'
     and (
       (
         operation_scope = 'TENANT_SCOPE'
@@ -320,7 +359,6 @@ create policy research_investigations_i5_create_read
     and idempotency_key = current_setting('syntrake.investing.idempotency_key', true)
     and idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)
     and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
-    and initial_question_hash = current_setting('syntrake.investing.research_initial_question_hash', true)
     and (
       (
         operation_scope = 'TENANT_SCOPE'
@@ -355,6 +393,33 @@ begin
       and c.relname = 'research_investigations'
   ) then
     raise exception 'I5-A1 postcondition violation: research_investigations owner/RLS/FORCE mismatch';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint con
+    join pg_catalog.pg_class c on c.oid = con.conrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = 'account_access'
+      and con.conname = 'account_access_identity_tuple_key'
+      and pg_catalog.pg_get_constraintdef(con.oid, true)
+        = 'UNIQUE (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)'
+  ) then
+    raise exception 'I5-A1 postcondition violation: account_access structural identity key missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint con
+    join pg_catalog.pg_class c on c.oid = con.conrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = 'research_investigations'
+      and con.conname = 'research_investigations_account_access_tuple_fk'
+      and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'FOREIGN KEY \(account_access_id, account_id, tenant_id, tenant_membership_id, principal_id\)'
+  ) then
+    raise exception 'I5-A1 postcondition violation: structural account_access FK missing';
   end if;
 
   select count(*)
@@ -410,3 +475,5 @@ begin
 end $$;
 
 reset role;
+
+commit;
