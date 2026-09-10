@@ -262,6 +262,16 @@ No source context may widen scope.
 
 `USER_PORTFOLIO` MUST NOT downgrade to tenant scope because account authority fails.
 
+Future Research authority transactions MUST set `syntrake.investing.operation_scope`
+as an explicit transaction-local discriminator after server-side source/scope
+selection. For I5 V1, the only admitted values are `TENANT_SCOPE` and
+`ACCOUNT_SCOPE`: `PURE_RESEARCH` and `TEST_PORTFOLIO` set `TENANT_SCOPE` with
+an absent account GUC; `USER_PORTFOLIO` sets `ACCOUNT_SCOPE` with the exact
+canonical account GUC. This GUC is not client authority proof. It exists so
+RLS cannot OR-compose account-scope policies into a tenant-scope transaction
+when a pooled connection contains stale account state. Research stale-context
+preflight must include `syntrake.investing.operation_scope`.
+
 Research execution environment is a separate scientific dimension:
 
 ```text

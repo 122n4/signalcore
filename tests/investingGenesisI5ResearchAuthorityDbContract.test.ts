@@ -49,6 +49,7 @@ function sliceBetween(source: string, start: string, end: string) {
 type SessionContext = {
   operation?: string;
   capability?: string;
+  operationScope?: "ACCOUNT_SCOPE" | "TENANT_SCOPE" | "DOMAIN_SCOPE" | "UNKNOWN_SCOPE";
   actorId: string;
   principalId: string;
   tenantId?: string;
@@ -132,6 +133,7 @@ const modelIds = {
 const i2bSession: SessionContext = {
   operation: "ACCOUNT_CONTEXT_RESOLVE",
   capability: "ACCOUNT_AUTHORITY_READ",
+  operationScope: "ACCOUNT_SCOPE",
   actorId: "user_clerk_123",
   principalId: modelIds.principalId,
   tenantId: modelIds.tenantId,
@@ -144,12 +146,14 @@ const i5Session: SessionContext = {
   ...i2bSession,
   operation: "RESEARCH_INVESTIGATION_CREATE_V1",
   capability: "RESEARCH_MUTATE",
+  operationScope: "ACCOUNT_SCOPE",
 };
 
 const i2cSession: SessionContext = {
   ...i2bSession,
   operation: "INITIAL_PERSONAL_BOOTSTRAP",
   capability: "AUTHORITY_BOOTSTRAP",
+  operationScope: "DOMAIN_SCOPE",
 };
 
 const i2bAccountDenialRow: AuditRow = {
@@ -201,6 +205,15 @@ const validI5PreAuthorityRow: PreAuthorityAuditRow = {
   selectorKind: "ACCOUNT_ID",
   resolutionStage: "ACCOUNT_ACCESS_LOOKUP",
   reasonCode: "ACCESS_INACTIVE",
+};
+
+const validI5TenantPreAuthorityRow: PreAuthorityAuditRow = {
+  ...validI2bPreAuthorityRow,
+  operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+  operationScope: "TENANT_SCOPE",
+  selectorKind: "TENANT_ID",
+  resolutionStage: "TENANT_SELECTOR_LOOKUP",
+  reasonCode: "TENANT_SELECTOR_NOT_ACCESSIBLE",
 };
 
 const authorityGraph: AuthorityGraph = {
@@ -299,6 +312,7 @@ function i5ResearchDenialPolicy(row: AuditRow, session: SessionContext) {
 
   if (row.operationScope === "TENANT_SCOPE") {
     return (
+      session.operationScope === "TENANT_SCOPE" &&
       row.tenantId === session.tenantId &&
       (session.accountId ?? "") === "" &&
       row.accountId === null &&
@@ -312,6 +326,7 @@ function i5ResearchDenialPolicy(row: AuditRow, session: SessionContext) {
   }
 
   return (
+    session.operationScope === "ACCOUNT_SCOPE" &&
     row.operationScope === "ACCOUNT_SCOPE" &&
     row.tenantId === session.tenantId &&
     row.accountId === session.accountId &&
@@ -477,6 +492,7 @@ function i5TenantReadPolicy(graph: AuthorityGraph, session: SessionContext) {
   return (
     session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
     session.capability === "RESEARCH_MUTATE" &&
+    session.operationScope === "TENANT_SCOPE" &&
     (session.accountId ?? "") === "" &&
     graph.tenant.tenantId === session.tenantId &&
     graph.principal.principalId === session.principalId &&
@@ -493,6 +509,7 @@ function i5TenantMembershipReadPolicy(graph: AuthorityGraph, session: SessionCon
   return (
     session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
     session.capability === "RESEARCH_MUTATE" &&
+    session.operationScope === "TENANT_SCOPE" &&
     (session.accountId ?? "") === "" &&
     graph.membership.tenantId === session.tenantId &&
     graph.membership.principalId === session.principalId &&
@@ -508,6 +525,7 @@ function i5AccountReadPolicy(graph: AuthorityGraph, session: SessionContext) {
   return (
     session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
     session.capability === "RESEARCH_MUTATE" &&
+    session.operationScope === "ACCOUNT_SCOPE" &&
     (session.accountId ?? "") !== "" &&
     graph.account.accountId === session.accountId &&
     graph.account.initialPrincipalId === session.principalId &&
@@ -522,6 +540,7 @@ function i5AccountScopeTenantReadPolicy(graph: AuthorityGraph, session: SessionC
   return (
     session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
     session.capability === "RESEARCH_MUTATE" &&
+    session.operationScope === "ACCOUNT_SCOPE" &&
     (session.accountId ?? "") !== "" &&
     graph.tenant.tenantId === session.tenantId &&
     graph.account.accountId === session.accountId &&
@@ -534,6 +553,7 @@ function i5AccountScopeTenantMembershipReadPolicy(graph: AuthorityGraph, session
   return (
     session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
     session.capability === "RESEARCH_MUTATE" &&
+    session.operationScope === "ACCOUNT_SCOPE" &&
     (session.accountId ?? "") !== "" &&
     graph.membership.tenantId === session.tenantId &&
     graph.membership.principalId === session.principalId &&
@@ -548,6 +568,7 @@ function i5AccountAccessReadPolicy(graph: AuthorityGraph, session: SessionContex
   return (
     session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
     session.capability === "RESEARCH_MUTATE" &&
+    session.operationScope === "ACCOUNT_SCOPE" &&
     (session.accountId ?? "") !== "" &&
     graph.accountAccess.accountId === session.accountId &&
     graph.accountAccess.tenantId === session.tenantId &&
@@ -634,8 +655,12 @@ function oldPreAuthorityPolicy(row: PreAuthorityAuditRow, session: SessionContex
       (session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
         session.capability === "RESEARCH_MUTATE" &&
         row.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
-        ((row.operationScope === "TENANT_SCOPE" && row.selectorKind === "TENANT_ID") ||
-          (row.operationScope === "ACCOUNT_SCOPE" && row.selectorKind === "ACCOUNT_ID"))))
+        ((session.operationScope === "TENANT_SCOPE" &&
+          row.operationScope === "TENANT_SCOPE" &&
+          row.selectorKind === "TENANT_ID") ||
+          (session.operationScope === "ACCOUNT_SCOPE" &&
+            row.operationScope === "ACCOUNT_SCOPE" &&
+            row.selectorKind === "ACCOUNT_ID"))))
   );
 }
 
@@ -650,8 +675,12 @@ function correctedPreAuthorityPolicy(row: PreAuthorityAuditRow, session: Session
       (session.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
         session.capability === "RESEARCH_MUTATE" &&
         row.operation === "RESEARCH_INVESTIGATION_CREATE_V1" &&
-        ((row.operationScope === "TENANT_SCOPE" && row.selectorKind === "TENANT_ID") ||
-          (row.operationScope === "ACCOUNT_SCOPE" && row.selectorKind === "ACCOUNT_ID"))))
+        ((session.operationScope === "TENANT_SCOPE" &&
+          row.operationScope === "TENANT_SCOPE" &&
+          row.selectorKind === "TENANT_ID") ||
+          (session.operationScope === "ACCOUNT_SCOPE" &&
+            row.operationScope === "ACCOUNT_SCOPE" &&
+            row.selectorKind === "ACCOUNT_ID"))))
   );
 }
 
@@ -734,7 +763,9 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'research_investigation_create_v1'");
     expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
     expect(policy).toContain("operation = 'research_investigation_create_v1'");
+    expect(policy).toContain("current_setting('syntrake.investing.operation_scope', true) = 'tenant_scope'");
     expect(policy).toContain("operation_scope = 'tenant_scope' and selector_kind = 'tenant_id'");
+    expect(policy).toContain("current_setting('syntrake.investing.operation_scope', true) = 'account_scope'");
     expect(policy).toContain("operation_scope = 'account_scope' and selector_kind = 'account_id'");
     expect(policy).not.toMatch(/operation\s+is\s+not\s+null/);
     expect(policy).not.toMatch(/operation_scope\s+is\s+not\s+null/);
@@ -747,8 +778,19 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, { ...cleanPreAuthoritySession, operation: "" })).toBe(true);
     expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, { ...cleanPreAuthoritySession, capability: "" })).toBe(true);
     expect(correctedPreAuthorityPolicy(validI5PreAuthorityRow, i5Session)).toBe(true);
+    expect(
+      correctedPreAuthorityPolicy(validI5TenantPreAuthorityRow, {
+        ...i5Session,
+        operationScope: "TENANT_SCOPE",
+        accountId: undefined,
+      }),
+    ).toBe(true);
     expect(oldPreAuthorityPolicy(validI2bPreAuthorityRow, i5Session)).toBe(true);
     expect(correctedPreAuthorityPolicy(validI2bPreAuthorityRow, i5Session)).toBe(false);
+    expect(correctedPreAuthorityPolicy(validI5PreAuthorityRow, { ...i5Session, operationScope: "TENANT_SCOPE" })).toBe(false);
+    expect(correctedPreAuthorityPolicy(validI5TenantPreAuthorityRow, i5Session)).toBe(false);
+    expect(correctedPreAuthorityPolicy(validI5PreAuthorityRow, { ...i5Session, operationScope: undefined })).toBe(false);
+    expect(correctedPreAuthorityPolicy(validI5PreAuthorityRow, { ...i5Session, operationScope: "UNKNOWN_SCOPE" })).toBe(false);
 
     for (const session of [
       { ...i2bSession, operation: "RESEARCH_INVESTIGATION_CREATE_V1", capability: "ACCOUNT_AUTHORITY_READ" },
@@ -787,12 +829,14 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(policy).toContain("evidence ->> 'operation' = 'research_investigation_create_v1'");
     expect(policy).toContain("evidence ->> 'capability' = 'research_mutate'");
     expect(policy).toContain("operation_scope = 'tenant_scope'");
+    expect(policy).toContain("current_setting('syntrake.investing.operation_scope', true) = 'tenant_scope'");
     expect(policy).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') = ''");
     expect(policy).toContain("account_id is null");
     expect(policy).toContain("object_type = 'tenant'");
     expect(policy).toContain("object_id = tenant_id::text");
     expect(policy).toContain("source_context' in ('pure_research', 'test_portfolio')");
     expect(policy).toContain("operation_scope = 'account_scope'");
+    expect(policy).toContain("current_setting('syntrake.investing.operation_scope', true) = 'account_scope'");
     expect(policy).toContain("account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid");
     expect(policy).toContain("object_type = 'account'");
     expect(policy).toContain("source_context' = 'user_portfolio'");
@@ -860,6 +904,7 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       expect(policy).toContain("to investing_app");
       expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'research_investigation_create_v1'");
       expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
+      expect(policy).toContain("current_setting('syntrake.investing.operation_scope', true) = 'tenant_scope'");
       expect(policy).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') = ''");
       expect(policy).toContain("nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid");
       expect(policy).toContain("nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid");
@@ -908,6 +953,7 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       expect(policy).toContain("to investing_app");
       expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'research_investigation_create_v1'");
       expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
+      expect(policy).toContain("current_setting('syntrake.investing.operation_scope', true) = 'account_scope'");
       expect(policy).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''");
       expect(policy).not.toContain("capability', true) = 'account_authority_read'");
       expect(policy).not.toContain("to service_role");
@@ -930,10 +976,11 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
   });
 
   it("models effective tenant read policy OR-composition and isolates stale Research account GUCs", () => {
-    const tenantSession = { ...i5Session, accountId: undefined };
-    const matchingAccountResearchSession = { ...i5Session, accountId: modelIds.accountId };
+    const tenantSession = { ...i5Session, operationScope: "TENANT_SCOPE" as const, accountId: undefined };
+    const matchingAccountResearchSession = { ...i5Session, operationScope: "TENANT_SCOPE" as const, accountId: modelIds.accountId };
     const unrelatedAccountResearchSession = {
       ...i5Session,
+      operationScope: "TENANT_SCOPE" as const,
       accountId: "44444444-4444-4444-8444-444444444444",
     };
 
@@ -943,10 +990,16 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     expect(correctedI2bTenantMembershipReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
     expect(i5TenantReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
     expect(i5TenantMembershipReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(i5AccountReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(i5AccountScopeTenantReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(i5AccountScopeTenantMembershipReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
+    expect(i5AccountAccessReadPolicy(authorityGraph, matchingAccountResearchSession)).toBe(false);
     expect(correctedI2bTenantReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
     expect(correctedI2bTenantMembershipReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
     expect(i5TenantReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
     expect(i5TenantMembershipReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
+    expect(i5AccountReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
+    expect(i5AccountAccessReadPolicy(authorityGraph, unrelatedAccountResearchSession)).toBe(false);
     expect(i5TenantReadPolicy(authorityGraph, tenantSession)).toBe(true);
     expect(i5TenantMembershipReadPolicy(authorityGraph, tenantSession)).toBe(true);
     expect(correctedI2bTenantReadPolicy(authorityGraph, i2bSession)).toBe(true);
@@ -955,7 +1008,9 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
 
   it("models complete Research USER_PORTFOLIO account-scope graph and tuple isolation", () => {
     const accountSession = { ...i5Session };
-    const tenantScopeSession = { ...i5Session, accountId: undefined };
+    const tenantScopeSession = { ...i5Session, operationScope: "TENANT_SCOPE" as const, accountId: undefined };
+    const missingScopeSession = { ...i5Session, operationScope: undefined };
+    const unknownScopeSession = { ...i5Session, operationScope: "UNKNOWN_SCOPE" as const };
 
     expect(i5AccountScopeCompleteGraphVisible(authorityGraph, accountSession)).toBe(true);
     expect(effectiveAccountReadPolicy(authorityGraph, accountSession)).toBe(true);
@@ -1009,6 +1064,10 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       ),
     ).toBe(false);
     expect(i5AccountScopeCompleteGraphVisible(authorityGraph, tenantScopeSession)).toBe(false);
+    expect(i5AccountScopeCompleteGraphVisible(authorityGraph, missingScopeSession)).toBe(false);
+    expect(i5AccountScopeCompleteGraphVisible(authorityGraph, unknownScopeSession)).toBe(false);
+    expect(i5AccountScopeCompleteGraphVisible(authorityGraph, { ...accountSession, accountId: undefined })).toBe(false);
+    expect(i5AccountScopeCompleteGraphVisible(authorityGraph, { ...accountSession, accountId: "44444444-4444-4444-8444-444444444444" })).toBe(false);
     expect(i5AccountReadPolicy(authorityGraph, { ...accountSession, capability: "ACCOUNT_AUTHORITY_READ" })).toBe(false);
     expect(i5AccountReadPolicy(authorityGraph, { ...accountSession, operation: "ACCOUNT_CONTEXT_RESOLVE" })).toBe(false);
     expect(correctedI2bAccountReadPolicy(authorityGraph, i2bSession)).toBe(true);
@@ -1031,7 +1090,7 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
         source_context: "PURE_RESEARCH",
       },
     } satisfies AuditRow;
-    const tenantSession = { ...i5Session, accountId: undefined };
+    const tenantSession = { ...i5Session, operationScope: "TENANT_SCOPE" as const, accountId: undefined };
 
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, tenantSession, authorityGraph)).toBe(true);
     expect(
@@ -1051,6 +1110,8 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
     ).toBe(false);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, operation: "ACCOUNT_CONTEXT_RESOLVE" }, authorityGraph)).toBe(false);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, capability: "ACCOUNT_AUTHORITY_READ" }, authorityGraph)).toBe(false);
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, operationScope: undefined }, authorityGraph)).toBe(false);
+    expect(i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, operationScope: "UNKNOWN_SCOPE" }, authorityGraph)).toBe(false);
     expect(i5TenantScopeAuditAllowed(tenantDenialRow, i2cSession, authorityGraph)).toBe(false);
     expect(
       i5TenantScopeAuditAllowed(tenantDenialRow, { ...tenantSession, principalId: "44444444-4444-4444-8444-444444444444" }, authorityGraph),
@@ -1068,7 +1129,9 @@ describe("Investing Genesis I5 Research authority DB audit contract", () => {
       evidence: { ...tenantDenialRow.evidence, source_context: "USER_PORTFOLIO" },
     } satisfies AuditRow;
     expect(i5ResearchDenialPolicy(userPortfolioRow, tenantSession)).toBe(false);
-    expect(i5ResearchDenialPolicy(userPortfolioRow, { ...tenantSession, accountId: modelIds.accountId })).toBe(true);
+    expect(i5ResearchDenialPolicy(userPortfolioRow, { ...tenantSession, accountId: modelIds.accountId })).toBe(false);
+    expect(i5ResearchDenialPolicy(userPortfolioRow, { ...i5Session, operationScope: "ACCOUNT_SCOPE", accountId: modelIds.accountId })).toBe(true);
+    expect(i5ResearchDenialPolicy(tenantDenialRow, { ...i5Session, operationScope: "ACCOUNT_SCOPE", accountId: modelIds.accountId })).toBe(false);
   });
 
   it("accepts PostgreSQL 17-normalized evidence expressions without weakening operator/value checks", () => {

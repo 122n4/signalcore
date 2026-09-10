@@ -354,11 +354,13 @@ create policy pre_authority_audit_events_i2b_i5_insert
         and operation = 'RESEARCH_INVESTIGATION_CREATE_V1'
         and (
           (
-            operation_scope = 'TENANT_SCOPE'
+            current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+            and operation_scope = 'TENANT_SCOPE'
             and selector_kind = 'TENANT_ID'
           )
           or (
-            operation_scope = 'ACCOUNT_SCOPE'
+            current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+            and operation_scope = 'ACCOUNT_SCOPE'
             and selector_kind = 'ACCOUNT_ID'
           )
         )
@@ -469,6 +471,7 @@ create policy tenants_i5_research_authority_read
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
     and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and exists (
@@ -492,6 +495,7 @@ create policy tenant_memberships_i5_research_authority_read
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
     and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
@@ -513,6 +517,7 @@ create policy accounts_i5_research_account_authority_read
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
     and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
@@ -533,6 +538,7 @@ create policy tenants_i5_research_account_authority_read
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
     and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and exists (
@@ -551,6 +557,7 @@ create policy tenant_memberships_i5_research_account_authority_read
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
     and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
     and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
@@ -571,6 +578,7 @@ create policy account_access_i5_research_account_authority_read
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
     and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
     and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
     and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
@@ -652,6 +660,7 @@ create policy audit_events_i5_research_investigation_create_denial_insert
     and (
       (
         operation_scope = 'TENANT_SCOPE'
+        and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
         and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
         and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
         and account_id is null
@@ -683,6 +692,7 @@ create policy audit_events_i5_research_investigation_create_denial_insert
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'
+        and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
         and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
         and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
         and object_type = 'ACCOUNT'
@@ -975,6 +985,7 @@ begin
     )
     and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
     and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     and normalized.expr ~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*<>\s*'''''
     and normalized.expr !~ 'account_authority_read';
 
@@ -998,6 +1009,7 @@ begin
   where n.nspname = 'investing'
     and c.relname = 'accounts'
     and pol.polname = 'accounts_i5_research_account_authority_read'
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     and normalized.expr ~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'initial_principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr !~ 'accounts\.state\s*=\s*''active''';
@@ -1022,6 +1034,7 @@ begin
   where n.nspname = 'investing'
     and c.relname = 'tenants'
     and pol.polname = 'tenants_i5_research_account_authority_read'
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     and normalized.expr ~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'a\.account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'a\.tenant_id\s*=\s*tenants\.tenant_id'
@@ -1048,6 +1061,7 @@ begin
   where n.nspname = 'investing'
     and c.relname = 'tenant_memberships'
     and pol.polname = 'tenant_memberships_i5_research_account_authority_read'
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     and normalized.expr ~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'role\s*=\s*''owner'''
@@ -1076,6 +1090,7 @@ begin
   where n.nspname = 'investing'
     and c.relname = 'account_access'
     and pol.polname = 'account_access_i5_research_account_authority_read'
+    and normalized.expr ~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     and normalized.expr ~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     and normalized.expr ~ 'principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
@@ -1185,6 +1200,7 @@ begin
 
   if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''tenant_scope'''
     or v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
     or v_policy_expr !~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     or v_policy_expr !~ 'p\.principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
@@ -1211,6 +1227,7 @@ begin
 
   if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''tenant_scope'''
     or v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
     or v_policy_expr !~ 'tenant_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.tenant_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     or v_policy_expr !~ 'principal_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.principal_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
@@ -1241,6 +1258,8 @@ begin
     or v_policy_expr !~ 'selector_kind\s*=\s*''account_id'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''tenant_scope'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     or v_policy_expr !~ 'operation_scope\s*=\s*''tenant_scope'''
     or v_policy_expr !~ 'selector_kind\s*=\s*''tenant_id''' then
     raise exception 'I5 Research authority audit postcondition violation: pre-authority policy is not exact for I2 and I5';
@@ -1262,10 +1281,12 @@ begin
 
   if v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation''\s*,\s*true\s*\)\s*=\s*''research_investigation_create_v1'''
     or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.capability''\s*,\s*true\s*\)\s*=\s*''research_mutate'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''tenant_scope'''
     or v_policy_expr !~ 'operation_scope\s*=\s*''tenant_scope'''
     or v_policy_expr !~ 'coalesce\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*=\s*'''''
     or v_policy_expr !~ 'account_id\s+is\s+null'
     or v_policy_expr !~ 'object_type\s*=\s*''tenant'''
+    or v_policy_expr !~ 'current_setting\s*\(\s*''syntrake\.investing\.operation_scope''\s*,\s*true\s*\)\s*=\s*''account_scope'''
     or v_policy_expr !~ 'operation_scope\s*=\s*''account_scope'''
     or v_policy_expr !~ 'account_id\s*=\s*\(\s*nullif\s*\(\s*current_setting\s*\(\s*''syntrake\.investing\.account_id''\s*,\s*true\s*\)\s*,\s*''''\s*\)\s*\)::uuid'
     or v_policy_expr !~ 'object_type\s*=\s*''account'''
