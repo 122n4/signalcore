@@ -327,8 +327,8 @@ describe("Investing Genesis I2-B AuthorizedInvestingContext", () => {
     expect(tenantIndex).toBeGreaterThan(accessIndex);
   });
 
-  it("rejects client tenantId, userId, operation, capability, clerkAuth, and database as authority input", async () => {
-    for (const forbidden of ["tenantId", "userId", "operation", "capability", "clerkAuth", "database"]) {
+  it("rejects client tenantId, userId, operation, capability, operation_scope, clerkAuth, and database as authority input", async () => {
+    for (const forbidden of ["tenantId", "userId", "operation", "capability", "operation_scope", "operationScope", "clerkAuth", "database"]) {
       const { result, client } = await resolveWith({}, { [forbidden]: "forged" });
       expect(result).toMatchObject({ ok: false, code: "FORBIDDEN_OR_NOT_FOUND" });
       expect(client?.queries).toEqual([]);
@@ -430,6 +430,14 @@ describe("Investing Genesis I2-B AuthorizedInvestingContext", () => {
     expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
     expect(client?.queries.map((query) => query.text.toLowerCase())).toContain("rollback");
     expect(client?.released).toBe(true);
+    expect(client?.destroyed).toBe(true);
+  });
+
+  it("fails closed on stale operation_scope transaction-local context", async () => {
+    const { result, client } = await resolveWith({}, {}, { c11: "ACCOUNT_SCOPE" });
+
+    expect(result).toMatchObject({ ok: false, code: "INTERNAL_ERROR" });
+    expect(client?.queries.map((query) => query.text.toLowerCase())).toContain("rollback");
     expect(client?.destroyed).toBe(true);
   });
 
