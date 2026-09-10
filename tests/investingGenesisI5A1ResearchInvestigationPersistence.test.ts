@@ -599,7 +599,46 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
 
     expect(sql.startsWith("begin;")).toBe(true);
     expect(sql.endsWith("commit;")).toBe(true);
+    expect(sql).toContain("if current_user <> 'postgres' then");
+    expect(sql).not.toContain("session_user in ('anon', 'authenticated', 'service_role', 'investing_app')");
     expect(sql).toContain("set local role investing_owner");
+    for (const table of [
+      "principals",
+      "tenants",
+      "tenant_memberships",
+      "accounts",
+      "account_access",
+      "idempotency_records",
+      "audit_events",
+      "pre_authority_audit_events",
+    ]) {
+      expect(sql).toContain(`to_regclass('investing.${table}') is null`);
+    }
+    expect(rawSql).not.toMatch(/research_authority_sessions|research_authority_denials|research_authority_sessions_operation_check/);
+    expect(sql).toContain("v_constraint_count <> 1");
+    expect(sql).toContain("v_operation_constraint is null");
+    expect(sql).toContain("v_operation_constraint !~ 'initial_personal_bootstrap'");
+    expect(sql).toContain("v_operation_constraint !~ 'initial_paper_cash_funding'");
+    expect(sql).toContain("v_operation_constraint ~ 'research_investigation_create_v1'");
+    for (const policy of [
+      "pre_authority_audit_events_i2b_i5_insert",
+      "audit_events_i5_research_investigation_create_denial_insert",
+      "tenants_i5_research_authority_read",
+      "tenant_memberships_i5_research_authority_read",
+      "accounts_i5_research_account_authority_read",
+      "tenants_i5_research_account_authority_read",
+      "tenant_memberships_i5_research_account_authority_read",
+      "account_access_i5_research_account_authority_read",
+    ]) {
+      expect(sql).toContain(`'${policy}'`);
+    }
+    expect(sql).toContain("cmd = 'insert'");
+    expect(sql).toContain("cmd = 'select'");
+    expect(sql).toContain("with_check ~ 'research_investigation_create_v1'");
+    expect(sql).toContain("qual ~ 'research_investigation_create_v1'");
+    expect(sql).toContain("qual ~ 'research_mutate'");
+    expect(sql).toContain("qual ~ 'account_scope'");
+    expect(sql).toContain("if v_policy_count <> 8 then");
     expect(sql).toContain("add constraint account_access_identity_tuple_key unique (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)");
     expect(sql).toContain("create table investing.research_investigations");
     expect(sql).toContain("constraint research_investigations_account_access_tuple_fk foreign key (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)");

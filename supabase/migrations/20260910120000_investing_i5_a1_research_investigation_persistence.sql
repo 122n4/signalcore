@@ -5,15 +5,17 @@ begin;
 
 do $$
 declare
+  v_constraint_count integer;
   v_operation_constraint text;
+  v_policy_count integer;
 begin
+  if current_user <> 'postgres' then
+    raise exception 'I5-A1 prestate violation: migration executor must be postgres, got %', current_user;
+  end if;
+
   if to_regrole('investing_owner') is null
     or to_regrole('investing_app') is null then
     raise exception 'I5-A1 prestate violation: investing roles missing';
-  end if;
-
-  if session_user in ('anon', 'authenticated', 'service_role', 'investing_app') then
-    raise exception 'I5-A1 prestate violation: migration executor cannot be runtime/shared role: %', session_user;
   end if;
 
   if to_regclass('investing.principals') is null
@@ -22,8 +24,8 @@ begin
     or to_regclass('investing.accounts') is null
     or to_regclass('investing.account_access') is null
     or to_regclass('investing.idempotency_records') is null
-    or to_regclass('investing.research_authority_sessions') is null
-    or to_regclass('investing.research_authority_denials') is null then
+    or to_regclass('investing.audit_events') is null
+    or to_regclass('investing.pre_authority_audit_events') is null then
     raise exception 'I5-A1 prestate violation: expected Genesis/I5 authority tables missing';
   end if;
 
@@ -43,8 +45,8 @@ begin
     raise exception 'I5-A1 prestate violation: account_access composite identity key already exists';
   end if;
 
-  select pg_catalog.pg_get_constraintdef(con.oid, true)
-  into v_operation_constraint
+  select count(*), max(pg_catalog.pg_get_constraintdef(con.oid, true))
+  into v_constraint_count, v_operation_constraint
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_class c on c.oid = con.conrelid
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
@@ -52,23 +54,79 @@ begin
     and c.relname = 'idempotency_records'
     and con.conname = 'idempotency_records_operation_check';
 
-  if v_operation_constraint !~ 'INITIAL_PERSONAL_BOOTSTRAP'
+  if v_constraint_count <> 1
+    or v_operation_constraint is null
+    or v_operation_constraint !~ 'INITIAL_PERSONAL_BOOTSTRAP'
     or v_operation_constraint !~ 'INITIAL_PAPER_CASH_FUNDING'
     or v_operation_constraint ~ 'RESEARCH_INVESTIGATION_CREATE_V1' then
     raise exception 'I5-A1 prestate violation: unexpected idempotency operation vocabulary: %', v_operation_constraint;
   end if;
 
-  if exists (
-    select 1
-    from pg_catalog.pg_constraint con
-    join pg_catalog.pg_class c on c.oid = con.conrelid
-    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'investing'
-      and c.relname = 'research_authority_sessions'
-      and con.conname = 'research_authority_sessions_operation_check'
-      and pg_catalog.pg_get_constraintdef(con.oid, true) !~ 'RESEARCH_INVESTIGATION_CREATE_V1'
-  ) then
-    raise exception 'I5-A1 prestate violation: I5 research authority operation contract missing';
+  select count(*)
+  into v_policy_count
+  from pg_catalog.pg_policies
+  where schemaname = 'investing'
+    and roles = array['investing_app']::name[]
+    and (
+      (
+        tablename = 'pre_authority_audit_events'
+        and policyname = 'pre_authority_audit_events_i2b_i5_insert'
+        and cmd = 'INSERT'
+        and with_check ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and with_check ~ 'RESEARCH_MUTATE'
+        and with_check ~ 'TENANT_SCOPE'
+        and with_check ~ 'ACCOUNT_SCOPE'
+      )
+      or (
+        tablename = 'audit_events'
+        and policyname = 'audit_events_i5_research_investigation_create_denial_insert'
+        and cmd = 'INSERT'
+        and with_check ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and with_check ~ 'RESEARCH_MUTATE'
+        and with_check ~ 'AUTHORITY_ACCESS_DENIED'
+      )
+      or (
+        tablename = 'tenants'
+        and policyname in (
+          'tenants_i5_research_authority_read',
+          'tenants_i5_research_account_authority_read'
+        )
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+      )
+      or (
+        tablename = 'tenant_memberships'
+        and policyname in (
+          'tenant_memberships_i5_research_authority_read',
+          'tenant_memberships_i5_research_account_authority_read'
+        )
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACTIVE'
+      )
+      or (
+        tablename = 'accounts'
+        and policyname = 'accounts_i5_research_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+      )
+      or (
+        tablename = 'account_access'
+        and policyname = 'account_access_i5_research_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'ACTIVE'
+      )
+    );
+
+  if v_policy_count <> 8 then
+    raise exception 'I5-A1 prestate violation: canonical I5 research authority/audit policy contract mismatch: %', v_policy_count;
   end if;
 end $$;
 
