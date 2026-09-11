@@ -215,6 +215,15 @@ export function applyA3PointerEffectV1(input: A3PointerEffectInputV1): Investiga
   return { activeDraft: predecessor.activeDraft, activeHypothesis: predecessor.activeHypothesis, activeSpec: newSpec, activeExperiment: null };
 }
 
+export function emptyInvestigationPointersV1(): InvestigationPointersV1 {
+  return Object.freeze({
+    activeDraft: null,
+    activeHypothesis: null,
+    activeSpec: null,
+    activeExperiment: null,
+  });
+}
+
 function canonicalResearchDraftProofV1(input: ResearchDraftProofV1): HashRefV1 {
   assertClosedPlainObject(input, new Set(["ref", "payload"]));
   const ref = hashRefV1(input.ref);
