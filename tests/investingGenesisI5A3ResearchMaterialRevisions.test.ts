@@ -278,6 +278,7 @@ describe("Investing I5-A3 Research material revisions", () => {
       "tenants_i5_a3_material_revision_account_authority_read",
       "tenant_memberships_i5_a3_material_revision_account_authority_read",
       "account_access_i5_a3_material_revision_account_authority_read",
+      "research_investigations_i5_a3_material_revision_selector_read",
       "research_investigations_i5_a3_material_revision_parent_read",
       "idempotency_records_i5_a3_material_revision_read",
       "idempotency_records_i5_a3_material_revision_insert",
@@ -298,6 +299,112 @@ describe("Investing I5-A3 Research material revisions", () => {
     }
     expect(sql).not.toContain("research_material_roots_i5_a1");
     expect(sql).not.toContain("research_material_revisions_i5_a2");
+  });
+
+  it("proves the A3 investigation selector stage has only pre-parent authority GUCs", () => {
+    const sql = normalize(read(migrationPath));
+    const selector = policy(sql, "research_investigations_i5_a3_material_revision_selector_read");
+    expect(selector).toContain("research_draft_revision_create_v1");
+    expect(selector).toContain("research_hypothesis_revision_create_v1");
+    expect(selector).toContain("research_mutate");
+    expect(selector).toContain("research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)");
+    expect(selector).toContain("actor_kind = 'user_principal'");
+    expect(selector).toContain("actor_id = current_setting('syntrake.investing.actor_id', true)");
+    expect(selector).toContain("principal_id::text = current_setting('syntrake.investing.principal_id', true)");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.operation_scope', true), '') = ''");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.tenant_id', true), '') = ''");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.tenant_membership_id', true), '') = ''");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') = ''");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''");
+
+    const resolver = normalize(read(authorityPath));
+    const resolverStart = resolver.indexOf("export async function resolveauthorizedresearchmaterialrevisioncreatecontext");
+    expect(resolverStart).toBeGreaterThanOrEqual(0);
+    const a3Resolver = resolver.slice(resolverStart);
+    const preParent = a3Resolver.slice(
+      a3Resolver.indexOf("await settransactioncontext(client, { actor_kind: \"user_principal\""),
+      a3Resolver.indexOf("const parent = await expectexactlyone("),
+    );
+    expect(preParent).toContain("actor_id: verifiedauth.externalsubject");
+    expect(preParent).toContain("external_provider: verifiedauth.externalprovider");
+    expect(preParent).toContain("external_subject: verifiedauth.externalsubject");
+    expect(preParent).toContain("operation: input.operation");
+    expect(preParent).toContain("capability: researchmutatecapability");
+    expect(preParent).toContain("correlation_id: input.correlationid");
+    expect(preParent).toContain("research_investigation_id: input.researchinvestigationid");
+    expect(preParent).toContain("principal_id: principal.row.principal_id");
+    expect(preParent).not.toContain("tenant_id:");
+    expect(preParent).not.toContain("tenant_membership_id:");
+    expect(preParent).not.toContain("operation_scope:");
+    expect(preParent).not.toContain("account_id:");
+    expect(preParent).not.toContain("account_access_id:");
+  });
+
+  it("keeps the writer-stage investigation policy strict after parent lineage is derived", () => {
+    const sql = normalize(read(migrationPath));
+    const parent = policy(sql, "research_investigations_i5_a3_material_revision_parent_read");
+    expect(parent).toContain("tenant_id::text = current_setting('syntrake.investing.tenant_id', true)");
+    expect(parent).toContain("tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)");
+    expect(parent).toContain("operation_scope = 'tenant_scope'");
+    expect(parent).toContain("operation_scope = 'account_scope'");
+    expect(parent).toContain("account_id is null");
+    expect(parent).toContain("account_access_id is null");
+    expect(parent).toContain("account_id::text = current_setting('syntrake.investing.account_id', true)");
+    expect(parent).toContain("account_access_id::text = current_setting('syntrake.investing.account_access_id', true)");
+  });
+
+  it("binds idempotency UPDATE to the full current material operation context", () => {
+    const sql = normalize(read(migrationPath));
+    const updatePolicy = policy(sql, "idempotency_records_i5_a3_material_revision_update");
+    for (const fragment of [
+      "idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)",
+      "actor_kind = 'user_principal'",
+      "actor_id = current_setting('syntrake.investing.actor_id', true)",
+      "principal_id::text = current_setting('syntrake.investing.principal_id', true)",
+      "tenant_id::text = current_setting('syntrake.investing.tenant_id', true)",
+      "operation = current_setting('syntrake.investing.operation', true)",
+      "operation_scope = current_setting('syntrake.investing.operation_scope', true)",
+      "idempotency_key = current_setting('syntrake.investing.idempotency_key', true)",
+      "material_request_hash = current_setting('syntrake.investing.material_request_hash', true)",
+      "status = 'started'",
+      "status = 'succeeded'",
+      "error_code is null",
+      "completed_at is null",
+      "completed_at is not null",
+      "canonical_result_reference is null",
+      "canonical_result_reference is not null",
+      "operation_scope = 'tenant_scope'",
+      "account_id is null",
+      "operation_scope = 'account_scope'",
+      "account_id::text = current_setting('syntrake.investing.account_id', true)",
+    ]) {
+      expect(updatePolicy).toContain(fragment);
+    }
+  });
+
+  it("binds pointer UPDATE to row ownership and scope, not research_investigation_id alone", () => {
+    const sql = normalize(read(migrationPath));
+    const pointerUpdate = policy(sql, "research_material_pointer_states_i5_a3_update");
+    for (const fragment of [
+      "research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)",
+      "actor_kind = 'user_principal'",
+      "actor_id = current_setting('syntrake.investing.actor_id', true)",
+      "principal_id::text = current_setting('syntrake.investing.principal_id', true)",
+      "tenant_id::text = current_setting('syntrake.investing.tenant_id', true)",
+      "tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)",
+      "operation_scope = current_setting('syntrake.investing.operation_scope', true)",
+      "operation_scope = 'tenant_scope'",
+      "account_id is null",
+      "account_access_id is null",
+      "operation_scope = 'account_scope'",
+      "account_id::text = current_setting('syntrake.investing.account_id', true)",
+      "account_access_id::text = current_setting('syntrake.investing.account_access_id', true)",
+      "updated_by_operation = current_setting('syntrake.investing.operation', true)",
+      "active_spec_revision_id is null",
+      "active_experiment_id is null",
+    ]) {
+      expect(pointerUpdate).toContain(fragment);
+    }
   });
 
   it("keeps idempotent writer semantics lock-or-create and CAS based", () => {
@@ -322,4 +429,12 @@ function read(filePath: string) {
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function policy(sql: string, name: string) {
+  const start = sql.indexOf(`create policy ${name}`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = sql.indexOf(";", start);
+  expect(end).toBeGreaterThan(start);
+  return sql.slice(start, end + 1);
 }
