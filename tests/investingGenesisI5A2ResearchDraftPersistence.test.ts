@@ -655,6 +655,18 @@ describe("Investing Genesis I5-A2 ResearchDraft persistence", () => {
     expect(sql).toContain("grant select, insert on table investing.research_drafts to investing_app");
     expect(sql).not.toContain("grant update");
     expect(sql).not.toContain("grant delete");
+    for (const policy of [
+      "principals_i5_research_draft_authority_read",
+      "tenants_i5_research_draft_authority_read",
+      "tenant_memberships_i5_research_draft_authority_read",
+      "accounts_i5_research_draft_account_authority_read",
+      "tenants_i5_research_draft_account_authority_read",
+      "tenant_memberships_i5_research_draft_account_authority_read",
+      "account_access_i5_research_draft_account_authority_read",
+    ]) {
+      expect(sql).toContain(`create policy ${policy}`);
+      expect(sql).toContain(`policyname = '${policy}'`);
+    }
     expect(sql).toContain("create policy research_investigations_i5_draft_create_parent_read");
     expect(sql).toContain("create policy research_drafts_i5_create_insert");
     expect(sql).toContain("create policy research_drafts_i5_create_read");
@@ -667,10 +679,28 @@ describe("Investing Genesis I5-A2 ResearchDraft persistence", () => {
     expect(sql).toContain("draft_schema_version = 'research_draft_hash_payload_v1'");
     expect(sql).toContain("draft_payload ->> 'schemaversion' = 'research_draft_hash_payload_v1'");
     expect(sql).toContain("if v_bad_grants <> 0 then");
+    expect(sql).toContain("if v_draft_policy_count <> 13 then");
     expect(sql).toContain("p.prosecdef");
     expect(rawSql).not.toMatch(/initial_question|initialQuestion|initial_question_hash|raw_intent|interpreted_objective/);
     expect(sql).not.toContain("to service_role");
     expect(sql).not.toMatch(/\busing\s*\(\s*true\s*\)|\bwith check\s*\(\s*true\s*\)/);
+  });
+
+  it("pins Draft Create base authority policies as operation-specific and non-broad", () => {
+    const sql = normalizeSql(readMigration());
+    const draftPolicyStart = sql.indexOf("create policy principals_i5_research_draft_authority_read");
+    const parentPolicyStart = sql.indexOf("create policy research_investigations_i5_draft_create_parent_read");
+    const draftAuthorityPolicies = sql.slice(draftPolicyStart, parentPolicyStart);
+
+    expect(draftAuthorityPolicies).toContain("current_setting('syntrake.investing.operation', true) = 'research_draft_create_v1'");
+    expect(draftAuthorityPolicies).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
+    expect(draftAuthorityPolicies).toContain("current_setting('syntrake.investing.operation_scope', true) = 'tenant_scope'");
+    expect(draftAuthorityPolicies).toContain("current_setting('syntrake.investing.operation_scope', true) = 'account_scope'");
+    expect(draftAuthorityPolicies).toContain("account_access_id = nullif(current_setting('syntrake.investing.account_access_id', true), '')::uuid");
+    expect(draftAuthorityPolicies).toContain("tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid");
+    expect(draftAuthorityPolicies).not.toContain("research_investigation_create_v1");
+    expect(draftAuthorityPolicies).not.toMatch(/operation'\s*,\s*true\)\s+in\s*\(/);
+    expect(draftAuthorityPolicies).not.toMatch(/capability'\s*,\s*true\)\s+in\s*\(/);
   });
 });
 

@@ -296,6 +296,173 @@ end $$;
 
 grant select, insert on table investing.research_drafts to investing_app;
 
+create policy principals_i5_research_draft_authority_read
+  on investing.principals
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and external_provider = current_setting('syntrake.investing.external_provider', true)
+    and external_subject = current_setting('syntrake.investing.external_subject', true)
+    and external_subject = current_setting('syntrake.investing.actor_id', true)
+    and state = 'ACTIVE'
+  );
+
+create policy tenants_i5_research_draft_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.principals p
+      join investing.tenant_memberships tm
+        on tm.principal_id = p.principal_id
+       and tm.tenant_id = tenants.tenant_id
+      where p.principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+        and tm.tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+    )
+  );
+
+create policy tenant_memberships_i5_research_draft_authority_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.principals p
+      where p.principal_id = tenant_memberships.principal_id
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+    )
+  );
+
+create policy accounts_i5_research_draft_account_authority_read
+  on investing.accounts
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.principals p
+      where p.principal_id = accounts.initial_principal_id
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+    )
+  );
+
+create policy tenants_i5_research_draft_account_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and exists (
+      select 1
+      from investing.accounts a
+      join investing.account_access aa
+        on aa.account_id = a.account_id
+       and aa.tenant_id = a.tenant_id
+       and aa.principal_id = a.initial_principal_id
+      where a.account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+        and a.tenant_id = tenants.tenant_id
+        and a.initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+        and aa.account_access_id = nullif(current_setting('syntrake.investing.account_access_id', true), '')::uuid
+        and aa.tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+        and aa.role = 'OWNER'
+        and aa.state = 'ACTIVE'
+    )
+  );
+
+create policy tenant_memberships_i5_research_draft_account_authority_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.accounts a
+      where a.account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+        and a.tenant_id = tenant_memberships.tenant_id
+        and a.initial_principal_id = tenant_memberships.principal_id
+    )
+  );
+
+create policy account_access_i5_research_draft_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and account_access_id = nullif(current_setting('syntrake.investing.account_access_id', true), '')::uuid
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.accounts a
+      join investing.tenant_memberships tm
+        on tm.tenant_membership_id = account_access.tenant_membership_id
+       and tm.tenant_id = account_access.tenant_id
+       and tm.principal_id = account_access.principal_id
+      where a.account_id = account_access.account_id
+        and a.tenant_id = account_access.tenant_id
+        and a.initial_principal_id = account_access.principal_id
+        and tm.role = 'OWNER'
+        and tm.state = 'ACTIVE'
+    )
+  );
+
 create policy research_investigations_i5_draft_create_parent_read
   on investing.research_investigations
   for select
@@ -561,14 +728,104 @@ begin
   where schemaname = 'investing'
     and (
       (
+        tablename = 'principals'
+        and policyname = 'principals_i5_research_draft_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'principal_id'
+        and qual ~ 'external_provider'
+        and qual ~ 'external_subject'
+        and qual ~ 'ACTIVE'
+      )
+      or (
+        tablename = 'tenants'
+        and policyname = 'tenants_i5_research_draft_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'TENANT_SCOPE'
+        and qual ~ 'tenant_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'ACTIVE'
+      )
+      or (
+        tablename = 'tenant_memberships'
+        and policyname = 'tenant_memberships_i5_research_draft_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'TENANT_SCOPE'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
+        and qual ~ 'ACTIVE'
+      )
+      or (
+        tablename = 'accounts'
+        and policyname = 'accounts_i5_research_draft_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'initial_principal_id'
+      )
+      or (
+        tablename = 'tenants'
+        and policyname = 'tenants_i5_research_draft_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'account_access_id'
+      )
+      or (
+        tablename = 'tenant_memberships'
+        and policyname = 'tenant_memberships_i5_research_draft_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
+        and qual ~ 'ACTIVE'
+      )
+      or (
+        tablename = 'account_access'
+        and policyname = 'account_access_i5_research_draft_account_authority_read'
+        and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'account_access_id'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
+        and qual ~ 'ACTIVE'
+      )
+      or (
         tablename = 'research_investigations'
         and policyname = 'research_investigations_i5_draft_create_parent_read'
         and cmd = 'SELECT'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
       )
       or (
         tablename = 'research_drafts'
         and policyname in ('research_drafts_i5_create_insert', 'research_drafts_i5_create_read')
         and cmd in ('INSERT', 'SELECT')
+        and coalesce(qual, with_check) ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and coalesce(qual, with_check) ~ 'RESEARCH_MUTATE'
       )
       or (
         tablename = 'idempotency_records'
@@ -578,11 +835,13 @@ begin
           'idempotency_records_i5_research_draft_create_update'
         )
         and cmd in ('SELECT', 'INSERT', 'UPDATE')
+        and coalesce(qual, with_check) ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and coalesce(qual, with_check) ~ 'RESEARCH_MUTATE'
       )
     )
     and roles = array['investing_app']::name[];
 
-  if v_draft_policy_count <> 6 then
+  if v_draft_policy_count <> 13 then
     raise exception 'I5-A2 postcondition violation: research draft policy set mismatch: %', v_draft_policy_count;
   end if;
 
