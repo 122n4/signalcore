@@ -84,12 +84,14 @@ export {
 
 export {
   investigationCreateMaterialIdentityV1,
+  draftCreateMaterialIdentityV1,
   draftRevisionCreateMaterialIdentityV1,
   hypothesisRevisionCreateMaterialIdentityV1,
   type ResearchMaterialScopeEvidenceV1,
   type ExpectedResearchMaterialPointersV1,
   type ExpectedResearchMaterialRootV1,
   type InvestigationCreateMaterialRequestV1,
+  type DraftCreateMaterialRequestV1,
   type DraftRevisionCreateMaterialRequestV1,
   type HypothesisRevisionCreateMaterialRequestV1,
   type ResearchMaterialRequestHashV1,

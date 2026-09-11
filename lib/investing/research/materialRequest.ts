@@ -14,6 +14,7 @@ import {
 
 const domain = "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1";
 const investigationOperation = "RESEARCH_INVESTIGATION_CREATE_V1";
+const draftCreateOperation = "RESEARCH_DRAFT_CREATE_V1";
 const draftOperation = "RESEARCH_DRAFT_REVISION_CREATE_V1";
 const hypothesisOperation = "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1";
 const maxCounter = "9223372036854775807";
@@ -45,6 +46,11 @@ type RequestMetadata = Readonly<{ idempotencyKey: string; correlationId: string 
 export type InvestigationCreateMaterialRequestV1 = RequestMetadata & Readonly<{
   operation: typeof investigationOperation;
 }>;
+export type DraftCreateMaterialRequestV1 = RequestMetadata & Readonly<{
+  operation: typeof draftCreateOperation;
+  investigationId: string;
+  content: ResearchDraftProofV1;
+}>;
 type RevisionMaterialRequest = RequestMetadata & Readonly<{
   investigationId: string;
   expectedPointers: ExpectedResearchMaterialPointersV1;
@@ -73,6 +79,26 @@ export function investigationCreateMaterialIdentityV1(
   const input = closed(command, ["operation", "idempotencyKey", "correlationId"]);
   validateMetadata(input, investigationOperation);
   return identity(scopeFragments(scope, investigationOperation));
+}
+
+export function draftCreateMaterialIdentityV1(
+  scope: ResearchMaterialScopeEvidenceV1,
+  command: DraftCreateMaterialRequestV1,
+): ResearchMaterialIdentityV1 {
+  const input = closed(command, ["operation", "idempotencyKey", "correlationId", "investigationId", "content"]);
+  validateMetadata(input, draftCreateOperation);
+  const proof = closed(input.content, ["ref", "payload"]);
+  const ref = hashRefV1(closed(proof.ref, ["hashAlgorithm", "hashDomain", "hashVersion", "hashHex"]));
+  if (ref.hashDomain !== "SYNTRAKE:RESEARCH_DRAFT:V1") throw new Error("wrong Draft content domain");
+  if (hashResearchDraftV1(proof.payload) !== ref.hashHex) throw new Error("Draft scientific proof mismatch");
+  return identity([
+    ...scopeFragments(scope, draftCreateOperation),
+    `investigation=${canonicalUuidV1(input.investigationId)}`,
+    "content_algorithm=SHA-256",
+    `content_domain=${ref.hashDomain}`,
+    "content_version=SYNTRAKE_SHA256_V1",
+    `content=${ref.hashHex}`,
+  ]);
 }
 
 export function draftRevisionCreateMaterialIdentityV1(
