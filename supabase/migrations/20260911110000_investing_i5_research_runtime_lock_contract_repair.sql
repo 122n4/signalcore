@@ -163,6 +163,238 @@ grant update (updated_at) on table investing.account_access to investing_app;
 grant update (updated_at) on table investing.research_investigations to investing_app;
 grant update (updated_at) on table investing.research_drafts to investing_app;
 
+create policy principals_i5_research_runtime_lock_only
+  on investing.principals
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation', true) in (
+      'RESEARCH_INVESTIGATION_CREATE_V1',
+      'RESEARCH_DRAFT_CREATE_V1'
+    )
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and external_provider = 'CLERK'
+    and external_subject = current_setting('syntrake.investing.actor_id', true)
+  )
+  with check (false);
+
+create policy tenants_i5_research_runtime_lock_only
+  on investing.tenants
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation', true) in (
+      'RESEARCH_INVESTIGATION_CREATE_V1',
+      'RESEARCH_DRAFT_CREATE_V1'
+    )
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and current_setting('syntrake.investing.tenant_membership_id', true) <> ''
+    and (
+      (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+        and current_setting('syntrake.investing.account_id', true) <> ''
+        and current_setting('syntrake.investing.account_access_id', true) <> ''
+      )
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+        and current_setting('syntrake.investing.source_context', true) in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+        and current_setting('syntrake.investing.source_context', true) = 'USER_PORTFOLIO'
+        and current_setting('syntrake.investing.account_id', true) <> ''
+        and current_setting('syntrake.investing.account_access_id', true) <> ''
+      )
+    )
+  )
+  with check (false);
+
+create policy tenant_memberships_i5_research_runtime_lock_only
+  on investing.tenant_memberships
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation', true) in (
+      'RESEARCH_INVESTIGATION_CREATE_V1',
+      'RESEARCH_DRAFT_CREATE_V1'
+    )
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and role = 'OWNER'
+    and (
+      (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+        and current_setting('syntrake.investing.account_id', true) <> ''
+        and current_setting('syntrake.investing.account_access_id', true) <> ''
+      )
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+        and current_setting('syntrake.investing.source_context', true) in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+        and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+        and current_setting('syntrake.investing.source_context', true) = 'USER_PORTFOLIO'
+        and current_setting('syntrake.investing.account_id', true) <> ''
+        and current_setting('syntrake.investing.account_access_id', true) <> ''
+      )
+    )
+  )
+  with check (false);
+
+create policy accounts_i5_research_runtime_lock_only
+  on investing.accounts
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation', true) in (
+      'RESEARCH_INVESTIGATION_CREATE_V1',
+      'RESEARCH_DRAFT_CREATE_V1'
+    )
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and (
+      current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+        and current_setting('syntrake.investing.source_context', true) = 'USER_PORTFOLIO'
+      )
+    )
+    and account_id::text = current_setting('syntrake.investing.account_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and initial_principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and current_setting('syntrake.investing.tenant_membership_id', true) <> ''
+    and current_setting('syntrake.investing.account_access_id', true) <> ''
+  )
+  with check (false);
+
+create policy account_access_i5_research_runtime_lock_only
+  on investing.account_access
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation', true) in (
+      'RESEARCH_INVESTIGATION_CREATE_V1',
+      'RESEARCH_DRAFT_CREATE_V1'
+    )
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and (
+      current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+      or (
+        current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+        and current_setting('syntrake.investing.source_context', true) = 'USER_PORTFOLIO'
+      )
+    )
+    and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+    and account_id::text = current_setting('syntrake.investing.account_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and role = 'OWNER'
+  )
+  with check (false);
+
+create policy research_investigations_i5_draft_parent_lock_only
+  on investing.research_investigations
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
+  )
+  with check (false);
+
+create policy research_drafts_i5_first_draft_lock_only
+  on investing.research_drafts
+  for update
+  to investing_app
+  using (
+    current_setting('syntrake.investing.actor_kind', true) = 'USER_PRINCIPAL'
+    and current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
+  )
+  with check (false);
+
 do $$
 declare
   v_relation_count integer;
@@ -174,6 +406,7 @@ declare
   v_bad_blocked_table_grants integer;
   v_bad_blocked_column_grants integer;
   v_update_policy_count integer;
+  v_bad_lock_policy_count integer;
   v_security_definer_count integer;
 begin
   select count(*)
@@ -368,10 +601,133 @@ begin
       'research_investigations',
       'research_drafts'
     )
-    and cmd = 'UPDATE';
+    and cmd = 'UPDATE'
+    and roles = array['investing_app']::name[]
+    and with_check in ('false', '(false)')
+    and (
+      (
+        tablename = 'principals'
+        and policyname = 'principals_i5_research_runtime_lock_only'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'principal_id'
+        and qual ~ 'external_provider'
+        and qual ~ 'external_subject'
+      )
+      or (
+        tablename = 'tenants'
+        and policyname = 'tenants_i5_research_runtime_lock_only'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'TENANT_SCOPE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'tenant_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'account_access_id'
+      )
+      or (
+        tablename = 'tenant_memberships'
+        and policyname = 'tenant_memberships_i5_research_runtime_lock_only'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
+        and qual ~ 'TENANT_SCOPE'
+        and qual ~ 'ACCOUNT_SCOPE'
+      )
+      or (
+        tablename = 'accounts'
+        and policyname = 'accounts_i5_research_runtime_lock_only'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'USER_PORTFOLIO'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'initial_principal_id'
+        and qual ~ 'account_access_id'
+      )
+      or (
+        tablename = 'account_access'
+        and policyname = 'account_access_i5_research_runtime_lock_only'
+        and qual ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'ACCOUNT_SCOPE'
+        and qual ~ 'USER_PORTFOLIO'
+        and qual ~ 'account_access_id'
+        and qual ~ 'account_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'OWNER'
+      )
+      or (
+        tablename = 'research_investigations'
+        and policyname = 'research_investigations_i5_draft_parent_lock_only'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'research_investigation_id'
+        and qual ~ 'actor_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'operation_scope'
+        and qual ~ 'source_context'
+        and qual ~ 'account_access_id'
+      )
+      or (
+        tablename = 'research_drafts'
+        and policyname = 'research_drafts_i5_first_draft_lock_only'
+        and qual ~ 'RESEARCH_DRAFT_CREATE_V1'
+        and qual ~ 'RESEARCH_MUTATE'
+        and qual ~ 'research_investigation_id'
+        and qual ~ 'actor_id'
+        and qual ~ 'principal_id'
+        and qual ~ 'tenant_id'
+        and qual ~ 'tenant_membership_id'
+        and qual ~ 'operation_scope'
+        and qual ~ 'source_context'
+        and qual ~ 'account_access_id'
+      )
+    );
 
-  if v_update_policy_count <> 0 then
-    raise exception 'I5 runtime lock repair postcondition violation: unexpected UPDATE policy exists: %', v_update_policy_count;
+  if v_update_policy_count <> 7 then
+    raise exception 'I5 runtime lock repair postcondition violation: lock-only UPDATE policy set mismatch: %', v_update_policy_count;
+  end if;
+
+  select count(*)
+  into v_bad_lock_policy_count
+  from pg_catalog.pg_policies
+  where schemaname = 'investing'
+    and tablename in (
+      'principals',
+      'tenants',
+      'tenant_memberships',
+      'accounts',
+      'account_access',
+      'research_investigations',
+      'research_drafts'
+    )
+    and cmd in ('UPDATE', 'ALL')
+    and policyname not in (
+      'principals_i5_research_runtime_lock_only',
+      'tenants_i5_research_runtime_lock_only',
+      'tenant_memberships_i5_research_runtime_lock_only',
+      'accounts_i5_research_runtime_lock_only',
+      'account_access_i5_research_runtime_lock_only',
+      'research_investigations_i5_draft_parent_lock_only',
+      'research_drafts_i5_first_draft_lock_only'
+    );
+
+  if v_bad_lock_policy_count <> 0 then
+    raise exception 'I5 runtime lock repair postcondition violation: unexpected UPDATE/ALL lock policy exists: %', v_bad_lock_policy_count;
   end if;
 
   if pg_catalog.pg_has_role('investing_app', 'investing_owner', 'member')
