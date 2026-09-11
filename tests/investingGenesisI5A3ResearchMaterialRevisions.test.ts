@@ -421,7 +421,149 @@ describe("Investing I5-A3 Research material revisions", () => {
     expect(writer).toContain("expectedroot.state !== \"absent\"");
     expect(writer).toContain("expectedroot.state !== \"present\"");
   });
+
+  it("serializes idempotency before stale-pointer checks for same-key material concurrency", () => {
+    const writer = normalize(read(writerPath));
+    const fastReplay = writer.indexOf("if (existing.row) return dispatchexistingidempotency");
+    const serializeIdempotency = writer.indexOf("const idempotency = await lockorcreateidempotency");
+    const pointerLock = writer.indexOf("const pointer = await lockorcreatepointerstate");
+    const stalePointerCheck = writer.indexOf("expectedpointersmatch(pointer.row, input.expectedpointers)");
+    const firstMutation = writer.indexOf("await settransactionconfig(client, \"material_kind\", prepared.materialkind)");
+
+    expect(fastReplay).toBeGreaterThanOrEqual(0);
+    expect(serializeIdempotency).toBeGreaterThan(fastReplay);
+    expect(pointerLock).toBeGreaterThan(serializeIdempotency);
+    expect(stalePointerCheck).toBeGreaterThan(pointerLock);
+    expect(firstMutation).toBeGreaterThan(stalePointerCheck);
+
+    const canonical = {
+      materialRootId: ids.rootId,
+      materialRevisionId: ids.draftRevisionId,
+      materialRevisionNumber: "1",
+      materialHash: "draft-material-hash",
+      materialRequestHash: "draft-request-hash",
+      pointerVersion: "1",
+      idempotencyRecordId: "99999999-9999-4999-8999-999999999999",
+    };
+
+    const oldOrderSameKey = simulateConcurrentSecondA3Caller({
+      idempotencySerializedBeforePointer: false,
+      sameIdempotencyKey: true,
+      sameMaterial: true,
+      sameExpectedPointerVersion: true,
+      winnerCanonical: canonical,
+    });
+    expect(oldOrderSameKey).toEqual({
+      status: "CONFLICT",
+      reason: "STALE_POINTER_BEFORE_IDEMPOTENCY_REPLAY",
+      mutationExecuted: false,
+      startedIdempotencyRolledBack: false,
+      canonicalResultReference: null,
+    });
+
+    const newOrderSameKey = simulateConcurrentSecondA3Caller({
+      idempotencySerializedBeforePointer: true,
+      sameIdempotencyKey: true,
+      sameMaterial: true,
+      sameExpectedPointerVersion: true,
+      winnerCanonical: canonical,
+    });
+    expect(newOrderSameKey).toEqual({
+      status: "REPLAY",
+      reason: "IDEMPOTENCY_CANONICAL_RESULT",
+      mutationExecuted: false,
+      startedIdempotencyRolledBack: false,
+      canonicalResultReference: canonical,
+    });
+
+    const newOrderDifferentMaterial = simulateConcurrentSecondA3Caller({
+      idempotencySerializedBeforePointer: true,
+      sameIdempotencyKey: true,
+      sameMaterial: false,
+      sameExpectedPointerVersion: true,
+      winnerCanonical: canonical,
+    });
+    expect(newOrderDifferentMaterial).toMatchObject({
+      status: "CONFLICT",
+      reason: "IDEMPOTENCY_MATERIAL_MISMATCH",
+      mutationExecuted: false,
+      startedIdempotencyRolledBack: false,
+    });
+
+    const newOrderDifferentKey = simulateConcurrentSecondA3Caller({
+      idempotencySerializedBeforePointer: true,
+      sameIdempotencyKey: false,
+      sameMaterial: true,
+      sameExpectedPointerVersion: true,
+      winnerCanonical: canonical,
+    });
+    expect(newOrderDifferentKey).toEqual({
+      status: "CONFLICT",
+      reason: "STALE_POINTER_AFTER_NEW_STARTED_IDEMPOTENCY",
+      mutationExecuted: false,
+      startedIdempotencyRolledBack: true,
+      canonicalResultReference: null,
+    });
+  });
 });
+
+type SimulatedA3ConcurrentOutcome = {
+  status: "REPLAY" | "CONFLICT";
+  reason:
+    | "IDEMPOTENCY_CANONICAL_RESULT"
+    | "IDEMPOTENCY_MATERIAL_MISMATCH"
+    | "STALE_POINTER_BEFORE_IDEMPOTENCY_REPLAY"
+    | "STALE_POINTER_AFTER_NEW_STARTED_IDEMPOTENCY";
+  mutationExecuted: boolean;
+  startedIdempotencyRolledBack: boolean;
+  canonicalResultReference: Record<string, string> | null;
+};
+
+function simulateConcurrentSecondA3Caller(input: {
+  idempotencySerializedBeforePointer: boolean;
+  sameIdempotencyKey: boolean;
+  sameMaterial: boolean;
+  sameExpectedPointerVersion: boolean;
+  winnerCanonical: Record<string, string>;
+}): SimulatedA3ConcurrentOutcome {
+  const winnerAdvancedPointer = input.sameExpectedPointerVersion;
+
+  if (!input.idempotencySerializedBeforePointer && winnerAdvancedPointer) {
+    return {
+      status: "CONFLICT",
+      reason: "STALE_POINTER_BEFORE_IDEMPOTENCY_REPLAY",
+      mutationExecuted: false,
+      startedIdempotencyRolledBack: false,
+      canonicalResultReference: null,
+    };
+  }
+
+  if (input.sameIdempotencyKey) {
+    return input.sameMaterial
+      ? {
+          status: "REPLAY",
+          reason: "IDEMPOTENCY_CANONICAL_RESULT",
+          mutationExecuted: false,
+          startedIdempotencyRolledBack: false,
+          canonicalResultReference: input.winnerCanonical,
+        }
+      : {
+          status: "CONFLICT",
+          reason: "IDEMPOTENCY_MATERIAL_MISMATCH",
+          mutationExecuted: false,
+          startedIdempotencyRolledBack: false,
+          canonicalResultReference: null,
+        };
+  }
+
+  return {
+    status: "CONFLICT",
+    reason: "STALE_POINTER_AFTER_NEW_STARTED_IDEMPOTENCY",
+    mutationExecuted: false,
+    startedIdempotencyRolledBack: true,
+    canonicalResultReference: null,
+  };
+}
 
 function read(filePath: string) {
   return fs.readFileSync(filePath, "utf8");

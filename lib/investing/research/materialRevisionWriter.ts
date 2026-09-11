@@ -235,15 +235,15 @@ async function createResearchMaterialRevisionV1(
       if (existing.ok === false) return existing;
       if (existing.row) return dispatchExistingIdempotency(client, input.authorizedContext, prepared, existing.row);
 
-      const pointer = await lockOrCreatePointerState(client, input.authorizedContext);
-      if (pointer.ok === false) return pointer;
-      if (!expectedPointersMatch(pointer.row, input.expectedPointers)) return fail("CONFLICT");
-
       const idempotency = await lockOrCreateIdempotency(client, input.authorizedContext, prepared);
       if (idempotency.ok === false) return idempotency;
       if (idempotency.existing) {
         return dispatchExistingIdempotency(client, input.authorizedContext, prepared, idempotency.row);
       }
+
+      const pointer = await lockOrCreatePointerState(client, input.authorizedContext);
+      if (pointer.ok === false) return pointer;
+      if (!expectedPointersMatch(pointer.row, input.expectedPointers)) return fail("CONFLICT");
 
       await setTransactionConfig(client, "material_kind", prepared.materialKind);
       const root = await lockOrCreateRoot(client, input.authorizedContext, prepared, input.expectedRoot, pointer.row);
