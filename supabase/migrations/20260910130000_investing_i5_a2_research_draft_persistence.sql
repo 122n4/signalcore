@@ -498,7 +498,7 @@ create policy idempotency_records_i5_research_draft_create_read
       (
         operation_scope = 'TENANT_SCOPE'
         and account_id is null
-        and current_setting('syntrake.investing.account_id', true) = ''
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'
@@ -530,7 +530,7 @@ create policy idempotency_records_i5_research_draft_create_insert
       (
         operation_scope = 'TENANT_SCOPE'
         and account_id is null
-        and current_setting('syntrake.investing.account_id', true) = ''
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'
@@ -559,7 +559,7 @@ create policy idempotency_records_i5_research_draft_create_update
       (
         operation_scope = 'TENANT_SCOPE'
         and account_id is null
-        and current_setting('syntrake.investing.account_id', true) = ''
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'
@@ -586,7 +586,7 @@ create policy idempotency_records_i5_research_draft_create_update
       (
         operation_scope = 'TENANT_SCOPE'
         and account_id is null
-        and current_setting('syntrake.investing.account_id', true) = ''
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'
@@ -624,8 +624,8 @@ create policy research_drafts_i5_create_insert
         and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
         and account_id is null
         and account_access_id is null
-        and current_setting('syntrake.investing.account_id', true) = ''
-        and current_setting('syntrake.investing.account_access_id', true) = ''
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'
@@ -691,8 +691,8 @@ create policy research_drafts_i5_create_read
         and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
         and account_id is null
         and account_access_id is null
-        and current_setting('syntrake.investing.account_id', true) = ''
-        and current_setting('syntrake.investing.account_access_id', true) = ''
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
       )
       or (
         operation_scope = 'ACCOUNT_SCOPE'

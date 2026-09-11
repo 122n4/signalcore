@@ -388,6 +388,14 @@ function readMigration() {
   return fs.readFileSync(migrationPath, "utf8");
 }
 
+function extractPolicy(sql: string, policyName: string) {
+  const start = sql.indexOf(`create policy ${policyName}`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const rest = sql.slice(start);
+  const nextPolicy = rest.slice(1).search(/\bcreate policy\b|\bdo \$\$/);
+  return nextPolicy === -1 ? rest : rest.slice(0, nextPolicy + 1);
+}
+
 describe("Investing Genesis I5-A2 ResearchDraft persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -701,6 +709,46 @@ describe("Investing Genesis I5-A2 ResearchDraft persistence", () => {
     expect(draftAuthorityPolicies).not.toContain("research_investigation_create_v1");
     expect(draftAuthorityPolicies).not.toMatch(/operation'\s*,\s*true\)\s+in\s*\(/);
     expect(draftAuthorityPolicies).not.toMatch(/capability'\s*,\s*true\)\s+in\s*\(/);
+  });
+
+  it("treats missing and empty optional account GUCs as TENANT_SCOPE absence without weakening ACCOUNT_SCOPE", () => {
+    const sql = normalizeSql(readMigration());
+    const nullSafeAccountAbsence = "coalesce(current_setting('syntrake.investing.account_id', true), '') = ''";
+    const nullSafeAccessAbsence = "coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''";
+
+    for (const policyName of [
+      "idempotency_records_i5_research_draft_create_read",
+      "idempotency_records_i5_research_draft_create_insert",
+      "idempotency_records_i5_research_draft_create_update",
+      "research_drafts_i5_create_insert",
+      "research_drafts_i5_create_read",
+    ]) {
+      const policy = extractPolicy(sql, policyName);
+
+      expect(policy).toContain("current_setting('syntrake.investing.operation', true) = 'research_draft_create_v1'");
+      expect(policy).toContain("current_setting('syntrake.investing.capability', true) = 'research_mutate'");
+      expect(policy).toContain("operation_scope = 'tenant_scope'");
+      expect(policy).toContain(nullSafeAccountAbsence);
+      expect(policy).not.toContain("and current_setting('syntrake.investing.account_id', true) = ''");
+      expect(policy).not.toMatch(/\busing\s*\(\s*true\s*\)|\bwith check\s*\(\s*true\s*\)/);
+    }
+
+    for (const policyName of ["research_drafts_i5_create_insert", "research_drafts_i5_create_read"]) {
+      const policy = extractPolicy(sql, policyName);
+
+      expect(policy).toContain(nullSafeAccessAbsence);
+      expect(policy).not.toContain("and current_setting('syntrake.investing.account_access_id', true) = ''");
+      expect(policy).toContain("operation_scope = 'account_scope'");
+      expect(policy).toContain("source_context = 'user_portfolio'");
+      expect(policy).toContain("account_id::text = current_setting('syntrake.investing.account_id', true)");
+      expect(policy).toContain("account_access_id::text = current_setting('syntrake.investing.account_access_id', true)");
+    }
+
+    expect(sql).toContain("and ir.account_id is not distinct from research_drafts.account_id");
+    expect(sql).toContain("and ri.account_id is not distinct from research_drafts.account_id");
+    expect(sql).toContain("and ri.account_access_id is not distinct from research_drafts.account_access_id");
+    expect(sql).not.toMatch(/current_setting\('syntrake\.investing\.operation', true\)\s+in\s*\(/);
+    expect(sql).not.toMatch(/current_setting\('syntrake\.investing\.capability', true\)\s+in\s*\(/);
   });
 });
 
