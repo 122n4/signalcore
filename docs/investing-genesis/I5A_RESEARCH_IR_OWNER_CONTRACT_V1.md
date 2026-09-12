@@ -6,7 +6,7 @@ Canonical predecessor: `0c1f5cc0592e950fe2d0120df707c87ea1fd741a`.
 
 Purpose: admit a narrow, deterministic, engine-independent `SYNTRAKE:RESEARCH_IR:V1` scientific hash payload without inheriting ambiguous working-draft IR shapes.
 
-This contract supersedes `I5A_RESEARCH_IR_HASH_CONTRACT_V1.md` only for the exact A5 runtime subset below. The older file remains audit history and is not controlling where it conflicts with A2/A4/A5.
+This contract supersedes the older working IR hash draft only for the exact A5 runtime subset below. Historical IR drafts remain Git-history evidence and are not controlling where they conflict with current A2/A4/A5 owner contracts.
 
 ## 1. Non-Scope
 

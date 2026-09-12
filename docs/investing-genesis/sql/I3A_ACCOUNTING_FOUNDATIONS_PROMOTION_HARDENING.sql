@@ -1,8 +1,8 @@
 -- SYNTRAKE INVESTING GENESIS I3-A PROMOTION HARDENING
 -- SOURCE CONSOLIDATION PATCH ONLY. THIS FILE IS NOT A SUPABASE MIGRATION.
 --
--- This patch closes the two promotion blockers recorded in
--- docs/investing-genesis/I3A_IMPLEMENTATION_CHECKPOINT.md.
+-- This patch closes the two promotion blockers recorded in historical I3-A
+-- checkpoint evidence now retained through Git history only.
 -- It MUST be folded into the promoted I3-A migration source. Applying this file
 -- after I3-A has already created its routines would not prove the required
 -- fail-closed prestate and therefore is not a valid substitute for consolidation.

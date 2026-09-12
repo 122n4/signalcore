@@ -30,8 +30,7 @@ Repository authority was read at the exact base SHA above:
 - `docs/investing-genesis/I2_LEDGER_DESIGN.md`
 - `docs/investing-genesis/I3_ACCOUNTING_DESIGN.md`
 - `docs/investing-genesis/I3_ACCOUNTING_DESIGN_FREEZE.md`
-- `docs/investing-genesis/I3A_IMPLEMENTATION_CHECKPOINT.md`
-- `docs/investing-genesis/I3B_IMPLEMENTATION_CHECKPOINT.md`
+- accepted I3A/I3B checkpoint evidence now retained through Git history only
 
 Frozen controlling laws:
 
