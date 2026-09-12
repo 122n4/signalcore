@@ -238,6 +238,8 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(sql).toContain("with expected(tablename, policyname, cmd) as (");
     expect(sql).toContain("missing or altered a4 policies");
     expect(sql).toContain("unexpected a4 policies");
+    expect(sql).toContain("recreated a3 pointer update policy is missing post-a4 spec invariants");
+    expect(sql).toContain("pointer table select/insert grants are not exact");
     expect(sql).toContain("pointer column update grants are not exact");
   });
 
@@ -249,6 +251,7 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
       "tenant_memberships_i5_a4_spec_revision_authority_read",
       "accounts_i5_a4_spec_revision_account_authority_read",
       "account_access_i5_a4_spec_revision_account_authority_read",
+      "research_investigations_i5_a4_spec_revision_selector_read",
       "research_investigations_i5_a4_spec_revision_parent_read",
       "idempotency_records_i5_a4_spec_revision_read",
       "idempotency_records_i5_a4_spec_revision_insert",
@@ -258,6 +261,7 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
       "research_material_revisions_i5_a4_spec_dependency_read",
       "research_spec_revisions_i5_a4_insert",
       "research_spec_revisions_i5_a4_read",
+      "research_material_pointer_states_i5_a4_read",
       "research_material_pointer_states_i5_a4_update",
     ]);
     const prestate = sql.slice(0, sql.indexOf("set local role investing_owner"));
@@ -271,6 +275,75 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(accountAccessPolicy).toContain("a.account_id = account_access.account_id");
     expect(accountAccessPolicy).toContain("tm.tenant_membership_id = account_access.tenant_membership_id");
     expect(accountAccessPolicy).not.toContain("account_access.state = 'active'");
+  });
+
+  it("closes A4 pointer SELECT/UPDATE and preserves A3 pointer SELECT", () => {
+    const sql = normalize(read(migrationPath));
+    const pointerRead = policy(sql, "research_material_pointer_states_i5_a4_read");
+    const pointerUpdate = policy(sql, "research_material_pointer_states_i5_a4_update");
+    const a3Update = policy(sql, "research_material_pointer_states_i5_a3_update");
+    expect(sql).toContain("policyname = 'research_material_pointer_states_i5_a3_read'");
+    for (const fragment of [
+      "research_spec_revision_create_v1",
+      "research_mutate",
+      "research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)",
+      "actor_kind = 'user_principal'",
+      "actor_id = current_setting('syntrake.investing.actor_id', true)",
+      "principal_id::text = current_setting('syntrake.investing.principal_id', true)",
+      "tenant_id::text = current_setting('syntrake.investing.tenant_id', true)",
+      "tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)",
+      "operation_scope = current_setting('syntrake.investing.operation_scope', true)",
+      "source_context = current_setting('syntrake.investing.source_context', true)",
+      "active_experiment_id is null",
+      "account_access_id::text = current_setting('syntrake.investing.account_access_id', true)",
+    ]) {
+      expect(pointerRead).toContain(fragment);
+      expect(pointerUpdate).toContain(fragment);
+    }
+    expect(pointerUpdate).toContain("active_spec_revision_id is not null");
+    expect(pointerUpdate).toContain("s.source_draft_revision_id = active_draft_revision_id");
+    expect(pointerUpdate).toContain("s.hypothesis_revision_id = active_hypothesis_revision_id");
+    expect(a3Update).toContain("active_spec_revision_id is null");
+    expect(a3Update).toContain("s.hypothesis_revision_id is null");
+  });
+
+  it("sets Spec root GUC before first root INSERT and revalidates authority before idempotency", () => {
+    const writer = normalize(read(specWriterPath));
+    expect(writer).toContain("selectparentbeforeauthorityscope(client, input.authorizedcontext)");
+    expect(writer.indexOf("const authority = await revalidateauthorityandparent")).toBeLessThan(writer.indexOf("const existing = await findexistingidempotency"));
+    expect(writer).toContain("principal.row.state !== \"active\"");
+    expect(writer).toContain("membership.row.state !== \"active\"");
+    expect(writer).toContain("account.row.state !== \"active\"");
+    expect(writer).toContain("access.row.state !== \"active\"");
+    expect(writer).toContain("parentmatchescontext(parent.row, context)");
+    const rootCreate = writer.slice(writer.indexOf("if (selected.rows.length === 0)"), writer.indexOf("const inserted = await client.query", writer.indexOf("if (selected.rows.length === 0)")));
+    expect(rootCreate).toContain("await settransactionconfig(client, \"material_root_id\", materialrootid)");
+  });
+
+  it("closes idempotency, root, dependency, and selector policies to the authority tuple", () => {
+    const sql = normalize(read(migrationPath));
+    const selector = policy(sql, "research_investigations_i5_a4_spec_revision_selector_read");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.tenant_id', true), '') = ''");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.operation_scope', true), '') = ''");
+    for (const name of [
+      "idempotency_records_i5_a4_spec_revision_read",
+      "idempotency_records_i5_a4_spec_revision_insert",
+      "idempotency_records_i5_a4_spec_revision_update",
+      "research_material_roots_i5_a4_spec_insert",
+      "research_material_roots_i5_a4_spec_read",
+      "research_material_revisions_i5_a4_spec_dependency_read",
+    ]) {
+      const body = policy(sql, name);
+      expect(body).toContain("research_spec_revision_create_v1");
+      expect(body).toContain("research_mutate");
+      expect(body).toContain("actor_kind = 'user_principal'");
+      expect(body).toContain("actor_id = current_setting('syntrake.investing.actor_id', true)");
+      expect(body).toContain("principal_id::text = current_setting('syntrake.investing.principal_id', true)");
+      expect(body).toContain("tenant_id::text = current_setting('syntrake.investing.tenant_id', true)");
+      expect(body).toContain("operation_scope = current_setting('syntrake.investing.operation_scope', true)");
+      expect(body).toContain("account_id::text = current_setting('syntrake.investing.account_id', true)");
+    }
+    expect(policy(sql, "idempotency_records_i5_a4_spec_revision_update")).toContain("material_request_hash = current_setting('syntrake.investing.material_request_hash', true)");
   });
 
   it("keeps material row-lock inventory to pointer state only", () => {
@@ -310,4 +383,11 @@ function read(filePath: string) {
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ");
+}
+
+function policy(sql: string, name: string) {
+  const start = sql.indexOf(`create policy ${name}`);
+  if (start < 0) throw new Error(`missing policy ${name}`);
+  const next = sql.indexOf("create policy ", start + 14);
+  return sql.slice(start, next < 0 ? undefined : next);
 }

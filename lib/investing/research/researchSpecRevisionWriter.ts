@@ -98,6 +98,37 @@ type IdempotencyRow = {
   canonical_result_reference: unknown;
 };
 
+type InvestigationRow = {
+  research_investigation_id: string;
+  tenant_id: string;
+  account_id: string | null;
+  principal_id: string;
+  actor_kind: "USER_PRINCIPAL";
+  actor_id: string;
+  tenant_membership_id: string;
+  account_access_id: string | null;
+  operation_scope: "TENANT_SCOPE" | "ACCOUNT_SCOPE";
+  source_context: "PURE_RESEARCH" | "TEST_PORTFOLIO" | "USER_PORTFOLIO";
+};
+
+type PrincipalRow = { principal_id: string; state: "ACTIVE" | "DISABLED" };
+type TenantRow = { tenant_id: string; state: "ACTIVE" | "SUSPENDED" | "CLOSED" };
+type AccountRow = { account_id: string; tenant_id: string; state: "ACTIVE" | "FROZEN" | "CLOSED" };
+type MembershipRow = {
+  tenant_membership_id: string;
+  tenant_id: string;
+  principal_id: string;
+  state: "ACTIVE" | "REVOKED";
+};
+type AccessRow = {
+  account_access_id: string;
+  account_id: string;
+  tenant_id: string;
+  tenant_membership_id: string;
+  principal_id: string;
+  state: "ACTIVE" | "REVOKED";
+};
+
 type PointerRow = {
   research_investigation_id: string;
   active_draft_revision_id: string | null;
@@ -176,7 +207,13 @@ export async function createResearchSpecRevisionV1(
     const database = getInvestingAuthorityDatabase(env);
     return await withTransaction(database.connect(), async (client) => {
       if (await hasStaleTransactionContext(client)) return { ...fail("INTERNAL_ERROR"), destroyClient: true };
+      await setPreParentTransactionContext(client, input.authorizedContext);
+
+      const parent = await selectParentBeforeAuthorityScope(client, input.authorizedContext);
+      if (parent.ok === false) return parent;
       await setTransactionContext(client, input.authorizedContext, prepared);
+      const authority = await revalidateAuthorityAndParent(client, input.authorizedContext, parent.row);
+      if (authority.ok === false) return authority;
 
       const existing = await findExistingIdempotency(client, input.authorizedContext, prepared);
       if (existing.ok === false) return existing;
@@ -372,6 +409,7 @@ async function lockOrCreateSpecRoot(
   if (selected.rows.length === 0) {
     if (expectedRoot.state !== "ABSENT" || pointer.active_spec_revision_id !== null) return fail("CONFLICT");
     const materialRootId = randomUUID();
+    await setTransactionConfig(client, "material_root_id", materialRootId);
     const inserted = await client.query(
       [
         "insert into investing.research_material_roots (",
@@ -400,6 +438,7 @@ async function lockOrCreateSpecRoot(
 
   const root = selected.rows[0]!;
   if (expectedRoot.state !== "PRESENT" || expectedRoot.rootId !== root.material_root_id) return fail("CONFLICT");
+  await setTransactionConfig(client, "material_root_id", root.material_root_id);
   const head = await exactlyOne(
     client.query<HeadRow>(
       [
@@ -713,6 +752,20 @@ async function hasStaleTransactionContext(client: InvestingAuthorityTransactionC
   return Object.values(row).some((value) => value !== null && value !== "");
 }
 
+async function setPreParentTransactionContext(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchMaterialRevisionCreateContext,
+) {
+  await setTransactionConfig(client, "actor_kind", "USER_PRINCIPAL");
+  await setTransactionConfig(client, "actor_id", context.actorId);
+  await setTransactionConfig(client, "external_provider", "CLERK");
+  await setTransactionConfig(client, "external_subject", context.actorId);
+  await setTransactionConfig(client, "principal_id", context.principalId);
+  await setTransactionConfig(client, "operation", specOperation);
+  await setTransactionConfig(client, "capability", capability);
+  await setTransactionConfig(client, "research_investigation_id", context.researchInvestigationId);
+}
+
 async function setTransactionContext(
   client: InvestingAuthorityTransactionClient,
   context: AuthorizedResearchMaterialRevisionCreateContext,
@@ -735,6 +788,94 @@ async function setTransactionContext(
   await setTransactionConfig(client, "idempotency_key", prepared.idempotencyKey);
   await setTransactionConfig(client, "material_request_hash", prepared.materialRequestHash);
   await setTransactionConfig(client, "research_investigation_id", context.researchInvestigationId);
+}
+
+async function selectParentBeforeAuthorityScope(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchMaterialRevisionCreateContext,
+): Promise<{ ok: true; row: InvestigationRow } | ResearchSpecRevisionCreateFailure> {
+  const parent = await exactlyOne(
+    client.query<InvestigationRow>(
+      [
+        "select research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,",
+        "tenant_membership_id, account_access_id, operation_scope, source_context",
+        "from investing.research_investigations",
+        "where research_investigation_id = $1 and principal_id = $2 and actor_kind = 'USER_PRINCIPAL' and actor_id = $3",
+      ].join(" "),
+      [context.researchInvestigationId, context.principalId, context.actorId],
+    ),
+    "FORBIDDEN_OR_NOT_FOUND",
+  );
+  if (parent.ok === false) return parent;
+  return parentMatchesContext(parent.row, context) ? parent : fail("FORBIDDEN_OR_NOT_FOUND");
+}
+
+async function revalidateAuthorityAndParent(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchMaterialRevisionCreateContext,
+  parent: InvestigationRow,
+): Promise<{ ok: true } | ResearchSpecRevisionCreateFailure> {
+  if (!parentMatchesContext(parent, context)) return fail("FORBIDDEN_OR_NOT_FOUND");
+
+  const principal = await exactlyOne(
+    client.query<PrincipalRow>(
+      "select principal_id, state from investing.principals where principal_id = $1 and external_provider = 'CLERK' and external_subject = $2",
+      [context.principalId, context.actorId],
+    ),
+    "FORBIDDEN_OR_NOT_FOUND",
+  );
+  if (principal.ok === false) return principal;
+  if (principal.row.state !== "ACTIVE") return fail("PRINCIPAL_DISABLED");
+
+  const tenant = await exactlyOne(
+    client.query<TenantRow>("select tenant_id, state from investing.tenants where tenant_id = $1", [context.tenantId]),
+    "FORBIDDEN_OR_NOT_FOUND",
+  );
+  if (tenant.ok === false) return tenant;
+  if (tenant.row.state !== "ACTIVE") return fail("TENANT_INACTIVE");
+
+  const membership = await exactlyOne(
+    client.query<MembershipRow>(
+      [
+        "select tenant_membership_id, tenant_id, principal_id, state",
+        "from investing.tenant_memberships",
+        "where tenant_membership_id = $1 and tenant_id = $2 and principal_id = $3 and role = 'OWNER'",
+      ].join(" "),
+      [context.tenantMembershipId, context.tenantId, context.principalId],
+    ),
+    "MEMBERSHIP_INACTIVE",
+  );
+  if (membership.ok === false) return membership;
+  if (membership.row.state !== "ACTIVE") return fail("MEMBERSHIP_INACTIVE");
+
+  if (context.operationScope === "ACCOUNT_SCOPE") {
+    const account = await exactlyOne(
+      client.query<AccountRow>(
+        "select account_id, tenant_id, state from investing.accounts where account_id = $1 and tenant_id = $2",
+        [context.accountId, context.tenantId],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (account.ok === false) return account;
+    if (account.row.state !== "ACTIVE") return fail("ACCOUNT_INACTIVE");
+
+    const access = await exactlyOne(
+      client.query<AccessRow>(
+        [
+          "select account_access_id, account_id, tenant_id, tenant_membership_id, principal_id, state",
+          "from investing.account_access",
+          "where account_access_id = $1 and account_id = $2 and tenant_id = $3",
+          "and tenant_membership_id = $4 and principal_id = $5 and role = 'OWNER'",
+        ].join(" "),
+        [context.accountAccessId, context.accountId, context.tenantId, context.tenantMembershipId, context.principalId],
+      ),
+      "ACCESS_INACTIVE",
+    );
+    if (access.ok === false) return access;
+    if (access.row.state !== "ACTIVE") return fail("ACCESS_INACTIVE");
+  }
+
+  return { ok: true };
 }
 
 async function setTransactionConfig(client: InvestingAuthorityTransactionClient, key: string, value: string) {
@@ -765,6 +906,22 @@ function idempotencyBelongsToContext(
     row.operation === specOperation &&
     row.idempotency_key === prepared.idempotencyKey &&
     (context.operationScope === "TENANT_SCOPE" ? row.account_id === null : row.account_id === context.accountId)
+  );
+}
+
+function parentMatchesContext(row: InvestigationRow, context: AuthorizedResearchMaterialRevisionCreateContext) {
+  return (
+    row.research_investigation_id === context.researchInvestigationId &&
+    row.actor_kind === "USER_PRINCIPAL" &&
+    row.actor_id === context.actorId &&
+    row.principal_id === context.principalId &&
+    row.tenant_id === context.tenantId &&
+    row.tenant_membership_id === context.tenantMembershipId &&
+    row.operation_scope === context.operationScope &&
+    row.source_context === context.sourceContext &&
+    (context.operationScope === "TENANT_SCOPE"
+      ? row.account_id === null && row.account_access_id === null
+      : row.account_id === context.accountId && row.account_access_id === context.accountAccessId)
   );
 }
 
