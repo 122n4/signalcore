@@ -305,14 +305,28 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(prestate).toContain("con.contype = 'c'");
     expect(prestate).toContain("con.convalidated");
     expect(prestate).toContain("syntrake_i5_a4_expected_a3_pointer_operation_check");
+    expect(prestate).toContain("c.relnamespace = pg_catalog.pg_my_temp_schema()");
+    expect(prestate).not.toContain("n.nspname like 'pg_temp_%'");
     expect(prestate).toContain("v_pointer_operation_constraint <> v_expected_pointer_operation_constraint");
 
     const poststate = sql.slice(sql.lastIndexOf("do $$"));
+    expect(poststate).toContain("if current_user <> 'postgres' then");
     expect(poststate).toContain("con.conname = 'research_material_pointer_states_updated_by_operation_check'");
     expect(poststate).toContain("con.contype = 'c'");
     expect(poststate).toContain("con.convalidated");
     expect(poststate).toContain("syntrake_i5_a4_expected_a4_pointer_operation_check");
+    expect(poststate).toContain("c.relnamespace = pg_catalog.pg_my_temp_schema()");
+    expect(poststate).not.toContain("n.nspname like 'pg_temp_%'");
     expect(poststate).toContain("v_pointer_operation_constraint <> v_expected_pointer_operation_constraint");
+
+    const setLocalRole = sql.indexOf("set local role investing_owner");
+    const resetRole = sql.indexOf("reset role");
+    const postcondition = sql.lastIndexOf("do $$");
+    const a4Probe = poststate.indexOf("syntrake_i5_a4_expected_a4_pointer_operation_check");
+    expect(setLocalRole).toBeGreaterThanOrEqual(0);
+    expect(resetRole).toBeGreaterThan(setLocalRole);
+    expect(postcondition).toBeGreaterThan(resetRole);
+    expect(a4Probe).toBeGreaterThan(poststate.indexOf("if current_user <> 'postgres' then"));
 
     expect(pointerOperationConstraintDefinitionIsExact(exactA3, exactA3)).toBe(true);
     expect(pointerOperationConstraintDefinitionIsExact(exactA4, exactA4)).toBe(true);

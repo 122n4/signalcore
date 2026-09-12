@@ -173,8 +173,7 @@ begin
   into v_expected_pointer_operation_constraint
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_class c on c.oid = con.conrelid
-  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-  where n.nspname like 'pg_temp_%'
+  where c.relnamespace = pg_catalog.pg_my_temp_schema()
     and c.relname = 'syntrake_i5_a4_pointer_operation_check_probe'
     and con.conname = 'syntrake_i5_a4_expected_a3_pointer_operation_check'
     and con.contype = 'c'
@@ -990,8 +989,10 @@ create policy research_material_pointer_states_i5_a4_update
           s.hypothesis_revision_id is null
           or s.hypothesis_revision_id = active_hypothesis_revision_id
         )
-    )
+  )
   );
+
+reset role;
 
 do $$
 declare
@@ -1003,6 +1004,10 @@ declare
   v_pointer_operation_constraint text;
   v_expected_pointer_operation_constraint text;
 begin
+  if current_user <> 'postgres' then
+    raise exception 'I5-A4 postcondition violation: migration executor must be postgres, got %', current_user;
+  end if;
+
   select count(*)
   into v_relation_count
   from pg_catalog.pg_class c
@@ -1138,8 +1143,7 @@ begin
   into v_expected_pointer_operation_constraint
   from pg_catalog.pg_constraint con
   join pg_catalog.pg_class c on c.oid = con.conrelid
-  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-  where n.nspname like 'pg_temp_%'
+  where c.relnamespace = pg_catalog.pg_my_temp_schema()
     and c.relname = 'syntrake_i5_a4_pointer_operation_check_probe'
     and con.conname = 'syntrake_i5_a4_expected_a4_pointer_operation_check'
     and con.contype = 'c'
