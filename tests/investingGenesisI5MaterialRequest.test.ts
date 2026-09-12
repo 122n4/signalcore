@@ -131,8 +131,17 @@ describe("canonical scope evidence is material data, never authority", () => {
   });
 
   it.each(vectors.vectors)("rejects authority injection into $name commands", (vector) => {
-    for (const field of ["userId", "principalId", "actorId", "tenantId", "accountId", "requestedBy", "organizationId", "service_role", "authority", "sourceDraftRevisionId"]) {
+    for (const field of ["userId", "principalId", "actorId", "tenantId", "accountId", "requestedBy", "organizationId", "service_role", "authority"]) {
       expect(() => calculate(vector.scope, { ...vector.command, [field]: otherId })).toThrow("unexpected material field");
+    }
+  });
+
+  it("keeps Draft and Hypothesis revision schemas closed against Spec-only dependency fields", () => {
+    const draft = vectors.vectors.find((v) => v.name === "DRAFT_FIRST")!.command as DraftRevisionCreateMaterialRequestV1;
+    const hypothesis = vectors.vectors.find((v) => v.name === "HYPOTHESIS_FIRST")!.command as HypothesisRevisionCreateMaterialRequestV1;
+    for (const field of ["sourceDraftRevisionId", "hypothesisRevisionId"]) {
+      expect(() => draftRevisionCreateMaterialIdentityV1(scope, { ...draft, [field]: otherId } as never)).toThrow("unexpected material field");
+      expect(() => hypothesisRevisionCreateMaterialIdentityV1(scope, { ...hypothesis, [field]: otherId } as never)).toThrow("unexpected material field");
     }
   });
 });
@@ -172,18 +181,22 @@ describe.each(["DRAFT", "HYPOTHESIS"])("%s revision material predecessor", (kind
       .not.toBe(calculate(scope, { ...successor, expectedPointers: noActive }).materialRequestHash);
   });
 
-  it("preserves full A3 evidence while rejecting non-null future pointers", () => {
+  it("preserves full A4 predecessor evidence while rejecting non-null future Experiment pointers", () => {
     for (const field of Object.keys(first.expectedPointers)) {
       const omitted = { ...first.expectedPointers };
       delete omitted[field];
       expect(() => calculate(scope, { ...first, expectedPointers: omitted })).toThrow("missing material field");
       expect(() => calculate(scope, { ...first, expectedPointers: { ...first.expectedPointers, [field]: undefined } })).toThrow();
     }
-    for (const field of ["expectedResearchSpecRevisionId", "expectedExperimentId"]) {
+    for (const field of ["expectedExperimentId"]) {
       for (const invalid of [otherId, "-", "null", "", false]) {
         expect(() => calculate(scope, { ...first, expectedPointers: { ...first.expectedPointers, [field]: invalid } })).toThrow();
       }
     }
+    expect(calculate(scope, {
+      ...first,
+      expectedPointers: { ...first.expectedPointers, expectedResearchSpecRevisionId: otherId },
+    }).materialRequestHash).not.toBe(firstVector.hashHex);
     const bytes = calculate(scope, first).preimageBytes.toString("utf8");
     expect(bytes).toContain("\0expected_spec=-\0expected_experiment=-\0");
     expect(() => calculate(scope, first)).not.toThrow(); // Hypothesis requires no Draft.
@@ -242,6 +255,6 @@ describe("closed admission and code boundary", () => {
     const source = readFileSync("lib/investing/research/materialRequest.ts", "utf8");
     expect([...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1])).toEqual(["./canonical", "./semantic"]);
     expect(source).not.toMatch(/\b(fetch|query|connect|randomUUID)\s*\(/);
-    expect(source).not.toContain("sourceDraftRevisionId");
+    expect(source).toContain("sourceDraftRevisionId");
   });
 });

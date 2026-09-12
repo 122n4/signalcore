@@ -465,10 +465,11 @@ describe("Investing I5-A3 Research material revisions", () => {
     expect(writer).toContain("from investing.research_material_pointer_states");
     expect((writer.match(/for update/g) ?? []).length).toBe(1);
     expect(writer).not.toMatch(/from investing\.idempotency_records[^"]*for update/);
-    expect(writer).toContain("where research_investigation_id = $1 and pointer_version = $6::bigint");
-    expect(writer).toContain("and active_draft_revision_id is not distinct from $7");
-    expect(writer).toContain("and active_hypothesis_revision_id is not distinct from $8");
-    expect(writer).toContain("and active_spec_revision_id is null and active_experiment_id is null");
+    expect(writer).toContain("where research_investigation_id = $1 and pointer_version = $7::bigint");
+    expect(writer).toContain("and active_draft_revision_id is not distinct from $8");
+    expect(writer).toContain("and active_hypothesis_revision_id is not distinct from $9");
+    expect(writer).toContain("and active_spec_revision_id is not distinct from $10");
+    expect(writer).toContain("and active_experiment_id is null");
     expect(writer).not.toContain("set active_draft_revision_id = $2, active_hypothesis_revision_id = $3, active_spec_revision_id = null");
     expect(writer).not.toMatch(/from investing\.research_material_roots[^"]*for update/);
     expect(writer).not.toMatch(/from investing\.research_material_revisions[^"]*for update/);
