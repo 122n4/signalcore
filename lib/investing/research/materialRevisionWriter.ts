@@ -174,6 +174,12 @@ type RevisionRow = {
   canonical_payload: unknown;
 };
 
+type SpecRevisionPointerRow = {
+  research_spec_revision_id: string;
+  source_draft_revision_id: string;
+  hypothesis_revision_id: string | null;
+};
+
 const transactionContextKeys = [
   "syntrake.investing.actor_kind",
   "syntrake.investing.actor_id",
@@ -256,9 +262,11 @@ async function createResearchMaterialRevisionV1(
       const inserted = await insertRevision(client, input, prepared, idempotency.row.idempotency_record_id, root, materialRevisionId);
       if (inserted.ok === false) return inserted;
 
+      const semanticPointer = await pointerToSemantic(client, input.authorizedContext, pointer.row);
+      if (semanticPointer.ok === false) return semanticPointer;
       const nextPointers = applyA3PointerEffectV1({
         kind: prepared.materialKind === "DRAFT" ? "DRAFT_REVISION" : "HYPOTHESIS_REVISION",
-        predecessor: pointerToSemantic(pointer.row),
+        predecessor: semanticPointer.pointers,
         ...(prepared.materialKind === "DRAFT" ? { newDraft: materialRevisionId } : { newHypothesis: materialRevisionId }),
       });
       const nextVersion = String(BigInt(pointer.row.pointer_version) + BigInt(1));
@@ -616,22 +624,25 @@ async function updatePointerState(
   const updated = await client.query(
     [
       "update investing.research_material_pointer_states",
-      "set active_draft_revision_id = $2, active_hypothesis_revision_id = $3,",
-      "pointer_version = $4::bigint, updated_at = transaction_timestamp(), updated_by_operation = $5",
-      "where research_investigation_id = $1 and pointer_version = $6::bigint",
-      "and active_draft_revision_id is not distinct from $7",
-      "and active_hypothesis_revision_id is not distinct from $8",
-      "and active_spec_revision_id is null and active_experiment_id is null",
+      "set active_draft_revision_id = $2, active_hypothesis_revision_id = $3, active_spec_revision_id = $4,",
+      "pointer_version = $5::bigint, updated_at = transaction_timestamp(), updated_by_operation = $6",
+      "where research_investigation_id = $1 and pointer_version = $7::bigint",
+      "and active_draft_revision_id is not distinct from $8",
+      "and active_hypothesis_revision_id is not distinct from $9",
+      "and active_spec_revision_id is not distinct from $10",
+      "and active_experiment_id is null",
     ].join(" "),
     [
       context.researchInvestigationId,
       next.activeDraft,
       next.activeHypothesis,
+      next.activeSpec?.id ?? null,
       nextVersion,
       context.operation,
       previous.pointer_version,
       previous.active_draft_revision_id,
       previous.active_hypothesis_revision_id,
+      previous.active_spec_revision_id,
     ],
   );
   return updated.rowCount === 1 ? { ok: true } : fail("CONFLICT");
@@ -791,12 +802,47 @@ function expectedPointersMatch(row: PointerRow, expected: ExpectedResearchMateri
   );
 }
 
-function pointerToSemantic(row: PointerRow): InvestigationPointersV1 {
+async function pointerToSemantic(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchMaterialRevisionCreateContext,
+  row: PointerRow,
+): Promise<{ ok: true; pointers: InvestigationPointersV1 } | ResearchMaterialRevisionCreateFailure> {
   const empty = emptyInvestigationPointersV1();
+  if (row.active_spec_revision_id === null) {
+    return {
+      ok: true,
+      pointers: {
+        ...empty,
+        activeDraft: row.active_draft_revision_id,
+        activeHypothesis: row.active_hypothesis_revision_id,
+      },
+    };
+  }
+  const selected = await client.query<SpecRevisionPointerRow>(
+    [
+      "select research_spec_revision_id, source_draft_revision_id, hypothesis_revision_id",
+      "from investing.research_spec_revisions",
+      "where research_spec_revision_id = $1 and research_investigation_id = $2 and tenant_id = $3",
+      context.operationScope === "TENANT_SCOPE" ? "and account_id is null" : "and account_id = $4",
+    ].join(" "),
+    context.operationScope === "TENANT_SCOPE"
+      ? [row.active_spec_revision_id, context.researchInvestigationId, context.tenantId]
+      : [row.active_spec_revision_id, context.researchInvestigationId, context.tenantId, context.accountId],
+  );
+  if (selected.rows.length !== 1) return fail("INTERNAL_ERROR");
+  const spec = selected.rows[0]!;
   return {
-    ...empty,
-    activeDraft: row.active_draft_revision_id,
-    activeHypothesis: row.active_hypothesis_revision_id,
+    ok: true,
+    pointers: {
+      ...empty,
+      activeDraft: row.active_draft_revision_id,
+      activeHypothesis: row.active_hypothesis_revision_id,
+      activeSpec: {
+        id: spec.research_spec_revision_id,
+        sourceDraft: spec.source_draft_revision_id,
+        hypothesis: spec.hypothesis_revision_id,
+      },
+    },
   };
 }
 

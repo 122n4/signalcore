@@ -16,6 +16,7 @@ const researchInvestigationCreateOperation = "RESEARCH_INVESTIGATION_CREATE_V1";
 const researchDraftCreateOperation = "RESEARCH_DRAFT_CREATE_V1";
 const researchDraftRevisionCreateOperation = "RESEARCH_DRAFT_REVISION_CREATE_V1";
 const researchHypothesisRevisionCreateOperation = "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1";
+const researchSpecRevisionCreateOperation = "RESEARCH_SPEC_REVISION_CREATE_V1";
 const researchMutateCapability = "RESEARCH_MUTATE";
 const preAuthorityExternalSubjectHashDomain = "SYNTRAKE_INVESTING_I2B_EXTERNAL_SUBJECT_V1";
 const preAuthoritySelectorHashDomain = "SYNTRAKE_INVESTING_I2B_SELECTOR_V1";
@@ -126,7 +127,8 @@ export type AuthorizedResearchDraftCreateContext = Readonly<
 
 export type ResearchMaterialRevisionCreateOperation =
   | typeof researchDraftRevisionCreateOperation
-  | typeof researchHypothesisRevisionCreateOperation;
+  | typeof researchHypothesisRevisionCreateOperation
+  | typeof researchSpecRevisionCreateOperation;
 
 export type AuthorizedResearchMaterialRevisionCreateContext = Readonly<
   ResearchMaterialRevisionCreateContextBrand & {
@@ -453,7 +455,9 @@ export function isAuthorizedResearchMaterialRevisionCreateContext(
       (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).operation ===
         researchDraftRevisionCreateOperation ||
       (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).operation ===
-        researchHypothesisRevisionCreateOperation
+        researchHypothesisRevisionCreateOperation ||
+      (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).operation ===
+        researchSpecRevisionCreateOperation
     ) ||
     (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).capability !== researchMutateCapability ||
     typeof (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).researchInvestigationId !== "string"
@@ -1048,7 +1052,8 @@ export async function resolveAuthorizedResearchMaterialRevisionCreateContext(
     !uuidPattern.test(input.researchInvestigationId) ||
     !isValidCorrelationId(input.correlationId) ||
     (input.operation !== researchDraftRevisionCreateOperation &&
-      input.operation !== researchHypothesisRevisionCreateOperation)
+      input.operation !== researchHypothesisRevisionCreateOperation &&
+      input.operation !== researchSpecRevisionCreateOperation)
   ) {
     return fail("VALIDATION_ERROR");
   }
