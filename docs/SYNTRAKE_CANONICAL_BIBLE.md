@@ -688,19 +688,22 @@ Work ID / slice: CANONICAL-BIBLE-BOOTSTRAP
 Date: 2026-09-12
 Domain: Shared Infrastructure / Governance
 Accepted predecessor SHA: 87c19fd5ebadcc5b20ce587c185346379fd8d96b
-Candidate SHA: PENDING_COMMIT
+Candidate SHA: 5e9744c38c16e5f18df2f43449329a7e30ebd928
 Status: IMPLEMENTED_CANDIDATE
-Scope: Add Syntrake Canonical Bible and make AGENTS.md require Codex to read and maintain it.
+Scope: Add the Syntrake Canonical Bible, bind root AGENTS.md to mandatory Bible bootstrap/maintenance, and add the canonical PR candidate-gate template.
+Files / contracts materially changed: docs/SYNTRAKE_CANONICAL_BIBLE.md; AGENTS.md; .github/pull_request_template.md
 Financial-truth impact: NONE
 Auth/tenant/authority impact: NONE
 DB/migration impact: NONE
 Execution/broker impact: NONE
-Tests/evidence: Documentation/bootstrap review; GitHub canonical branch/PR lineage verified before creation.
-Known limitations / baseline failures: Does not certify production Supabase/Vercel/broker/runtime state.
-Bible impact: Establishes this document as canonical product/engineering contract and material-work ledger.
+Tests/evidence: Documentation/bootstrap review; GitHub canonical branch/PR lineage verified before creation; candidate files created only on chore/syntrake-canonical-bible-bootstrap.
+Known limitations / baseline failures: Does not certify production Supabase/Vercel/broker/runtime state; no runtime/product tests required for documentation/governance-only candidate.
+Bible impact: Establishes this document as canonical product/engineering contract, mandatory Codex bootstrap, material-work ledger, and PR gate discipline.
 Independent audit evidence: PENDING
 Gate outcome: PENDING
 ```
+
+The bookkeeping commit that records the candidate SHA is not itself the implementation candidate; the candidate above is the immediately preceding governance implementation commit.
 
 ---
 
