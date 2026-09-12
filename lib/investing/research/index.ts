@@ -72,6 +72,7 @@ export {
   canonicalHypothesisBytesV1,
   canonicalResearchDraftBytesV1,
   canonicalResearchSpecCandidateBytesV1,
+  emptyInvestigationPointersV1,
   hashHypothesisV1,
   hashResearchDraftV1,
 } from "./semantic";
