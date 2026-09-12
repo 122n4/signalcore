@@ -10,6 +10,8 @@ declare
   v_operation_constraint text;
   v_operation_token_count integer;
   v_pointer_constraint text;
+  v_pointer_operation_constraint text;
+  v_pointer_operation_token_count integer;
 begin
   if current_user <> 'postgres' then
     raise exception 'I5-A4 prestate violation: migration executor must be postgres, got %', current_user;
@@ -140,6 +142,33 @@ begin
     or v_pointer_constraint !~ 'active_experiment_id IS NULL'
     or v_pointer_constraint !~ 'pointer_version >= 0' then
     raise exception 'I5-A4 prestate violation: exact I5-A3 pointer subset constraint missing or altered: %', v_pointer_constraint;
+  end if;
+
+  select pg_catalog.pg_get_constraintdef(con.oid, true)
+  into v_pointer_operation_constraint
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_material_pointer_states'
+    and con.conname = 'research_material_pointer_states_updated_by_operation_check'
+    and con.contype = 'c'
+    and con.convalidated;
+
+  if v_pointer_operation_constraint is null
+    or v_pointer_operation_constraint !~ 'updated_by_operation IS NULL'
+    or v_pointer_operation_constraint !~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+    or v_pointer_operation_constraint !~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+    or v_pointer_operation_constraint ~ 'RESEARCH_SPEC_REVISION_CREATE_V1' then
+    raise exception 'I5-A4 prestate violation: exact I5-A3 pointer operation constraint missing or altered: %', v_pointer_operation_constraint;
+  end if;
+
+  select count(*)
+  into v_pointer_operation_token_count
+  from pg_catalog.regexp_matches(v_pointer_operation_constraint, '''(RESEARCH_[A-Z0-9_]+_V1)''', 'g');
+
+  if v_pointer_operation_token_count <> 2 then
+    raise exception 'I5-A4 prestate violation: pointer operation constraint token count not exact: %', v_pointer_operation_constraint;
   end if;
 
   if not exists (
@@ -335,8 +364,22 @@ alter table investing.research_material_pointer_states
   drop constraint research_material_pointer_states_a3_subset_check;
 
 alter table investing.research_material_pointer_states
+  drop constraint research_material_pointer_states_updated_by_operation_check;
+
+alter table investing.research_material_pointer_states
   add constraint research_material_pointer_states_a4_subset_check
   check (active_experiment_id is null and pointer_version >= 0);
+
+alter table investing.research_material_pointer_states
+  add constraint research_material_pointer_states_updated_by_operation_check
+  check (
+    updated_by_operation is null
+    or updated_by_operation in (
+      'RESEARCH_DRAFT_REVISION_CREATE_V1',
+      'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1',
+      'RESEARCH_SPEC_REVISION_CREATE_V1'
+    )
+  );
 
 alter table investing.research_material_pointer_states
   add constraint research_material_pointer_states_active_spec_fk
@@ -940,6 +983,8 @@ declare
   v_relation_count integer;
   v_missing_policy_count integer;
   v_unexpected_policy_count integer;
+  v_pointer_operation_constraint text;
+  v_pointer_operation_token_count integer;
 begin
   select count(*)
   into v_relation_count
@@ -1044,6 +1089,33 @@ begin
       and with_check ~ 'hypothesis_revision_id'
   ) then
     raise exception 'I5-A4 postcondition violation: recreated A3 pointer update policy is missing post-A4 Spec invariants';
+  end if;
+
+  select pg_catalog.pg_get_constraintdef(con.oid, true)
+  into v_pointer_operation_constraint
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_material_pointer_states'
+    and con.conname = 'research_material_pointer_states_updated_by_operation_check'
+    and con.contype = 'c'
+    and con.convalidated;
+
+  if v_pointer_operation_constraint is null
+    or v_pointer_operation_constraint !~ 'updated_by_operation IS NULL'
+    or v_pointer_operation_constraint !~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+    or v_pointer_operation_constraint !~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+    or v_pointer_operation_constraint !~ 'RESEARCH_SPEC_REVISION_CREATE_V1' then
+    raise exception 'I5-A4 postcondition violation: exact A4 pointer operation constraint missing or altered: %', v_pointer_operation_constraint;
+  end if;
+
+  select count(*)
+  into v_pointer_operation_token_count
+  from pg_catalog.regexp_matches(v_pointer_operation_constraint, '''(RESEARCH_[A-Z0-9_]+_V1)''', 'g');
+
+  if v_pointer_operation_token_count <> 3 then
+    raise exception 'I5-A4 postcondition violation: pointer operation constraint token count not exact: %', v_pointer_operation_constraint;
   end if;
 
   if exists (

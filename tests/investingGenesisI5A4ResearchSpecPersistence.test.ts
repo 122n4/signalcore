@@ -282,6 +282,55 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(sql).toContain("pointer column update grants are not exact");
   });
 
+  it("evolves the pointer updated_by_operation CHECK from exact A3 tokens to exact A4 tokens", () => {
+    const rawSql = read(migrationPath);
+    const sql = normalize(rawSql);
+    const constraintName = "research_material_pointer_states_updated_by_operation_check";
+    const a4Constraint = extractAddedConstraint(rawSql, constraintName);
+    const a4Tokens = operationTokens(a4Constraint);
+
+    expect(sql).toContain(`drop constraint ${constraintName}`);
+    expect(a4Constraint).toContain("updated_by_operation is null");
+    expect(a4Tokens).toEqual([
+      "RESEARCH_DRAFT_REVISION_CREATE_V1",
+      "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
+      "RESEARCH_SPEC_REVISION_CREATE_V1",
+    ]);
+
+    const prestate = sql.slice(0, sql.indexOf("set local role investing_owner"));
+    expect(prestate).toContain("con.conname = 'research_material_pointer_states_updated_by_operation_check'");
+    expect(prestate).toContain("con.contype = 'c'");
+    expect(prestate).toContain("con.convalidated");
+    expect(prestate).toContain("v_pointer_operation_token_count <> 2");
+    expect(prestate).toContain("v_pointer_operation_constraint ~ 'research_spec_revision_create_v1'");
+
+    const poststate = sql.slice(sql.lastIndexOf("do $$"));
+    expect(poststate).toContain("con.conname = 'research_material_pointer_states_updated_by_operation_check'");
+    expect(poststate).toContain("con.contype = 'c'");
+    expect(poststate).toContain("con.convalidated");
+    expect(poststate).toContain("v_pointer_operation_token_count <> 3");
+    expect(poststate).toContain("v_pointer_operation_constraint !~ 'research_spec_revision_create_v1'");
+
+    expect(pointerOperationConstraintIsExact([
+      "RESEARCH_DRAFT_REVISION_CREATE_V1",
+      "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
+    ])).toBe(false);
+    expect(pointerOperationConstraintIsExact([...a4Tokens, "RESEARCH_EXPERIMENT_CREATE_V1"])).toBe(false);
+    expect(pointerOperationConstraintIsExact(a4Tokens)).toBe(true);
+  });
+
+  it("keeps the Spec writer aligned with the final pointer operation CHECK", () => {
+    const writer = normalize(read(specWriterPath));
+    const constraint = normalize(extractAddedConstraint(read(migrationPath), "research_material_pointer_states_updated_by_operation_check"));
+
+    expect(writer).toContain("const specoperation = \"research_spec_revision_create_v1\"");
+    expect(writer).toContain("updated_by_operation = $4");
+    expect(writer).toContain("specoperation,");
+    expect(writer).not.toContain("updated_by_operation = null");
+    expect(writer).not.toContain("research_draft_revision_create_v1,");
+    expect(constraint).toContain("research_spec_revision_create_v1");
+  });
+
   it("uses PostgreSQL catalog privilege introspection that is stable under INHERIT FALSE roles", () => {
     const sql = normalize(read(migrationPath));
     const prestate = sql.slice(0, sql.indexOf("set local role investing_owner"));
@@ -509,6 +558,27 @@ function read(filePath: string) {
 function gitBlobSha(value: string) {
   const bytes = Buffer.from(value, "utf8");
   return crypto.createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}
+
+function extractAddedConstraint(sql: string, constraintName: string) {
+  const start = sql.toLowerCase().indexOf(`add constraint ${constraintName}`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = sql.indexOf(";\n", start);
+  expect(end).toBeGreaterThan(start);
+  return sql.slice(start, end + 1);
+}
+
+function operationTokens(sql: string) {
+  return [...sql.matchAll(/'((?:RESEARCH_[A-Z0-9_]+_V1))'/g)].map((match) => match[1]);
+}
+
+function pointerOperationConstraintIsExact(tokens: string[]) {
+  return (
+    tokens.length === 3 &&
+    tokens[0] === "RESEARCH_DRAFT_REVISION_CREATE_V1" &&
+    tokens[1] === "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1" &&
+    tokens[2] === "RESEARCH_SPEC_REVISION_CREATE_V1"
+  );
 }
 
 function normalize(value: string) {
