@@ -288,7 +288,7 @@ describe("Investing I5-A3 Research material revisions", () => {
       "tenant_memberships_i5_a3_material_revision_authority_read",
       "accounts_i5_a3_material_revision_account_authority_read",
       "tenants_i5_a3_material_revision_account_authority_read",
-      "tenant_memberships_i5_a3_material_revision_account_authority_read",
+      "tenant_memberships_i5_a3_material_revision_account_read",
       "account_access_i5_a3_material_revision_account_authority_read",
       "research_investigations_i5_a3_material_revision_selector_read",
       "research_investigations_i5_a3_material_revision_parent_read",
@@ -315,6 +315,27 @@ describe("Investing I5-A3 Research material revisions", () => {
     expect(sql).toContain("missing or altered material revision policies");
     expect(sql).toContain("unexpected material revision policies");
     expect(sql).toContain("material revision policy count mismatch");
+  });
+
+  it("keeps explicit A3 policy identifiers within PostgreSQL's 63-byte limit without truncation collisions", () => {
+    const rawSql = read(migrationPath);
+    const policyNames = [...rawSql.matchAll(/\bcreate\s+policy\s+([a-z0-9_]+)/gi)].map((match) => match[1]);
+    const oldInvalidName = "tenant_memberships_i5_a3_material_revision_account_authority_read";
+    const oldPostgresTruncatedName = oldInvalidName.slice(0, 63);
+    const replacementName = "tenant_memberships_i5_a3_material_revision_account_read";
+
+    expect(Buffer.byteLength(oldInvalidName, "utf8")).toBeGreaterThan(63);
+    expect(oldPostgresTruncatedName).toBe("tenant_memberships_i5_a3_material_revision_account_authority_re");
+    expect(rawSql).not.toContain(oldInvalidName);
+    expect(rawSql).not.toContain(oldPostgresTruncatedName);
+    expect(policyNames).toContain(replacementName);
+    expect(Buffer.byteLength(replacementName, "utf8")).toBeLessThanOrEqual(63);
+
+    const truncated = policyNames.map((name) => name.slice(0, 63));
+    expect(new Set(truncated).size).toBe(truncated.length);
+    for (const policyName of policyNames) {
+      expect(Buffer.byteLength(policyName, "utf8")).toBeLessThanOrEqual(63);
+    }
   });
 
   it("pins the canonical principal selector substrate used before A3 knows principal_id", () => {

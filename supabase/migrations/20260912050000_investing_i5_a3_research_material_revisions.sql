@@ -527,7 +527,7 @@ create policy tenants_i5_a3_material_revision_account_authority_read
     and state = 'ACTIVE'
   );
 
-create policy tenant_memberships_i5_a3_material_revision_account_authority_read
+create policy tenant_memberships_i5_a3_material_revision_account_read
   on investing.tenant_memberships
   for select
   to investing_app
@@ -981,7 +981,7 @@ begin
       ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_authority_read', 'SELECT'),
       ('accounts', 'accounts_i5_a3_material_revision_account_authority_read', 'SELECT'),
       ('tenants', 'tenants_i5_a3_material_revision_account_authority_read', 'SELECT'),
-      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_account_read', 'SELECT'),
       ('account_access', 'account_access_i5_a3_material_revision_account_authority_read', 'SELECT'),
       ('research_investigations', 'research_investigations_i5_a3_material_revision_selector_read', 'SELECT'),
       ('research_investigations', 'research_investigations_i5_a3_material_revision_parent_read', 'SELECT'),
@@ -1031,7 +1031,7 @@ begin
       ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_authority_read', 'SELECT'),
       ('accounts', 'accounts_i5_a3_material_revision_account_authority_read', 'SELECT'),
       ('tenants', 'tenants_i5_a3_material_revision_account_authority_read', 'SELECT'),
-      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_account_read', 'SELECT'),
       ('account_access', 'account_access_i5_a3_material_revision_account_authority_read', 'SELECT'),
       ('research_investigations', 'research_investigations_i5_a3_material_revision_selector_read', 'SELECT'),
       ('research_investigations', 'research_investigations_i5_a3_material_revision_parent_read', 'SELECT'),

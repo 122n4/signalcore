@@ -12,6 +12,8 @@ set local role investing_owner;
 do $$
 declare
   v_relation_count integer;
+  v_research_drafts_count integer;
+  v_research_drafts_updated_at_count integer;
   v_bad_table_update integer;
   v_bad_column_update integer;
   v_bad_blocked_grants integer;
@@ -28,16 +30,45 @@ begin
       'tenant_memberships',
       'accounts',
       'account_access',
-      'research_investigations',
-      'research_drafts'
+      'research_investigations'
     )
     and c.relkind in ('r', 'p')
     and c.relowner = 'investing_owner'::regrole
     and c.relrowsecurity
     and c.relforcerowsecurity;
 
-  if v_relation_count <> 7 then
+  if v_relation_count <> 6 then
     raise exception 'I5 runtime lock repair precondition violation: lock relation owner/RLS/FORCE mismatch: %', v_relation_count;
+  end if;
+
+  select count(*)
+  into v_research_drafts_count
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_drafts'
+    and c.relkind in ('r', 'p')
+    and c.relowner = 'investing_owner'::regrole
+    and c.relrowsecurity
+    and c.relforcerowsecurity;
+
+  if v_research_drafts_count <> 1 then
+    raise exception 'I5 runtime lock repair precondition violation: research_drafts predecessor relation mismatch: %', v_research_drafts_count;
+  end if;
+
+  select count(*)
+  into v_research_drafts_updated_at_count
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  join pg_catalog.pg_attribute a on a.attrelid = c.oid
+  where n.nspname = 'investing'
+    and c.relname = 'research_drafts'
+    and a.attname = 'updated_at'
+    and a.attnum > 0
+    and not a.attisdropped;
+
+  if v_research_drafts_updated_at_count <> 0 then
+    raise exception 'I5 runtime lock repair precondition violation: research_drafts.updated_at already exists in predecessor';
   end if;
 
   if exists (
@@ -51,8 +82,7 @@ begin
         'tenant_memberships',
         'accounts',
         'account_access',
-        'research_investigations',
-        'research_drafts'
+        'research_investigations'
       )
       and not exists (
         select 1
@@ -154,6 +184,9 @@ begin
     raise exception 'I5 runtime lock repair precondition violation: blocked role mutation grant exists: %', v_bad_blocked_grants;
   end if;
 end $$;
+
+alter table investing.research_drafts
+  add column updated_at timestamptz not null default transaction_timestamp();
 
 grant update (updated_at) on table investing.principals to investing_app;
 grant update (updated_at) on table investing.tenants to investing_app;
@@ -408,6 +441,7 @@ declare
   v_update_policy_count integer;
   v_bad_lock_policy_count integer;
   v_security_definer_count integer;
+  v_research_drafts_updated_at_count integer;
 begin
   select count(*)
   into v_relation_count
@@ -430,6 +464,25 @@ begin
 
   if v_relation_count <> 7 then
     raise exception 'I5 runtime lock repair postcondition violation: lock relation owner/RLS/FORCE mismatch: %', v_relation_count;
+  end if;
+
+  select count(*)
+  into v_research_drafts_updated_at_count
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  join pg_catalog.pg_attribute a on a.attrelid = c.oid
+  join pg_catalog.pg_attrdef d on d.adrelid = c.oid and d.adnum = a.attnum
+  where n.nspname = 'investing'
+    and c.relname = 'research_drafts'
+    and a.attname = 'updated_at'
+    and a.atttypid = 'pg_catalog.timestamptz'::regtype
+    and a.attnotnull
+    and a.attnum > 0
+    and not a.attisdropped
+    and pg_catalog.pg_get_expr(d.adbin, d.adrelid) = 'transaction_timestamp()';
+
+  if v_research_drafts_updated_at_count <> 1 then
+    raise exception 'I5 runtime lock repair postcondition violation: research_drafts.updated_at definition mismatch: %', v_research_drafts_updated_at_count;
   end if;
 
   select count(*)

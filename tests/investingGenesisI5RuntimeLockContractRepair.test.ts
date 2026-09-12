@@ -9,6 +9,12 @@ const migrationPath = path.join(
   "migrations",
   "20260911110000_investing_i5_research_runtime_lock_contract_repair.sql",
 );
+const a2MigrationPath = path.join(
+  repoRoot,
+  "supabase",
+  "migrations",
+  "20260910130000_investing_i5_a2_research_draft_persistence.sql",
+);
 const investigationWriterPath = path.join(repoRoot, "lib", "investing", "research", "investigationWriter.ts");
 const draftWriterPath = path.join(repoRoot, "lib", "investing", "research", "draftWriter.ts");
 
@@ -54,7 +60,7 @@ describe("Investing I5 runtime lock contract repair", () => {
     expect(sql).toContain("c.relowner = 'investing_owner'::regrole");
     expect(sql).toContain("c.relrowsecurity");
     expect(sql).toContain("c.relforcerowsecurity");
-    expect(sql).toContain("v_relation_count <> 7");
+    expect(sql).toContain("v_relation_count <> 6");
 
     for (const table of lockTables) {
       expect(sql).toContain(`grant update (updated_at) on table investing.${table} to investing_app;`);
@@ -80,6 +86,32 @@ describe("Investing I5 runtime lock contract repair", () => {
     expect(sql).toContain("pg_has_role('investing_app', 'investing_owner', 'member')");
     expect(sql).toContain("pg_has_role('investing_app', 'postgres', 'member')");
     expect(sql).toContain("pg_has_role('investing_app', 'service_role', 'member')");
+  });
+
+  it("repairs the canonical A2 research_drafts prestate by adding only updated_at", () => {
+    const a2Sql = normalize(read(a2MigrationPath));
+    const repairSql = normalize(read(migrationPath));
+    const a2DraftsTable = a2Sql.slice(
+      a2Sql.indexOf("create table investing.research_drafts"),
+      a2Sql.indexOf("alter table investing.research_drafts enable row level security"),
+    );
+
+    expect(a2DraftsTable).not.toContain("updated_at");
+    expect(repairSql).toContain("v_research_drafts_count <> 1");
+    expect(repairSql).toContain("v_research_drafts_updated_at_count <> 0");
+    expect(repairSql).toContain("research_drafts.updated_at already exists in predecessor");
+    expect(repairSql).toContain(
+      "alter table investing.research_drafts add column updated_at timestamptz not null default transaction_timestamp();",
+    );
+    expect(repairSql).not.toContain("add column if not exists updated_at");
+    expect(repairSql).toContain("v_research_drafts_updated_at_count <> 1");
+    expect(repairSql).toContain("research_drafts.updated_at definition mismatch");
+    expect(repairSql).toContain("pg_catalog.pg_get_expr(d.adbin, d.adrelid) = 'transaction_timestamp()'");
+
+    const addColumn = repairSql.indexOf("alter table investing.research_drafts add column updated_at");
+    const draftGrant = repairSql.indexOf("grant update (updated_at) on table investing.research_drafts");
+    expect(addColumn).toBeGreaterThanOrEqual(0);
+    expect(draftGrant).toBeGreaterThan(addColumn);
   });
 
   it("keeps blocked roles without table or column mutation privileges", () => {
