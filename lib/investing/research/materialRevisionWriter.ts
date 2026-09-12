@@ -616,7 +616,7 @@ async function updatePointerState(
   const updated = await client.query(
     [
       "update investing.research_material_pointer_states",
-      "set active_draft_revision_id = $2, active_hypothesis_revision_id = $3, active_spec_revision_id = null, active_experiment_id = null,",
+      "set active_draft_revision_id = $2, active_hypothesis_revision_id = $3,",
       "pointer_version = $4::bigint, updated_at = transaction_timestamp(), updated_by_operation = $5",
       "where research_investigation_id = $1 and pointer_version = $6::bigint",
       "and active_draft_revision_id is not distinct from $7",
@@ -654,7 +654,7 @@ async function findExistingIdempotency(
       "from investing.idempotency_records",
       "where actor_kind = 'USER_PRINCIPAL' and actor_id = $1 and principal_id = $2",
       `and tenant_id = $3 and operation_scope = '${context.operationScope}' and operation = $4 and ${accountPredicate}`,
-      `and idempotency_key = $${context.operationScope === "TENANT_SCOPE" ? 5 : 6} for update`,
+      `and idempotency_key = $${context.operationScope === "TENANT_SCOPE" ? 5 : 6}`,
     ].join(" "),
     values,
   );

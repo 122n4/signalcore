@@ -247,12 +247,21 @@ describe("Investing I5-A3 Research material revisions", () => {
     expect(sql).toContain("alter table investing.research_material_roots force row level security");
     expect(sql).toContain("alter table investing.research_material_revisions force row level security");
     expect(sql).toContain("grant update ( active_draft_revision_id, active_hypothesis_revision_id");
+    const pointerUpdateGrant = sql.slice(sql.indexOf("grant update ("), sql.indexOf(") on table investing.research_material_pointer_states"));
+    expect(pointerUpdateGrant).toContain("active_draft_revision_id");
+    expect(pointerUpdateGrant).toContain("active_hypothesis_revision_id");
+    expect(pointerUpdateGrant).toContain("pointer_version");
+    expect(pointerUpdateGrant).toContain("updated_at");
+    expect(pointerUpdateGrant).toContain("updated_by_operation");
+    expect(pointerUpdateGrant).not.toContain("active_spec_revision_id");
+    expect(pointerUpdateGrant).not.toContain("active_experiment_id");
     expect(sql).toContain("unique (research_investigation_id, material_kind)");
     expect(sql).toContain("foreign key (predecessor_revision_id, material_root_id)");
     expect(sql).toContain("foreign key (active_draft_revision_id, active_draft_material_kind, research_investigation_id)");
     expect(sql).toContain("foreign key (active_hypothesis_revision_id, active_hypothesis_material_kind, research_investigation_id)");
     expect(sql).toContain("from information_schema.column_privileges");
-    expect(sql).toContain("immutable material column update grant");
+    expect(sql).toContain("material table grants are not exact");
+    expect(sql).toContain("material column update grants are not exact");
     expect(sql).toContain("immutable material update policy");
     expect(sql).toContain("p.prosecdef");
   });
@@ -302,6 +311,21 @@ describe("Investing I5-A3 Research material revisions", () => {
     }
     expect(sql).not.toContain("research_material_roots_i5_a1");
     expect(sql).not.toContain("research_material_revisions_i5_a2");
+    expect(sql).toContain("with expected(tablename, policyname, cmd) as (");
+    expect(sql).toContain("missing or altered material revision policies");
+    expect(sql).toContain("unexpected material revision policies");
+    expect(sql).toContain("material revision policy count mismatch");
+  });
+
+  it("pins the canonical principal selector substrate used before A3 knows principal_id", () => {
+    const sql = normalize(read(migrationPath));
+    const prestate = sql.slice(0, sql.indexOf("set local role investing_owner"));
+    expect(prestate).toContain("policyname = 'principals_i2b_authority_read'");
+    expect(prestate).toContain("cmd = 'select'");
+    expect(prestate).toContain("roles = array['investing_app']::name[]");
+    expect(prestate).toContain("qual ~ 'external_provider'");
+    expect(prestate).toContain("qual ~ 'external_subject'");
+    expect(prestate).toContain("canonical principal selector policy missing or altered");
   });
 
   it("proves the A3 investigation selector stage has only pre-parent authority GUCs", () => {
@@ -414,15 +438,20 @@ describe("Investing I5-A3 Research material revisions", () => {
     const writer = normalize(read(writerPath));
     expect(writer).toContain("on conflict (actor_kind, actor_id, operation_scope, operation, idempotency_key) do nothing");
     expect(writer).toContain("if (inserted.rowcount === 0)");
+    expect(writer).toContain("const existing = await findexistingidempotency(client, context, prepared)");
     expect(writer).toContain("return { ok: true, existing: true, row: existing.row }");
     expect(writer).toContain("if (row.material_request_hash !== prepared.materialrequesthash) return fail(\"conflict\")");
-    expect(writer).toContain("for update");
     expect(writer).toContain("from investing.research_material_pointer_states");
+    expect((writer.match(/for update/g) ?? []).length).toBe(1);
+    expect(writer).not.toMatch(/from investing\.idempotency_records[^"]*for update/);
     expect(writer).toContain("where research_investigation_id = $1 and pointer_version = $6::bigint");
     expect(writer).toContain("and active_draft_revision_id is not distinct from $7");
     expect(writer).toContain("and active_hypothesis_revision_id is not distinct from $8");
+    expect(writer).toContain("and active_spec_revision_id is null and active_experiment_id is null");
+    expect(writer).not.toContain("set active_draft_revision_id = $2, active_hypothesis_revision_id = $3, active_spec_revision_id = null");
     expect(writer).not.toMatch(/from investing\.research_material_roots[^"]*for update/);
     expect(writer).not.toMatch(/from investing\.research_material_revisions[^"]*for update/);
+    expect(writer).toContain("await settransactionconfig(client, \"idempotency_record_id\", row.idempotency_record_id)");
     expect(writer).toContain("expectedpointersmatch(pointer.row, input.expectedpointers)");
     expect(writer).toContain("expectedroot.state !== \"absent\"");
     expect(writer).toContain("expectedroot.state !== \"present\"");

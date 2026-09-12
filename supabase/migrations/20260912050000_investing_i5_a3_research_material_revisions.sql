@@ -9,6 +9,8 @@ declare
   v_operation_constraint text;
   v_operation_token_count integer;
   v_policy_count integer;
+  v_missing_policy_count integer;
+  v_unexpected_policy_count integer;
 begin
   if current_user <> 'postgres' then
     raise exception 'I5-A3 prestate violation: migration executor must be postgres, got %', current_user;
@@ -102,6 +104,20 @@ begin
 
   if v_policy_count <> 4 then
     raise exception 'I5-A3 prestate violation: canonical I5-A1/A2 policy contract mismatch: %', v_policy_count;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_policies
+    where schemaname = 'investing'
+      and tablename = 'principals'
+      and policyname = 'principals_i2b_authority_read'
+      and cmd = 'SELECT'
+      and roles = array['investing_app']::name[]
+      and qual ~ 'external_provider'
+      and qual ~ 'external_subject'
+  ) then
+    raise exception 'I5-A3 prestate violation: canonical principal selector policy missing or altered';
   end if;
 end $$;
 
@@ -440,8 +456,6 @@ grant select, insert on table investing.research_material_pointer_states to inve
 grant update (
   active_draft_revision_id,
   active_hypothesis_revision_id,
-  active_spec_revision_id,
-  active_experiment_id,
   pointer_version,
   updated_at,
   updated_by_operation
@@ -938,6 +952,8 @@ declare
   v_operation_token_count integer;
   v_relation_count integer;
   v_policy_count integer;
+  v_missing_policy_count integer;
+  v_unexpected_policy_count integer;
 begin
   select count(*)
   into v_relation_count
@@ -958,33 +974,99 @@ begin
     raise exception 'I5-A3 postcondition violation: material table owner/RLS/FORCE mismatch: %', v_relation_count;
   end if;
 
+  with expected(tablename, policyname, cmd) as (
+    values
+      ('principals', 'principals_i5_a3_material_revision_authority_read', 'SELECT'),
+      ('tenants', 'tenants_i5_a3_material_revision_authority_read', 'SELECT'),
+      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_authority_read', 'SELECT'),
+      ('accounts', 'accounts_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('tenants', 'tenants_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('account_access', 'account_access_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('research_investigations', 'research_investigations_i5_a3_material_revision_selector_read', 'SELECT'),
+      ('research_investigations', 'research_investigations_i5_a3_material_revision_parent_read', 'SELECT'),
+      ('idempotency_records', 'idempotency_records_i5_a3_material_revision_read', 'SELECT'),
+      ('idempotency_records', 'idempotency_records_i5_a3_material_revision_insert', 'INSERT'),
+      ('idempotency_records', 'idempotency_records_i5_a3_material_revision_update', 'UPDATE'),
+      ('research_material_roots', 'research_material_roots_i5_a3_insert', 'INSERT'),
+      ('research_material_roots', 'research_material_roots_i5_a3_read', 'SELECT'),
+      ('research_material_revisions', 'research_material_revisions_i5_a3_insert', 'INSERT'),
+      ('research_material_revisions', 'research_material_revisions_i5_a3_read', 'SELECT'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_insert', 'INSERT'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_read', 'SELECT'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_update', 'UPDATE')
+  )
+  select count(*)
+  into v_missing_policy_count
+  from expected e
+  left join pg_catalog.pg_policies p
+    on p.schemaname = 'investing'
+   and p.tablename = e.tablename
+   and p.policyname = e.policyname
+   and p.cmd = e.cmd
+   and p.roles = array['investing_app']::name[]
+   and coalesce(p.qual, p.with_check) ~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+   and coalesce(p.qual, p.with_check) ~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+   and coalesce(p.qual, p.with_check) ~ 'RESEARCH_MUTATE'
+  where p.policyname is null;
+
+  if v_missing_policy_count <> 0 then
+    raise exception 'I5-A3 postcondition violation: missing or altered material revision policies: %', v_missing_policy_count;
+  end if;
+
   select count(*)
   into v_policy_count
   from pg_catalog.pg_policies
   where schemaname = 'investing'
     and roles = array['investing_app']::name[]
     and (
-      (
-        tablename in (
-          'principals',
-          'tenants',
-          'tenant_memberships',
-          'accounts',
-          'account_access',
-          'research_investigations',
-          'idempotency_records',
-          'research_material_roots',
-          'research_material_revisions',
-          'research_material_pointer_states'
-        )
-        and coalesce(qual, with_check) ~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
-        and coalesce(qual, with_check) ~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
-        and coalesce(qual, with_check) ~ 'RESEARCH_MUTATE'
-      )
+      policyname like '%i5_a3_material_revision%'
+      or tablename in ('research_material_roots', 'research_material_revisions', 'research_material_pointer_states')
     );
 
+  with expected(tablename, policyname, cmd) as (
+    values
+      ('principals', 'principals_i5_a3_material_revision_authority_read', 'SELECT'),
+      ('tenants', 'tenants_i5_a3_material_revision_authority_read', 'SELECT'),
+      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_authority_read', 'SELECT'),
+      ('accounts', 'accounts_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('tenants', 'tenants_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('tenant_memberships', 'tenant_memberships_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('account_access', 'account_access_i5_a3_material_revision_account_authority_read', 'SELECT'),
+      ('research_investigations', 'research_investigations_i5_a3_material_revision_selector_read', 'SELECT'),
+      ('research_investigations', 'research_investigations_i5_a3_material_revision_parent_read', 'SELECT'),
+      ('idempotency_records', 'idempotency_records_i5_a3_material_revision_read', 'SELECT'),
+      ('idempotency_records', 'idempotency_records_i5_a3_material_revision_insert', 'INSERT'),
+      ('idempotency_records', 'idempotency_records_i5_a3_material_revision_update', 'UPDATE'),
+      ('research_material_roots', 'research_material_roots_i5_a3_insert', 'INSERT'),
+      ('research_material_roots', 'research_material_roots_i5_a3_read', 'SELECT'),
+      ('research_material_revisions', 'research_material_revisions_i5_a3_insert', 'INSERT'),
+      ('research_material_revisions', 'research_material_revisions_i5_a3_read', 'SELECT'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_insert', 'INSERT'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_read', 'SELECT'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_update', 'UPDATE')
+  )
+  select count(*)
+  into v_unexpected_policy_count
+  from pg_catalog.pg_policies p
+  left join expected e
+    on e.tablename = p.tablename
+   and e.policyname = p.policyname
+   and e.cmd = p.cmd
+  where p.schemaname = 'investing'
+    and p.roles = array['investing_app']::name[]
+    and (
+      p.policyname like '%i5_a3_material_revision%'
+      or p.tablename in ('research_material_roots', 'research_material_revisions', 'research_material_pointer_states')
+    )
+    and e.policyname is null;
+
   if v_policy_count <> 19 then
-    raise exception 'I5-A3 postcondition violation: material revision policy set mismatch: %', v_policy_count;
+    raise exception 'I5-A3 postcondition violation: material revision policy count mismatch: %', v_policy_count;
+  end if;
+
+  if v_unexpected_policy_count <> 0 then
+    raise exception 'I5-A3 postcondition violation: unexpected material revision policies: %', v_unexpected_policy_count;
   end if;
 
   select count(*)
@@ -999,25 +1081,57 @@ begin
   end if;
 
   if exists (
-    select 1
-    from information_schema.role_table_grants
-    where table_schema = 'investing'
-      and table_name in ('research_material_roots', 'research_material_revisions')
-      and grantee = 'investing_app'
-      and privilege_type in ('UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
+    with expected(table_name, privilege_type) as (
+      values
+        ('research_material_roots', 'SELECT'),
+        ('research_material_roots', 'INSERT'),
+        ('research_material_revisions', 'SELECT'),
+        ('research_material_revisions', 'INSERT'),
+        ('research_material_pointer_states', 'SELECT'),
+        ('research_material_pointer_states', 'INSERT')
+    ),
+    actual as (
+      select table_name, privilege_type
+      from information_schema.role_table_grants
+      where table_schema = 'investing'
+        and table_name in ('research_material_roots', 'research_material_revisions', 'research_material_pointer_states')
+        and grantee = 'investing_app'
+    ),
+    diff as (
+      (select * from expected except select * from actual)
+      union all
+      (select * from actual except select * from expected)
+    )
+    select 1 from diff
   ) then
-    raise exception 'I5-A3 postcondition violation: immutable material table mutation grant';
+    raise exception 'I5-A3 postcondition violation: material table grants are not exact';
   end if;
 
   if exists (
-    select 1
-    from information_schema.column_privileges
-    where table_schema = 'investing'
-      and table_name in ('research_material_roots', 'research_material_revisions')
-      and grantee = 'investing_app'
-      and privilege_type = 'UPDATE'
+    with expected(table_name, column_name, privilege_type) as (
+      values
+        ('research_material_pointer_states', 'active_draft_revision_id', 'UPDATE'),
+        ('research_material_pointer_states', 'active_hypothesis_revision_id', 'UPDATE'),
+        ('research_material_pointer_states', 'pointer_version', 'UPDATE'),
+        ('research_material_pointer_states', 'updated_at', 'UPDATE'),
+        ('research_material_pointer_states', 'updated_by_operation', 'UPDATE')
+    ),
+    actual as (
+      select table_name, column_name, privilege_type
+      from information_schema.column_privileges
+      where table_schema = 'investing'
+        and table_name in ('research_material_roots', 'research_material_revisions', 'research_material_pointer_states')
+        and grantee = 'investing_app'
+        and privilege_type = 'UPDATE'
+    ),
+    diff as (
+      (select * from expected except select * from actual)
+      union all
+      (select * from actual except select * from expected)
+    )
+    select 1 from diff
   ) then
-    raise exception 'I5-A3 postcondition violation: immutable material column update grant';
+    raise exception 'I5-A3 postcondition violation: material column update grants are not exact';
   end if;
 
   if exists (
