@@ -11,7 +11,7 @@ declare
   v_operation_token_count integer;
   v_pointer_constraint text;
   v_pointer_operation_constraint text;
-  v_pointer_operation_token_count integer;
+  v_expected_pointer_operation_constraint text;
 begin
   if current_user <> 'postgres' then
     raise exception 'I5-A4 prestate violation: migration executor must be postgres, got %', current_user;
@@ -155,20 +155,37 @@ begin
     and con.contype = 'c'
     and con.convalidated;
 
+  drop table if exists pg_temp.syntrake_i5_a4_pointer_operation_check_probe;
+  create temporary table syntrake_i5_a4_pointer_operation_check_probe (
+    updated_by_operation text
+  ) on commit drop;
+  alter table pg_temp.syntrake_i5_a4_pointer_operation_check_probe
+    add constraint syntrake_i5_a4_expected_a3_pointer_operation_check
+    check (
+      updated_by_operation is null
+      or updated_by_operation in (
+        'RESEARCH_DRAFT_REVISION_CREATE_V1',
+        'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+      )
+    );
+
+  select pg_catalog.pg_get_constraintdef(con.oid, true)
+  into v_expected_pointer_operation_constraint
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname like 'pg_temp_%'
+    and c.relname = 'syntrake_i5_a4_pointer_operation_check_probe'
+    and con.conname = 'syntrake_i5_a4_expected_a3_pointer_operation_check'
+    and con.contype = 'c'
+    and con.convalidated;
+
   if v_pointer_operation_constraint is null
-    or v_pointer_operation_constraint !~ 'updated_by_operation IS NULL'
-    or v_pointer_operation_constraint !~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
-    or v_pointer_operation_constraint !~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
-    or v_pointer_operation_constraint ~ 'RESEARCH_SPEC_REVISION_CREATE_V1' then
-    raise exception 'I5-A4 prestate violation: exact I5-A3 pointer operation constraint missing or altered: %', v_pointer_operation_constraint;
-  end if;
-
-  select count(*)
-  into v_pointer_operation_token_count
-  from pg_catalog.regexp_matches(v_pointer_operation_constraint, '''(RESEARCH_[A-Z0-9_]+_V1)''', 'g');
-
-  if v_pointer_operation_token_count <> 2 then
-    raise exception 'I5-A4 prestate violation: pointer operation constraint token count not exact: %', v_pointer_operation_constraint;
+    or v_expected_pointer_operation_constraint is null
+    or v_pointer_operation_constraint <> v_expected_pointer_operation_constraint then
+    raise exception 'I5-A4 prestate violation: exact I5-A3 pointer operation constraint missing or altered: actual %, expected %',
+      v_pointer_operation_constraint,
+      v_expected_pointer_operation_constraint;
   end if;
 
   if not exists (
@@ -984,7 +1001,7 @@ declare
   v_missing_policy_count integer;
   v_unexpected_policy_count integer;
   v_pointer_operation_constraint text;
-  v_pointer_operation_token_count integer;
+  v_expected_pointer_operation_constraint text;
 begin
   select count(*)
   into v_relation_count
@@ -1102,20 +1119,38 @@ begin
     and con.contype = 'c'
     and con.convalidated;
 
+  drop table if exists pg_temp.syntrake_i5_a4_pointer_operation_check_probe;
+  create temporary table syntrake_i5_a4_pointer_operation_check_probe (
+    updated_by_operation text
+  ) on commit drop;
+  alter table pg_temp.syntrake_i5_a4_pointer_operation_check_probe
+    add constraint syntrake_i5_a4_expected_a4_pointer_operation_check
+    check (
+      updated_by_operation is null
+      or updated_by_operation in (
+        'RESEARCH_DRAFT_REVISION_CREATE_V1',
+        'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1',
+        'RESEARCH_SPEC_REVISION_CREATE_V1'
+      )
+    );
+
+  select pg_catalog.pg_get_constraintdef(con.oid, true)
+  into v_expected_pointer_operation_constraint
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname like 'pg_temp_%'
+    and c.relname = 'syntrake_i5_a4_pointer_operation_check_probe'
+    and con.conname = 'syntrake_i5_a4_expected_a4_pointer_operation_check'
+    and con.contype = 'c'
+    and con.convalidated;
+
   if v_pointer_operation_constraint is null
-    or v_pointer_operation_constraint !~ 'updated_by_operation IS NULL'
-    or v_pointer_operation_constraint !~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
-    or v_pointer_operation_constraint !~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
-    or v_pointer_operation_constraint !~ 'RESEARCH_SPEC_REVISION_CREATE_V1' then
-    raise exception 'I5-A4 postcondition violation: exact A4 pointer operation constraint missing or altered: %', v_pointer_operation_constraint;
-  end if;
-
-  select count(*)
-  into v_pointer_operation_token_count
-  from pg_catalog.regexp_matches(v_pointer_operation_constraint, '''(RESEARCH_[A-Z0-9_]+_V1)''', 'g');
-
-  if v_pointer_operation_token_count <> 3 then
-    raise exception 'I5-A4 postcondition violation: pointer operation constraint token count not exact: %', v_pointer_operation_constraint;
+    or v_expected_pointer_operation_constraint is null
+    or v_pointer_operation_constraint <> v_expected_pointer_operation_constraint then
+    raise exception 'I5-A4 postcondition violation: exact A4 pointer operation constraint missing or altered: actual %, expected %',
+      v_pointer_operation_constraint,
+      v_expected_pointer_operation_constraint;
   end if;
 
   if exists (

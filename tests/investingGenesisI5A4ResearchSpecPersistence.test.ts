@@ -287,36 +287,39 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     const sql = normalize(rawSql);
     const constraintName = "research_material_pointer_states_updated_by_operation_check";
     const a4Constraint = extractAddedConstraint(rawSql, constraintName);
-    const a4Tokens = operationTokens(a4Constraint);
-
-    expect(sql).toContain(`drop constraint ${constraintName}`);
-    expect(a4Constraint).toContain("updated_by_operation is null");
-    expect(a4Tokens).toEqual([
+    const exactA3 = pointerOperationConstraintDefinition([
+      "RESEARCH_DRAFT_REVISION_CREATE_V1",
+      "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
+    ]);
+    const exactA4 = pointerOperationConstraintDefinition([
       "RESEARCH_DRAFT_REVISION_CREATE_V1",
       "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
       "RESEARCH_SPEC_REVISION_CREATE_V1",
     ]);
 
+    expect(sql).toContain(`drop constraint ${constraintName}`);
+    expect(pointerOperationConstraintDefinitionIsExact(a4Constraint, exactA4)).toBe(true);
+
     const prestate = sql.slice(0, sql.indexOf("set local role investing_owner"));
     expect(prestate).toContain("con.conname = 'research_material_pointer_states_updated_by_operation_check'");
     expect(prestate).toContain("con.contype = 'c'");
     expect(prestate).toContain("con.convalidated");
-    expect(prestate).toContain("v_pointer_operation_token_count <> 2");
-    expect(prestate).toContain("v_pointer_operation_constraint ~ 'research_spec_revision_create_v1'");
+    expect(prestate).toContain("syntrake_i5_a4_expected_a3_pointer_operation_check");
+    expect(prestate).toContain("v_pointer_operation_constraint <> v_expected_pointer_operation_constraint");
 
     const poststate = sql.slice(sql.lastIndexOf("do $$"));
     expect(poststate).toContain("con.conname = 'research_material_pointer_states_updated_by_operation_check'");
     expect(poststate).toContain("con.contype = 'c'");
     expect(poststate).toContain("con.convalidated");
-    expect(poststate).toContain("v_pointer_operation_token_count <> 3");
-    expect(poststate).toContain("v_pointer_operation_constraint !~ 'research_spec_revision_create_v1'");
+    expect(poststate).toContain("syntrake_i5_a4_expected_a4_pointer_operation_check");
+    expect(poststate).toContain("v_pointer_operation_constraint <> v_expected_pointer_operation_constraint");
 
-    expect(pointerOperationConstraintIsExact([
-      "RESEARCH_DRAFT_REVISION_CREATE_V1",
-      "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
-    ])).toBe(false);
-    expect(pointerOperationConstraintIsExact([...a4Tokens, "RESEARCH_EXPERIMENT_CREATE_V1"])).toBe(false);
-    expect(pointerOperationConstraintIsExact(a4Tokens)).toBe(true);
+    expect(pointerOperationConstraintDefinitionIsExact(exactA3, exactA3)).toBe(true);
+    expect(pointerOperationConstraintDefinitionIsExact(exactA4, exactA4)).toBe(true);
+    expect(pointerOperationConstraintDefinitionIsExact(exactA4.replace(", 'RESEARCH_SPEC_REVISION_CREATE_V1'", ""), exactA4)).toBe(false);
+    expect(pointerOperationConstraintDefinitionIsExact(exactA4.replace(")", ", 'RESEARCH_EXPERIMENT_CREATE_V1')"), exactA4)).toBe(false);
+    expect(pointerOperationConstraintDefinitionIsExact(`${exactA4} OR updated_by_operation = 'FOO'`, exactA4)).toBe(false);
+    expect(pointerOperationConstraintDefinitionIsExact(`${exactA4} OR true`, exactA4)).toBe(false);
   });
 
   it("keeps the Spec writer aligned with the final pointer operation CHECK", () => {
@@ -568,17 +571,28 @@ function extractAddedConstraint(sql: string, constraintName: string) {
   return sql.slice(start, end + 1);
 }
 
-function operationTokens(sql: string) {
-  return [...sql.matchAll(/'((?:RESEARCH_[A-Z0-9_]+_V1))'/g)].map((match) => match[1]);
+function pointerOperationConstraintDefinition(tokens: string[]) {
+  return [
+    "add constraint research_material_pointer_states_updated_by_operation_check",
+    "check (",
+    "updated_by_operation is null",
+    "or updated_by_operation in (",
+    tokens.map((token) => `'${token}'`).join(", "),
+    ")",
+    ")",
+  ].join(" ");
 }
 
-function pointerOperationConstraintIsExact(tokens: string[]) {
-  return (
-    tokens.length === 3 &&
-    tokens[0] === "RESEARCH_DRAFT_REVISION_CREATE_V1" &&
-    tokens[1] === "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1" &&
-    tokens[2] === "RESEARCH_SPEC_REVISION_CREATE_V1"
-  );
+function pointerOperationConstraintDefinitionIsExact(actual: string, expected: string) {
+  return normalizeConstraintDefinition(actual) === normalizeConstraintDefinition(expected);
+}
+
+function normalizeConstraintDefinition(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*;\s*$/, "")
+    .trim();
 }
 
 function normalize(value: string) {
