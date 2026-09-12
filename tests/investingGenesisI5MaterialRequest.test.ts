@@ -135,6 +135,15 @@ describe("canonical scope evidence is material data, never authority", () => {
       expect(() => calculate(vector.scope, { ...vector.command, [field]: otherId })).toThrow("unexpected material field");
     }
   });
+
+  it("keeps Draft and Hypothesis revision schemas closed against Spec-only dependency fields", () => {
+    const draft = vectors.vectors.find((v) => v.name === "DRAFT_FIRST")!.command as DraftRevisionCreateMaterialRequestV1;
+    const hypothesis = vectors.vectors.find((v) => v.name === "HYPOTHESIS_FIRST")!.command as HypothesisRevisionCreateMaterialRequestV1;
+    for (const field of ["sourceDraftRevisionId", "hypothesisRevisionId"]) {
+      expect(() => draftRevisionCreateMaterialIdentityV1(scope, { ...draft, [field]: otherId } as never)).toThrow("unexpected material field");
+      expect(() => hypothesisRevisionCreateMaterialIdentityV1(scope, { ...hypothesis, [field]: otherId } as never)).toThrow("unexpected material field");
+    }
+  });
 });
 
 describe.each(["DRAFT", "HYPOTHESIS"])("%s revision material predecessor", (kind) => {

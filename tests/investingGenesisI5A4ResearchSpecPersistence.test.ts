@@ -143,12 +143,18 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
       content: spec({ kind: "EXPLICIT_HYPOTHESIS", hypothesis: hypothesisProof() }),
     };
     const identity = researchSpecRevisionCreateMaterialIdentityV1(scope, command);
-    expect(identity.preimageBytes.toString("utf8")).toContain("RESEARCH_SPEC_REVISION_CREATE_V1");
-    expect(identity.preimageBytes.toString("utf8")).toContain(`source_draft_revision=${ids.draftRevision1}`);
-    expect(identity.preimageBytes.toString("utf8")).toContain(`hypothesis_revision=${ids.hypothesisRevision1}`);
-    expect(identity.preimageBytes.toString("utf8")).toContain(`expected_spec=${ids.specRevision1}`);
-    expect(identity.preimageBytes.toString("utf8")).toContain("candidate_payload_utf8_hex=");
-    expect(identity.preimageBytes.toString("utf8")).toContain("research_spec_scientific_hash=DISABLED");
+    const preimage = identity.preimageBytes.toString("utf8");
+    expect(preimage).toContain("RESEARCH_SPEC_REVISION_CREATE_V1");
+    expect(preimage).toContain(`source_draft_revision=${ids.draftRevision1}`);
+    expect(preimage).toContain(`hypothesis_revision=${ids.hypothesisRevision1}`);
+    expect(preimage).toContain(`expected_spec=${ids.specRevision1}`);
+    expect(preimage).toContain("candidate_schema=RESEARCH_SPEC_CANDIDATE_V1");
+    expect(preimage).toContain("candidate_status=CANDIDATE_ONLY");
+    expect(preimage).toContain("candidate_payload_utf8_hex=");
+    expect(preimage).toContain("research_spec_scientific_hash=DISABLED");
+    expect(preimage).not.toContain("content_algorithm=SHA-256");
+    expect(preimage).not.toContain("content_version=SYNTRAKE_SHA256_V1");
+    expect(preimage).not.toContain("\0content=");
 
     const differentMetadata = researchSpecRevisionCreateMaterialIdentityV1(scope, {
       ...command,
@@ -158,6 +164,31 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(differentMetadata.materialRequestHash).toBe(identity.materialRequestHash);
     expect(researchSpecRevisionCreateMaterialIdentityV1(scope, { ...command, sourceDraftRevisionId: ids.draftRevision2 }).materialRequestHash).not.toBe(identity.materialRequestHash);
     expect(researchSpecRevisionCreateMaterialIdentityV1(scope, { ...command, hypothesisRevisionId: ids.hypothesisRevision2 }).materialRequestHash).not.toBe(identity.materialRequestHash);
+    expect(researchSpecRevisionCreateMaterialIdentityV1(scope, {
+      ...command,
+      content: { ...command.content, objective: { state: "USER_SUPPLIED", value: "Changed candidate bytes." } },
+    }).materialRequestHash).not.toBe(identity.materialRequestHash);
+  });
+
+  it("requires explicit Spec dependency fields in the closed request schema", () => {
+    const command = {
+      operation: "RESEARCH_SPEC_REVISION_CREATE_V1" as const,
+      idempotencyKey: "idem-spec-0000000000000001",
+      correlationId: "corr-spec-0000000000000001",
+      investigationId: ids.investigationId,
+      expectedPointers: pointers({ expectedActivePointerVersion: "1", expectedResearchDraftRevisionId: ids.draftRevision1 }),
+      expectedRoot: { state: "ABSENT" as const },
+      sourceDraftRevisionId: ids.draftRevision1,
+      hypothesisRevisionId: null,
+      content: spec(),
+    };
+    expect(() => researchSpecRevisionCreateMaterialIdentityV1(scope, command)).not.toThrow();
+    const withoutSource = { ...command };
+    delete (withoutSource as Partial<typeof command>).sourceDraftRevisionId;
+    expect(() => researchSpecRevisionCreateMaterialIdentityV1(scope, withoutSource as never)).toThrow("missing material field sourceDraftRevisionId");
+    const withoutHypothesis = { ...command };
+    delete (withoutHypothesis as Partial<typeof command>).hypothesisRevisionId;
+    expect(() => researchSpecRevisionCreateMaterialIdentityV1(scope, withoutHypothesis as never)).toThrow("missing material field hypothesisRevisionId");
   });
 
   it("keeps A3 request vectors compatible when expected Spec is null", () => {
@@ -318,6 +349,19 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(writer).toContain("parentmatchescontext(parent.row, context)");
     const rootCreate = writer.slice(writer.indexOf("if (selected.rows.length === 0)"), writer.indexOf("const inserted = await client.query", writer.indexOf("if (selected.rows.length === 0)")));
     expect(rootCreate).toContain("await settransactionconfig(client, \"material_root_id\", materialrootid)");
+  });
+
+  it("derives Spec successor numbering from the actual current root head", () => {
+    const writer = normalize(read(specWriterPath));
+    const rootFunction = writer.slice(writer.indexOf("async function lockorcreatespecroot"), writer.indexOf("async function insertspecrevision"));
+    expect(rootFunction).toContain("order by revision_number desc, research_spec_revision_id desc");
+    expect(rootFunction).toContain("limit 1");
+    expect(rootFunction).toContain("expectedroot.headrevisionid !== actualhead.row.research_spec_revision_id");
+    expect(rootFunction).toContain("expectedroot.headrevisionnumber !== actualhead.row.revision_number");
+    expect(rootFunction).toContain("return fail(\"conflict\")");
+    expect(rootFunction).toContain("nextrevisionnumber: string(bigint(actualhead.row.revision_number) + bigint(1))");
+    expect(rootFunction).toContain("predecessorrevisionid: actualhead.row.research_spec_revision_id");
+    expect(rootFunction).not.toContain("insert into investing.research_spec_revisions");
   });
 
   it("closes idempotency, root, dependency, and selector policies to the authority tuple", () => {

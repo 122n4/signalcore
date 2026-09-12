@@ -114,7 +114,7 @@ export function draftRevisionCreateMaterialIdentityV1(
   scope: ResearchMaterialScopeEvidenceV1,
   command: DraftRevisionCreateMaterialRequestV1,
 ): ResearchMaterialIdentityV1 {
-  const input = revisionCommand(command, draftOperation);
+  const input = basicRevisionCommand(command, draftOperation);
   const proof = closed(input.content, ["ref", "payload"]);
   const ref = hashRefV1(closed(proof.ref, ["hashAlgorithm", "hashDomain", "hashVersion", "hashHex"]));
   if (ref.hashDomain !== "SYNTRAKE:RESEARCH_DRAFT:V1") throw new Error("wrong Draft content domain");
@@ -129,7 +129,7 @@ export function hypothesisRevisionCreateMaterialIdentityV1(
   scope: ResearchMaterialScopeEvidenceV1,
   command: HypothesisRevisionCreateMaterialRequestV1,
 ): ResearchMaterialIdentityV1 {
-  const input = revisionCommand(command, hypothesisOperation);
+  const input = basicRevisionCommand(command, hypothesisOperation);
   const proof = closed(input.content, ["ref", "payload"]);
   const ref = hashRefV1(closed(proof.ref, ["hashAlgorithm", "hashDomain", "hashVersion", "hashHex"]));
   if (ref.hashDomain !== "SYNTRAKE:HYPOTHESIS:V1") throw new Error("wrong Hypothesis content domain");
@@ -144,7 +144,7 @@ export function researchSpecRevisionCreateMaterialIdentityV1(
   scope: ResearchMaterialScopeEvidenceV1,
   command: ResearchSpecRevisionCreateMaterialRequestV1,
 ): ResearchMaterialIdentityV1 {
-  const input = revisionCommand(command, specOperation);
+  const input = specRevisionCommand(command);
   const sourceDraftRevisionId = canonicalUuidV1(input.sourceDraftRevisionId);
   const hypothesisRevisionId = input.hypothesisRevisionId === null ? null : canonicalUuidV1(input.hypothesisRevisionId);
   const candidateBytes = canonicalResearchSpecCandidateBytesV1(input.content);
@@ -158,9 +158,11 @@ export function researchSpecRevisionCreateMaterialIdentityV1(
   }
   return identity([
     ...scopeFragments(scope, specOperation),
-    ...revisionFragments(input, "SYNTRAKE:RESEARCH_SPEC_CANDIDATE:V1", candidate, "expectedResearchSpecRevisionId"),
+    ...revisionStateFragments(input, "expectedResearchSpecRevisionId"),
     `source_draft_revision=${sourceDraftRevisionId}`,
     `hypothesis_revision=${hypothesisRevisionId ?? "-"}`,
+    "candidate_schema=RESEARCH_SPEC_CANDIDATE_V1",
+    "candidate_status=CANDIDATE_ONLY",
     `candidate_payload_utf8_hex=${candidate}`,
     "research_spec_scientific_hash=DISABLED",
   ]);
@@ -193,9 +195,25 @@ function scopeFragments(scope: ResearchMaterialScopeEvidenceV1, operation: strin
   ];
 }
 
-function revisionCommand<T extends RevisionMaterialRequest & { operation: string; content: unknown }>(command: T, operation: string): T {
-  const input = closed(command, ["operation", "idempotencyKey", "correlationId", "investigationId", "content", "expectedPointers", "expectedRoot"], ["sourceDraftRevisionId", "hypothesisRevisionId"]);
+function basicRevisionCommand<T extends DraftRevisionCreateMaterialRequestV1 | HypothesisRevisionCreateMaterialRequestV1>(command: T, operation: T["operation"]): T {
+  const input = closed(command, ["operation", "idempotencyKey", "correlationId", "investigationId", "content", "expectedPointers", "expectedRoot"]);
   validateMetadata(input, operation);
+  return input;
+}
+
+function specRevisionCommand(command: ResearchSpecRevisionCreateMaterialRequestV1): ResearchSpecRevisionCreateMaterialRequestV1 {
+  const input = closed(command, [
+    "operation",
+    "idempotencyKey",
+    "correlationId",
+    "investigationId",
+    "content",
+    "expectedPointers",
+    "expectedRoot",
+    "sourceDraftRevisionId",
+    "hypothesisRevisionId",
+  ]);
+  validateMetadata(input, specOperation);
   return input;
 }
 
@@ -236,6 +254,41 @@ function revisionFragments(
     `investigation=${canonicalUuidV1(command.investigationId)}`,
     "content_algorithm=SHA-256", `content_domain=${contentDomain}`,
     "content_version=SYNTRAKE_SHA256_V1", `content=${contentHash}`,
+    `expected_active_pointer_version=${counter(pointers.expectedActivePointerVersion, "0")}`,
+    `expected_draft=${nullableUuid(pointers.expectedResearchDraftRevisionId)}`,
+    `expected_hypothesis=${nullableUuid(pointers.expectedHypothesisRevisionId)}`,
+    `expected_spec=${nullableUuid(pointers.expectedResearchSpecRevisionId)}`, "expected_experiment=-",
+    ...rootFields,
+  ];
+}
+
+function revisionStateFragments(
+  command: RevisionMaterialRequest,
+  ownPointer: "expectedResearchDraftRevisionId" | "expectedHypothesisRevisionId" | "expectedResearchSpecRevisionId",
+): string[] {
+  const pointers = closed(command.expectedPointers, [
+    "expectedActivePointerVersion", "expectedResearchDraftRevisionId", "expectedHypothesisRevisionId",
+    "expectedResearchSpecRevisionId", "expectedExperimentId",
+  ]);
+  if (pointers.expectedExperimentId !== null) throw new Error("Experiment predecessor must be exact null in this subset");
+  const root = closed(command.expectedRoot, ["state"], ["rootId", "headRevisionId", "headRevisionNumber"]);
+  let rootFields: string[];
+  if (root.state === "ABSENT") {
+    closed(root, ["state"]);
+    if (pointers[ownPointer] !== null) throw new Error("absent root cannot have an active revision");
+    rootFields = ["root_state=ABSENT", "expected_root=-", "expected_head=-", "expected_head_number=-"];
+  } else if (root.state === "PRESENT") {
+    const head = closed(root, ["state", "rootId", "headRevisionId", "headRevisionNumber"]);
+    rootFields = [
+      "root_state=PRESENT", `expected_root=${canonicalUuidV1(head.rootId)}`,
+      `expected_head=${canonicalUuidV1(head.headRevisionId)}`,
+      `expected_head_number=${counter(head.headRevisionNumber, "1")}`,
+    ];
+  } else {
+    throw new Error("invalid root predecessor state");
+  }
+  return [
+    `investigation=${canonicalUuidV1(command.investigationId)}`,
     `expected_active_pointer_version=${counter(pointers.expectedActivePointerVersion, "0")}`,
     `expected_draft=${nullableUuid(pointers.expectedResearchDraftRevisionId)}`,
     `expected_hypothesis=${nullableUuid(pointers.expectedHypothesisRevisionId)}`,

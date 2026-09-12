@@ -439,24 +439,31 @@ async function lockOrCreateSpecRoot(
   const root = selected.rows[0]!;
   if (expectedRoot.state !== "PRESENT" || expectedRoot.rootId !== root.material_root_id) return fail("CONFLICT");
   await setTransactionConfig(client, "material_root_id", root.material_root_id);
-  const head = await exactlyOne(
+  const actualHead = await exactlyOne(
     client.query<HeadRow>(
       [
         "select research_spec_revision_id, revision_number::text",
         "from investing.research_spec_revisions",
-        "where research_spec_revision_id = $1 and material_root_id = $2 and research_investigation_id = $3",
+        "where material_root_id = $1 and research_investigation_id = $2",
+        "order by revision_number desc, research_spec_revision_id desc",
+        "limit 1",
       ].join(" "),
-      [expectedRoot.headRevisionId, root.material_root_id, context.researchInvestigationId],
+      [root.material_root_id, context.researchInvestigationId],
     ),
     "CONFLICT",
   );
-  if (head.ok === false) return head;
-  if (expectedRoot.headRevisionNumber !== head.row.revision_number) return fail("CONFLICT");
+  if (actualHead.ok === false) return actualHead;
+  if (
+    expectedRoot.headRevisionId !== actualHead.row.research_spec_revision_id ||
+    expectedRoot.headRevisionNumber !== actualHead.row.revision_number
+  ) {
+    return fail("CONFLICT");
+  }
   return {
     ok: true,
     root,
-    nextRevisionNumber: String(BigInt(head.row.revision_number) + BigInt(1)),
-    predecessorRevisionId: head.row.research_spec_revision_id,
+    nextRevisionNumber: String(BigInt(actualHead.row.revision_number) + BigInt(1)),
+    predecessorRevisionId: actualHead.row.research_spec_revision_id,
   };
 }
 

@@ -57,18 +57,26 @@ begin
   end if;
 
   if exists (
-    select 1
-    from information_schema.column_privileges
-    where table_schema = 'investing'
-      and table_name = 'research_material_pointer_states'
-      and grantee = 'investing_app'
-      and privilege_type = 'UPDATE'
-      and column_name not in (
-        'active_draft_revision_id', 'active_hypothesis_revision_id',
-        'pointer_version', 'updated_at', 'updated_by_operation'
-      )
+    with expected(table_name, column_name, privilege_type) as (
+      values
+        ('research_material_pointer_states', 'active_draft_revision_id', 'UPDATE'),
+        ('research_material_pointer_states', 'active_hypothesis_revision_id', 'UPDATE'),
+        ('research_material_pointer_states', 'pointer_version', 'UPDATE'),
+        ('research_material_pointer_states', 'updated_at', 'UPDATE'),
+        ('research_material_pointer_states', 'updated_by_operation', 'UPDATE')
+    ),
+    actual as (
+      select table_name, column_name, privilege_type
+      from information_schema.column_privileges
+      where table_schema = 'investing'
+        and table_name = 'research_material_pointer_states'
+        and grantee = 'investing_app'
+        and privilege_type = 'UPDATE'
+    ),
+    diff as ((select * from expected except select * from actual) union all (select * from actual except select * from expected))
+    select 1 from diff
   ) then
-    raise exception 'I5-A4 prestate violation: unexpected I5-A3 pointer update grant';
+    raise exception 'I5-A4 prestate violation: exact I5-A3 pointer UPDATE column grants missing or altered';
   end if;
 
   if exists (
