@@ -197,6 +197,12 @@ describe("Investing Genesis I5-A5 Research IR canonical runtime", () => {
     expect(() => hashResearchIrV1({ ...researchIrVector, benchmark: [{ type: "BENCHMARK", benchmark: "NONE" }] } as never)).toThrow(
       "unsupported BENCHMARK shape",
     );
+    expect(() => hashResearchIrV1({ ...researchIrVector, benchmark: { type: "INVALID", benchmark: "NONE" } } as never)).toThrow(
+      "unsupported BENCHMARK shape",
+    );
+    expect(() => hashResearchIrV1({ ...researchIrVector, benchmark: { type: "INVALID", benchmark: "INSTRUMENT", instrumentId: "US:SPY" } } as never)).toThrow(
+      "unsupported BENCHMARK shape",
+    );
     expect(() => hashResearchIrV1({ ...researchIrVector, pipeline: [{ type: "BENCHMARK", benchmark: "NONE" }] } as never)).toThrow(
       "undeclared field benchmark",
     );

@@ -209,6 +209,7 @@ function canonicalFixedWeightTargetV1(input: FixedWeightTargetV1) {
 
 function canonicalBenchmarkV1(input: BenchmarkNodeV1, context: AstContextV1): CanonicalJsonValue {
   visitAstNode(context, 1);
+  if (input.type !== "BENCHMARK") throw new Error("unsupported BENCHMARK shape");
   if (input.benchmark === "NONE") {
     assertExactKeys(input, new Set(["type", "benchmark"]));
     return { type: "BENCHMARK", benchmark: "NONE" };
