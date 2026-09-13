@@ -109,7 +109,9 @@ not become Investing Genesis authority merely because they use similar words.
 
 - Zero-Genesis retirement: canonical baseline preserved.
 - I0-I4 Genesis: current accepted canonical contracts preserved.
-- I5 authority/audit: current accepted.
+- I5 authority/audit runtime and DB contract: current in canonical lineage.
+  `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is material command identity only and
+  does not claim persistence authority.
 - I5-A1 Investigation persistence/current runtime: current accepted.
 - I5-A2 ResearchDraft persistence/current runtime: current accepted.
 - I5 runtime lock contract repair: current accepted.
@@ -123,14 +125,21 @@ not become Investing Genesis authority merely because they use similar words.
 ## I5 Runtime Presence And Trust State
 
 Implementation presence is not the same as formal trust recovery acceptance.
+Physical canonical lineage is not the same fact as a dedicated owner contract.
 
-| Slice | Runtime present | Owner contract present | Header status | Gate/trust status | Known blocker |
-| --- | --- | --- | --- | --- | --- |
-| I5-A1 Investigation persistence/current runtime | YES | YES | CURRENT ACCEPTED BY LINEAGE | CURRENT ACCEPTED | none recorded here |
-| I5-A2 ResearchDraft persistence/current runtime | YES | YES | CURRENT ACCEPTED BY LINEAGE | CURRENT ACCEPTED | none recorded here |
-| I5-A3 material revisions | YES | YES | CURRENT CONSOLIDATED OWNER CONTRACT | CURRENT ACCEPTED / CONSOLIDATED | none recorded here |
-| I5-A4 ResearchSpec persistence | YES | YES | CURRENT ACCEPTED BY LINEAGE | CURRENT ACCEPTED | none recorded here |
-| I5-A5 Research IR runtime/owner contract | YES | YES | CANDIDATE | PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED | benchmark type discriminator |
+| Slice | Runtime/persistence present | Dedicated current owner contract present | Current authority/evidence surface | Document/header status | Gate/trust classification | Known blocker |
+| --- | --- | --- | --- | --- | --- | --- |
+| I5-A1 Investigation persistence/current runtime | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A1 persistence owner contract in tree | current in canonical lineage | none recorded here |
+| I5-A2 ResearchDraft persistence/current runtime | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A2 persistence owner contract in tree | current in canonical lineage | none recorded here |
+| I5-A3 material revisions | YES | YES | `I5A_MATERIAL_REVISIONS_OWNER_CONTRACT_V1.md` + runtime/persistence migration/tests + canonical lineage | CURRENT CONSOLIDATED OWNER CONTRACT | current in canonical lineage / consolidated | none recorded here |
+| I5-A4 ResearchSpec persistence | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A4 ResearchSpec persistence owner contract in tree | current in canonical lineage | none recorded here |
+| I5-A5 Research IR runtime/owner contract | YES | YES | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` + runtime/tests + canonical lineage | CANDIDATE | PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED | benchmark type discriminator |
+
+`I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
+owner-contract presence. Its header says candidate owner contract with
+deterministic runtime and no persistence authority; it owns only material
+command identity for its stated operations and does not own ResearchSpec
+implementation.
 
 A5 repository evidence at predecessor `9e341accb7658cbc9bff7cb749be4acc1437ad6c`:
 

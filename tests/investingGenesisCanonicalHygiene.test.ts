@@ -102,11 +102,26 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("PRESENT_IN_CANONICAL_LINEAGE");
     expect(state).toContain("OPEN_CORRECTION");
     expect(state).toContain("NOT_TRUST_RECOVERY_ACCEPTED");
-    expect(state).toContain("runtime/owner contract | YES | YES | CANDIDATE");
+    expect(state).toContain("I5-A5 Research IR runtime/owner contract | YES | YES");
+    expect(state).toContain("| CANDIDATE | PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED |");
     expect(state).toContain("benchmark type discriminator");
     expect(state).toContain("2e88cde07e2f38dfc455e0a928adb709474f8af7");
     expect(state).toContain("DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`");
     expect(state).not.toMatch(/I5-A5[^|\n]*(CURRENT ACCEPTED|FORMALLY ACCEPTED|ACCEPTED BY LINEAGE)/);
+  });
+
+  it("does not overclaim missing A1/A2/A4 dedicated owner contracts", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+
+    expect(state).toContain("I5-A1 Investigation persistence/current runtime | YES | NO");
+    expect(state).toContain("I5-A2 ResearchDraft persistence/current runtime | YES | NO");
+    expect(state).toContain("I5-A3 material revisions | YES | YES");
+    expect(state).toContain("I5-A4 ResearchSpec persistence | YES | NO");
+    expect(state).toContain("no dedicated A1 persistence owner contract in tree");
+    expect(state).toContain("no dedicated A2 persistence owner contract in tree");
+    expect(state).toContain("no dedicated A4 ResearchSpec persistence owner contract in tree");
+    expect(state).toContain("`I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence");
+    expect(state).toContain("no persistence authority");
   });
 
   it("records repository control plane and dependency audit blockers without repairing them", () => {
