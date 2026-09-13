@@ -3,21 +3,12 @@ import {
   hashRefV1,
   type HashRefV1,
 } from "./canonical";
-import {
-  hashResearchIrV1,
-  type ResearchIrV1,
-} from "./researchIr";
-
-export type ResearchIrProofV1 = Readonly<{
-  ref: HashRefV1;
-  payload: ResearchIrV1;
-}>;
 
 export type ExperimentBaselineCandidateV1 = Readonly<{
   schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1";
   relation: "BASELINE";
   researchSpecRevisionId: string;
-  researchIr: ResearchIrProofV1;
+  researchIr: HashRefV1;
 }>;
 
 export type AdmittedExperimentBaselineV1 = Readonly<{
@@ -49,34 +40,17 @@ export function admitExperimentBaselineV1(
   }
 
   const researchSpecRevisionId = canonicalUuidV1(input.researchSpecRevisionId);
-  const researchIr = canonicalResearchIrProofV1(input.researchIr);
+  const researchIr = hashRefV1(input.researchIr);
+  if (researchIr.hashDomain !== "SYNTRAKE:RESEARCH_IR:V1") {
+    throw new Error("wrong-domain Experiment Research IR reference");
+  }
 
   return Object.freeze({
     schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1",
     relation: "BASELINE",
     researchSpecRevisionId,
-    researchIr,
+    researchIr: Object.freeze(researchIr),
   });
-}
-
-function canonicalResearchIrProofV1(input: ResearchIrProofV1): HashRefV1 {
-  assertClosedPlainObject(
-    input,
-    new Set(["ref", "payload"]),
-    "ResearchIrProofV1",
-  );
-
-  const ref = hashRefV1(input.ref);
-  if (ref.hashDomain !== "SYNTRAKE:RESEARCH_IR:V1") {
-    throw new Error("wrong-domain Experiment Research IR proof");
-  }
-
-  const computedHash = hashResearchIrV1(input.payload);
-  if (computedHash !== ref.hashHex) {
-    throw new Error("Experiment Research IR proof hash mismatch");
-  }
-
-  return Object.freeze(ref);
 }
 
 function assertClosedPlainObject(

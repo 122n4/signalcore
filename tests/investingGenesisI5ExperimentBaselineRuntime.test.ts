@@ -11,8 +11,8 @@ import {
 } from "../lib/investing/research";
 import * as publicResearchRuntime from "../lib/investing/research";
 
-const researchSpecRevisionId = "11111111-1111-4111-8111-111111111111";
-const otherResearchSpecRevisionId = "22222222-2222-4222-8222-222222222222";
+const researchSpecRevisionId = "11111111-aaaa-4aaa-8aaa-111111111111";
+const otherResearchSpecRevisionId = "22222222-bbbb-4bbb-8bbb-222222222222";
 
 const momentumField = {
   type: "DATA_FIELD_REF" as const,
@@ -69,22 +69,20 @@ function ref(
   });
 }
 
-function baselineCandidate(
-  payload: ResearchIrV1 = researchIrVector,
-): ExperimentBaselineCandidateV1 {
+function baselineCandidate(): ExperimentBaselineCandidateV1 {
   return {
     schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1",
     relation: "BASELINE",
     researchSpecRevisionId,
-    researchIr: {
-      ref: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(payload)),
-      payload,
-    },
+    researchIr: ref(
+      "SYNTRAKE:RESEARCH_IR:V1",
+      hashResearchIrV1(researchIrVector),
+    ),
   };
 }
 
 describe("Investing I5 Experiment baseline admission runtime", () => {
-  it("admits only a structural BASELINE bound to one ResearchSpec revision and an exact A5 Research IR proof", () => {
+  it("admits only a structural BASELINE bound to one ResearchSpec revision and an admitted A5 Research IR reference", () => {
     const candidate = baselineCandidate();
     const admitted = admitExperimentBaselineV1(candidate);
 
@@ -92,38 +90,35 @@ describe("Investing I5 Experiment baseline admission runtime", () => {
       schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1",
       relation: "BASELINE",
       researchSpecRevisionId,
-      researchIr: candidate.researchIr.ref,
+      researchIr: candidate.researchIr,
     });
     expect(admitted).not.toHaveProperty("parentExperimentId");
     expect(admitted).not.toHaveProperty("parameterSet");
     expect(admitted).not.toHaveProperty("canonicalContentHash");
   });
 
-  it("recomputes the A5 Research IR hash and rejects mismatched or wrong-domain proofs", () => {
+  it("accepts only a canonical Research IR HashRef and rejects wrong-domain references", () => {
     const candidate = baselineCandidate();
 
     expect(() =>
       admitExperimentBaselineV1({
         ...candidate,
-        researchIr: {
-          ...candidate.researchIr,
-          ref: ref(
-            "SYNTRAKE:RESEARCH_IR:V1",
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-          ),
-        },
+        researchIr: ref(
+          "SYNTRAKE:HYPOTHESIS:V1",
+          candidate.researchIr.hashHex,
+        ),
       }),
-    ).toThrow("Experiment Research IR proof hash mismatch");
+    ).toThrow("wrong-domain Experiment Research IR reference");
 
     expect(() =>
       admitExperimentBaselineV1({
         ...candidate,
         researchIr: {
           ...candidate.researchIr,
-          ref: ref("SYNTRAKE:HYPOTHESIS:V1", hashResearchIrV1(researchIrVector)),
-        },
+          hashHex: candidate.researchIr.hashHex.toLowerCase(),
+        } as never,
       }),
-    ).toThrow("wrong-domain Experiment Research IR proof");
+    ).toThrow("invalid CanonicalSha256HexV1");
   });
 
   it("keeps ResearchSpec and Experiment scientific hashing disabled", () => {
@@ -142,7 +137,7 @@ describe("Investing I5 Experiment baseline admission runtime", () => {
     expect("hashExperimentV1" in publicResearchRuntime).toBe(false);
   });
 
-  it("rejects variants, parent lineage, overrides and arbitrary experiment metadata until later owners admit them", () => {
+  it("rejects variants, parent lineage, overrides, raw IR payloads and arbitrary experiment metadata until later owners admit them", () => {
     expect(() =>
       admitExperimentBaselineV1({
         ...baselineCandidate(),
@@ -153,7 +148,7 @@ describe("Investing I5 Experiment baseline admission runtime", () => {
     expect(() =>
       admitExperimentBaselineV1({
         ...baselineCandidate(),
-        parentExperimentId: "33333333-3333-4333-8333-333333333333",
+        parentExperimentId: "33333333-cccc-4ccc-8ccc-333333333333",
       } as never),
     ).toThrow("undeclared ExperimentBaselineCandidateV1 field parentExperimentId");
 
@@ -163,6 +158,13 @@ describe("Investing I5 Experiment baseline admission runtime", () => {
         parameterOverrides: {},
       } as never),
     ).toThrow("undeclared ExperimentBaselineCandidateV1 field parameterOverrides");
+
+    expect(() =>
+      admitExperimentBaselineV1({
+        ...baselineCandidate(),
+        researchIrPayload: researchIrVector,
+      } as never),
+    ).toThrow("undeclared ExperimentBaselineCandidateV1 field researchIrPayload");
 
     expect(() =>
       admitExperimentBaselineV1({
@@ -191,15 +193,18 @@ describe("Investing I5 Experiment baseline admission runtime", () => {
     ).toThrow("invalid CanonicalUuidV1");
   });
 
-  it("inherits A5 fail-closed IR validation rather than accepting unvalidated payloads", () => {
-    const invalidIr = {
-      ...researchIrVector,
-      benchmark: undefined,
-    } as never;
-
-    expect(() => baselineCandidate(invalidIr)).toThrow(
-      "undefined is not canonical data at benchmark",
-    );
+  it("does not accept a malformed HashRef envelope as an Experiment input", () => {
+    expect(() =>
+      admitExperimentBaselineV1({
+        ...baselineCandidate(),
+        researchIr: {
+          hashAlgorithm: "SHA-512",
+          hashDomain: "SYNTRAKE:RESEARCH_IR:V1",
+          hashVersion: "SYNTRAKE_SHA256_V1",
+          hashHex: baselineCandidate().researchIr.hashHex,
+        } as never,
+      }),
+    ).toThrow("invalid hash algorithm");
   });
 
   it("rejects non-plain and incomplete structural candidates", () => {

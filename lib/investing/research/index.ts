@@ -87,7 +87,6 @@ export {
   admitExperimentBaselineV1,
   type AdmittedExperimentBaselineV1,
   type ExperimentBaselineCandidateV1,
-  type ResearchIrProofV1,
 } from "./experiment";
 
 export {
