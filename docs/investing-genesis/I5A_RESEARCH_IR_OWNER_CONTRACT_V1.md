@@ -13,7 +13,7 @@ Provenance:
 
 Purpose: admit a narrow, deterministic, engine-independent `SYNTRAKE:RESEARCH_IR:V1` scientific hash payload without inheriting ambiguous working-draft IR shapes.
 
-This contract supersedes the older working IR hash draft only for the exact A5 runtime subset below. Historical IR drafts remain Git-history evidence and are not controlling where they conflict with current A2/A4/A5 owner contracts.
+This contract supersedes the older working IR hash draft only for the exact A5 runtime subset below. Historical IR drafts remain Git-history evidence and are not controlling where they conflict with current accepted canonical runtime/contracts/evidence or this A5 owner contract.
 
 ## 1. Non-Scope
 

@@ -76,6 +76,13 @@ describe("Investing Genesis canonical hygiene", () => {
     }
   });
 
+  it("uses current canonical state status rather than candidate hygiene language", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+
+    expect(state).toContain("Status: `CURRENT CANONICAL STATE MAP`");
+    expect(state).not.toContain("CURRENT STATE MAP - HYGIENE CANDIDATE");
+  });
+
   it("keeps the Research Lab Build Spec as reference only", () => {
     const activeDocs = fs.readdirSync(docsRoot)
       .filter((entry) => entry.endsWith(".md"))
@@ -116,6 +123,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(a5).not.toContain("OPEN_CORRECTION");
     expect(a5).not.toContain("NOT_TRUST_RECOVERY_ACCEPTED");
     expect(state).toContain("This gate record does not establish a global Trusted Genesis Baseline");
+    expect(state).not.toContain("global Trust Recovery is complete");
   });
 
   it("does not overclaim missing A1/A2/A4 dedicated owner contracts", () => {
@@ -136,13 +144,26 @@ describe("Investing Genesis canonical hygiene", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(state).toContain("GitHub default branch: `main`");
+    expect(state).toContain("Current canonical before A5 promotion:");
+    expect(state).toContain("2096c2a9ff4f3e15fa4031693ea5e17de4829ea8");
+    expect(state).toContain("A5 acceptance target, not yet canonical:");
+    expect(state).toContain("388224d9d38945590475967fe41e7c3f8a48bb0f");
+    expect(state).toContain("main` remains disconnected from the Genesis lineage");
     expect(state).toContain("returns no common ancestor");
+    expect(state).not.toContain("git merge-base origin/main 9e341acc");
     expect(state).toContain("GitHub repository rulesets: empty");
     expect(state).toContain("Genesis canonical branch protection: disabled");
     expect(state).toContain("REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE");
     expect(state).toContain("PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER");
     expect(state).toContain("Next.js `16.3.0`");
     expect(state).toContain("sharp `<0.35.4`");
+  });
+
+  it("does not invent A2/A4/A5 owner-contract groups", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const a5Owner = read("docs/investing-genesis/I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md");
+
+    expect(`${state}\n${a5Owner}`).not.toContain("A2/A4/A5 owner contracts");
   });
 
   it("does not leave deleted filenames as active authority references", () => {

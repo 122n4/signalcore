@@ -1,6 +1,6 @@
 # Syntrake Investing Genesis - Canonical Current State
 
-Status: `CURRENT STATE MAP - HYGIENE CANDIDATE`
+Status: `CURRENT CANONICAL STATE MAP`
 
 This document is a concise operational map. It is not a new Bible and it does
 not create feature authority.
@@ -183,9 +183,13 @@ This gate record does not establish a global Trusted Genesis Baseline.
 Read-only external-state evidence for this hygiene correction:
 
 - GitHub default branch: `main`.
-- `main` is disconnected from Genesis canonical lineage.
-- `git merge-base origin/main 9e341accb7658cbc9bff7cb749be4acc1437ad6c`
-  returns no common ancestor.
+- Current canonical before A5 promotion:
+  `2096c2a9ff4f3e15fa4031693ea5e17de4829ea8`.
+- A5 acceptance target, not yet canonical:
+  `388224d9d38945590475967fe41e7c3f8a48bb0f`.
+- `main` remains disconnected from the Genesis lineage.
+- Independent comparison of `origin/main` and
+  `388224d9d38945590475967fe41e7c3f8a48bb0f` returns no common ancestor.
 - GitHub repository rulesets: empty.
 - Genesis canonical branch protection: disabled.
 
