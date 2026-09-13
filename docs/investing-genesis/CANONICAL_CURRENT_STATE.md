@@ -133,7 +133,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | I5-A2 ResearchDraft persistence/current runtime | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A2 persistence owner contract in tree | current in canonical lineage | none recorded here |
 | I5-A3 material revisions | YES | YES | `I5A_MATERIAL_REVISIONS_OWNER_CONTRACT_V1.md` + runtime/persistence migration/tests + canonical lineage | CURRENT CONSOLIDATED OWNER CONTRACT | current in canonical lineage / consolidated | none recorded here |
 | I5-A4 ResearchSpec persistence | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A4 ResearchSpec persistence owner contract in tree | current in canonical lineage | none recorded here |
-| I5-A5 Research IR runtime/owner contract | YES | YES | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` + runtime/tests + canonical lineage | CANDIDATE | PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED | benchmark type discriminator |
+| I5-A5 Research IR runtime/owner contract | YES | YES | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` + runtime/tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT | CURRENT_ACCEPTED / TRUST_RECOVERY_CLOSED | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -141,23 +141,42 @@ deterministic runtime and no persistence authority; it owns only material
 command identity for its stated operations and does not own ResearchSpec
 implementation.
 
-A5 repository evidence at predecessor `9e341accb7658cbc9bff7cb749be4acc1437ad6c`:
+A5 acceptance evidence:
 
-- `lib/investing/research/researchIr.ts` is physically present in the canonical
-  Genesis lineage.
-- `SYNTRAKE:RESEARCH_IR:V1` is physically admitted by current canonical runtime.
-- `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` exists but still labels itself as a
-  candidate owner contract.
-- `canonicalBenchmarkV1()` requires an open correction so benchmark admission
-  first fails closed unless `input.type === "BENCHMARK"`.
-- Correction candidate `2e88cde07e2f38dfc455e0a928adb709474f8af7` is
-  `UNACCEPTED`.
+- Accepted correction SHA:
+  `4fa0aa28344949f7f3d4e2d97c1528175a17e0c6`.
+- Trust Recovery predecessor:
+  `2096c2a9ff4f3e15fa4031693ea5e17de4829ea8`.
+- The benchmark discriminator is fixed fail-closed before benchmark-specific
+  canonicalization.
+- Valid A5 golden hash remains unchanged:
+  `265D8F6AAC35DB919EC130EE978F1831383E74BC2F625230D61EB81C0F27B44F`.
+- Functional CI passed: tests, lint, TypeScript, build and Vercel verification.
+- Dependency audit remains a separate pre-existing Trust Recovery blocker.
 
-Therefore this state map does not claim A5 is formally accepted, and it does
-not claim A5 is absent from canonical. It records A5 as
-`PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED`.
+Old correction candidate `2e88cde07e2f38dfc455e0a928adb709474f8af7` is
+`SUPERSEDED_UNACCEPTED_CANDIDATE` and is not current authority.
 
 DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`.
+
+## What This Gate Record Supersedes
+
+This gate record supersedes:
+
+- the prior A5 `OPEN_CORRECTION` trust state;
+- the prior A5 `CANDIDATE` owner-contract header;
+- the old unaccepted correction path
+  `2e88cde07e2f38dfc455e0a928adb709474f8af7`.
+
+It does not supersede or close:
+
+- the dependency/security baseline;
+- repository control-plane RED state;
+- the `main` default-branch issue;
+- missing rulesets/protection;
+- any future Research Lab slice.
+
+This gate record does not establish a global Trusted Genesis Baseline.
 
 ## Repository Control Plane
 

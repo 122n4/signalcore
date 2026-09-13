@@ -1,8 +1,15 @@
 # Syntrake Investing Genesis I5-A5 - Research IR Owner Contract V1
 
-Status: `CANDIDATE OWNER CONTRACT - IMPLEMENTATION SOURCE FOR A5`
+Status: `CURRENT ACCEPTED OWNER CONTRACT - I5-A5`
 
-Canonical predecessor: `0c1f5cc0592e950fe2d0120df707c87ea1fd741a`.
+Provenance:
+
+- original A5 implementation/design predecessor:
+  `0c1f5cc0592e950fe2d0120df707c87ea1fd741a`;
+- Trust Recovery predecessor:
+  `2096c2a9ff4f3e15fa4031693ea5e17de4829ea8`;
+- accepted A5 runtime correction:
+  `4fa0aa28344949f7f3d4e2d97c1528175a17e0c6`.
 
 Purpose: admit a narrow, deterministic, engine-independent `SYNTRAKE:RESEARCH_IR:V1` scientific hash payload without inheriting ambiguous working-draft IR shapes.
 

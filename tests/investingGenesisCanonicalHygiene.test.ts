@@ -62,6 +62,10 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+function tableRow(source: string, label: string): string {
+  return source.split(/\r?\n/u).find((line) => line.startsWith(`| ${label} |`)) ?? "";
+}
+
 describe("Investing Genesis canonical hygiene", () => {
   it("removes superseded active-tree documents and keeps current consolidated contracts", () => {
     for (const file of removedDocs) {
@@ -96,18 +100,22 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).not.toContain("R9");
   });
 
-  it("distinguishes A5 canonical presence from unresolved trust recovery", () => {
+  it("records A5 accepted trust recovery without claiming global recovery", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const a5 = tableRow(state, "I5-A5 Research IR runtime/owner contract");
 
-    expect(state).toContain("PRESENT_IN_CANONICAL_LINEAGE");
-    expect(state).toContain("OPEN_CORRECTION");
-    expect(state).toContain("NOT_TRUST_RECOVERY_ACCEPTED");
-    expect(state).toContain("I5-A5 Research IR runtime/owner contract | YES | YES");
-    expect(state).toContain("| CANDIDATE | PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED |");
-    expect(state).toContain("benchmark type discriminator");
+    expect(a5).toContain("| YES | YES |");
+    expect(a5).toContain("CURRENT ACCEPTED OWNER CONTRACT");
+    expect(a5).toContain("CURRENT_ACCEPTED / TRUST_RECOVERY_CLOSED");
+    expect(a5).toContain("| NONE |");
+    expect(state).toContain("4fa0aa28344949f7f3d4e2d97c1528175a17e0c6");
     expect(state).toContain("2e88cde07e2f38dfc455e0a928adb709474f8af7");
+    expect(state).toContain("SUPERSEDED_UNACCEPTED_CANDIDATE");
+    expect(state).toContain("The benchmark discriminator is fixed fail-closed");
     expect(state).toContain("DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`");
-    expect(state).not.toMatch(/I5-A5[^|\n]*(CURRENT ACCEPTED|FORMALLY ACCEPTED|ACCEPTED BY LINEAGE)/);
+    expect(a5).not.toContain("OPEN_CORRECTION");
+    expect(a5).not.toContain("NOT_TRUST_RECOVERY_ACCEPTED");
+    expect(state).toContain("This gate record does not establish a global Trusted Genesis Baseline");
   });
 
   it("does not overclaim missing A1/A2/A4 dedicated owner contracts", () => {
