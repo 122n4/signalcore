@@ -84,6 +84,13 @@ export {
 } from "./researchIr";
 
 export {
+  admitExperimentBaselineV1,
+  type AdmittedExperimentBaselineV1,
+  type ExperimentBaselineCandidateV1,
+  type ResearchIrProofV1,
+} from "./experiment";
+
+export {
   investigationCreateMaterialIdentityV1,
   draftCreateMaterialIdentityV1,
   draftRevisionCreateMaterialIdentityV1,
