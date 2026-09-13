@@ -98,13 +98,25 @@ function warn(message, details = null) {
   report.warnings.push({ message, details });
 }
 
-async function resolveSignInUrl() {
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function authMethodForCandidate(candidate, ownerUserIds) {
+  return process.env.QA_CLERK_USER_ID === candidate
+    ? "CLERK_SECRET_KEY+QA_CLERK_USER_ID"
+    : ownerUserIds.includes(candidate)
+      ? "CLERK_SECRET_KEY+SC_OWNER_USER_IDS"
+      : "CLERK_SECRET_KEY+QA_CLERK_EMAIL";
+}
+
+async function resolveQaAuth() {
   if (process.env.QA_SIGN_IN_URL) {
     report.auth.method = "QA_SIGN_IN_URL";
-    return process.env.QA_SIGN_IN_URL;
+    return { kind: "url", url: process.env.QA_SIGN_IN_URL };
   }
 
-  const secretKey = process.env.CLERK_SECRET_KEY;
+  const secretKey = String(process.env.CLERK_SECRET_KEY || "").trim();
   const ownerUserIds = [
     process.env.SC_OWNER_USER_ID,
     ...String(process.env.SC_OWNER_USER_IDS || "")
@@ -121,7 +133,7 @@ async function resolveSignInUrl() {
     .map((id) => String(id || "").trim())
     .filter(Boolean)
     .filter((id, index, arr) => arr.indexOf(id) === index);
-  const email = process.env.QA_CLERK_EMAIL;
+  const email = String(process.env.QA_CLERK_EMAIL || "").trim();
 
   if (!secretKey || (!userIds.length && !email)) {
     return null;
@@ -147,22 +159,123 @@ async function resolveSignInUrl() {
 
   for (const candidate of candidates) {
     try {
-      const token = await client.signInTokens.createSignInToken({
+      const signInToken = await client.signInTokens.createSignInToken({
         userId: candidate,
         expiresInSeconds: 300,
       });
-      report.auth.method = process.env.QA_CLERK_USER_ID === candidate
-        ? "CLERK_SECRET_KEY+QA_CLERK_USER_ID"
-        : ownerUserIds.includes(candidate)
-          ? "CLERK_SECRET_KEY+SC_OWNER_USER_IDS"
-          : "CLERK_SECRET_KEY+QA_CLERK_EMAIL";
-      return token.url;
+      const baseMethod = authMethodForCandidate(candidate, ownerUserIds);
+
+      if (!secretKey.startsWith("sk_test_")) {
+        report.auth.method = baseMethod;
+        return { kind: "url", url: signInToken.url };
+      }
+
+      const testingToken = await client.testingTokens.createTestingToken();
+      const frontendApi = new URL(signInToken.url).host;
+      if (!frontendApi || !testingToken?.token) {
+        throw new Error("Clerk TEST QA auth could not resolve its Frontend API/testing token.");
+      }
+
+      report.auth.method = `CLERK_TEST_TICKET+${baseMethod}`;
+      return {
+        kind: "clerk_test_ticket",
+        ticket: signInToken.token,
+        testingToken: testingToken.token,
+        frontendApi,
+      };
     } catch (error) {
       lastError = error;
     }
   }
 
   throw lastError || new Error("QA Clerk sign-in token could not be created.");
+}
+
+async function setupClerkTestingTokenRouting(context, auth) {
+  const apiUrl = new RegExp(
+    `^https://${escapeRegex(auth.frontendApi)}/v1/.*?(\\?.*)?$`,
+  );
+  const retryableStatusCodes = new Set([429, 502, 503, 504]);
+  const maxRetries = 3;
+
+  await context.route(apiUrl, async (route) => {
+    const originalUrl = new URL(route.request().url());
+    originalUrl.searchParams.set("__clerk_testing_token", auth.testingToken);
+    const routedUrl = originalUrl.toString();
+
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      try {
+        const response = await route.fetch({ url: routedUrl });
+        const status = response.status();
+
+        if (retryableStatusCodes.has(status) && attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+          continue;
+        }
+
+        if (retryableStatusCodes.has(status)) {
+          await route.fulfill({ response });
+          return;
+        }
+
+        const contentType = String(response.headers()["content-type"] || "");
+        if (!contentType.includes("application/json")) {
+          await route.fulfill({ response });
+          return;
+        }
+
+        const json = await response.json();
+        if (json?.response?.captcha_bypass === false) {
+          json.response.captcha_bypass = true;
+        }
+        if (json?.client?.captcha_bypass === false) {
+          json.client.captcha_bypass = true;
+        }
+        await route.fulfill({ response, json });
+        return;
+      } catch (error) {
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+          continue;
+        }
+        throw error;
+      }
+    }
+  });
+}
+
+async function authenticateQa(page, context, auth) {
+  if (auth.kind === "url") {
+    await page.goto(auth.url, { waitUntil: "domcontentloaded", timeout: 90_000 });
+    await page.waitForURL(/\/app|\/pricing/, { timeout: 60_000 }).catch(() => null);
+    report.auth.finalUrl = redactUrl(page.url());
+    return;
+  }
+
+  await setupClerkTestingTokenRouting(context, auth);
+  await page.goto(absoluteUrl("/"), { waitUntil: "domcontentloaded", timeout: 90_000 });
+  await page.waitForFunction(() => window.Clerk !== undefined && window.Clerk.loaded === true);
+
+  await page.evaluate(async (ticket) => {
+    const clerk = window.Clerk;
+    if (!clerk?.client) {
+      throw new Error("Clerk client is not loaded in the QA browser.");
+    }
+
+    const result = await clerk.client.signIn.create({
+      strategy: "ticket",
+      ticket,
+    });
+    if (result.status !== "complete" || !result.createdSessionId) {
+      throw new Error(`Clerk TEST ticket sign-in failed with status ${result.status}.`);
+    }
+
+    await clerk.setActive({ session: result.createdSessionId });
+  }, auth.ticket);
+
+  await page.waitForFunction(() => Boolean(window.Clerk?.user && window.Clerk?.session));
+  await page.waitForTimeout(300);
+  report.auth.finalUrl = redactUrl(page.url());
 }
 
 function attachPageDiagnostics(page) {
@@ -378,21 +491,20 @@ async function auditFocusedTradePlan(page) {
 }
 
 async function main() {
-  const signInUrl = await resolveSignInUrl();
-  if (!signInUrl) {
+  const auth = await resolveQaAuth();
+  if (!auth) {
     throw new Error(
       "Missing QA auth. Set QA_SIGN_IN_URL, or CLERK_SECRET_KEY plus QA_CLERK_USER_ID/QA_CLERK_EMAIL.",
     );
   }
 
   const browser = await chromium.launch({ headless });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await context.newPage();
   attachPageDiagnostics(page);
 
   try {
-    await page.goto(signInUrl, { waitUntil: "domcontentloaded", timeout: 90_000 });
-    await page.waitForURL(/\/app|\/pricing/, { timeout: 60_000 }).catch(() => null);
-    report.auth.finalUrl = redactUrl(page.url());
+    await authenticateQa(page, context, auth);
 
     const me = await callApi(page, "me", "/api/me");
     report.auth.authenticated = me.status === 200 && me.payload?.isAuthenticated === true;
