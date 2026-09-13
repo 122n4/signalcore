@@ -59,7 +59,7 @@ jobs:
       - name: Post-deploy production smoke
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          QA_BASE_URL: ${{ secrets.QA_BASE_URL || 'https://www.syntrake.com' }}
+          QA_BASE_URL: https://signalcore.vercel.app
           QA_SCANNER_REFRESH_SECRET: ${{ secrets.QA_SCANNER_REFRESH_SECRET }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ENGINE_LOOP_SECRET: ${{ secrets.ENGINE_LOOP_SECRET }}
@@ -77,7 +77,7 @@ jobs:
       - name: Trading production audit
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
-          QA_BASE_URL: ${{ secrets.QA_BASE_URL || 'https://www.syntrake.com' }}
+          QA_BASE_URL: https://signalcore.vercel.app
           QA_SIGN_IN_URL: ${{ secrets.QA_SIGN_IN_URL }}
           QA_CLERK_USER_ID: ${{ secrets.QA_CLERK_USER_ID }}
           QA_CLERK_EMAIL: ${{ secrets.QA_CLERK_EMAIL }}
