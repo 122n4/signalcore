@@ -140,21 +140,38 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("no persistence authority");
   });
 
-  it("records repository control plane red state and closed dependency security recovery", () => {
+  it("records closed repository control plane and dependency security recovery", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(state).toContain("GitHub default branch: `main`");
+    expect(state).toContain("Control-plane convergence baseline:");
+    expect(state).toContain("216bec5e09bfa81a771048f1d693210942f02368");
+    expect(state).toContain("Genesis lineage now occupies `main`");
+    expect(state).toContain("archive/disconnected-main-pre-control-plane-20260913");
+    expect(state).toContain("67393626c3bd3dbb7c18a4ff7235f9ea06f93e13");
+    expect(state).toContain("design/i5-research-lab-canonical-20260906");
     expect(state).toContain("A5 Trust Recovery predecessor canonical:");
     expect(state).toContain("2096c2a9ff4f3e15fa4031693ea5e17de4829ea8");
     expect(state).toContain("4fa0aa28344949f7f3d4e2d97c1528175a17e0c6");
-    expect(state).toContain("main` remains disconnected from the Genesis lineage");
-    expect(state).toContain("has no common ancestor with the current Genesis lineage");
+    expect(state).toContain("Syntrake Canonical Branch Guard");
+    expect(state).toContain("23141231");
+    expect(state).toContain("Syntrake Historical Archive Guard");
+    expect(state).toContain("23141335");
+    expect(state).toContain("Both rulesets: `ACTIVE`");
+    expect(state).toContain("Bypass actors: none");
+    expect(state).toContain("Canonical refs prohibit deletion and non-fast-forward updates");
+    expect(state).toContain("Canonical refs require linear history");
+    expect(state).toContain("Canonical refs require status checks: `verify`, `dependency-audit`, `Vercel`");
+    expect(state).toContain("Historical archive ref prohibits deletion and non-fast-forward updates");
+    expect(state).toContain("Historical/candidate branches do not become authority merely by existing");
+    expect(state).toContain("REPOSITORY CONTROL PLANE = GREEN / TRUST_RECOVERY_CLOSED");
+    expect(state).toContain("C. `REPOSITORY CONTROL PLANE REHEARSAL`");
+    expect(state).toContain("TRUSTED GENESIS BASELINE = NOT YET DECLARED");
+    expect(state).toContain("active `REPOSITORY CONTROL PLANE = RED`");
+    expect(state).not.toContain("REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE");
     expect(state).not.toContain("Current canonical before A5 promotion");
     expect(state).not.toContain("A5 acceptance target, not yet canonical");
     expect(state).not.toContain("git merge-base origin/main 9e341acc");
-    expect(state).toContain("GitHub repository rulesets: empty");
-    expect(state).toContain("Genesis canonical branch protection: disabled");
-    expect(state).toContain("REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE");
     expect(state).toContain("Dependency/security Trust Recovery predecessor:");
     expect(state).toContain("342659c2d92ccb6d5e0143b10fe13643864d771c");
     expect(state).toContain("Accepted dependency correction:");

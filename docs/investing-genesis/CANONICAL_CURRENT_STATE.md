@@ -169,7 +169,7 @@ This gate record supersedes:
 - the old unaccepted correction path
   `2e88cde07e2f38dfc455e0a928adb709474f8af7`.
 
-It does not supersede or close:
+This A5 gate record did not by itself supersede or close:
 
 - repository control-plane RED state;
 - the `main` default-branch issue;
@@ -180,21 +180,54 @@ This gate record does not establish a global Trusted Genesis Baseline.
 
 ## Repository Control Plane
 
-Read-only external-state evidence for this hygiene correction:
+Independently verified external-state evidence for this control-plane Trust
+Recovery acceptance record:
 
 - GitHub default branch: `main`.
+- Control-plane convergence baseline:
+  `216bec5e09bfa81a771048f1d693210942f02368`.
+- Genesis lineage now occupies `main` and the existing Genesis canonical alias at
+  that baseline.
+- Prior disconnected `main` was preserved at:
+  `archive/disconnected-main-pre-control-plane-20260913`.
+- Archived SHA:
+  `67393626c3bd3dbb7c18a4ff7235f9ea06f93e13`.
+- Existing Genesis canonical alias:
+  `design/i5-research-lab-canonical-20260906`.
 - A5 Trust Recovery predecessor canonical:
   `2096c2a9ff4f3e15fa4031693ea5e17de4829ea8`.
-- `main` remains disconnected from the Genesis lineage.
-- Independent Trust Recovery audit verified that GitHub default branch `main`
-  has no common ancestor with the current Genesis lineage.
-- GitHub repository rulesets: empty.
-- Genesis canonical branch protection: disabled.
+- Canonical ruleset: `Syntrake Canonical Branch Guard`.
+- Canonical ruleset ID: `23141231`.
+- Historical archive ruleset: `Syntrake Historical Archive Guard`.
+- Historical archive ruleset ID: `23141335`.
+- Both rulesets: `ACTIVE`.
+- Bypass actors: none.
+- Canonical refs prohibit deletion and non-fast-forward updates.
+- Canonical refs require linear history.
+- Canonical refs require status checks: `verify`, `dependency-audit`, `Vercel`.
+- Historical archive ref prohibits deletion and non-fast-forward updates.
 
-`REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE`.
+`REPOSITORY CONTROL PLANE = GREEN / TRUST_RECOVERY_CLOSED`.
 
-This hygiene slice records that state only. It does not change default branch,
-rulesets, branch protection or remote branch topology.
+Historical/candidate branches do not become authority merely by existing.
+Current authority is derived from accepted Genesis lineage, the current-state
+map and protected canonical refs.
+
+This control-plane acceptance record supersedes active `REPOSITORY CONTROL PLANE = RED`,
+disconnected active `main`, empty rulesets and unprotected canonical refs. It
+does not supersede final A+B+C rehearsal, Trusted Genesis Baseline declaration,
+future Research Lab work, DatasetSnapshot deferral or any Investing/Trading/Paper
+feature requirement.
+
+Final complete rehearsal across:
+
+- A. `EXECUTION REHEARSAL`
+- B. `CANONICAL INTEGRITY REHEARSAL`
+- C. `REPOSITORY CONTROL PLANE REHEARSAL`
+
+has not yet been completed against the final candidate state.
+
+`TRUSTED GENESIS BASELINE = NOT YET DECLARED`.
 
 ## CI And Dependency Security
 
