@@ -45,5 +45,12 @@ async function ensureQaIdentity() {
   );
 }
 
-await ensureQaIdentity();
-await import("./trading-production-audit.mjs");
+async function main() {
+  await ensureQaIdentity();
+  await import("./trading-production-audit.mjs");
+}
+
+void main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
