@@ -1,6 +1,7 @@
 import {
   canonicalUuidV1,
   hashRefV1,
+  type CanonicalUuidV1,
   type HashRefV1,
 } from "./canonical";
 
@@ -14,7 +15,7 @@ export type ExperimentBaselineCandidateV1 = Readonly<{
 export type AdmittedExperimentBaselineV1 = Readonly<{
   schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1";
   relation: "BASELINE";
-  researchSpecRevisionId: string;
+  researchSpecRevisionId: CanonicalUuidV1;
   researchIr: HashRefV1;
 }>;
 
