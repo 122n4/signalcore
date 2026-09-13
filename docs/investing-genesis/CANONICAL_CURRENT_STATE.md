@@ -183,13 +183,11 @@ This gate record does not establish a global Trusted Genesis Baseline.
 Read-only external-state evidence for this hygiene correction:
 
 - GitHub default branch: `main`.
-- Current canonical before A5 promotion:
+- A5 Trust Recovery predecessor canonical:
   `2096c2a9ff4f3e15fa4031693ea5e17de4829ea8`.
-- A5 acceptance target, not yet canonical:
-  `388224d9d38945590475967fe41e7c3f8a48bb0f`.
 - `main` remains disconnected from the Genesis lineage.
-- Independent comparison of `origin/main` and
-  `388224d9d38945590475967fe41e7c3f8a48bb0f` returns no common ancestor.
+- Independent Trust Recovery audit verified that GitHub default branch `main`
+  has no common ancestor with the current Genesis lineage.
 - GitHub repository rulesets: empty.
 - Genesis canonical branch protection: disabled.
 

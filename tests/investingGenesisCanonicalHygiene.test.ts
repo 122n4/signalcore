@@ -144,12 +144,13 @@ describe("Investing Genesis canonical hygiene", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(state).toContain("GitHub default branch: `main`");
-    expect(state).toContain("Current canonical before A5 promotion:");
+    expect(state).toContain("A5 Trust Recovery predecessor canonical:");
     expect(state).toContain("2096c2a9ff4f3e15fa4031693ea5e17de4829ea8");
-    expect(state).toContain("A5 acceptance target, not yet canonical:");
-    expect(state).toContain("388224d9d38945590475967fe41e7c3f8a48bb0f");
+    expect(state).toContain("4fa0aa28344949f7f3d4e2d97c1528175a17e0c6");
     expect(state).toContain("main` remains disconnected from the Genesis lineage");
-    expect(state).toContain("returns no common ancestor");
+    expect(state).toContain("has no common ancestor with the current Genesis lineage");
+    expect(state).not.toContain("Current canonical before A5 promotion");
+    expect(state).not.toContain("A5 acceptance target, not yet canonical");
     expect(state).not.toContain("git merge-base origin/main 9e341acc");
     expect(state).toContain("GitHub repository rulesets: empty");
     expect(state).toContain("Genesis canonical branch protection: disabled");
