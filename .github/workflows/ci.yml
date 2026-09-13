@@ -74,6 +74,10 @@ jobs:
           fi
           npm run qa:post-deploy
 
+      - name: Install Playwright Chromium for Trading audit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: npx playwright install --with-deps chromium
+
       - name: Trading production audit
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
