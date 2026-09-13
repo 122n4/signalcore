@@ -17,7 +17,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function isAuthorized(req: Request) {
-  return isEngineLoopAuthorized({ headers: req.headers, env: process.env });
+  if (isEngineLoopAuthorized({ headers: req.headers, env: process.env })) {
+    return true;
+  }
+
+  const qaScannerSecret = String(process.env.QA_SCANNER_REFRESH_SECRET || "").trim();
+  if (!qaScannerSecret) {
+    return false;
+  }
+
+  const auth = String(req.headers.get("authorization") || "").trim();
+  if (!auth.toLowerCase().startsWith("bearer ")) {
+    return false;
+  }
+
+  return auth.slice(7).trim() === qaScannerSecret;
 }
 
 const PRIORITY_REFRESH_ORDER = [

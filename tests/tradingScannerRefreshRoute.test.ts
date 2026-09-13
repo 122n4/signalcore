@@ -133,6 +133,113 @@ describe("trading scanner refresh route", () => {
     vi.useRealTimers();
     delete process.env.TRADING_SCANNER_REFRESH_BATCH_SIZE;
     delete process.env.TRADING_SCANNER_REFRESH_BATCH_MINUTES;
+    delete process.env.QA_SCANNER_REFRESH_SECRET;
+  });
+
+  it("keeps existing engine-loop authorization valid", async () => {
+    const { GET } = await import("@/app/api/trading/scanner-refresh/route");
+
+    const response = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh", {
+        headers: { authorization: "Bearer engine-secret" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(isEngineLoopAuthorizedMock).toHaveBeenCalled();
+    expect(readLatestTradingScannerSnapshotsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts the dedicated QA scanner secret when engine-loop authorization denies", async () => {
+    isEngineLoopAuthorizedMock.mockReturnValue(false);
+    process.env.QA_SCANNER_REFRESH_SECRET = "qa-scanner-secret";
+    const { GET } = await import("@/app/api/trading/scanner-refresh/route");
+
+    const response = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh", {
+        headers: { authorization: "Bearer qa-scanner-secret" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(readLatestTradingScannerSnapshotsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a wrong QA scanner bearer token", async () => {
+    isEngineLoopAuthorizedMock.mockReturnValue(false);
+    process.env.QA_SCANNER_REFRESH_SECRET = "qa-scanner-secret";
+    const { GET } = await import("@/app/api/trading/scanner-refresh/route");
+
+    const response = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh", {
+        headers: { authorization: "Bearer wrong-secret" },
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(readLatestTradingScannerSnapshotsMock).not.toHaveBeenCalled();
+    expect(buildTradingLightScannerInputsMock).not.toHaveBeenCalled();
+    expect(writeTradingScannerSnapshotsMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing QA bearer token when engine-loop authorization denies", async () => {
+    isEngineLoopAuthorizedMock.mockReturnValue(false);
+    process.env.QA_SCANNER_REFRESH_SECRET = "qa-scanner-secret";
+    const { GET } = await import("@/app/api/trading/scanner-refresh/route");
+
+    const response = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(readLatestTradingScannerSnapshotsMock).not.toHaveBeenCalled();
+    expect(buildTradingLightScannerInputsMock).not.toHaveBeenCalled();
+    expect(writeTradingScannerSnapshotsMock).not.toHaveBeenCalled();
+  });
+
+  it("never authorizes with a missing or blank QA scanner secret", async () => {
+    isEngineLoopAuthorizedMock.mockReturnValue(false);
+    const { GET } = await import("@/app/api/trading/scanner-refresh/route");
+
+    const missingResponse = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh", {
+        headers: { authorization: "Bearer qa-scanner-secret" },
+      }),
+    );
+    process.env.QA_SCANNER_REFRESH_SECRET = "   ";
+    const blankResponse = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh", {
+        headers: { authorization: "Bearer qa-scanner-secret" },
+      }),
+    );
+
+    expect(missingResponse.status).toBe(401);
+    expect(blankResponse.status).toBe(401);
+    expect(readLatestTradingScannerSnapshotsMock).not.toHaveBeenCalled();
+    expect(buildTradingLightScannerInputsMock).not.toHaveBeenCalled();
+    expect(writeTradingScannerSnapshotsMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps QA-authorized scanner refresh snapshot-only with Paper disabled", async () => {
+    isEngineLoopAuthorizedMock.mockReturnValue(false);
+    process.env.QA_SCANNER_REFRESH_SECRET = "qa-scanner-secret";
+    const { GET } = await import("@/app/api/trading/scanner-refresh/route");
+
+    const response = await GET(
+      new Request("https://syntrake.test/api/trading/scanner-refresh", {
+        headers: { authorization: "Bearer qa-scanner-secret" },
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.paperBot).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        reason: "scanner_refresh_is_snapshot_only",
+      }),
+    );
+    expect(runPaperBotCycleForUserMock).not.toHaveBeenCalled();
   });
 
   it("always refreshes open stale markets alongside the rotating batch", async () => {

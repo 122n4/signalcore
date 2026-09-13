@@ -114,7 +114,12 @@ function pushCheck(
 }
 
 function scannerRefreshHeaders() {
-  const secret = String(process.env.CRON_SECRET || process.env.ENGINE_LOOP_SECRET || "").trim();
+  const secret = String(
+    process.env.QA_SCANNER_REFRESH_SECRET ||
+      process.env.CRON_SECRET ||
+      process.env.ENGINE_LOOP_SECRET ||
+      "",
+  ).trim();
   if (!secret) return null;
   return {
     Authorization: `Bearer ${secret}`,
@@ -185,7 +190,8 @@ async function main() {
     }
   } else {
     pushCheck(checks, "scanner_refresh", requireRefreshSecret ? "fail" : "warn", {
-      details: "Missing CRON_SECRET or ENGINE_LOOP_SECRET, so the live scanner refresh could not be proved.",
+      details:
+        "Missing QA_SCANNER_REFRESH_SECRET, CRON_SECRET, or ENGINE_LOOP_SECRET, so the live scanner refresh could not be proved.",
     });
   }
 

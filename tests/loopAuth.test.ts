@@ -38,6 +38,18 @@ describe("isEngineLoopAuthorized", () => {
     expect(ok).toBe(false);
   });
 
+  it("does not accept QA_SCANNER_REFRESH_SECRET as shared engine-loop authority", () => {
+    const headers = makeHeaders({ authorization: "Bearer qa-scanner-secret" });
+    const ok = isEngineLoopAuthorized({
+      headers,
+      env: {
+        QA_SCANNER_REFRESH_SECRET: "qa-scanner-secret",
+        NODE_ENV: "production",
+      } as any,
+    });
+    expect(ok).toBe(false);
+  });
+
   it("denies in production without secret", () => {
     const headers = makeHeaders({ "x-vercel-cron": "1" });
     const ok = isEngineLoopAuthorized({
