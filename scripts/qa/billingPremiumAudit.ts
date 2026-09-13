@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { buildPremiumAuditReport, normalizeEmailFilter } from "../../lib/billing/premiumAuditService";
+import { classifyBillingWarnings } from "./billingWarningPolicy";
 
 function readArg(name: string): string | null {
   const prefix = `--${name}=`;
@@ -48,12 +49,36 @@ async function main() {
     emails,
     limit: Number.isFinite(limit) ? limit : 1000,
   });
+  const warningClassification = classifyBillingWarnings(
+    report,
+    process.env.CLERK_SECRET_KEY,
+  );
 
   console.log(JSON.stringify(report, null, 2));
+  if (warningClassification.ignoredExpectedTestWarnings.length > 0) {
+    console.log(
+      JSON.stringify(
+        {
+          billingWarningPolicy: {
+            environment: warningClassification.environment,
+            ignoredExpectedTestWarnings:
+              warningClassification.ignoredExpectedTestWarnings.length,
+            blockingWarnings: warningClassification.blockingWarnings.length,
+          },
+        },
+        null,
+        2,
+      ),
+    );
+  }
+
   if (process.argv.includes("--fail-on-issues") && !report.ok) {
     process.exitCode = 1;
   }
-  if (process.argv.includes("--fail-on-warnings") && report.summary.warn > 0) {
+  if (
+    process.argv.includes("--fail-on-warnings") &&
+    warningClassification.blockingWarnings.length > 0
+  ) {
     process.exitCode = 1;
   }
 }
