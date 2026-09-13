@@ -117,10 +117,73 @@ not become Investing Genesis authority merely because they use similar words.
   slice.
 - I5 canonical fresh-install lineage repair: current accepted.
 - I5-A4 ResearchSpec persistence: current accepted.
-- I5-A5 Research IR runtime/owner contract: separate candidate path; not
-  self-accepted by this hygiene slice.
 - DatasetSnapshot: deferred. It has no current A-number and no current Investing
   Genesis owner contract.
+
+## I5 Runtime Presence And Trust State
+
+Implementation presence is not the same as formal trust recovery acceptance.
+
+| Slice | Runtime present | Owner contract present | Header status | Gate/trust status | Known blocker |
+| --- | --- | --- | --- | --- | --- |
+| I5-A1 Investigation persistence/current runtime | YES | YES | CURRENT ACCEPTED BY LINEAGE | CURRENT ACCEPTED | none recorded here |
+| I5-A2 ResearchDraft persistence/current runtime | YES | YES | CURRENT ACCEPTED BY LINEAGE | CURRENT ACCEPTED | none recorded here |
+| I5-A3 material revisions | YES | YES | CURRENT CONSOLIDATED OWNER CONTRACT | CURRENT ACCEPTED / CONSOLIDATED | none recorded here |
+| I5-A4 ResearchSpec persistence | YES | YES | CURRENT ACCEPTED BY LINEAGE | CURRENT ACCEPTED | none recorded here |
+| I5-A5 Research IR runtime/owner contract | YES | YES | CANDIDATE | PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED | benchmark type discriminator |
+
+A5 repository evidence at predecessor `9e341accb7658cbc9bff7cb749be4acc1437ad6c`:
+
+- `lib/investing/research/researchIr.ts` is physically present in the canonical
+  Genesis lineage.
+- `SYNTRAKE:RESEARCH_IR:V1` is physically admitted by current canonical runtime.
+- `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` exists but still labels itself as a
+  candidate owner contract.
+- `canonicalBenchmarkV1()` requires an open correction so benchmark admission
+  first fails closed unless `input.type === "BENCHMARK"`.
+- Correction candidate `2e88cde07e2f38dfc455e0a928adb709474f8af7` is
+  `UNACCEPTED`.
+
+Therefore this state map does not claim A5 is formally accepted, and it does
+not claim A5 is absent from canonical. It records A5 as
+`PRESENT_IN_CANONICAL_LINEAGE / OPEN_CORRECTION / NOT_TRUST_RECOVERY_ACCEPTED`.
+
+DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`.
+
+## Repository Control Plane
+
+Read-only external-state evidence for this hygiene correction:
+
+- GitHub default branch: `main`.
+- `main` is disconnected from Genesis canonical lineage.
+- `git merge-base origin/main 9e341accb7658cbc9bff7cb749be4acc1437ad6c`
+  returns no common ancestor.
+- GitHub repository rulesets: empty.
+- Genesis canonical branch protection: disabled.
+
+`REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE`.
+
+This hygiene slice records that state only. It does not change default branch,
+rulesets, branch protection or remote branch topology.
+
+## CI And Dependency Baseline
+
+The GitHub Actions run for hygiene candidate
+`2cc97f6a4a63c9aadd3ae55933718126a9fe773d` failed after the functional verify
+stage. Independent audit classified the functional stage as passing: full tests,
+lint, TypeScript, build and hygiene regression passed.
+
+Known dependency/security audit failures are:
+
+- Next.js `16.3.0`, affected range `16.0.0 - 16.3.2`, CRITICAL.
+- sharp `<0.35.4`, HIGH.
+
+Classification:
+
+`PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER`.
+
+This hygiene correction does not modify dependencies and must not report CI as
+green while that blocker remains.
 
 ## Superseded Historical Design
 

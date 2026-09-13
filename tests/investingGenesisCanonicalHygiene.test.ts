@@ -96,6 +96,32 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).not.toContain("R9");
   });
 
+  it("distinguishes A5 canonical presence from unresolved trust recovery", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+
+    expect(state).toContain("PRESENT_IN_CANONICAL_LINEAGE");
+    expect(state).toContain("OPEN_CORRECTION");
+    expect(state).toContain("NOT_TRUST_RECOVERY_ACCEPTED");
+    expect(state).toContain("runtime/owner contract | YES | YES | CANDIDATE");
+    expect(state).toContain("benchmark type discriminator");
+    expect(state).toContain("2e88cde07e2f38dfc455e0a928adb709474f8af7");
+    expect(state).toContain("DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`");
+    expect(state).not.toMatch(/I5-A5[^|\n]*(CURRENT ACCEPTED|FORMALLY ACCEPTED|ACCEPTED BY LINEAGE)/);
+  });
+
+  it("records repository control plane and dependency audit blockers without repairing them", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+
+    expect(state).toContain("GitHub default branch: `main`");
+    expect(state).toContain("returns no common ancestor");
+    expect(state).toContain("GitHub repository rulesets: empty");
+    expect(state).toContain("Genesis canonical branch protection: disabled");
+    expect(state).toContain("REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE");
+    expect(state).toContain("PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER");
+    expect(state).toContain("Next.js `16.3.0`");
+    expect(state).toContain("sharp `<0.35.4`");
+  });
+
   it("does not leave deleted filenames as active authority references", () => {
     const allowedFiles = new Set([
       "docs/investing-genesis/CANONICAL_CURRENT_STATE.md",
