@@ -152,7 +152,8 @@ A5 acceptance evidence:
 - Valid A5 golden hash remains unchanged:
   `265D8F6AAC35DB919EC130EE978F1831383E74BC2F625230D61EB81C0F27B44F`.
 - Functional CI passed: tests, lint, TypeScript, build and Vercel verification.
-- Dependency audit remains a separate pre-existing Trust Recovery blocker.
+- Dependency/security Trust Recovery blocker is closed by the accepted
+  dependency correction recorded below.
 
 Old correction candidate `2e88cde07e2f38dfc455e0a928adb709474f8af7` is
 `SUPERSEDED_UNACCEPTED_CANDIDATE` and is not current authority.
@@ -170,7 +171,6 @@ This gate record supersedes:
 
 It does not supersede or close:
 
-- the dependency/security baseline;
 - repository control-plane RED state;
 - the `main` default-branch issue;
 - missing rulesets/protection;
@@ -196,24 +196,34 @@ Read-only external-state evidence for this hygiene correction:
 This hygiene slice records that state only. It does not change default branch,
 rulesets, branch protection or remote branch topology.
 
-## CI And Dependency Baseline
+## CI And Dependency Security
 
-The GitHub Actions run for hygiene candidate
-`2cc97f6a4a63c9aadd3ae55933718126a9fe773d` failed after the functional verify
-stage. Independent audit classified the functional stage as passing: full tests,
-lint, TypeScript, build and hygiene regression passed.
+Dependency/security Trust Recovery predecessor:
+`342659c2d92ccb6d5e0143b10fe13643864d771c`.
 
-Known dependency/security audit failures are:
+Accepted dependency correction:
+`774b3503f768ad3805684b4834ddbb7ffd899679`.
 
-- Next.js `16.3.0`, affected range `16.0.0 - 16.3.2`, CRITICAL.
-- sharp `<0.35.4`, HIGH.
+Closed findings:
+
+- Next.js `16.3.0 -> 16.3.5`.
+- `@next/third-parties` `16.3.0 -> 16.3.5`.
+- Transitive sharp `0.35.3 -> 0.35.4`.
+- Full dependency audit: `0 vulnerabilities`.
+- Production dependency audit: `0 vulnerabilities`.
+- GitHub Actions CI: `SUCCESS`.
+- Vercel: `SUCCESS`.
 
 Classification:
 
-`PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER`.
+`DEPENDENCY SECURITY TRUST RECOVERY = CLOSED`.
 
-This hygiene correction does not modify dependencies and must not report CI as
-green while that blocker remains.
+This dependency/security gate supersedes only
+`PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER` for the known
+Next.js/sharp findings. It does not supersede repository control-plane RED,
+default branch `main`, disconnected Genesis/main histories, missing rulesets,
+missing branch protection, final A+B+C rehearsal or Trusted Genesis Baseline
+declaration.
 
 ## Superseded Historical Design
 

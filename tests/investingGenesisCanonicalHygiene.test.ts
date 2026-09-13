@@ -140,7 +140,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("no persistence authority");
   });
 
-  it("records repository control plane and dependency audit blockers without repairing them", () => {
+  it("records repository control plane red state and closed dependency security recovery", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(state).toContain("GitHub default branch: `main`");
@@ -155,9 +155,22 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("GitHub repository rulesets: empty");
     expect(state).toContain("Genesis canonical branch protection: disabled");
     expect(state).toContain("REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE");
+    expect(state).toContain("Dependency/security Trust Recovery predecessor:");
+    expect(state).toContain("342659c2d92ccb6d5e0143b10fe13643864d771c");
+    expect(state).toContain("Accepted dependency correction:");
+    expect(state).toContain("774b3503f768ad3805684b4834ddbb7ffd899679");
+    expect(state).toContain("Next.js `16.3.0 -> 16.3.5`");
+    expect(state).toContain("`@next/third-parties` `16.3.0 -> 16.3.5`");
+    expect(state).toContain("Transitive sharp `0.35.3 -> 0.35.4`");
+    expect(state).toContain("Full dependency audit: `0 vulnerabilities`");
+    expect(state).toContain("Production dependency audit: `0 vulnerabilities`");
+    expect(state).toContain("GitHub Actions CI: `SUCCESS`");
+    expect(state).toContain("Vercel: `SUCCESS`");
+    expect(state).toContain("DEPENDENCY SECURITY TRUST RECOVERY = CLOSED");
     expect(state).toContain("PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER");
-    expect(state).toContain("Next.js `16.3.0`");
-    expect(state).toContain("sharp `<0.35.4`");
+    expect(state).not.toContain("Known dependency/security audit failures are");
+    expect(state).not.toContain("sharp `<0.35.4`");
+    expect(state).not.toContain("while that blocker remains");
   });
 
   it("does not invent A2/A4/A5 owner-contract groups", () => {
