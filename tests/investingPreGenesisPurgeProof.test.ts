@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "..");
 const migrationsRoot = path.join(repoRoot, "supabase", "migrations");
+const rollbacksRoot = path.join(repoRoot, "supabase", "rollbacks");
 
 const forbiddenPreGenesisInvestingMigrations = [
   "20260707190000_create_investing_core_tables.sql",
@@ -61,6 +62,15 @@ const forbiddenPreGenesisInvestingMigrations = [
   "20260817023650_investing_canonical_plan_persistence_writer.sql",
 ] as const;
 
+const forbiddenPreGenesisInvestingRollbacks = [
+  "20260720100000_investing_engine_v1_persistence.down.sql",
+  "20260721120000_investing_engine_v1_authorization_shape_guard.down.sql",
+  "20260721180000_investing_engine_phase4b_r2_root_sealing.down.sql",
+  "20260721220000_investing_engine_phase4b_r3_boundary_hardening.down.sql",
+  "20260721230000_investing_engine_phase4b_r4_final_conditions_closure.down.sql",
+  "20260722090000_investing_engine_phase4b_r5_empty_state_transition_gate.down.sql",
+] as const;
+
 const requiredZeroGenesisBoundary = [
   "20260822125631_teardown_all_investing_runtime.sql",
   "20260822140357_remove_capitalized_investing_portfolio_residuals.sql",
@@ -97,14 +107,25 @@ function migrationExists(file: string): boolean {
   return fs.existsSync(path.join(migrationsRoot, file));
 }
 
+function rollbackExists(file: string): boolean {
+  return fs.existsSync(path.join(rollbacksRoot, file));
+}
+
 describe("Investing pre-Genesis source purge", () => {
   it("keeps the deletion contract explicit and complete", () => {
     expect(forbiddenPreGenesisInvestingMigrations).toHaveLength(53);
+    expect(forbiddenPreGenesisInvestingRollbacks).toHaveLength(6);
   });
 
   it("removes every pre-Genesis Investing migration from the current source tree", () => {
     for (const file of forbiddenPreGenesisInvestingMigrations) {
       expect(migrationExists(file), file).toBe(false);
+    }
+  });
+
+  it("removes every residual pre-Genesis Investing rollback from the current source tree", () => {
+    for (const file of forbiddenPreGenesisInvestingRollbacks) {
+      expect(rollbackExists(file), file).toBe(false);
     }
   });
 
