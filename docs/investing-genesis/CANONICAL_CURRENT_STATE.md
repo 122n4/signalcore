@@ -11,10 +11,16 @@ not create feature authority.
   `87c19fd5ebadcc5b20ce587c185346379fd8d96b`.
 - Hygiene slice predecessor:
   `9e341accb7658cbc9bff7cb749be4acc1437ad6c`.
-- Pre-Genesis Investing documents, source and migrations are historical lineage
-  only unless a current accepted Genesis contract explicitly incorporates them.
-- Supabase migrations remain historical replay assets. Do not delete, rename,
-  reorder, squash or rewrite them in a hygiene slice.
+- Pre-Genesis Investing documents and source are historical lineage only unless a
+  current accepted Genesis contract explicitly incorporates them.
+- Pre-Genesis Investing migrations before the Zero-Genesis retirement boundary
+  are historical lineage and are removed from the current source tree by the
+  source-purge candidate based on `main` `860b521578b77cb3d4ae4651ae7719fbad7e1f04`.
+- Git history remains the historical record. The Zero-Genesis retirement bridge
+  migrations and current Genesis/I5 migrations remain in the active tree.
+- This source-tree purge does not mutate, rewrite, repair or reconcile production
+  Supabase migration history. Production migration-history reconciliation is a
+  separate controlled operation and remains unauthorized by this candidate.
 
 ## Source-Of-Truth Precedence
 
@@ -108,6 +114,10 @@ not become Investing Genesis authority merely because they use similar words.
 ## Gate State
 
 - Zero-Genesis retirement: canonical baseline preserved.
+- Pre-Genesis Investing migration source purge: `IMPLEMENTED_CANDIDATE`; exactly
+  53 pre-Genesis Investing migrations removed from the current tree while the
+  Zero-Genesis retirement bridge, Genesis/I5 migrations and Trading migrations
+  remain present. Production Supabase state is unchanged by this source commit.
 - I0-I4 Genesis: current accepted canonical contracts preserved.
 - I5 authority/audit runtime and DB contract: current in canonical lineage.
   `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is material command identity only and
