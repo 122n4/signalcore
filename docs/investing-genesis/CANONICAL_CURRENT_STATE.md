@@ -87,6 +87,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 A2 hash domains | `I5A_CANONICAL_HASH_DOMAINS_V1.md` |
 | I5 A3 material revisions | `I5A_MATERIAL_REVISIONS_OWNER_CONTRACT_V1.md` |
 | I5 A5 Research IR | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` |
+| I5 Experiment baseline (unnumbered) | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -107,6 +108,8 @@ freeze/master evidence still relies on its narrow classifications.
 - I5 Spec revision persistence:
   `lib/investing/research/researchSpecRevisionWriter.ts`.
 - I5 Research IR runtime: `lib/investing/research/researchIr.ts`.
+- I5 Experiment BASELINE structural admission runtime:
+  `lib/investing/research/experiment.ts`.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -129,6 +132,10 @@ not become Investing Genesis authority merely because they use similar words.
   slice.
 - I5 canonical fresh-install lineage repair: current accepted.
 - I5-A4 ResearchSpec persistence: current accepted.
+- I5 Experiment BASELINE structural admission: current accepted, unnumbered,
+  runtime-only. This acceptance does not establish Experiment scientific hash,
+  ExperimentParameters hash, Experiment persistence, DatasetSnapshot, Run,
+  Result, Evidence or execution authority.
 - DatasetSnapshot: deferred. It has no current A-number and no current Investing
   Genesis owner contract.
 
@@ -144,6 +151,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | I5-A3 material revisions | YES | YES | `I5A_MATERIAL_REVISIONS_OWNER_CONTRACT_V1.md` + runtime/persistence migration/tests + canonical lineage | CURRENT CONSOLIDATED OWNER CONTRACT | current in canonical lineage / consolidated | none recorded here |
 | I5-A4 ResearchSpec persistence | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A4 ResearchSpec persistence owner contract in tree | current in canonical lineage | none recorded here |
 | I5-A5 Research IR runtime/owner contract | YES | YES | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` + runtime/tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT | CURRENT_ACCEPTED / TRUST_RECOVERY_CLOSED | NONE |
+| Experiment BASELINE structural admission / unnumbered | YES | YES | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md` + runtime + tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED) | CURRENT_ACCEPTED / STRUCTURAL_RUNTIME_ONLY | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -167,6 +175,24 @@ A5 acceptance evidence:
 
 Old correction candidate `2e88cde07e2f38dfc455e0a928adb709474f8af7` is
 `SUPERSEDED_UNACCEPTED_CANDIDATE` and is not current authority.
+
+Experiment BASELINE acceptance evidence:
+
+- Predecessor:
+  `81859bcbd34b79da649e6fd2c00bdab06337712a`.
+- Accepted audited candidate:
+  `81dc43cc0bc802565801e89e0f3a750029583b1d`.
+- Experiment targeted: `7/7`.
+- Relevant I5 targeted: `83/83`.
+- TypeScript: `PASS`.
+- Lint: `PASS`.
+- Build: `PASS`.
+- npm audit: `0 vulnerabilities`.
+- Controlled full suite reproduced exactly the same 12 canonical failures already
+  present in the predecessor.
+- Candidate-specific regression: `ZERO`.
+- Independent audit: `PASS`.
+- Permanent A-number: `NOT ASSIGNED`.
 
 DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`.
 

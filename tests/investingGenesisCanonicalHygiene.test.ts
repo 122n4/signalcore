@@ -40,6 +40,7 @@ const requiredCurrentDocs = [
   "I4_MASTER_CHECKPOINT.md",
   "I5_MATERIAL_COMMAND_IDENTITY_V1.md",
   "I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md",
+  "I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md",
 ] as const;
 
 const scannedRoots = ["AGENTS.md", "docs", "lib", "tests", "package.json", "tsconfig.json"] as const;
@@ -124,6 +125,25 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(a5).not.toContain("NOT_TRUST_RECOVERY_ACCEPTED");
     expect(state).toContain("This gate record does not establish a global Trusted Genesis Baseline");
     expect(state).not.toContain("global Trust Recovery is complete");
+  });
+
+  it("records accepted unnumbered Experiment BASELINE runtime-only authority", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const experiment = tableRow(state, "Experiment BASELINE structural admission / unnumbered");
+
+    expect(state).toContain("I5 Experiment baseline (unnumbered)");
+    expect(state).toContain("lib/investing/research/experiment.ts");
+    expect(state).toContain("I5 Experiment BASELINE structural admission: current accepted, unnumbered,");
+    expect(experiment).toContain("| YES | YES |");
+    expect(experiment).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED)");
+    expect(experiment).toContain("CURRENT_ACCEPTED / STRUCTURAL_RUNTIME_ONLY");
+    expect(experiment).toContain("| NONE |");
+    expect(state).toContain("Accepted audited candidate:");
+    expect(state).toContain("81dc43cc0bc802565801e89e0f3a750029583b1d");
+    expect(state).toContain("Permanent A-number: `NOT ASSIGNED`");
+    expect(state).toContain("Experiment scientific hash");
+    expect(state).toContain("ExperimentParameters hash");
+    expect(state).toContain("DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`");
   });
 
   it("does not overclaim missing A1/A2/A4 dedicated owner contracts", () => {

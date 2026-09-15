@@ -1,6 +1,21 @@
 # I5 Experiment Baseline Admission Owner Contract V1
 
-Status: CANDIDATE OWNER CONTRACT - RUNTIME ONLY
+Status: CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED)
+
+## Acceptance Provenance
+
+- canonical predecessor:
+  `81859bcbd34b79da649e6fd2c00bdab06337712a`
+- accepted audited runtime candidate:
+  `81dc43cc0bc802565801e89e0f3a750029583b1d`
+- permanent A-number:
+  `NOT ASSIGNED`
+- independent audit:
+  `PASSED`
+- candidate-specific regression:
+  `NONE REPRODUCIBLE`
+- controlled full-suite baseline:
+  same 12 pre-existing canonical failures, zero new Experiment slice failures
 
 ## Purpose
 

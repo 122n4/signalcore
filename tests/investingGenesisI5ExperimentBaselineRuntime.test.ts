@@ -124,7 +124,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
       "utf8",
     );
 
-    expect(contract).toContain("Status: CANDIDATE OWNER CONTRACT - RUNTIME ONLY");
+    expect(contract).toContain("Status: CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED)");
     expect(contract).toContain("SYNTRAKE:RESEARCH_IR:V1 = OWNER_PAYLOAD_EXACT");
     expect(contract).toContain("SYNTRAKE:RESEARCH_SPEC:V1 = DECLARED_BUT_HASHING_DISABLED");
     expect(contract).toContain("SYNTRAKE:EXPERIMENT:V1 = DECLARED_BUT_HASHING_DISABLED");
@@ -132,6 +132,15 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     expect(contract).toContain("The Experiment owner never receives raw Research IR payload");
     expect(contract).toContain("What Did This Slice Supersede?");
     expect(contract).toContain("Only loose or historical Experiment BASELINE runtime candidate shapes");
+  });
+
+  it("records accepted unnumbered Experiment BASELINE state without advancing DatasetSnapshot", () => {
+    const state = fs.readFileSync(path.join(process.cwd(), "docs", "investing-genesis", "CANONICAL_CURRENT_STATE.md"), "utf8");
+
+    expect(state).toContain("I5 Experiment BASELINE structural admission: current accepted, unnumbered,");
+    expect(state).toContain("81dc43cc0bc802565801e89e0f3a750029583b1d");
+    expect(state).toContain("Permanent A-number: `NOT ASSIGNED`");
+    expect(state).toContain("DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`");
   });
 
   it("does not introduce Core, Paper, Trading, broker, accounting or execution dependencies", () => {
