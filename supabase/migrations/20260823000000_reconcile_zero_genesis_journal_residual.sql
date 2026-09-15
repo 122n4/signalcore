@@ -4,6 +4,8 @@ do $zero_genesis_journal_preflight$
 declare
   v_residual_count integer;
   v_matching_count integer;
+  v_residual_sha256 text;
+  v_expected_residual_sha256 constant text := '5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248';
 begin
   if current_user <> 'postgres' then
     raise exception 'Zero-Genesis journal reconciliation failed: migration executor must be postgres';
@@ -19,6 +21,10 @@ begin
 
   if to_regclass('public.journal_entries') is null then
     raise exception 'Zero-Genesis journal reconciliation failed: public.journal_entries is missing';
+  end if;
+
+  if to_regprocedure('extensions.digest(text,text)') is null then
+    raise exception 'Zero-Genesis journal reconciliation failed: extensions.digest(text,text) is missing';
   end if;
 
   if not exists (
@@ -76,15 +82,21 @@ begin
   end if;
 
   if v_residual_count = 1 then
-    select count(*)
-      into v_matching_count
-      from public.journal_entries
+    select
+      count(*),
+      max(encode(extensions.digest(to_jsonb(j)::text, 'sha256'), 'hex'))
+      into v_matching_count, v_residual_sha256
+      from public.journal_entries as j
      where lower(coalesce(mode, '')) = 'investing'
        and type = 'conversion_event'
        and created_at = timestamptz '2026-09-05 13:59:12.762+00';
 
     if v_matching_count <> 1 then
       raise exception 'Zero-Genesis journal reconciliation failed: the sole residual does not match independently verified Production evidence';
+    end if;
+
+    if v_residual_sha256 is distinct from v_expected_residual_sha256 then
+      raise exception 'Zero-Genesis journal reconciliation failed: full-row SHA-256 fingerprint mismatch';
     end if;
   end if;
 end;
@@ -99,6 +111,7 @@ do $zero_genesis_journal_repair$
 declare
   v_residual_count integer;
   v_deleted_count integer;
+  v_expected_residual_sha256 constant text := '5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248';
 begin
   select count(*)
     into v_residual_count
@@ -106,15 +119,16 @@ begin
    where lower(coalesce(mode, '')) = 'investing';
 
   if v_residual_count = 1 then
-    delete from public.journal_entries
+    delete from public.journal_entries as j
      where lower(coalesce(mode, '')) = 'investing'
        and type = 'conversion_event'
-       and created_at = timestamptz '2026-09-05 13:59:12.762+00';
+       and created_at = timestamptz '2026-09-05 13:59:12.762+00'
+       and encode(extensions.digest(to_jsonb(j)::text, 'sha256'), 'hex') = v_expected_residual_sha256;
 
     get diagnostics v_deleted_count = row_count;
 
     if v_deleted_count <> 1 then
-      raise exception 'Zero-Genesis journal reconciliation failed: expected exactly one verified residual deletion, got %', v_deleted_count;
+      raise exception 'Zero-Genesis journal reconciliation failed: expected exactly one fingerprint-pinned residual deletion, got %', v_deleted_count;
     end if;
   elsif v_residual_count <> 0 then
     raise exception 'Zero-Genesis journal reconciliation failed: residual count changed after preflight: %', v_residual_count;
