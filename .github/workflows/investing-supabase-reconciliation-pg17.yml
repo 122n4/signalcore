@@ -1,0 +1,55 @@
+name: Investing Supabase Reconciliation PG17
+
+on:
+  push:
+    branches:
+      - "candidate/investing-supabase-reconciliation-20260915"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "tests/investingSupabaseReconciliationCandidate.test.ts"
+      - "tests/investingSupabaseReconciliationPg17.test.ts"
+      - "docs/investing-genesis/SUPABASE_RECONCILIATION_CANDIDATE_20260915.md"
+      - ".github/workflows/investing-supabase-reconciliation-pg17.yml"
+
+jobs:
+  investing-pg17-reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Static reconciliation contract
+        run: npx vitest run tests/investingSupabaseReconciliationCandidate.test.ts
+
+      - name: PostgreSQL 17 reconciliation and Genesis/I5 rehearsal
+        run: npx vitest run tests/investingSupabaseReconciliationPg17.test.ts
