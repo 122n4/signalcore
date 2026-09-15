@@ -24,7 +24,7 @@ Read-only audit against Supabase project `qdnvbamoamtkujzwrxdb` on 2026-09-15 es
 - The only residual class is `public.journal_entries` with `mode='investing'`.
 - Exactly one such row exists.
 - Independently verified non-sensitive residual identity: `type='conversion_event'`, `created_at='2026-09-05 13:59:12.762+00'`.
-- Audit fingerprint of the complete residual row set at verification time: SHA-256 `5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248`.
+- Full-row SHA-256 fingerprint computed as `SHA256(to_jsonb(row)::text)`: `5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248`.
 - No raw user identifier, row id, title, or details payload is copied into this candidate.
 
 ## Classification
@@ -65,13 +65,15 @@ It fails closed unless:
 - schema `investing` is still absent;
 - roles `investing_owner` and `investing_app` are still absent;
 - `public.journal_entries` has the required identity columns;
+- `extensions.digest(text,text)` exists;
 - retired-Investing journal residual count is `0` or exactly `1`;
-- if one row exists, it matches the independently verified non-sensitive identity above.
+- if one row exists, it matches the independently verified non-sensitive identity above;
+- if one row exists, its complete `to_jsonb(row)::text` SHA-256 equals `5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248`.
 
 It then:
 
 1. installs a `NOT VALID` constraint that immediately blocks any new `journal_entries.mode='investing'` write without first touching the existing residual;
-2. removes only the independently verified residual if it still exists;
+2. removes only the fingerprint-pinned verified residual if it still exists;
 3. validates the anti-recurrence constraint;
 4. re-runs the complete canonical Zero-Genesis residual calculation and requires `0`;
 5. does not create any Investing Genesis schema, role, table, function, or financial state.
@@ -104,16 +106,18 @@ Before any production change, a PostgreSQL 17 disposable environment must prove 
 ```text
 verified Zero-Genesis shared substrate
 → synthetic retired-Investing journal residual
-→ 20260823000000 residual repair/recurrence guard
+→ full-row fingerprint mismatch rejection
+→ fingerprint-pinned 20260823000000 residual repair/recurrence guard
 → Genesis I2 migrations in timestamp order
 → I5 migrations in timestamp order
 → RLS/role/schema/table postconditions
 ```
 
-The rehearsal must prove both paths for `20260823000000`:
+The rehearsal must prove all paths for `20260823000000`:
 
-- existing verified residual is removed and recurrence is blocked;
-- clean Zero-Genesis with no residual remains valid.
+- existing clean Zero-Genesis with no residual remains valid;
+- a row with matching non-sensitive identity but the wrong full-row fingerprint is rejected and transactionally rolled back;
+- a fingerprint-pinned synthetic residual is removed and recurrence is blocked.
 
 The existing independent I0→I4 PostgreSQL 17 rehearsal remains separate evidence for I3/I4 accounting/plan contracts.
 
@@ -123,7 +127,7 @@ Production remains `BLOCKED` until all of the following are true:
 
 1. candidate CI and PostgreSQL 17 rehearsal are green;
 2. candidate diff is independently audited against predecessor `986c96f8...`;
-3. exact production preflight is repeated immediately before mutation;
+3. exact production preflight is repeated immediately before mutation, including full-row SHA-256 recomputation;
 4. explicit owner authorization is given for the DML/DDL/history operations;
 5. `20260822140500` migration-history metadata is repaired only after physical-state proof;
 6. `20260823000000` is applied from the exact approved SHA and Zero-Genesis becomes `0` again;
@@ -140,7 +144,7 @@ Do not:
 - run a blind `db push` before a dry-run/reconciliation gate;
 - apply Genesis while the Zero-Genesis residual count is non-zero;
 - treat `service_role` as ownership/authority;
-- mutate the residual without exact fail-closed identity checks;
+- mutate the residual without exact fail-closed identity and full-row fingerprint checks;
 - merge or deploy this candidate solely because CI is green.
 
 ## Gate classification
