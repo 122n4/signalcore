@@ -12,6 +12,7 @@ const candidateDocPath = path.join(
   "investing-genesis",
   "SUPABASE_RECONCILIATION_CANDIDATE_20260915.md",
 );
+const verifiedResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 
 const currentGenesisAndI5 = [
   "20260825120000_investing_genesis_i2_authority_materialization.sql",
@@ -60,13 +61,17 @@ describe("Investing Supabase reconciliation candidate", () => {
     expect(sql).toContain("investing schema already exists");
     expect(sql).toContain("investing genesis roles already exist");
     expect(sql).toContain("public.journal_entries is missing");
+    expect(sql).toContain("extensions.digest(text,text) is missing");
     expect(sql).toContain("public.journal_entries.mode text column is missing");
     expect(sql).toContain("public.journal_entries.type text column is missing");
     expect(sql).toContain("public.journal_entries.created_at timestamptz column is missing");
     expect(sql).toContain("unexpected investing journal residual count %");
     expect(sql).toContain("the sole residual does not match independently verified production evidence");
+    expect(sql).toContain("full-row sha-256 fingerprint mismatch");
     expect(sql).toContain("type = 'conversion_event'");
     expect(sql).toContain("timestamptz '2026-09-05 13:59:12.762+00'");
+    expect(sql).toContain(verifiedResidualSha256);
+    expect(sql).toContain("encode(extensions.digest(to_jsonb(j)::text, 'sha256'), 'hex')");
   });
 
   it("blocks recurrence before removing the old row, then validates the guard", () => {
@@ -79,18 +84,20 @@ describe("Investing Supabase reconciliation candidate", () => {
     expect(sql).toContain("check (lower(coalesce(mode, '')) <> 'investing') not valid");
     expect(deleteIndex).toBeGreaterThan(guardIndex);
     expect(validateIndex).toBeGreaterThan(deleteIndex);
-    expect(sql).toContain("expected exactly one verified residual deletion");
+    expect(sql).toContain("expected exactly one fingerprint-pinned residual deletion");
     expect(sql).toContain("investing journal residual remains after repair");
     expect(sql).toContain("investing runtime residuals remain after repair");
     expect(sql).toContain("and c.convalidated");
   });
 
-  it("contains exactly one narrow row deletion and no unrelated DML", () => {
+  it("contains exactly one fingerprint-pinned row deletion and no unrelated DML", () => {
     const sql = stripSqlComments(fs.readFileSync(repairPath, "utf8"));
     const deletes = sql.match(/\bdelete\s+from\b/gi) ?? [];
 
     expect(deletes).toHaveLength(1);
-    expect(sql).toMatch(/delete\s+from\s+public\.journal_entries/i);
+    expect(sql).toMatch(/delete\s+from\s+public\.journal_entries\s+as\s+j/i);
+    expect(sql).toContain(verifiedResidualSha256);
+    expect(sql).toMatch(/extensions\.digest\(to_jsonb\(j\)::text,\s*'sha256'\)/i);
     expect(sql).not.toMatch(/\binsert\s+into\b/i);
     expect(sql).not.toMatch(/\bupdate\s+/i);
     expect(sql).not.toMatch(/\btruncate\b/i);
@@ -119,7 +126,8 @@ describe("Investing Supabase reconciliation candidate", () => {
     expect(doc).toContain("Source versions missing from production ledger: `11`");
     expect(doc).toContain("Production-ledger versions absent from current source: `53`");
     expect(doc).toContain("20260822140500_recover_zero_genesis_shared_preconditions");
-    expect(doc).toContain("5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248");
+    expect(doc).toContain(verifiedResidualSha256);
+    expect(doc).toContain("full-row SHA-256");
     expect(doc).toContain("PRODUCTION DDL/DML               = NOT AUTHORIZED");
     expect(doc).toContain("MIGRATION-HISTORY MUTATION       = NOT AUTHORIZED");
     expect(doc).toContain("MERGE                            = NOT AUTHORIZED");
