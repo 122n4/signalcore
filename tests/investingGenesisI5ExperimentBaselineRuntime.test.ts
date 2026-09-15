@@ -47,7 +47,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     const admitted = admitExperimentBaselineV1(input);
 
     expect(admitted).toEqual({
-      schemaVersion: "ADMITTED_EXPERIMENT_BASELINE_V1",
+      schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1",
       relation: "BASELINE",
       researchSpecRevisionId,
       researchIr: ref("SYNTRAKE:RESEARCH_IR:V1"),

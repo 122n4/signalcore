@@ -30,7 +30,7 @@ The Experiment owner never receives raw Research IR payload and never canonicali
 
 `AdmittedExperimentBaselineV1` is an immutable closed object with exactly:
 
-- `schemaVersion = ADMITTED_EXPERIMENT_BASELINE_V1`
+- `schemaVersion = EXPERIMENT_BASELINE_CANDIDATE_V1`
 - `relation = BASELINE`
 - canonical `researchSpecRevisionId`
 - immutable Research IR `HashRefV1`

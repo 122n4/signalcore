@@ -15,7 +15,7 @@ export type ExperimentBaselineCandidateV1 = Readonly<{
 }>;
 
 export type AdmittedExperimentBaselineV1 = Readonly<{
-  schemaVersion: "ADMITTED_EXPERIMENT_BASELINE_V1";
+  schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1";
   relation: "BASELINE";
   researchSpecRevisionId: CanonicalUuidV1;
   researchIr: HashRefV1;
@@ -35,7 +35,7 @@ export function admitExperimentBaselineV1(input: ExperimentBaselineCandidateV1):
   assertHashRefDomainV1(researchIr, "SYNTRAKE:RESEARCH_IR:V1");
 
   return deepFreeze({
-    schemaVersion: "ADMITTED_EXPERIMENT_BASELINE_V1",
+    schemaVersion: "EXPERIMENT_BASELINE_CANDIDATE_V1",
     relation: "BASELINE",
     researchSpecRevisionId,
     researchIr: deepFreeze({ ...researchIr }),
