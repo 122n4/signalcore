@@ -1,0 +1,6 @@
+# Canonical Genesis/I5 docs and database artifacts are byte-sensitive.
+# Force LF checkouts on every platform so byte pins and multiline guards do not
+# depend on the developer's core.autocrlf setting.
+docs/investing-genesis/** text eol=lf
+supabase/baselines/genesis/** text eol=lf
+supabase/migrations/** text eol=lf
