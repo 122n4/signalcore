@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 const repoRoot = path.resolve(__dirname, "..");
 const connectionString = process.env.PG17_RECONCILIATION_URL ?? "";
 const repairMigration = "supabase/migrations/20260823000000_reconcile_zero_genesis_journal_residual.sql";
+const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const genesisAndI5 = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
   "supabase/migrations/20260825123000_investing_genesis_i2_authorized_context.sql",
@@ -34,6 +35,27 @@ async function applySql(relativePath: string) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`PG17 reconciliation rehearsal failed for ${relativePath}: ${message}`);
   }
+}
+
+async function applyRepairWithExpectedFingerprint(expectedFingerprint = productionResidualSha256) {
+  const sql = readSql(repairMigration).replaceAll(productionResidualSha256, expectedFingerprint);
+  try {
+    await client.query(sql);
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`PG17 reconciliation rehearsal failed for ${repairMigration}: ${message}`);
+  }
+}
+
+async function residualFingerprint() {
+  const result = await client.query<{ sha256: string }>(`
+    select encode(extensions.digest(to_jsonb(j)::text, 'sha256'), 'hex') as sha256
+    from public.journal_entries as j
+    where lower(coalesce(mode,'')) = 'investing'
+  `);
+  expect(result.rows).toHaveLength(1);
+  return result.rows[0]!.sha256;
 }
 
 async function dropRoleIfPresent(role: "investing_app" | "investing_owner") {
@@ -124,6 +146,20 @@ async function resetDisposableDatabase() {
   `);
 }
 
+async function insertSyntheticResidual() {
+  await client.query(`
+    insert into public.journal_entries (user_id, mode, type, title, details, created_at)
+    values (
+      'pg17-synthetic-residual',
+      'investing',
+      'conversion_event',
+      'synthetic retired Investing residual',
+      '{"synthetic":true}'::jsonb,
+      timestamptz '2026-09-05 13:59:12.762+00'
+    )
+  `);
+}
+
 async function assertGuardIsValidated() {
   const result = await client.query<{ count: number }>(`
     select count(*)::int as count
@@ -168,7 +204,7 @@ afterAll(async () => {
     const version = await client.query<{ server_version: string }>("show server_version");
     expect(version.rows[0]?.server_version.startsWith("17.")).toBe(true);
 
-    await applySql(repairMigration);
+    await applyRepairWithExpectedFingerprint();
 
     const residual = await client.query<{ count: number }>(`
       select count(*)::int as count
@@ -180,20 +216,34 @@ afterAll(async () => {
     await assertInvestingJournalWriteBlocked();
   });
 
-  it("removes only the verified residual, preserves unrelated rows, blocks recurrence, and replays current Genesis/I5", async () => {
-    await client.query(`
-      insert into public.journal_entries (user_id, mode, type, title, details, created_at)
-      values (
-        'pg17-synthetic-residual',
-        'investing',
-        'conversion_event',
-        'synthetic retired Investing residual',
-        '{"synthetic":true}'::jsonb,
-        timestamptz '2026-09-05 13:59:12.762+00'
-      )
-    `);
+  it("fails closed when non-sensitive identity matches but full-row fingerprint does not", async () => {
+    await insertSyntheticResidual();
 
-    await applySql(repairMigration);
+    await expect(client.query(readSql(repairMigration))).rejects.toThrow(/full-row SHA-256 fingerprint mismatch/i);
+    await client.query("rollback");
+
+    const residual = await client.query<{ count: number }>(`
+      select count(*)::int as count
+      from public.journal_entries
+      where lower(coalesce(mode,'')) = 'investing'
+    `);
+    expect(residual.rows[0]?.count).toBe(1);
+
+    const guard = await client.query<{ count: number }>(`
+      select count(*)::int as count
+      from pg_constraint
+      where conrelid = 'public.journal_entries'::regclass
+        and conname = 'journal_entries_no_retired_investing_mode_check'
+    `);
+    expect(guard.rows[0]?.count).toBe(0);
+  });
+
+  it("removes only the fingerprint-pinned residual, preserves unrelated rows, blocks recurrence, and replays current Genesis/I5", async () => {
+    await insertSyntheticResidual();
+    const syntheticFingerprint = await residualFingerprint();
+    expect(syntheticFingerprint).not.toBe(productionResidualSha256);
+
+    await applyRepairWithExpectedFingerprint(syntheticFingerprint);
 
     const journal = await client.query<{ mode: string; type: string }>(`
       select mode, type
