@@ -1,9 +1,7 @@
 name: Investing Supabase Reconciliation PG17
 
 on:
-  push:
-    branches:
-      - "candidate/investing-supabase-reconciliation-20260915"
+  workflow_dispatch:
   pull_request:
     paths:
       - "supabase/migrations/**"
