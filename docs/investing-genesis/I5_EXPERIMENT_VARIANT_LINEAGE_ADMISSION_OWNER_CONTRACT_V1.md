@@ -1,10 +1,10 @@
 # I5 Experiment Variant Lineage Admission Owner Contract V1
 
-Status: CANDIDATE OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED
 
 ## Purpose
 
-This candidate-only unnumbered slice establishes the first structural runtime admission surface for Experiment `VARIANT` lineage. It admits a closed VARIANT envelope that names one immutable parent Experiment operational UUID and binds the child candidate to exact ResearchSpecRevision and Research IR HashRef family evidence.
+This current accepted unnumbered slice establishes the first structural runtime admission surface for Experiment `VARIANT` lineage. It admits a closed VARIANT envelope that names one immutable parent Experiment operational UUID and binds the child candidate to exact ResearchSpecRevision and Research IR HashRef family evidence.
 
 `VARIANT structural admission != VARIANT persistence`.
 
@@ -18,7 +18,7 @@ Repository `122n4/signalcore`, canonical `main` predecessor:
 
 ## Dependencies
 
-This candidate depends on the accepted Experiment BASELINE structural admission and accepted Experiment BASELINE durable persistence foundations. BASELINE remains the family/root Experiment relation. VARIANT is structurally a child of one existing Experiment.
+This accepted structural admission boundary depends on the accepted Experiment BASELINE structural admission and accepted Experiment BASELINE durable persistence foundations. BASELINE remains the family/root Experiment relation. VARIANT is structurally a child of one existing Experiment.
 
 ## Input
 
@@ -92,7 +92,7 @@ Admission fails closed for non-plain objects, null, arrays, class instances, mis
 
 ## Architecture Boundaries
 
-Runtime admission lives in `lib/investing/research/experiment.ts` and is exported through `lib/investing/research/index.ts`. This candidate does not add a mutation operation, writer, service, migration, RLS policy, ACL, idempotency vocabulary or active Experiment pointer transition.
+Runtime admission lives in `lib/investing/research/experiment.ts` and is exported through `lib/investing/research/index.ts`. This acceptance does not add a mutation operation, writer, service, migration, RLS policy, ACL, idempotency vocabulary or active Experiment pointer transition.
 
 The runtime may depend on canonical Research primitives. It must not import Paper, Trading, accounting, broker, portfolio execution, worker, queue, DatasetSnapshot, Run, Result or Evidence authority.
 
@@ -103,6 +103,21 @@ No durable VARIANT persistence, `RESEARCH_EXPERIMENT_VARIANT_CREATE_V1`, VARIANT
 `CORE != LAB`.
 
 `LAB != PAPER`.
+
+## Acceptance Provenance
+
+- Canonical predecessor:
+  `34f6ab4f5c8a4c5049b14e6466d86a773701c0ba`.
+- Audited candidate:
+  `a46018b733d82dbaa22ff0971c82abf4d446d52a`.
+- CI:
+  `35140170597`.
+- Vercel:
+  `SUCCESS`.
+- Independent audit:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
 
 ## What Did This Slice Supersede?
 

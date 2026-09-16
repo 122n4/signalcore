@@ -146,20 +146,26 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
     }
   });
 
-  it("records a candidate-only owner contract without promoting current state", () => {
+  it("records accepted unnumbered owner and current-state boundaries without persistence", () => {
     const contract = fs.readFileSync(
       path.join(process.cwd(), "docs", "investing-genesis", "I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md"),
       "utf8",
     );
     const state = fs.readFileSync(path.join(process.cwd(), "docs", "investing-genesis", "CANONICAL_CURRENT_STATE.md"), "utf8");
 
-    expect(contract).toContain("CANDIDATE OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED");
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED");
     expect(contract).toContain("VARIANT structural admission != VARIANT persistence");
     expect(contract).toContain("VARIANT lineage != scientific ExperimentParameters authority");
     expect(contract).toContain("does not prove parent existence");
     expect(contract).toContain("Future persistence MUST fail closed");
     expect(contract).toContain("What Did This Slice Supersede?");
-    expect(state).not.toContain("I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("CURRENT_ACCEPTED / STRUCTURAL_LINEAGE_ONLY");
+    expect(state).toContain("Permanent A-number:");
+    expect(state).toContain("`NOT ASSIGNED`");
+    expect(state).toContain("Experiment VARIANT persistence remains `DEFERRED / NOT ACCEPTED`");
+    expect(state).toContain("EXPERIMENT VARIANT STRUCTURAL LINEAGE ADMISSION = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(state).not.toContain("RESEARCH_EXPERIMENT_VARIANT_CREATE_V1");
   });
 
   it("does not add persistence, operation vocabulary or execution dependencies", () => {
