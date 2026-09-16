@@ -248,6 +248,11 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(a4).toContain("research_spec_revision_create_v1");
     expect(a4).toContain("current_setting('syntrake.investing.next_experiment_id', true) = '-'");
     expect(a4).toContain("active_experiment_id is null");
+    expect(sql).toContain("with policy_checks(policyname, is_valid) as");
+    expect(sql).toContain("when 'research_material_pointer_states_i5_a3_update' then");
+    expect(sql).toContain("when 'research_material_pointer_states_i5_a4_update' then");
+    expect(sql).toContain("when 'research_material_pointer_states_i5_a4_read' then");
+    expect(sql).toContain("or lower(coalesce(p.qual, '')) ~ 'is distinct from'");
   });
 
   it("keeps writer/service boundaries closed and avoids future scope imports", () => {
