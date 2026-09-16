@@ -227,6 +227,13 @@ function experimentFixtureMaterialRequestHash(scope: LabScope, suffix: string, s
     .toUpperCase();
 }
 
+function variantFixtureMaterialRequestHash(scope: LabScope, suffix: string, parentExperimentId: string, expectedExperimentId: string) {
+  return createHash("sha256")
+    .update(`PG17_EXPERIMENT_VARIANT_FIXTURE_V1|${scope}|${suffix}|${parentExperimentId}|${expectedExperimentId}`)
+    .digest("hex")
+    .toUpperCase();
+}
+
 function fixture(scope: LabScope, suffix: string, specHasHypothesis: boolean): LabFixture {
   const accountScope = scope === "ACCOUNT_SCOPE";
   const tail = suffix.padStart(12, "0").slice(-12);
@@ -413,6 +420,107 @@ async function createBaselineExperiment(row: LabFixture) {
     );
     expect(resultingPointer.rows).toEqual([{ active_experiment_id: row.experimentId }]);
   });
+}
+
+function variantIds(suffix: string) {
+  const tail = suffix.padStart(12, "0").slice(-12);
+  return {
+    experimentId: `a1000000-0000-4000-8000-${tail}`,
+    idempotencyRecordId: `b1000000-0000-4000-8000-${tail}`,
+    idempotencyKey: `idem-pg17-i5-variant-${suffix}-0001`,
+    correlationId: `corr-pg17-i5-variant-${suffix}-0001`,
+  };
+}
+
+async function createVariantExperiment(
+  row: LabFixture,
+  input: {
+    suffix: string;
+    parentExperimentId: string;
+    expectedExperimentId: string;
+    experimentId?: string;
+    materialRequestHash?: string;
+    idempotencyKey?: string;
+  },
+) {
+  const ids = variantIds(input.suffix);
+  const childId = input.experimentId ?? ids.experimentId;
+  const materialRequestHash = input.materialRequestHash ??
+    variantFixtureMaterialRequestHash(row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", input.suffix, input.parentExperimentId, input.expectedExperimentId);
+  const before = await client.query<{
+    active_draft_revision_id: string | null;
+    active_hypothesis_revision_id: string | null;
+    active_spec_revision_id: string | null;
+    active_experiment_id: string | null;
+    pointer_version: string;
+  }>(
+    "select active_draft_revision_id, active_hypothesis_revision_id, active_spec_revision_id, active_experiment_id, pointer_version::text from investing.research_material_pointer_states where research_investigation_id = $1",
+    [row.investigationId],
+  );
+  const previous = before.rows[0]!;
+  await withAppContext(row, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+    idempotency_record_id: ids.idempotencyRecordId,
+    idempotency_key: input.idempotencyKey ?? ids.idempotencyKey,
+    correlation_id: ids.correlationId,
+    material_request_hash: materialRequestHash,
+    research_spec_revision_id: row.specRevisionId,
+    research_ir_hash_hex: hashF,
+    expected_experiment_id: input.expectedExperimentId,
+    parent_experiment_id: input.parentExperimentId,
+    research_experiment_id: childId,
+    next_experiment_id: childId,
+  }, async () => {
+    await client.query(`
+      insert into investing.idempotency_records (
+        idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+        operation_scope, operation, principal_id, tenant_id, account_id, status
+      ) values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1', $7, $8, $9, 'STARTED')
+    `, [ids.idempotencyRecordId, input.idempotencyKey ?? ids.idempotencyKey, materialRequestHash, ids.correlationId, row.actorId, row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", row.principalId, row.tenantId, row.accountId]);
+    await client.query(`
+      insert into investing.research_experiments (
+        research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
+        parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
+        research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+      ) values ($1, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10,
+        'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1', 'RESEARCH_MUTATE', 'VARIANT', $11, $12,
+        'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', $13, $14, $15, $16, $17)
+    `, [childId, row.investigationId, row.tenantId, row.accountId, row.principalId, row.actorId, row.tenantMembershipId, row.accountAccessId, row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", row.sourceContext, input.parentExperimentId, row.specRevisionId, hashF, materialRequestHash, ids.idempotencyRecordId, input.idempotencyKey ?? ids.idempotencyKey, ids.correlationId]);
+    const updated = await client.query(`
+      update investing.research_material_pointer_states
+      set active_experiment_id = $1, pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
+      where research_investigation_id = $2
+        and pointer_version = $3
+        and active_spec_revision_id = $4
+        and active_experiment_id = $5
+    `, [childId, row.investigationId, previous.pointer_version, row.specRevisionId, input.expectedExperimentId]);
+    expect(updated.rowCount).toBe(1);
+    await client.query(`
+      update investing.idempotency_records
+      set status = 'SUCCEEDED',
+          canonical_result_reference = $2::jsonb,
+          completed_at = transaction_timestamp(),
+          updated_at = transaction_timestamp()
+      where idempotency_record_id = $1 and status = 'STARTED'
+    `, [ids.idempotencyRecordId, JSON.stringify({
+      replayed: false,
+      researchInvestigationId: row.investigationId,
+      researchExperimentId: childId,
+      parentExperimentId: input.parentExperimentId,
+      researchSpecRevisionId: row.specRevisionId,
+      relation: "VARIANT",
+      researchIrHashHex: hashF,
+      materialRequestHash,
+      pointerVersion: String(BigInt(previous.pointer_version) + BigInt(1)),
+    })]);
+  });
+  return {
+    ...ids,
+    experimentId: childId,
+    materialRequestHash,
+    previousPointerVersion: previous.pointer_version,
+    nextPointerVersion: String(BigInt(previous.pointer_version) + BigInt(1)),
+  };
 }
 
 beforeAll(async () => {
@@ -710,5 +818,368 @@ describe("Investing Supabase reconciliation PostgreSQL 17 readiness", () => {
       const forbidden = await client.query("select research_experiment_id from investing.research_experiments where research_experiment_id = $1", [preserve.experimentId]);
       expect(forbidden.rowCount).toBe(0);
     });
+  });
+
+  it("executes Experiment VARIANT persistence across tenant/account scopes, lineage and invalidation matrix", async () => {
+    await applyGenesisAndI5();
+
+    const tenant = fixture("TENANT_SCOPE", "201", false);
+    const account = fixture("ACCOUNT_SCOPE", "202", false);
+    const chain = fixture("TENANT_SCOPE", "203", false);
+    const dependent = fixture("TENANT_SCOPE", "204", true);
+    const independent = fixture("TENANT_SCOPE", "205", false);
+    const specClear = fixture("TENANT_SCOPE", "206", false);
+    const crossTenant = fixture("TENANT_SCOPE", "207", false);
+    const crossAccount = fixture("ACCOUNT_SCOPE", "208", false);
+    for (const row of [tenant, account, chain, dependent, independent, specClear, crossTenant, crossAccount]) {
+      await seedLabFixture(row, row === dependent);
+      await createBaselineExperiment(row);
+    }
+
+    const tenantVariant = await createVariantExperiment(tenant, {
+      suffix: "201",
+      parentExperimentId: tenant.experimentId,
+      expectedExperimentId: tenant.experimentId,
+    });
+    const tenantPointer = await client.query<{
+      active_draft_revision_id: string | null;
+      active_hypothesis_revision_id: string | null;
+      active_spec_revision_id: string | null;
+      active_experiment_id: string | null;
+      pointer_version: string;
+      updated_by_operation: string | null;
+    }>("select active_draft_revision_id, active_hypothesis_revision_id, active_spec_revision_id, active_experiment_id, pointer_version::text, updated_by_operation from investing.research_material_pointer_states where research_investigation_id = $1", [tenant.investigationId]);
+    expect(tenantPointer.rows).toEqual([{
+      active_draft_revision_id: tenant.draftRevisionId,
+      active_hypothesis_revision_id: tenant.hypothesisRevisionId,
+      active_spec_revision_id: tenant.specRevisionId,
+      active_experiment_id: tenantVariant.experimentId,
+      pointer_version: "9",
+      updated_by_operation: "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1",
+    }]);
+    const tenantChild = await client.query(`
+      select relation, parent_experiment_id, research_investigation_id, research_spec_revision_id,
+        research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex
+      from investing.research_experiments
+      where research_experiment_id = $1
+    `, [tenantVariant.experimentId]);
+    expect(tenantChild.rows).toEqual([{
+      relation: "VARIANT",
+      parent_experiment_id: tenant.experimentId,
+      research_investigation_id: tenant.investigationId,
+      research_spec_revision_id: tenant.specRevisionId,
+      research_ir_hash_algorithm: "SHA-256",
+      research_ir_hash_domain: "SYNTRAKE:RESEARCH_IR:V1",
+      research_ir_hash_version: "SYNTRAKE_SHA256_V1",
+      research_ir_hash_hex: hashF,
+    }]);
+
+    const accountVariant = await createVariantExperiment(account, {
+      suffix: "202",
+      parentExperimentId: account.experimentId,
+      expectedExperimentId: account.experimentId,
+    });
+    await withAppContext(account, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: account.experimentId,
+      expected_experiment_id: account.experimentId,
+      research_experiment_id: accountVariant.experimentId,
+      research_spec_revision_id: account.specRevisionId,
+      research_ir_hash_hex: hashF,
+      material_request_hash: accountVariant.materialRequestHash,
+      idempotency_record_id: accountVariant.idempotencyRecordId,
+      idempotency_key: accountVariant.idempotencyKey,
+    }, async () => {
+      const accountRows = await client.query("select account_id from investing.accounts where account_id = $1", [account.accountId]);
+      const accessRows = await client.query("select account_access_id from investing.account_access where account_access_id = $1", [account.accountAccessId]);
+      expect(accountRows.rowCount).toBe(1);
+      expect(accessRows.rowCount).toBe(1);
+    });
+
+    const e1 = await createVariantExperiment(chain, {
+      suffix: "2031",
+      parentExperimentId: chain.experimentId,
+      expectedExperimentId: chain.experimentId,
+    });
+    const e2 = await createVariantExperiment(chain, {
+      suffix: "2032",
+      parentExperimentId: e1.experimentId,
+      expectedExperimentId: e1.experimentId,
+    });
+    const family = await client.query("select parent_experiment_id, research_spec_revision_id, research_ir_hash_hex from investing.research_experiments where research_experiment_id = $1", [e2.experimentId]);
+    expect(family.rows).toEqual([{ parent_experiment_id: e1.experimentId, research_spec_revision_id: chain.specRevisionId, research_ir_hash_hex: hashF }]);
+
+    await withAppContext(chain, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: chain.experimentId,
+      expected_experiment_id: e2.experimentId,
+      research_experiment_id: "a1990000-0000-4000-8000-000000002039",
+      research_spec_revision_id: chain.specRevisionId,
+      research_ir_hash_hex: hashF,
+      material_request_hash: "9".repeat(64),
+      idempotency_record_id: "b1990000-0000-4000-8000-000000002039",
+      idempotency_key: "idem-pg17-i5-distinct-parent-pointer",
+    }, async () => {
+      const parentVisible = await client.query("select research_experiment_id from investing.research_experiments where research_experiment_id = $1", [chain.experimentId]);
+      const pointerVisible = await client.query("select active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1 and active_experiment_id = $2", [chain.investigationId, e2.experimentId]);
+      expect(parentVisible.rowCount).toBe(1);
+      expect(pointerVisible.rowCount).toBe(1);
+    });
+
+    const missingParent = createVariantExperiment(tenant, {
+      suffix: "209",
+      parentExperimentId: "a9000000-0000-4000-8000-000000000209",
+      expectedExperimentId: tenantVariant.experimentId,
+    });
+    await expect(missingParent).rejects.not.toThrow(/22P02/);
+
+    for (const [suffix, parentExperimentId] of [["210", crossTenant.experimentId], ["211", crossAccount.experimentId]] as const) {
+      await expect(createVariantExperiment(tenant, {
+        suffix,
+        parentExperimentId,
+        expectedExperimentId: tenantVariant.experimentId,
+      })).rejects.not.toThrow(/22P02/);
+    }
+
+    await client.query(`
+      insert into investing.idempotency_records (
+        idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+        operation_scope, operation, principal_id, tenant_id, account_id, status, completed_at
+      ) values (
+        'b3000000-0000-4000-8000-000000000201', 'idem-wrong-spec-parent-0001', repeat('3', 64),
+        'corr-wrong-spec-parent-0001', 'USER_PRINCIPAL', $1, 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1',
+        $2, $3, null, 'SUCCEEDED', timestamptz '2026-09-16 00:00:00+00'
+      );
+      insert into investing.research_experiments (
+        research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
+        parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
+        research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+      ) values (
+        'a3000000-0000-4000-8000-000000000201', $4, $3, null, $2, 'USER_PRINCIPAL', $1, $5, null,
+        'TENANT_SCOPE', 'PURE_RESEARCH', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE',
+        null, $6, 'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', $7, repeat('3', 64),
+        'b3000000-0000-4000-8000-000000000201', 'idem-wrong-spec-parent-0001', 'corr-wrong-spec-parent-0001'
+      )
+    `, [tenant.actorId, tenant.principalId, tenant.tenantId, tenant.investigationId, tenant.tenantMembershipId, tenant.nextSpecRevisionId, hashF]);
+    await expect(createVariantExperiment(tenant, {
+      suffix: "218",
+      parentExperimentId: "a3000000-0000-4000-8000-000000000201",
+      expectedExperimentId: tenantVariant.experimentId,
+    })).rejects.not.toThrow(/22P02/);
+
+    await client.query("update investing.research_experiments set research_ir_hash_hex = $1 where research_experiment_id = $2", [hashE, crossTenant.experimentId]);
+    await expect(createVariantExperiment(crossTenant, {
+      suffix: "212",
+      parentExperimentId: crossTenant.experimentId,
+      expectedExperimentId: crossTenant.experimentId,
+    })).rejects.not.toThrow(/22P02/);
+
+    await expect(createVariantExperiment(tenant, {
+      suffix: "213",
+      parentExperimentId: tenant.experimentId,
+      expectedExperimentId: tenant.experimentId,
+    })).rejects.not.toThrow(/22P02/);
+
+    await withAppContext(tenant, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: tenant.experimentId,
+      expected_experiment_id: tenantVariant.experimentId,
+      research_experiment_id: "a2140000-0000-4000-8000-000000000214",
+      research_spec_revision_id: tenant.nextSpecRevisionId,
+      research_ir_hash_hex: hashF,
+      material_request_hash: "8".repeat(64),
+      idempotency_record_id: "b2140000-0000-4000-8000-000000000214",
+      idempotency_key: "idem-pg17-wrong-active-spec",
+    }, async () => {
+      const badSpecUpdate = await client.query(`
+        update investing.research_material_pointer_states
+        set active_experiment_id = $1, pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
+        where research_investigation_id = $2 and active_spec_revision_id = $3 and active_experiment_id = $4
+      `, ["a2140000-0000-4000-8000-000000000214", tenant.investigationId, tenant.nextSpecRevisionId, tenantVariant.experimentId]);
+      expect(badSpecUpdate.rowCount).toBe(0);
+    });
+
+    await withAppContext(tenant, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: tenant.experimentId,
+      expected_experiment_id: tenantVariant.experimentId,
+      research_experiment_id: "a2190000-0000-4000-8000-000000000219",
+      research_spec_revision_id: tenant.specRevisionId,
+      research_ir_hash_hex: hashF,
+      material_request_hash: "2".repeat(64),
+      idempotency_record_id: "b2190000-0000-4000-8000-000000000219",
+      idempotency_key: "idem-pg17-wrong-pointer-version",
+    }, async () => {
+      const wrongVersion = await client.query(`
+        update investing.research_material_pointer_states
+        set active_experiment_id = $1, pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
+        where research_investigation_id = $2 and pointer_version = 1 and active_spec_revision_id = $3 and active_experiment_id = $4
+      `, ["a2190000-0000-4000-8000-000000000219", tenant.investigationId, tenant.specRevisionId, tenantVariant.experimentId]);
+      expect(wrongVersion.rowCount).toBe(0);
+    });
+
+    await withAppContext(tenant, "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1", {
+      parent_experiment_id: tenant.experimentId,
+      research_experiment_id: "a2150000-0000-4000-8000-000000000215",
+      research_spec_revision_id: tenant.specRevisionId,
+      material_request_hash: "7".repeat(64),
+      idempotency_record_id: "b2150000-0000-4000-8000-000000000215",
+      idempotency_key: "idem-pg17-invalid-operation",
+    }, async () => {
+      await expect(client.query(`
+        insert into investing.research_experiments (
+          research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+          tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
+          parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
+          research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+        ) values ('a2150000-0000-4000-8000-000000000215', $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9,
+          'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'VARIANT', $10, $11, 'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1',
+          'SYNTRAKE_SHA256_V1', $12, $13, $14, $15, 'corr-invalid-operation')
+      `, [tenant.investigationId, tenant.tenantId, tenant.accountId, tenant.principalId, tenant.actorId, tenant.tenantMembershipId, tenant.accountAccessId, "TENANT_SCOPE", tenant.sourceContext, tenant.experimentId, tenant.specRevisionId, hashF, "7".repeat(64), "b2150000-0000-4000-8000-000000000215", "idem-pg17-invalid-operation"])).rejects.not.toThrow(/22P02/);
+    });
+
+    await expect(client.query(`
+      insert into investing.research_experiments (
+        research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
+        parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
+        research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+      )
+      select gen_random_uuid(), research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, 'BASELINE',
+        research_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
+        research_ir_hash_hex, repeat('6', 64), idempotency_record_id, 'shape-baseline-parent', 'shape-baseline-parent'
+      from investing.research_experiments
+      where research_experiment_id = $1
+    `, [tenant.experimentId])).rejects.toThrow();
+    await expect(client.query(`
+      insert into investing.research_experiments (
+        research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
+        parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
+        research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+      )
+      select gen_random_uuid(), research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1',
+        capability, 'VARIANT', null, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain,
+        research_ir_hash_version, research_ir_hash_hex, repeat('5', 64), idempotency_record_id, 'shape-variant-null', 'shape-variant-null'
+      from investing.research_experiments
+      where research_experiment_id = $1
+    `, [tenant.experimentId])).rejects.toThrow();
+
+    await withAppContext(tenant, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: tenant.experimentId,
+      expected_experiment_id: tenantVariant.experimentId,
+      research_experiment_id: tenantVariant.experimentId,
+      research_spec_revision_id: tenant.specRevisionId,
+      research_ir_hash_hex: hashF,
+      material_request_hash: tenantVariant.materialRequestHash,
+      idempotency_record_id: tenantVariant.idempotencyRecordId,
+      idempotency_key: tenantVariant.idempotencyKey,
+    }, async () => {
+      const replay = await client.query("select canonical_result_reference->>'researchExperimentId' as id from investing.idempotency_records where idempotency_key = $1", [tenantVariant.idempotencyKey]);
+      expect(replay.rows).toEqual([{ id: tenantVariant.experimentId }]);
+      const visible = await client.query("select count(*)::int as count from investing.research_experiments");
+      expect(visible.rows[0]?.count).toBeLessThan(3);
+    });
+    await withAppContext(tenant, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: tenant.experimentId,
+      expected_experiment_id: tenantVariant.experimentId,
+      research_experiment_id: "a2160000-0000-4000-8000-000000000216",
+      research_spec_revision_id: tenant.specRevisionId,
+      research_ir_hash_hex: hashF,
+      material_request_hash: "4".repeat(64),
+      idempotency_record_id: "b2160000-0000-4000-8000-000000000216",
+      idempotency_key: tenantVariant.idempotencyKey,
+    }, async () => {
+      const existing = await client.query("select material_request_hash from investing.idempotency_records where idempotency_key = $1", [tenantVariant.idempotencyKey]);
+      expect(existing.rows).toEqual([{ material_request_hash: tenantVariant.materialRequestHash }]);
+    });
+    await expect(createVariantExperiment(tenant, {
+      suffix: "217",
+      parentExperimentId: tenant.experimentId,
+      expectedExperimentId: tenantVariant.experimentId,
+    })).rejects.not.toThrow(/22P02/);
+
+    const activeDependent = await createVariantExperiment(dependent, {
+      suffix: "204",
+      parentExperimentId: dependent.experimentId,
+      expectedExperimentId: dependent.experimentId,
+    });
+    await withAppContext(dependent, "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1", {
+      expected_experiment_id: activeDependent.experimentId,
+      next_experiment_id: "-",
+      research_spec_revision_id: "-",
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_hypothesis_revision_id = $1, active_spec_revision_id = null, active_experiment_id = null,
+          pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+        where research_investigation_id = $2
+      `, [dependent.nextHypothesisRevisionId, dependent.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    const activeIndependent = await createVariantExperiment(independent, {
+      suffix: "205",
+      parentExperimentId: independent.experimentId,
+      expectedExperimentId: independent.experimentId,
+    });
+    await withAppContext(independent, "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1", {
+      expected_experiment_id: activeIndependent.experimentId,
+      next_experiment_id: activeIndependent.experimentId,
+      research_spec_revision_id: independent.specRevisionId,
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_hypothesis_revision_id = $1, active_spec_revision_id = $2, active_experiment_id = $3,
+          pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+        where research_investigation_id = $4
+      `, [independent.nextHypothesisRevisionId, independent.specRevisionId, activeIndependent.experimentId, independent.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    const activeSpecClear = await createVariantExperiment(specClear, {
+      suffix: "206",
+      parentExperimentId: specClear.experimentId,
+      expectedExperimentId: specClear.experimentId,
+    });
+    await withAppContext(specClear, "RESEARCH_SPEC_REVISION_CREATE_V1", {
+      expected_experiment_id: activeSpecClear.experimentId,
+      next_experiment_id: "-",
+      research_spec_revision_id: specClear.nextSpecRevisionId,
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_spec_revision_id = $1, active_experiment_id = null, pointer_version = pointer_version + 1,
+          updated_by_operation = 'RESEARCH_SPEC_REVISION_CREATE_V1'
+        where research_investigation_id = $2
+      `, [specClear.nextSpecRevisionId, specClear.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    await withAppContext(tenant, "RESEARCH_DRAFT_REVISION_CREATE_V1", {
+      expected_experiment_id: tenantVariant.experimentId,
+      next_experiment_id: "-",
+      research_spec_revision_id: "-",
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_draft_revision_id = $1, active_spec_revision_id = null, active_experiment_id = null,
+          pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+        where research_investigation_id = $2
+      `, [tenant.nextDraftRevisionId, tenant.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    await client.query("begin");
+    await client.query("set local role investing_app");
+    await client.query("select set_config('syntrake.investing.operation', '', true)");
+    await expect(client.query("select count(*) from investing.research_experiments")).resolves.toBeDefined();
+    await client.query("rollback");
+
+    await client.query("begin");
+    await client.query("set local role investing_app");
+    await client.query("select set_config('syntrake.investing.operation', 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1', true)");
+    const stale = await client.query("select count(*)::int as count from investing.research_experiments");
+    expect(stale.rows).toEqual([{ count: 0 }]);
+    await client.query("rollback");
   });
 });
