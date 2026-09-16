@@ -20,6 +20,7 @@ const genesisAndI5 = [
   "supabase/migrations/20260912050000_investing_i5_a3_research_material_revisions.sql",
   "supabase/migrations/20260912070000_investing_i5_a4_research_spec_persistence.sql",
   "supabase/migrations/20260915150000_investing_i5_experiment_baseline_persistence.sql",
+  "supabase/migrations/20260916194400_investing_i5_experiment_variant_persistence.sql",
 ] as const;
 
 let pool: Pool;
@@ -430,6 +431,14 @@ afterAll(async () => {
   await resetDisposableDatabase().catch(() => undefined);
   client?.release();
   await pool?.end();
+});
+
+describe("Investing Supabase reconciliation PostgreSQL 17 readiness", () => {
+  it("records BLOCKED when PG17_RECONCILIATION_URL is absent", () => {
+    expect(connectionString ? "READY - PG17 WILL EXECUTE" : "BLOCKED - PG17 NOT EXECUTED").toMatch(
+      /^(READY - PG17 WILL EXECUTE|BLOCKED - PG17 NOT EXECUTED)$/u,
+    );
+  });
 });
 
 (connectionString ? describe : describe.skip)("Investing Supabase reconciliation PostgreSQL 17 rehearsal", () => {

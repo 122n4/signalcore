@@ -100,6 +100,7 @@ export {
   hypothesisRevisionCreateMaterialIdentityV1,
   researchSpecRevisionCreateMaterialIdentityV1,
   experimentBaselineCreateMaterialIdentityV1,
+  experimentVariantCreateMaterialIdentityV1,
   type ResearchMaterialScopeEvidenceV1,
   type ExpectedResearchMaterialPointersV1,
   type ExpectedResearchMaterialRootV1,
@@ -109,6 +110,7 @@ export {
   type HypothesisRevisionCreateMaterialRequestV1,
   type ResearchSpecRevisionCreateMaterialRequestV1,
   type ExperimentBaselineCreateMaterialRequestV1,
+  type ExperimentVariantCreateMaterialRequestV1,
   type ResearchMaterialRequestHashV1,
   type ResearchMaterialIdentityV1,
 } from "./materialRequest";

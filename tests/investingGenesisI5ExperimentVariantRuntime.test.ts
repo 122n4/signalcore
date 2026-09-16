@@ -168,11 +168,19 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
     expect(state).not.toContain("RESEARCH_EXPERIMENT_VARIANT_CREATE_V1");
   });
 
-  it("does not add persistence, operation vocabulary or execution dependencies", () => {
+  it("keeps VARIANT references inside authorized Research persistence surfaces", () => {
     const experimentRuntime = fs.readFileSync(path.join(process.cwd(), "lib", "investing", "research", "experiment.ts"), "utf8");
+    const allowedVariantReferenceFiles = new Set([
+      "lib/investing/authority/context.ts",
+      "lib/investing/research/experiment.ts",
+      "lib/investing/research/index.ts",
+      "lib/investing/research/materialRequest.ts",
+      "lib/investing/research/experimentVariantWriter.ts",
+      "lib/investing/research/experimentVariantService.ts",
+    ]);
     let references = "";
     try {
-      references = execFileSync("git", ["grep", "-n", "admitExperimentVariantV1\\|ExperimentVariant", "--", "app", "components", "lib", "scripts"], {
+      references = execFileSync("git", ["grep", "-n", "admitExperimentVariantV1\\|ExperimentVariant", "--", "app", "components", "lib", "scripts", "workers", "queues"], {
         cwd: process.cwd(),
         encoding: "utf8",
       });
@@ -182,8 +190,7 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
     const unexpectedReferences = references
       .split(/\r?\n/u)
       .filter(Boolean)
-      .filter((line) => !line.startsWith("lib/investing/research/experiment.ts:"))
-      .filter((line) => !line.startsWith("lib/investing/research/index.ts:"));
+      .filter((line) => !allowedVariantReferenceFiles.has(line.split(":")[0] ?? ""));
 
     expect(experimentRuntime).toContain('from "./canonical"');
     expect(experimentRuntime).not.toMatch(/from\s+["'][^"']*(paper|trading|accounting|broker|portfolio|execution|worker|queue|dataset|run|result|evidence)/iu);
