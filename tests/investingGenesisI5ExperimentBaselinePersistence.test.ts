@@ -213,6 +213,16 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(expPointer).toContain("active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)");
     expect(expPointer).toContain("active_experiment_id is null");
     expect(expPointer).toContain("active_experiment_id::text = current_setting('syntrake.investing.research_experiment_id', true)");
+    for (const fragment of [
+      "and lower(coalesce(p.qual, '')) ~ 'research_experiment_baseline_create_v1'",
+      "and lower(coalesce(p.qual, '')) ~ 'active_experiment_id'",
+      "and lower(coalesce(p.qual, '')) ~ 'is null'",
+      "and lower(coalesce(p.with_check, '')) ~ 'research_experiment_id'",
+      "and lower(coalesce(p.with_check, '')) ~ 'current_setting'",
+      "and lower(coalesce(p.with_check, '')) ~ 'updated_by_operation'",
+    ]) {
+      expect(sql).toContain(fragment);
+    }
   });
 
   it("evolves final A3/A4 pointer policies for exact Experiment predecessor and next state", () => {

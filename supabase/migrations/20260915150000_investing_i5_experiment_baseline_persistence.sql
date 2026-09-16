@@ -1119,9 +1119,20 @@ begin
     and p.policyname = 'research_material_pointer_states_i5_exp_update'
     and p.cmd = 'UPDATE'
     and p.roles = array['investing_app']::name[]
-    and lower(coalesce(p.qual, '')) ~ 'active_experiment_id is null'
-    and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id::text = current_setting'
-    and coalesce(p.with_check, '') ~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1';
+    and lower(coalesce(p.qual, '')) ~ 'research_experiment_baseline_create_v1'
+    and lower(coalesce(p.qual, '')) ~ 'research_mutate'
+    and lower(coalesce(p.qual, '')) ~ 'research_investigation_id'
+    and lower(coalesce(p.qual, '')) ~ 'active_spec_revision_id'
+    and lower(coalesce(p.qual, '')) ~ 'active_experiment_id'
+    and lower(coalesce(p.qual, '')) ~ 'is null'
+    and lower(coalesce(p.with_check, '')) ~ 'research_experiment_baseline_create_v1'
+    and lower(coalesce(p.with_check, '')) ~ 'research_mutate'
+    and lower(coalesce(p.with_check, '')) ~ 'research_investigation_id'
+    and lower(coalesce(p.with_check, '')) ~ 'active_spec_revision_id'
+    and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id'
+    and lower(coalesce(p.with_check, '')) ~ 'research_experiment_id'
+    and lower(coalesce(p.with_check, '')) ~ 'current_setting'
+    and lower(coalesce(p.with_check, '')) ~ 'updated_by_operation';
 
   if v_pointer_policy_count <> 1 then
     raise exception 'I5 Experiment postcondition violation: baseline experiment pointer policy must remain null-to-created-only: %', v_pointer_policy_count;
