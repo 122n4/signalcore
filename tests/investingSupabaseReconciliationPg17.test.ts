@@ -947,19 +947,21 @@ describe("Investing Supabase reconciliation PostgreSQL 17 readiness", () => {
         'b3000000-0000-4000-8000-000000000201', 'idem-wrong-spec-parent-0001', repeat('3', 64),
         'corr-wrong-spec-parent-0001', 'USER_PRINCIPAL', $1, 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1',
         $2, $3, null, 'SUCCEEDED', timestamptz '2026-09-16 00:00:00+00'
-      );
+      )
+    `, [tenant.actorId, tenant.principalId, tenant.tenantId]);
+    await client.query(`
       insert into investing.research_experiments (
         research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
         tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
         parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version,
         research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
       ) values (
-        'a3000000-0000-4000-8000-000000000201', $4, $3, null, $2, 'USER_PRINCIPAL', $1, $5, null,
+        'a3000000-0000-4000-8000-000000000201', $1, $2, null, $3, 'USER_PRINCIPAL', $4, $5, null,
         'TENANT_SCOPE', 'PURE_RESEARCH', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE',
         null, $6, 'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', $7, repeat('3', 64),
         'b3000000-0000-4000-8000-000000000201', 'idem-wrong-spec-parent-0001', 'corr-wrong-spec-parent-0001'
       )
-    `, [tenant.actorId, tenant.principalId, tenant.tenantId, tenant.investigationId, tenant.tenantMembershipId, tenant.nextSpecRevisionId, hashF]);
+    `, [tenant.investigationId, tenant.tenantId, tenant.principalId, tenant.actorId, tenant.tenantMembershipId, tenant.nextSpecRevisionId, hashF]);
     await expect(createVariantExperiment(tenant, {
       suffix: "218",
       parentExperimentId: "a3000000-0000-4000-8000-000000000201",
