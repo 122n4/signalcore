@@ -696,8 +696,9 @@ create policy research_material_pointer_states_i5_a3_update
     and source_context = current_setting('syntrake.investing.source_context', true)
     and active_experiment_id is not distinct from (
       case
-        when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid
-        else current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+        when current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          then current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+        else null::uuid
       end
     )
     and (
@@ -736,8 +737,9 @@ create policy research_material_pointer_states_i5_a3_update
     and source_context = current_setting('syntrake.investing.source_context', true)
     and active_experiment_id is not distinct from (
       case
-        when current_setting('syntrake.investing.next_experiment_id', true) = '-' then null::uuid
-        else current_setting('syntrake.investing.next_experiment_id', true)::uuid
+        when current_setting('syntrake.investing.next_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          then current_setting('syntrake.investing.next_experiment_id', true)::uuid
+        else null::uuid
       end
     )
     and (
@@ -820,8 +822,9 @@ create policy research_material_pointer_states_i5_a4_read
     and (
       active_experiment_id is not distinct from (
         case
-          when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid
-          else current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+          when current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            then current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+          else null::uuid
         end
       )
       or (
@@ -873,8 +876,9 @@ create policy research_material_pointer_states_i5_a4_update
     and source_context = current_setting('syntrake.investing.source_context', true)
     and active_experiment_id is not distinct from (
       case
-        when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid
-        else current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+        when current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          then current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+        else null::uuid
       end
     )
     and (
