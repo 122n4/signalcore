@@ -57,7 +57,25 @@ Subsequent material transitions use exact Experiment predecessor CAS:
 
 ## Transaction Model
 
-The writer opens one transaction, sets transaction-local authority context, revalidates parent Investigation and authority state, locks the pointer row, verifies CAS and active Spec, resolves idempotency, inserts the Experiment, updates the pointer, completes idempotency evidence, and commits.
+The writer uses one transaction with this order:
+
+1. Open the transaction.
+2. Verify stale transaction context is not already installed.
+3. Install pre-parent authority context.
+4. Select and revalidate parent Investigation plus authority state.
+5. Resolve existing idempotency and replay, when present.
+6. Lock or create idempotency for a new creation.
+7. Lock the pointer row.
+8. Verify exact expected pointer CAS.
+9. Verify active Spec and null Experiment predecessor.
+10. Validate Spec lineage.
+11. Generate the operational Experiment UUID.
+12. Insert `investing.research_experiments`.
+13. Execute the null -> exact Experiment pointer transition.
+14. Complete idempotency evidence.
+15. Commit.
+
+Idempotent replay may return the canonical result before requiring the current pointer to still match the original null predecessor.
 
 A4 ResearchSpec revision sets `syntrake.investing.expected_experiment_id` before pointer SELECT/lock, allowing the final A4 read policy to admit either null or exact non-null Experiment predecessor. A3 material revision sets expected/next Experiment and the preserved active Spec id before pointer UPDATE.
 
@@ -82,7 +100,7 @@ Idempotency update is bound to the exact current `idempotency_record_id`, idempo
 
 ## PostgreSQL 17 Evidence
 
-The candidate PG17 rehearsal chain is Genesis -> A1 -> A2 -> A3 -> A4 -> Experiment BASELINE persistence. The rehearsal is prepared to prove FORCE RLS, selector/full-parent authority, TENANT_SCOPE and ACCOUNT_SCOPE create, null-to-Experiment pointer update, duplicate replay, cross-Investigation/wrong-Spec blocking, Draft invalidation, ResearchSpec invalidation, Hypothesis dependent invalidation, Hypothesis independent preservation, and cross-scope denial.
+The candidate PG17 rehearsal chain is Genesis -> A1 -> A2 -> A3 -> A4 -> Experiment BASELINE persistence. It has been exercised against PostgreSQL 17 real, and the acceptance rehearsal proved FORCE RLS, selector/full-parent authority, TENANT_SCOPE BASELINE create, ACCOUNT_SCOPE BASELINE create, null -> exact Experiment pointer transition, resulting pointer visibility, duplicate material/idempotency protection, cross-Investigation and wrong-Spec denial, ResearchSpec invalidation, Draft invalidation, dependent Hypothesis invalidation, independent Hypothesis preservation, cross-scope denial, and session reuse with empty stale custom GUCs without UUID cast failure.
 
 When `PG17_RECONCILIATION_URL` is absent, no READY verdict is available; the correct result is `BLOCKED - PG17 NOT EXECUTED`.
 
