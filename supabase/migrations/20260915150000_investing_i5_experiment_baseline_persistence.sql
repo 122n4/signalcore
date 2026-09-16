@@ -817,11 +817,19 @@ create policy research_material_pointer_states_i5_a4_read
     and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and operation_scope = current_setting('syntrake.investing.operation_scope', true)
     and source_context = current_setting('syntrake.investing.source_context', true)
-    and active_experiment_id is not distinct from (
-      case
-        when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid
-        else current_setting('syntrake.investing.expected_experiment_id', true)::uuid
-      end
+    and (
+      active_experiment_id is not distinct from (
+        case
+          when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid
+          else current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+        end
+      )
+      or (
+        current_setting('syntrake.investing.expected_experiment_id', true) <> '-'
+        and current_setting('syntrake.investing.next_experiment_id', true) = '-'
+        and active_experiment_id is null
+        and active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
+      )
     )
     and (
       (
@@ -1072,7 +1080,10 @@ begin
           p.cmd = 'SELECT'
           and p.roles = array['investing_app']::name[]
           and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
+          and lower(coalesce(p.qual, '')) ~ 'next_experiment_id'
+          and lower(coalesce(p.qual, '')) ~ 'active_spec_revision_id'
           and lower(coalesce(p.qual, '')) ~ 'active_experiment_id'
+          and lower(coalesce(p.qual, '')) ~ 'is null'
           and (
             lower(coalesce(p.qual, '')) ~ 'is not distinct from'
             or lower(coalesce(p.qual, '')) ~ 'is distinct from'

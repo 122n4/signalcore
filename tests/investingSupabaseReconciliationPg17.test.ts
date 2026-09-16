@@ -637,6 +637,11 @@ afterAll(async () => {
         where research_investigation_id = $2
       `, [tenantIndependent.nextSpecRevisionId, tenantIndependent.investigationId]);
       expect(updated.rowCount).toBe(1);
+      const resultingPointer = await client.query(
+        "select active_spec_revision_id, active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1",
+        [tenantIndependent.investigationId],
+      );
+      expect(resultingPointer.rows).toEqual([{ active_spec_revision_id: tenantIndependent.nextSpecRevisionId, active_experiment_id: null }]);
     });
 
     await withAppContext(accountIndependent, "RESEARCH_DRAFT_REVISION_CREATE_V1", {
