@@ -88,6 +88,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 A3 material revisions | `I5A_MATERIAL_REVISIONS_OWNER_CONTRACT_V1.md` |
 | I5 A5 Research IR | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` |
 | I5 Experiment baseline (unnumbered) | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md`, `I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md` |
+| I5 Experiment VARIANT structural lineage admission (unnumbered) | `I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -112,6 +113,9 @@ freeze/master evidence still relies on its narrow classifications.
 - I5 Research IR runtime: `lib/investing/research/researchIr.ts`.
 - I5 Experiment BASELINE structural admission runtime:
   `lib/investing/research/experiment.ts`.
+- I5 Experiment VARIANT structural lineage admission runtime:
+  `lib/investing/research/experiment.ts`; this owns the accepted structural
+  admission boundary only, not VARIANT persistence.
 - I5 Experiment BASELINE persistence:
   `lib/investing/research/experimentBaselineWriter.ts` and
   `lib/investing/research/experimentBaselineService.ts`.
@@ -150,6 +154,11 @@ not become Investing Genesis authority merely because they use similar words.
   It does not establish scientific Experiment hashing, ExperimentParameters,
   VARIANT, DatasetSnapshot, Run, Result, Evidence, Paper, Trading, Core,
   Capital Kernel or Live.
+- I5 Experiment VARIANT structural lineage admission: current accepted,
+  unnumbered. This structural runtime-only acceptance admits an immutable parent
+  operational Experiment UUID, canonical ResearchSpecRevision identity and
+  Research IR HashRef family evidence. Persistence proof is deferred, and
+  scientific Experiment/ExperimentParameters hashing remains disabled.
 - DatasetSnapshot: deferred. It has no current A-number and no current Investing
   Genesis owner contract.
 
@@ -167,6 +176,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | I5-A5 Research IR runtime/owner contract | YES | YES | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` + runtime/tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT | CURRENT_ACCEPTED / TRUST_RECOVERY_CLOSED | NONE |
 | Experiment BASELINE structural admission / unnumbered | YES | YES | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md` + runtime + tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED) | CURRENT_ACCEPTED / STRUCTURAL_RUNTIME_ONLY | NONE |
 | Experiment BASELINE persistence / unnumbered | YES | YES | `I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md` + writer/service + migration/tests + PG17 | CURRENT ACCEPTED OWNER CONTRACT - BASELINE PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / DURABLE_OPERATIONAL_IDENTITY | NONE |
+| Experiment VARIANT structural lineage admission / unnumbered | YES | YES | `I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md` + `experiment.ts` + runtime test + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED | CURRENT_ACCEPTED / STRUCTURAL_LINEAGE_ONLY | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -238,6 +248,25 @@ Experiment BASELINE persistence supersession:
   DatasetSnapshot, Run/Result/Evidence, Paper, Trading, or Investing Core.
 
 DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`.
+
+Experiment VARIANT structural lineage admission acceptance evidence:
+
+- Canonical predecessor:
+  `34f6ab4f5c8a4c5049b14e6466d86a773701c0ba`.
+- Audited candidate:
+  `a46018b733d82dbaa22ff0971c82abf4d446d52a`.
+- CI:
+  `35140170597`.
+- Vercel:
+  `SUCCESS`.
+- Independent audit:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+
+`EXPERIMENT VARIANT STRUCTURAL LINEAGE ADMISSION = CURRENT_ACCEPTED / UNNUMBERED`.
+
+Experiment VARIANT persistence remains `DEFERRED / NOT ACCEPTED`.
 
 ## What This Gate Record Supersedes
 
