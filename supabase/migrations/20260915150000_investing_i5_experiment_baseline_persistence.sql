@@ -537,7 +537,10 @@ create policy research_material_pointer_states_i5_exp_read
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
     and active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
-    and active_experiment_id is null
+    and (
+      active_experiment_id is null
+      or active_experiment_id::text = current_setting('syntrake.investing.research_experiment_id', true)
+    )
     and actor_kind = 'USER_PRINCIPAL'
     and actor_id = current_setting('syntrake.investing.actor_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)

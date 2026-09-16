@@ -397,6 +397,11 @@ async function createBaselineExperiment(row: LabFixture) {
       where research_investigation_id = $2 and active_spec_revision_id = $3 and active_experiment_id is null
     `, [row.experimentId, row.investigationId, row.specRevisionId]);
     expect(updated.rowCount).toBe(1);
+    const resultingPointer = await client.query(
+      "select active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1",
+      [row.investigationId],
+    );
+    expect(resultingPointer.rows).toEqual([{ active_experiment_id: row.experimentId }]);
   });
 }
 
