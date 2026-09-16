@@ -193,6 +193,7 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
       "idempotency_records_i5_exp_update",
       "research_experiments_i5_exp_insert",
       "research_experiments_i5_exp_read",
+      "research_material_pointer_states_i5_exp_read",
       "research_material_pointer_states_i5_exp_update",
     ]) {
       const body = policy(sql, name);
@@ -209,6 +210,11 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(policy(sql, "tenant_memberships_i5_exp_authority_read")).toContain("state = 'active'");
     expect(policy(sql, "account_access_i5_exp_account_authority_read")).toContain("state = 'active'");
     expect(policy(sql, "research_experiments_i5_exp_insert")).toContain("material_request_hash = current_setting('syntrake.investing.material_request_hash', true)");
+    const expRead = policy(sql, "research_material_pointer_states_i5_exp_read");
+    expect(expRead).toContain("active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)");
+    expect(expRead).toContain("active_experiment_id is null");
+    expect(expRead).toContain("active_experiment_id::text = current_setting('syntrake.investing.research_experiment_id', true)");
+    expect(expRead).not.toContain("active_experiment_id is not null");
     const expPointer = policy(sql, "research_material_pointer_states_i5_exp_update");
     expect(expPointer).toContain("active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)");
     expect(expPointer).toContain("active_experiment_id is null");
