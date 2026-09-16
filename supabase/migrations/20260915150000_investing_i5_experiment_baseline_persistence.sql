@@ -307,6 +307,21 @@ create policy idempotency_records_i5_exp_read
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
+    and idempotency_key = current_setting('syntrake.investing.idempotency_key', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and account_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') <> ''
+      )
+    )
   );
 
 create policy idempotency_records_i5_exp_insert
@@ -324,6 +339,20 @@ create policy idempotency_records_i5_exp_insert
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and correlation_id = current_setting('syntrake.investing.correlation_id', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and account_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') <> ''
+      )
+    )
   );
 
 create policy idempotency_records_i5_exp_update
@@ -333,17 +362,55 @@ create policy idempotency_records_i5_exp_update
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)
+    and idempotency_key = current_setting('syntrake.investing.idempotency_key', true)
     and operation = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
     and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
     and actor_kind = 'USER_PRINCIPAL'
     and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and account_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') <> ''
+      )
+    )
   )
   with check (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)
+    and idempotency_key = current_setting('syntrake.investing.idempotency_key', true)
     and operation = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
     and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
     and status = 'SUCCEEDED'
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and account_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') <> ''
+      )
+    )
   );
 
 create policy research_spec_revisions_i5_exp_read
@@ -359,6 +426,25 @@ create policy research_spec_revisions_i5_exp_read
     and actor_id = current_setting('syntrake.investing.actor_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
   );
 
 create policy research_experiments_i5_exp_insert
@@ -372,10 +458,36 @@ create policy research_experiments_i5_exp_insert
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
     and research_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
     and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
+    and idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)
+    and idempotency_key = current_setting('syntrake.investing.idempotency_key', true)
+    and correlation_id = current_setting('syntrake.investing.correlation_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
     and operation = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
     and capability = 'RESEARCH_MUTATE'
     and relation = 'BASELINE'
     and research_ir_hash_domain = 'SYNTRAKE:RESEARCH_IR:V1'
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
   );
 
 create policy research_experiments_i5_exp_read
@@ -386,9 +498,34 @@ create policy research_experiments_i5_exp_read
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
     and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+    and research_experiment_id::text = current_setting('syntrake.investing.research_experiment_id', true)
+    and research_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
     and actor_kind = 'USER_PRINCIPAL'
     and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
     and material_request_hash = current_setting('syntrake.investing.material_request_hash', true)
+    and idempotency_record_id::text = current_setting('syntrake.investing.idempotency_record_id', true)
+    and idempotency_key = current_setting('syntrake.investing.idempotency_key', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
   );
 
 create policy research_material_pointer_states_i5_exp_read
@@ -401,6 +538,29 @@ create policy research_material_pointer_states_i5_exp_read
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
     and active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
     and active_experiment_id is null
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
   );
 
 create policy research_material_pointer_states_i5_exp_update
@@ -413,6 +573,29 @@ create policy research_material_pointer_states_i5_exp_update
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
     and active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
     and active_experiment_id is null
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
   )
   with check (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
@@ -422,6 +605,68 @@ create policy research_material_pointer_states_i5_exp_update
     and active_spec_revision_id is not null
     and active_experiment_id::text = current_setting('syntrake.investing.research_experiment_id', true)
     and updated_by_operation = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
+  );
+
+create policy research_experiments_i5_a3_transition_read
+  on investing.research_experiments
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.expected_experiment_id', true), '') <> ''
+    and current_setting('syntrake.investing.expected_experiment_id', true) <> '-'
+    and current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    and current_setting('syntrake.investing.next_experiment_id', true) = current_setting('syntrake.investing.expected_experiment_id', true)
+    and research_experiment_id::text = current_setting('syntrake.investing.expected_experiment_id', true)
+    and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+    and research_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+      )
+    )
   );
 
 drop policy research_material_pointer_states_i5_a3_update on investing.research_material_pointer_states;
@@ -543,6 +788,52 @@ create policy research_material_pointer_states_i5_a3_update
             )
           )
         )
+      )
+    )
+  );
+
+drop policy research_material_pointer_states_i5_a4_read on investing.research_material_pointer_states;
+
+create policy research_material_pointer_states_i5_a4_read
+  on investing.research_material_pointer_states
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_SPEC_REVISION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and coalesce(current_setting('syntrake.investing.expected_experiment_id', true), '') <> ''
+    and (
+      current_setting('syntrake.investing.expected_experiment_id', true) = '-'
+      or current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    )
+    and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+    and actor_kind = 'USER_PRINCIPAL'
+    and actor_id = current_setting('syntrake.investing.actor_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and active_experiment_id is not distinct from (
+      case
+        when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid
+        else current_setting('syntrake.investing.expected_experiment_id', true)::uuid
+      end
+    )
+    and (
+      (
+        operation_scope = 'TENANT_SCOPE'
+        and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO')
+        and account_id is null
+        and account_access_id is null
+        and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+        and coalesce(current_setting('syntrake.investing.account_access_id', true), '') = ''
+      )
+      or (
+        operation_scope = 'ACCOUNT_SCOPE'
+        and source_context = 'USER_PORTFOLIO'
+        and account_id::text = current_setting('syntrake.investing.account_id', true)
+        and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
       )
     )
   );
@@ -722,8 +1013,10 @@ begin
       ('research_spec_revisions', 'research_spec_revisions_i5_exp_read', 'SELECT'),
       ('research_experiments', 'research_experiments_i5_exp_insert', 'INSERT'),
       ('research_experiments', 'research_experiments_i5_exp_read', 'SELECT'),
+      ('research_experiments', 'research_experiments_i5_a3_transition_read', 'SELECT'),
       ('research_material_pointer_states', 'research_material_pointer_states_i5_exp_read', 'SELECT'),
       ('research_material_pointer_states', 'research_material_pointer_states_i5_exp_update', 'UPDATE'),
+      ('research_material_pointer_states', 'research_material_pointer_states_i5_a4_read', 'SELECT'),
       ('research_material_pointer_states', 'research_material_pointer_states_i5_a3_update', 'UPDATE'),
       ('research_material_pointer_states', 'research_material_pointer_states_i5_a4_update', 'UPDATE')
   )
@@ -748,16 +1041,37 @@ begin
   from pg_catalog.pg_policies p
   where p.schemaname = 'investing'
     and p.tablename = 'research_material_pointer_states'
-    and p.policyname in ('research_material_pointer_states_i5_a3_update', 'research_material_pointer_states_i5_a4_update')
-    and p.cmd = 'UPDATE'
+    and p.policyname in ('research_material_pointer_states_i5_a3_update', 'research_material_pointer_states_i5_a4_update', 'research_material_pointer_states_i5_a4_read')
     and p.roles = array['investing_app']::name[]
     and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
     and lower(coalesce(p.qual, '')) ~ 'is not distinct from'
-    and lower(coalesce(p.with_check, '')) ~ 'next_experiment_id'
-    and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id';
+    and (
+      p.cmd = 'SELECT'
+      or (
+        lower(coalesce(p.with_check, '')) ~ 'next_experiment_id'
+        and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id'
+      )
+    );
 
-  if v_pointer_policy_count <> 2 then
+  if v_pointer_policy_count <> 3 then
     raise exception 'I5 Experiment postcondition violation: final A3/A4 pointer policies missing experiment predecessor/next guards: %', v_pointer_policy_count;
+  end if;
+
+  select count(*)
+  into v_pointer_policy_count
+  from pg_catalog.pg_policies p
+  where p.schemaname = 'investing'
+    and p.tablename = 'research_experiments'
+    and p.policyname = 'research_experiments_i5_a3_transition_read'
+    and p.cmd = 'SELECT'
+    and p.roles = array['investing_app']::name[]
+    and lower(coalesce(p.qual, '')) ~ 'research_hypothesis_revision_create_v1'
+    and lower(coalesce(p.qual, '')) ~ 'next_experiment_id'
+    and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
+    and lower(coalesce(p.qual, '')) ~ 'research_spec_revision_id';
+
+  if v_pointer_policy_count <> 1 then
+    raise exception 'I5 Experiment postcondition violation: A3 transition Experiment read policy missing exact preserve guards: %', v_pointer_policy_count;
   end if;
 
   select count(*)

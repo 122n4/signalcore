@@ -496,6 +496,8 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(writer).toContain("parentmatchescontext(parent.row, context)");
     expect(writer).not.toContain("selected.rows[0]!.active_experiment_id !== null");
     expect(writer).toContain("await settransactionconfig(client, \"expected_experiment_id\", pointer.row.active_experiment_id ?? \"-\")");
+    expect(writer.indexOf("await settransactionconfig(client, \"expected_experiment_id\", input.expectedpointers.expectedexperimentid ?? \"-\")"))
+      .toBeLessThan(writer.indexOf("const pointer = await lockorcreatepointerstate"));
     expect(writer).toContain("await settransactionconfig(client, \"next_experiment_id\", nextpointers.activeexperiment ?? \"-\")");
     expect(writer).toContain("active_experiment_id = $3");
     expect(writer).toContain("and active_experiment_id is not distinct from $10");

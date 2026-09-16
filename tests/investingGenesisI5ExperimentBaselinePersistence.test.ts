@@ -233,6 +233,17 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(a3).toContain("active_spec_revision_id is null and active_experiment_id is null");
     expect(a3).toContain("s.hypothesis_revision_id is null");
     expect(a3).toContain("from investing.research_experiments e");
+    const a3ExperimentRead = policy(sql, "research_experiments_i5_a3_transition_read");
+    expect(a3ExperimentRead).toContain("research_hypothesis_revision_create_v1");
+    expect(a3ExperimentRead).toContain("current_setting('syntrake.investing.next_experiment_id', true) = current_setting('syntrake.investing.expected_experiment_id', true)");
+    expect(a3ExperimentRead).toContain("research_experiment_id::text = current_setting('syntrake.investing.expected_experiment_id', true)");
+    expect(a3ExperimentRead).toContain("research_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)");
+    const a4Read = policy(sql, "research_material_pointer_states_i5_a4_read");
+    expect(sql).toContain("drop policy research_material_pointer_states_i5_a4_read on investing.research_material_pointer_states");
+    expect(a4Read).toContain("research_spec_revision_create_v1");
+    expect(a4Read).toContain("expected_experiment_id");
+    expect(a4Read).toContain("active_experiment_id is not distinct from");
+    expect(a4Read).not.toContain("active_experiment_id is null");
     const a4 = policy(sql, "research_material_pointer_states_i5_a4_update");
     expect(a4).toContain("research_spec_revision_create_v1");
     expect(a4).toContain("current_setting('syntrake.investing.next_experiment_id', true) = '-'");

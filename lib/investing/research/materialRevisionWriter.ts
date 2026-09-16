@@ -201,6 +201,7 @@ const transactionContextKeys = [
   "syntrake.investing.research_investigation_id",
   "syntrake.investing.expected_experiment_id",
   "syntrake.investing.next_experiment_id",
+  "syntrake.investing.research_spec_revision_id",
   "syntrake.investing.material_root_id",
   "syntrake.investing.material_revision_id",
   "syntrake.investing.material_kind",
@@ -274,6 +275,7 @@ async function createResearchMaterialRevisionV1(
       const nextVersion = String(BigInt(pointer.row.pointer_version) + BigInt(1));
       await setTransactionConfig(client, "expected_experiment_id", pointer.row.active_experiment_id ?? "-");
       await setTransactionConfig(client, "next_experiment_id", nextPointers.activeExperiment ?? "-");
+      await setTransactionConfig(client, "research_spec_revision_id", nextPointers.activeSpec?.id ?? "-");
       const advanced = await updatePointerState(client, input.authorizedContext, pointer.row, nextPointers, nextVersion);
       if (advanced.ok === false) return advanced;
 
