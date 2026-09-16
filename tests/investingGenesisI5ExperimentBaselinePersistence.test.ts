@@ -240,12 +240,15 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
       expect(body).toContain("expected_experiment_id");
       expect(body).toContain("next_experiment_id");
       expect(body).toContain("active_experiment_id is not distinct from");
-      expect(body).toContain("case when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid");
+      expect(body).toContain("when current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then current_setting('syntrake.investing.expected_experiment_id', true)::uuid else null::uuid");
+      expect(body).not.toContain("when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid else current_setting('syntrake.investing.expected_experiment_id', true)::uuid");
       expect(body).toContain("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     }
     const a3 = policy(sql, "research_material_pointer_states_i5_a3_update");
     expect(a3).toContain("research_draft_revision_create_v1");
     expect(a3).toContain("research_hypothesis_revision_create_v1");
+    expect(a3).toContain("when current_setting('syntrake.investing.next_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then current_setting('syntrake.investing.next_experiment_id', true)::uuid else null::uuid");
+    expect(a3).not.toContain("when current_setting('syntrake.investing.next_experiment_id', true) = '-' then null::uuid else current_setting('syntrake.investing.next_experiment_id', true)::uuid");
     expect(a3).toContain("active_spec_revision_id is null and active_experiment_id is null");
     expect(a3).toContain("s.hypothesis_revision_id is null");
     expect(a3).toContain("from investing.research_experiments e");
@@ -260,6 +263,7 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(a4Read).toContain("expected_experiment_id");
     expect(a4Read).toContain("next_experiment_id");
     expect(a4Read).toContain("active_experiment_id is not distinct from");
+    expect(a4Read).toContain("when current_setting('syntrake.investing.expected_experiment_id', true) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then current_setting('syntrake.investing.expected_experiment_id', true)::uuid else null::uuid");
     expect(a4Read).toContain("current_setting('syntrake.investing.expected_experiment_id', true) <> '-'");
     expect(a4Read).toContain("current_setting('syntrake.investing.next_experiment_id', true) = '-'");
     expect(a4Read).toContain("active_experiment_id is null");
