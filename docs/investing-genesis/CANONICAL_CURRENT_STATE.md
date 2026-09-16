@@ -87,7 +87,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 A2 hash domains | `I5A_CANONICAL_HASH_DOMAINS_V1.md` |
 | I5 A3 material revisions | `I5A_MATERIAL_REVISIONS_OWNER_CONTRACT_V1.md` |
 | I5 A5 Research IR | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` |
-| I5 Experiment baseline (unnumbered) | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md` |
+| I5 Experiment baseline (unnumbered) | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md`, `I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -98,7 +98,9 @@ freeze/master evidence still relies on its narrow classifications.
 - I5 canonical primitives and scientific hash domain admission:
   `lib/investing/research/canonical.ts`.
 - I5 material command request identity:
-  `lib/investing/research/materialRequest.ts`.
+  `lib/investing/research/materialRequest.ts`; it now owns deterministic
+  material request identity for Experiment BASELINE creation, but not a
+  scientific Experiment hash.
 - I5 semantic Draft/Hypothesis/Spec candidate runtime:
   `lib/investing/research/semantic.ts`.
 - I5 Investigation persistence: `lib/investing/research/investigationWriter.ts`.
@@ -110,6 +112,9 @@ freeze/master evidence still relies on its narrow classifications.
 - I5 Research IR runtime: `lib/investing/research/researchIr.ts`.
 - I5 Experiment BASELINE structural admission runtime:
   `lib/investing/research/experiment.ts`.
+- I5 Experiment BASELINE persistence:
+  `lib/investing/research/experimentBaselineWriter.ts` and
+  `lib/investing/research/experimentBaselineService.ts`.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -133,9 +138,18 @@ not become Investing Genesis authority merely because they use similar words.
 - I5 canonical fresh-install lineage repair: current accepted.
 - I5-A4 ResearchSpec persistence: current accepted.
 - I5 Experiment BASELINE structural admission: current accepted, unnumbered,
-  runtime-only. This acceptance does not establish Experiment scientific hash,
-  ExperimentParameters hash, Experiment persistence, DatasetSnapshot, Run,
-  Result, Evidence or execution authority.
+  runtime-only. This structural acceptance does not by itself establish durable
+  Experiment persistence, Experiment scientific hash, ExperimentParameters hash,
+  DatasetSnapshot, Run, Result, Evidence or execution authority.
+- I5 Experiment BASELINE persistence: current accepted, unnumbered. This
+  acceptance establishes durable operational Experiment UUID identity,
+  BASELINE-only Experiment persistence, exact ResearchSpecRevision binding,
+  Research IR HashRef envelope persistence, material request identity,
+  idempotency, exact active Experiment pointer, Tenant/Account authority,
+  FORCE RLS, and A3/A4 Experiment-aware invalidation/preservation semantics.
+  It does not establish scientific Experiment hashing, ExperimentParameters,
+  VARIANT, DatasetSnapshot, Run, Result, Evidence, Paper, Trading, Core,
+  Capital Kernel or Live.
 - DatasetSnapshot: deferred. It has no current A-number and no current Investing
   Genesis owner contract.
 
@@ -152,6 +166,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | I5-A4 ResearchSpec persistence | YES | NO | canonical runtime + persistence migration/tests + canonical lineage | no dedicated A4 ResearchSpec persistence owner contract in tree | current in canonical lineage | none recorded here |
 | I5-A5 Research IR runtime/owner contract | YES | YES | `I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md` + runtime/tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT | CURRENT_ACCEPTED / TRUST_RECOVERY_CLOSED | NONE |
 | Experiment BASELINE structural admission / unnumbered | YES | YES | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md` + runtime + tests + canonical lineage | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED) | CURRENT_ACCEPTED / STRUCTURAL_RUNTIME_ONLY | NONE |
+| Experiment BASELINE persistence / unnumbered | YES | YES | `I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md` + writer/service + migration/tests + PG17 | CURRENT ACCEPTED OWNER CONTRACT - BASELINE PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / DURABLE_OPERATIONAL_IDENTITY | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -193,6 +208,34 @@ Experiment BASELINE acceptance evidence:
 - Candidate-specific regression: `ZERO`.
 - Independent audit: `PASS`.
 - Permanent A-number: `NOT ASSIGNED`.
+
+Experiment BASELINE persistence acceptance evidence:
+
+- Technical audited candidate:
+  `cce1587664c4a1210c829fe1fbf8c1ce2ef68abe`.
+- Canonical predecessor/base:
+  `d59ff24de9c91d41702dd9c0de20b0a31eb9ff6e`.
+- PR: `#67`.
+- PG17 workflow: `35135567882`.
+- PG17 job: `104926948515`.
+- CI workflow: `35135567823`.
+- PostgreSQL: `17.11`.
+- Static reconciliation: `6/6 PASS`.
+- PG17 rehearsal: `4/4 PASS`, no skip.
+- Functional RLS transition matrix: `PASS`.
+- CI: `SUCCESS`.
+- Vercel: `SUCCESS`.
+- Independent audit: `PASS`.
+- Permanent A-number: `NOT ASSIGNED`.
+
+`EXPERIMENT BASELINE PERSISTENCE = CURRENT_ACCEPTED / UNNUMBERED`.
+
+Experiment BASELINE persistence supersession:
+
+- This persistence acceptance supersedes the assumption that admitted Experiment
+  BASELINE has no durable operational identity or persistence authority.
+- It does not supersede Experiment structural admission, A1-A5, future VARIANT,
+  DatasetSnapshot, Run/Result/Evidence, Paper, Trading, or Investing Core.
 
 DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`.
 

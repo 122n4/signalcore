@@ -1,10 +1,10 @@
 # I5 Experiment Baseline Persistence Owner Contract V1
 
-Status: CANDIDATE OWNER CONTRACT - BASELINE PERSISTENCE ONLY - UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - BASELINE PERSISTENCE - UNNUMBERED
 
 ## Purpose
 
-This candidate introduces the first durable operational identity for an admitted Experiment BASELINE. Experiment identity is a generated UUID persisted in `investing.research_experiments`; it is not a scientific Experiment hash.
+This accepted unnumbered slice establishes the first durable operational identity for an admitted Experiment BASELINE. Experiment identity is a generated UUID persisted in `investing.research_experiments`; it is not a scientific Experiment hash.
 
 ## Canonical Predecessor
 
@@ -28,7 +28,7 @@ Capability is exactly `RESEARCH_MUTATE`. The only admitted relation is `BASELINE
 
 The closed command contains operation, idempotency key, correlation id, investigation id, expected aggregate pointers, and an `ExperimentBaselineCandidateV1`. It does not accept authority tuple data, actor ids, tenant ids, account ids, generated ids, timestamps, or persistence metadata from the client.
 
-The candidate must pass through `admitExperimentBaselineV1`; scientific validation is not duplicated in the persistence writer.
+The accepted persistence command must pass through `admitExperimentBaselineV1`; scientific validation is not duplicated in the persistence writer.
 
 ## Material Request Identity
 
@@ -100,7 +100,7 @@ Idempotency update is bound to the exact current `idempotency_record_id`, idempo
 
 ## PostgreSQL 17 Evidence
 
-The candidate PG17 rehearsal chain is Genesis -> A1 -> A2 -> A3 -> A4 -> Experiment BASELINE persistence. It has been exercised against PostgreSQL 17 real, and the acceptance rehearsal proved FORCE RLS, selector/full-parent authority, TENANT_SCOPE BASELINE create, ACCOUNT_SCOPE BASELINE create, null -> exact Experiment pointer transition, resulting pointer visibility, duplicate material/idempotency protection, cross-Investigation and wrong-Spec denial, ResearchSpec invalidation, Draft invalidation, dependent Hypothesis invalidation, independent Hypothesis preservation, cross-scope denial, and session reuse with empty stale custom GUCs without UUID cast failure.
+The accepted PG17 rehearsal chain is Genesis -> A1 -> A2 -> A3 -> A4 -> Experiment BASELINE persistence. It has been exercised against PostgreSQL 17 real, and the acceptance rehearsal proved FORCE RLS, selector/full-parent authority, TENANT_SCOPE BASELINE create, ACCOUNT_SCOPE BASELINE create, null -> exact Experiment pointer transition, resulting pointer visibility, duplicate material/idempotency protection, cross-Investigation and wrong-Spec denial, ResearchSpec invalidation, Draft invalidation, dependent Hypothesis invalidation, independent Hypothesis preservation, cross-scope denial, and session reuse with empty stale custom GUCs without UUID cast failure.
 
 When `PG17_RECONCILIATION_URL` is absent, no READY verdict is available; the correct result is `BLOCKED - PG17 NOT EXECUTED`.
 

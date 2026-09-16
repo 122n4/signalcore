@@ -303,12 +303,19 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     }
   });
 
-  it("records a candidate owner contract without accepting it in current state", () => {
+  it("records accepted unnumbered persistence state without scientific Experiment hashing", () => {
     const contract = read(contractPath);
     const state = read(currentStatePath);
-    expect(contract).toContain("CANDIDATE OWNER CONTRACT - BASELINE PERSISTENCE ONLY - UNNUMBERED");
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - BASELINE PERSISTENCE - UNNUMBERED");
     expect(contract).toContain("What Did This Slice Supersede?");
     expect(contract).toContain("No `hashExperimentV1` or `hashExperimentParametersV1` is introduced.");
-    expect(state).not.toContain("I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("EXPERIMENT BASELINE PERSISTENCE = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(state).toContain("Experiment BASELINE persistence / unnumbered | YES | YES");
+    expect(state).toContain("CURRENT ACCEPTED OWNER CONTRACT - BASELINE PERSISTENCE - UNNUMBERED");
+    expect(state).toContain("CURRENT_ACCEPTED / DURABLE_OPERATIONAL_IDENTITY");
+    expect(state).toContain("Permanent A-number: `NOT ASSIGNED`");
+    expect(state).not.toContain("EXPERIMENT BASELINE PERSISTENCE = CURRENT_ACCEPTED / A");
+    expect(state).not.toContain("Experiment BASELINE persistence / A");
   });
 });
