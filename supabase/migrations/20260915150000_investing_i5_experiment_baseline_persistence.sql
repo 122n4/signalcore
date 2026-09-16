@@ -968,10 +968,12 @@ begin
 
   if exists (
     select 1
-    from pg_catalog.pg_tables t
-    where t.schemaname = 'investing'
-      and t.tablename = 'research_experiments'
-      and not (t.rowsecurity and t.forcerowsecurity)
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'investing'
+      and c.relname = 'research_experiments'
+      and c.relkind in ('r', 'p')
+      and not (c.relrowsecurity and c.relforcerowsecurity)
   ) then
     raise exception 'I5 Experiment postcondition violation: research_experiments must force RLS';
   end if;
