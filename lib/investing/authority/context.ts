@@ -18,6 +18,7 @@ const researchDraftRevisionCreateOperation = "RESEARCH_DRAFT_REVISION_CREATE_V1"
 const researchHypothesisRevisionCreateOperation = "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1";
 const researchSpecRevisionCreateOperation = "RESEARCH_SPEC_REVISION_CREATE_V1";
 const researchExperimentBaselineCreateOperation = "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1";
+const researchExperimentVariantCreateOperation = "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
 const researchMutateCapability = "RESEARCH_MUTATE";
 const preAuthorityExternalSubjectHashDomain = "SYNTRAKE_INVESTING_I2B_EXTERNAL_SUBJECT_V1";
 const preAuthoritySelectorHashDomain = "SYNTRAKE_INVESTING_I2B_SELECTOR_V1";
@@ -130,7 +131,8 @@ export type ResearchMaterialRevisionCreateOperation =
   | typeof researchDraftRevisionCreateOperation
   | typeof researchHypothesisRevisionCreateOperation
   | typeof researchSpecRevisionCreateOperation
-  | typeof researchExperimentBaselineCreateOperation;
+  | typeof researchExperimentBaselineCreateOperation
+  | typeof researchExperimentVariantCreateOperation;
 
 export type AuthorizedResearchMaterialRevisionCreateContext = Readonly<
   ResearchMaterialRevisionCreateContextBrand & {
@@ -461,7 +463,9 @@ export function isAuthorizedResearchMaterialRevisionCreateContext(
       (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).operation ===
         researchSpecRevisionCreateOperation ||
       (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).operation ===
-        researchExperimentBaselineCreateOperation
+        researchExperimentBaselineCreateOperation ||
+      (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).operation ===
+        researchExperimentVariantCreateOperation
     ) ||
     (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).capability !== researchMutateCapability ||
     typeof (value as Partial<AuthorizedResearchMaterialRevisionCreateContext>).researchInvestigationId !== "string"
@@ -1058,7 +1062,8 @@ export async function resolveAuthorizedResearchMaterialRevisionCreateContext(
     (input.operation !== researchDraftRevisionCreateOperation &&
       input.operation !== researchHypothesisRevisionCreateOperation &&
       input.operation !== researchSpecRevisionCreateOperation &&
-      input.operation !== researchExperimentBaselineCreateOperation)
+      input.operation !== researchExperimentBaselineCreateOperation &&
+      input.operation !== researchExperimentVariantCreateOperation)
   ) {
     return fail("VALIDATION_ERROR");
   }

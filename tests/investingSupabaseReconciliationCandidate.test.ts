@@ -25,6 +25,8 @@ const currentGenesisAndI5 = [
   "20260911110000_investing_i5_research_runtime_lock_contract_repair.sql",
   "20260912050000_investing_i5_a3_research_material_revisions.sql",
   "20260912070000_investing_i5_a4_research_spec_persistence.sql",
+  "20260915150000_investing_i5_experiment_baseline_persistence.sql",
+  "20260916194400_investing_i5_experiment_variant_persistence.sql",
 ] as const;
 
 function stripSqlComments(sql: string) {
@@ -52,6 +54,7 @@ describe("Investing Supabase reconciliation candidate", () => {
       expect(fs.existsSync(path.join(migrationsRoot, migration)), migration).toBe(true);
       expect(repairName < migration, migration).toBe(true);
     }
+    expect(currentGenesisAndI5.at(-1)).toBe("20260916194400_investing_i5_experiment_variant_persistence.sql");
   });
 
   it("fails closed on Production drift before touching the verified residual", () => {

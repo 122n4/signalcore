@@ -13,7 +13,12 @@ import {
   type ResearchDraftProofV1,
   type ResearchSpecCandidateInputV1,
 } from "./semantic";
-import { admitExperimentBaselineV1, type ExperimentBaselineCandidateV1 } from "./experiment";
+import {
+  admitExperimentBaselineV1,
+  admitExperimentVariantV1,
+  type ExperimentBaselineCandidateV1,
+  type ExperimentVariantCandidateV1,
+} from "./experiment";
 
 const domain = "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1";
 const investigationOperation = "RESEARCH_INVESTIGATION_CREATE_V1";
@@ -22,6 +27,7 @@ const draftOperation = "RESEARCH_DRAFT_REVISION_CREATE_V1";
 const hypothesisOperation = "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1";
 const specOperation = "RESEARCH_SPEC_REVISION_CREATE_V1";
 const experimentBaselineOperation = "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1";
+const experimentVariantOperation = "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
 const maxCounter = "9223372036854775807";
 
 /** Derived data only. This is NOT AuthorizedInvestingContext or ownership proof. */
@@ -80,6 +86,15 @@ export type ExperimentBaselineCreateMaterialRequestV1 = RequestMetadata & Readon
   investigationId: string;
   expectedPointers: ExpectedResearchMaterialPointersV1 & { expectedResearchSpecRevisionId: string };
   experiment: ExperimentBaselineCandidateV1;
+}>;
+export type ExperimentVariantCreateMaterialRequestV1 = RequestMetadata & Readonly<{
+  operation: typeof experimentVariantOperation;
+  investigationId: string;
+  expectedPointers: ExpectedResearchMaterialPointersV1 & {
+    expectedResearchSpecRevisionId: string;
+    expectedExperimentId: string;
+  };
+  experiment: ExperimentVariantCandidateV1;
 }>;
 
 export type ResearchMaterialRequestHashV1 = string & { readonly __researchMaterialRequestHashV1: unique symbol };
@@ -212,6 +227,51 @@ export function experimentBaselineCreateMaterialIdentityV1(
     `expected_spec=${canonicalUuidV1(pointers.expectedResearchSpecRevisionId)}`,
     "expected_experiment=-",
     "relation=BASELINE",
+    `research_spec_revision=${experiment.researchSpecRevisionId}`,
+    `research_ir_algorithm=${experiment.researchIr.hashAlgorithm}`,
+    `research_ir_domain=${experiment.researchIr.hashDomain}`,
+    `research_ir_version=${experiment.researchIr.hashVersion}`,
+    `research_ir_hash=${experiment.researchIr.hashHex}`,
+  ]);
+}
+
+export function experimentVariantCreateMaterialIdentityV1(
+  scope: ResearchMaterialScopeEvidenceV1,
+  command: ExperimentVariantCreateMaterialRequestV1,
+): ResearchMaterialIdentityV1 {
+  const input = closed(command, [
+    "operation",
+    "idempotencyKey",
+    "correlationId",
+    "investigationId",
+    "expectedPointers",
+    "experiment",
+  ]);
+  validateMetadata(input, experimentVariantOperation);
+  const pointers = closed(input.expectedPointers, [
+    "expectedActivePointerVersion",
+    "expectedResearchDraftRevisionId",
+    "expectedHypothesisRevisionId",
+    "expectedResearchSpecRevisionId",
+    "expectedExperimentId",
+  ]);
+  if (pointers.expectedResearchSpecRevisionId === null) throw new Error("Experiment VARIANT requires expected Spec");
+  if (pointers.expectedExperimentId === null) throw new Error("Experiment VARIANT requires expected Experiment");
+  const experiment = admitExperimentVariantV1(input.experiment);
+  if (experiment.relation !== "VARIANT") throw new Error("unsupported Experiment relation");
+  if (experiment.researchSpecRevisionId !== pointers.expectedResearchSpecRevisionId) {
+    throw new Error("Experiment Spec must match expected active Spec");
+  }
+  return identity([
+    ...scopeFragments(scope, experimentVariantOperation),
+    `investigation=${canonicalUuidV1(input.investigationId)}`,
+    `expected_active_pointer_version=${counter(pointers.expectedActivePointerVersion, "0")}`,
+    `expected_draft=${nullableUuid(pointers.expectedResearchDraftRevisionId)}`,
+    `expected_hypothesis=${nullableUuid(pointers.expectedHypothesisRevisionId)}`,
+    `expected_spec=${canonicalUuidV1(pointers.expectedResearchSpecRevisionId)}`,
+    `expected_experiment=${canonicalUuidV1(pointers.expectedExperimentId)}`,
+    "relation=VARIANT",
+    `parent_experiment=${canonicalUuidV1(experiment.parentExperimentId)}`,
     `research_spec_revision=${experiment.researchSpecRevisionId}`,
     `research_ir_algorithm=${experiment.researchIr.hashAlgorithm}`,
     `research_ir_domain=${experiment.researchIr.hashDomain}`,
