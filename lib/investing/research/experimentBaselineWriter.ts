@@ -436,6 +436,8 @@ async function dispatchExistingIdempotency(
   if (row.status !== "SUCCEEDED") return fail("INTERNAL_ERROR");
   const reference = parseReference(row.canonical_result_reference);
   if (!reference) return fail("INTERNAL_ERROR");
+  await setTransactionConfig(client, "research_experiment_id", reference.researchExperimentId);
+  await setTransactionConfig(client, "research_spec_revision_id", reference.researchSpecRevisionId);
   const experiment = await exactlyOne(
     client.query<ExperimentRow>(
       [

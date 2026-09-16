@@ -18,6 +18,7 @@ const genesisAndI5 = [
   "supabase/migrations/20260911110000_investing_i5_research_runtime_lock_contract_repair.sql",
   "supabase/migrations/20260912050000_investing_i5_a3_research_material_revisions.sql",
   "supabase/migrations/20260912070000_investing_i5_a4_research_spec_persistence.sql",
+  "supabase/migrations/20260915150000_investing_i5_experiment_baseline_persistence.sql",
 ] as const;
 
 let pool: Pool;
@@ -181,6 +182,223 @@ async function assertInvestingJournalWriteBlocked() {
   ).rejects.toThrow(/journal_entries_no_retired_investing_mode_check/i);
 }
 
+const hashA = "A".repeat(64);
+const hashB = "B".repeat(64);
+const hashC = "C".repeat(64);
+const hashD = "D".repeat(64);
+const hashE = "E".repeat(64);
+const hashF = "F".repeat(64);
+
+type LabScope = "TENANT_SCOPE" | "ACCOUNT_SCOPE";
+
+type LabFixture = {
+  actorId: string;
+  principalId: string;
+  tenantId: string;
+  tenantMembershipId: string;
+  accountId: string | null;
+  accountAccessId: string | null;
+  sourceContext: "PURE_RESEARCH" | "USER_PORTFOLIO";
+  investigationId: string;
+  otherInvestigationId: string;
+  draftRootId: string;
+  draftRevisionId: string;
+  nextDraftRevisionId: string;
+  hypothesisRootId: string;
+  hypothesisRevisionId: string;
+  nextHypothesisRevisionId: string;
+  specRootId: string;
+  specRevisionId: string;
+  nextSpecRevisionId: string;
+  experimentId: string;
+  idempotencyRecordId: string;
+  idempotencyKey: string;
+  correlationId: string;
+  materialRequestHash: string;
+};
+
+function fixture(scope: LabScope, suffix: string, specHasHypothesis: boolean): LabFixture {
+  const accountScope = scope === "ACCOUNT_SCOPE";
+  const tail = suffix.padStart(12, "0").slice(-12);
+  return {
+    actorId: `pg17-i5-${suffix}`,
+    principalId: `10000000-0000-4000-8000-${tail}`,
+    tenantId: `20000000-0000-4000-8000-${tail}`,
+    tenantMembershipId: `30000000-0000-4000-8000-${tail}`,
+    accountId: accountScope ? `40000000-0000-4000-8000-${tail}` : null,
+    accountAccessId: accountScope ? `50000000-0000-4000-8000-${tail}` : null,
+    sourceContext: accountScope ? "USER_PORTFOLIO" : "PURE_RESEARCH",
+    investigationId: `60000000-0000-4000-8000-${tail}`,
+    otherInvestigationId: `61000000-0000-4000-8000-${tail}`,
+    draftRootId: `70000000-0000-4000-8000-${tail}`,
+    draftRevisionId: `71000000-0000-4000-8000-${tail}`,
+    nextDraftRevisionId: `72000000-0000-4000-8000-${tail}`,
+    hypothesisRootId: `80000000-0000-4000-8000-${tail}`,
+    hypothesisRevisionId: `81000000-0000-4000-8000-${tail}`,
+    nextHypothesisRevisionId: `82000000-0000-4000-8000-${tail}`,
+    specRootId: `90000000-0000-4000-8000-${tail}`,
+    specRevisionId: `91000000-0000-4000-8000-${tail}`,
+    nextSpecRevisionId: `92000000-0000-4000-8000-${tail}`,
+    experimentId: `a0000000-0000-4000-8000-${tail}`,
+    idempotencyRecordId: `b0000000-0000-4000-8000-${tail}`,
+    idempotencyKey: `idem-pg17-i5-${suffix}-0001`,
+    correlationId: `corr-pg17-i5-${suffix}-0001`,
+    materialRequestHash: specHasHypothesis ? hashB : hashA,
+  };
+}
+
+async function applyGenesisAndI5() {
+  await insertSyntheticResidual();
+  const syntheticFingerprint = await residualFingerprint();
+  await applyRepairWithExpectedFingerprint(syntheticFingerprint);
+  for (const migration of genesisAndI5) await applySql(migration);
+}
+
+async function seedLabFixture(row: LabFixture, specHasHypothesis: boolean) {
+  const accountColumns = row.accountId === null
+    ? { accountId: "null", accountAccessId: "null" }
+    : { accountId: `'${row.accountId}'`, accountAccessId: `'${row.accountAccessId}'` };
+  const specBinding = specHasHypothesis
+    ? `'${row.hypothesisRevisionId}', '${hashC}', jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex','${hashC}')))`
+    : `null, null, jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','NO_HYPOTHESIS'))`;
+
+  await client.query(`
+    insert into investing.principals (principal_id, external_provider, external_subject)
+    values ('${row.principalId}', 'CLERK', '${row.actorId}');
+    insert into investing.tenants (tenant_id) values ('${row.tenantId}');
+    insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id)
+    values ('${row.tenantMembershipId}', '${row.tenantId}', '${row.principalId}');
+    ${row.accountId === null ? "" : `
+      insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
+      values ('${row.accountId}', '${row.tenantId}', '${row.tenantMembershipId}', '${row.principalId}', 'USD');
+      insert into investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
+      values ('${row.accountAccessId}', '${row.accountId}', '${row.tenantId}', '${row.tenantMembershipId}', '${row.principalId}');
+    `}
+    insert into investing.idempotency_records (
+      idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+      operation_scope, operation, principal_id, tenant_id, account_id, status
+    ) values
+      ('c1000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-investigation-${row.principalId.slice(-1)}-0001', '${hashA}', 'corr-investigation-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_INVESTIGATION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c1100000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-other-${row.principalId.slice(-1)}-0001', '${hashA}', 'corr-other-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_INVESTIGATION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c2000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-draft-${row.principalId.slice(-1)}-0001', '${hashB}', 'corr-draft-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_DRAFT_REVISION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c3000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-hypothesis-${row.principalId.slice(-1)}-0001', '${hashC}', 'corr-hypothesis-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c4000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-spec-${row.principalId.slice(-1)}-0001', '${hashD}', 'corr-spec-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_SPEC_REVISION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c5000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-next-draft-${row.principalId.slice(-1)}-0001', '${hashD}', 'corr-next-draft-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_DRAFT_REVISION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c6000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-next-hypothesis-${row.principalId.slice(-1)}-0001', '${hashE}', 'corr-next-hypothesis-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED'),
+      ('c7000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-next-spec-${row.principalId.slice(-1)}-0001', '${hashF}', 'corr-next-spec-${row.principalId.slice(-1)}-0001', 'USER_PRINCIPAL', '${row.actorId}', '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_SPEC_REVISION_CREATE_V1', '${row.principalId}', '${row.tenantId}', ${accountColumns.accountId}, 'SUCCEEDED');
+    insert into investing.research_investigations (
+      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context,
+      material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values
+      ('${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}',
+       '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}',
+       'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', '${row.sourceContext}', '${hashA}', 'c1000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-investigation-${row.principalId.slice(-1)}-0001', 'corr-investigation-${row.principalId.slice(-1)}-0001'),
+      ('${row.otherInvestigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}',
+       '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}',
+       'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', '${row.sourceContext}', '${hashA}', 'c1100000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-other-${row.principalId.slice(-1)}-0001', 'corr-other-${row.principalId.slice(-1)}-0001')
+      on conflict do nothing;
+    insert into investing.research_material_roots (
+      material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
+    ) values
+      ('${row.draftRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', '${row.sourceContext}', 'DRAFT', 'RESEARCH_DRAFT_REVISION_CREATE_V1'),
+      ('${row.hypothesisRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', '${row.sourceContext}', 'HYPOTHESIS', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
+      ('${row.specRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', '${row.sourceContext}', 'RESEARCH_SPEC', 'RESEARCH_SPEC_REVISION_CREATE_V1');
+    insert into investing.research_material_revisions (
+      material_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context, material_kind, revision_number,
+      predecessor_revision_id, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values
+      ('${row.draftRevisionId}', '${row.draftRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', '${row.sourceContext}', 'DRAFT', 1, null, 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, '${hashB}', '${hashB}', 'c2000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-draft-${row.principalId.slice(-1)}-0001', 'corr-draft-${row.principalId.slice(-1)}-0001'),
+      ('${row.hypothesisRevisionId}', '${row.hypothesisRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', '${row.sourceContext}', 'HYPOTHESIS', 1, null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, '${hashC}', '${hashC}', 'c3000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-hypothesis-${row.principalId.slice(-1)}-0001', 'corr-hypothesis-${row.principalId.slice(-1)}-0001'),
+      ('${row.nextDraftRevisionId}', '${row.draftRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', '${row.sourceContext}', 'DRAFT', 2, '${row.draftRevisionId}', 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, '${hashD}', '${hashD}', 'c5000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-next-draft-${row.principalId.slice(-1)}-0001', 'corr-next-draft-${row.principalId.slice(-1)}-0001'),
+      ('${row.nextHypothesisRevisionId}', '${row.hypothesisRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', '${row.sourceContext}', 'HYPOTHESIS', 2, '${row.hypothesisRevisionId}', 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, '${hashE}', '${hashE}', 'c6000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-next-hypothesis-${row.principalId.slice(-1)}-0001', 'corr-next-hypothesis-${row.principalId.slice(-1)}-0001');
+    insert into investing.research_spec_revisions (
+      research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
+      source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
+      canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values
+      ('${row.specRevisionId}', '${row.specRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', '${row.sourceContext}', 'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null, '${row.draftRevisionId}', '${hashB}', ${specBinding}, '${hashD}', 'c4000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-spec-${row.principalId.slice(-1)}-0001', 'corr-spec-${row.principalId.slice(-1)}-0001'),
+      ('${row.nextSpecRevisionId}', '${row.specRootId}', '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}', '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', '${row.sourceContext}', 'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 2, '${row.specRevisionId}', '${row.draftRevisionId}', '${hashB}', null, null, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY', jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','NO_HYPOTHESIS')), '${hashF}', 'c7000000-0000-4000-8000-0000000000${row.principalId.slice(-1)}', 'idem-next-spec-${row.principalId.slice(-1)}-0001', 'corr-next-spec-${row.principalId.slice(-1)}-0001');
+    insert into investing.research_material_pointer_states (
+      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context,
+      active_draft_revision_id, active_hypothesis_revision_id, active_spec_revision_id, active_experiment_id, pointer_version
+    ) values (
+      '${row.investigationId}', '${row.tenantId}', ${accountColumns.accountId}, '${row.principalId}', 'USER_PRINCIPAL', '${row.actorId}',
+      '${row.tenantMembershipId}', ${accountColumns.accountAccessId}, '${row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE"}', '${row.sourceContext}',
+      '${row.draftRevisionId}', '${row.hypothesisRevisionId}', '${row.specRevisionId}', null, 7
+    );
+  `);
+}
+
+async function withAppContext(row: LabFixture, operation: string, extra: Record<string, string>, work: () => Promise<void>) {
+  await client.query("begin");
+  try {
+    await client.query("set local role investing_app");
+    const base: Record<string, string> = {
+      actor_kind: "USER_PRINCIPAL",
+      actor_id: row.actorId,
+      principal_id: row.principalId,
+      tenant_id: row.tenantId,
+      tenant_membership_id: row.tenantMembershipId,
+      operation,
+      capability: "RESEARCH_MUTATE",
+      operation_scope: row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE",
+      source_context: row.sourceContext,
+      research_investigation_id: row.investigationId,
+      account_id: row.accountId ?? "",
+      account_access_id: row.accountAccessId ?? "",
+      ...extra,
+    };
+    for (const [key, value] of Object.entries(base)) {
+      if (value !== "") await client.query("select set_config($1, $2, true)", [`syntrake.investing.${key}`, value]);
+    }
+    await work();
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  }
+}
+
+async function createBaselineExperiment(row: LabFixture) {
+  await withAppContext(row, "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1", {
+    idempotency_record_id: row.idempotencyRecordId,
+    idempotency_key: row.idempotencyKey,
+    correlation_id: row.correlationId,
+    material_request_hash: row.materialRequestHash,
+    research_spec_revision_id: row.specRevisionId,
+    research_experiment_id: row.experimentId,
+  }, async () => {
+    await client.query(`
+      insert into investing.idempotency_records (
+        idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+        operation_scope, operation, principal_id, tenant_id, account_id, status
+      ) values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $7, $8, $9, 'STARTED')
+    `, [row.idempotencyRecordId, row.idempotencyKey, row.materialRequestHash, row.correlationId, row.actorId, row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", row.principalId, row.tenantId, row.accountId]);
+    const pointer = await client.query("select active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1", [row.investigationId]);
+    expect(pointer.rows).toEqual([{ active_experiment_id: null }]);
+    await client.query(`
+      insert into investing.research_experiments (
+        research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+        tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,
+        research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex,
+        material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+      ) values ($1, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10, 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE',
+        $11, 'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', $12, $13, $14, $15, $16)
+    `, [row.experimentId, row.investigationId, row.tenantId, row.accountId, row.principalId, row.actorId, row.tenantMembershipId, row.accountAccessId, row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", row.sourceContext, row.specRevisionId, hashF, row.materialRequestHash, row.idempotencyRecordId, row.idempotencyKey, row.correlationId]);
+    const updated = await client.query(`
+      update investing.research_material_pointer_states
+      set active_experiment_id = $1, pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+      where research_investigation_id = $2 and active_spec_revision_id = $3 and active_experiment_id is null
+    `, [row.experimentId, row.investigationId, row.specRevisionId]);
+    expect(updated.rowCount).toBe(1);
+  });
+}
+
 beforeAll(async () => {
   if (!connectionString) return;
   pool = new Pool({ connectionString, max: 1 });
@@ -302,6 +520,7 @@ afterAll(async () => {
       "research_drafts",
       "research_material_revisions",
       "research_spec_revisions",
+      "research_experiments",
     ];
 
     const relations = await client.query<{ relname: string; rls: boolean; force_rls: boolean; owner: string }>(`
@@ -323,5 +542,144 @@ afterAll(async () => {
       expect(relation.rls, relation.relname).toBe(true);
       expect(relation.force_rls, relation.relname).toBe(true);
     }
+  });
+
+  it("executes Experiment BASELINE RLS transitions across tenant/account scopes and invalidation matrix", async () => {
+    await applyGenesisAndI5();
+
+    const tenantIndependent = fixture("TENANT_SCOPE", "101", false);
+    const tenantDependent = fixture("TENANT_SCOPE", "102", true);
+    const accountIndependent = fixture("ACCOUNT_SCOPE", "103", false);
+    for (const row of [tenantIndependent, tenantDependent, accountIndependent]) {
+      await seedLabFixture(row, row === tenantDependent);
+    }
+
+    for (const row of [tenantIndependent, accountIndependent]) {
+      await withAppContext(row, "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1", {
+        research_spec_revision_id: row.specRevisionId,
+      }, async () => {
+        const selector = await client.query("select research_investigation_id from investing.research_investigations where research_investigation_id = $1", [row.investigationId]);
+        expect(selector.rowCount).toBe(1);
+      });
+
+      await createBaselineExperiment(row);
+
+      await withAppContext(row, "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1", {
+        idempotency_record_id: row.idempotencyRecordId,
+        idempotency_key: row.idempotencyKey,
+        correlation_id: row.correlationId,
+        material_request_hash: row.materialRequestHash,
+        research_spec_revision_id: row.specRevisionId,
+        research_experiment_id: row.experimentId,
+      }, async () => {
+        const fullParent = await client.query("select research_investigation_id from investing.research_investigations where research_investigation_id = $1", [row.investigationId]);
+        expect(fullParent.rowCount).toBe(1);
+        const replay = await client.query("select research_experiment_id from investing.research_experiments where research_experiment_id = $1", [row.experimentId]);
+        expect(replay.rows).toEqual([{ research_experiment_id: row.experimentId }]);
+        await client.query(`
+          insert into investing.idempotency_records (
+            idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+            operation_scope, operation, principal_id, tenant_id, account_id, status
+          ) values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $7, $8, $9, 'STARTED')
+          on conflict (actor_kind, actor_id, operation_scope, operation, idempotency_key) do nothing
+        `, [row.idempotencyRecordId, row.idempotencyKey, row.materialRequestHash, row.correlationId, row.actorId, row.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE", row.principalId, row.tenantId, row.accountId]);
+        const duplicate = await client.query("select count(*)::int as count from investing.research_experiments where material_request_hash = $1", [row.materialRequestHash]);
+        expect(duplicate.rows[0]?.count).toBe(1);
+      });
+    }
+
+    await createBaselineExperiment(tenantDependent);
+
+    await withAppContext(tenantIndependent, "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1", {
+      idempotency_record_id: "b9000000-0000-4000-8000-000000000101",
+      idempotency_key: "idem-pg17-cross-spec-0001",
+      correlation_id: "corr-pg17-cross-spec-0001",
+      material_request_hash: hashC,
+      research_spec_revision_id: tenantDependent.specRevisionId,
+      research_experiment_id: "a9000000-0000-4000-8000-000000000101",
+    }, async () => {
+      const spec = await client.query("select research_spec_revision_id from investing.research_spec_revisions where research_spec_revision_id = $1", [tenantDependent.specRevisionId]);
+      expect(spec.rowCount).toBe(0);
+    });
+
+    await withAppContext(tenantIndependent, "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1", {
+      research_spec_revision_id: tenantIndependent.nextSpecRevisionId,
+    }, async () => {
+      const pointer = await client.query("select active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1 and active_spec_revision_id = $2", [tenantIndependent.investigationId, tenantIndependent.nextSpecRevisionId]);
+      expect(pointer.rowCount).toBe(0);
+    });
+
+    await withAppContext(tenantIndependent, "RESEARCH_SPEC_REVISION_CREATE_V1", {
+      expected_experiment_id: tenantIndependent.experimentId,
+      next_experiment_id: "-",
+      research_spec_revision_id: tenantIndependent.nextSpecRevisionId,
+    }, async () => {
+      const pointer = await client.query("select active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1", [tenantIndependent.investigationId]);
+      expect(pointer.rows).toEqual([{ active_experiment_id: tenantIndependent.experimentId }]);
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_spec_revision_id = $1, active_experiment_id = null, pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_SPEC_REVISION_CREATE_V1'
+        where research_investigation_id = $2
+      `, [tenantIndependent.nextSpecRevisionId, tenantIndependent.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    await withAppContext(accountIndependent, "RESEARCH_DRAFT_REVISION_CREATE_V1", {
+      expected_experiment_id: accountIndependent.experimentId,
+      next_experiment_id: "-",
+      research_spec_revision_id: "-",
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_draft_revision_id = $1, active_spec_revision_id = null, active_experiment_id = null,
+          pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+        where research_investigation_id = $2
+      `, [accountIndependent.nextDraftRevisionId, accountIndependent.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    await withAppContext(tenantDependent, "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1", {
+      expected_experiment_id: tenantDependent.experimentId,
+      next_experiment_id: "-",
+      research_spec_revision_id: "-",
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_hypothesis_revision_id = $1, active_spec_revision_id = null, active_experiment_id = null,
+          pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+        where research_investigation_id = $2
+      `, [tenantDependent.nextHypothesisRevisionId, tenantDependent.investigationId]);
+      expect(updated.rowCount).toBe(1);
+    });
+
+    const preserve = fixture("TENANT_SCOPE", "104", false);
+    await seedLabFixture(preserve, false);
+    await createBaselineExperiment(preserve);
+    await withAppContext(preserve, "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1", {
+      expected_experiment_id: preserve.experimentId,
+      next_experiment_id: preserve.experimentId,
+      research_spec_revision_id: preserve.specRevisionId,
+    }, async () => {
+      const updated = await client.query(`
+        update investing.research_material_pointer_states
+        set active_hypothesis_revision_id = $1, active_spec_revision_id = $2, active_experiment_id = $3,
+          pointer_version = pointer_version + 1, updated_by_operation = 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+        where research_investigation_id = $4
+      `, [preserve.nextHypothesisRevisionId, preserve.specRevisionId, preserve.experimentId, preserve.investigationId]);
+      expect(updated.rowCount).toBe(1);
+      const pointer = await client.query("select active_spec_revision_id, active_experiment_id from investing.research_material_pointer_states where research_investigation_id = $1", [preserve.investigationId]);
+      expect(pointer.rows).toEqual([{ active_spec_revision_id: preserve.specRevisionId, active_experiment_id: preserve.experimentId }]);
+    });
+
+    await withAppContext(preserve, "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1", {
+      expected_experiment_id: preserve.experimentId,
+      next_experiment_id: preserve.experimentId,
+      research_spec_revision_id: preserve.specRevisionId,
+      account_id: accountIndependent.accountId ?? "",
+      account_access_id: accountIndependent.accountAccessId ?? "",
+    }, async () => {
+      const forbidden = await client.query("select research_experiment_id from investing.research_experiments where research_experiment_id = $1", [preserve.experimentId]);
+      expect(forbidden.rowCount).toBe(0);
+    });
   });
 });

@@ -36,6 +36,8 @@ The candidate must pass through `admitExperimentBaselineV1`; scientific validati
 
 `idempotencyKey` and `correlationId` remain transport metadata outside the material hash. Serialization remains framed by NUL-delimited deterministic fragments. Historical operation bytes are not changed.
 
+For A3/A4 material successors, expected Experiment predecessor evidence is now part of the aggregate pointer identity. Historical null bytes remain exactly `expected_experiment=-`; future non-null predecessor evidence serializes as `expected_experiment=<canonical UUID>`. Experiment BASELINE create remains null-only.
+
 ## Persistence Owner
 
 `investing.research_experiments` persists only BASELINE rows. It stores durable Experiment UUID identity, authority tuple, operation/capability, relation, ResearchSpecRevision UUID, accepted Research IR HashRef envelope, material request hash, idempotency linkage, correlation id, and created timestamp.
@@ -46,9 +48,18 @@ It does not store raw Research IR, ExperimentParameters, or a scientific Experim
 
 On success, `research_material_pointer_states.active_experiment_id` becomes the new Experiment UUID, `pointer_version` increments once, and Draft/Hypothesis/Spec pointers remain unchanged. The pointer has a composite FK to `(research_experiment_id, research_investigation_id, research_spec_revision_id)`.
 
+Subsequent material transitions use exact Experiment predecessor CAS:
+
+- Draft revision clears active Spec and active Experiment.
+- Hypothesis revision preserves active Spec and active Experiment only when the active Spec is independent of a hypothesis (`hypothesis_revision_id is null`).
+- Hypothesis revision clears active Spec and active Experiment when the active Spec is bound to the previous Hypothesis.
+- ResearchSpec revision replaces active Spec and clears active Experiment.
+
 ## Transaction Model
 
 The writer opens one transaction, sets transaction-local authority context, revalidates parent Investigation and authority state, locks the pointer row, verifies CAS and active Spec, resolves idempotency, inserts the Experiment, updates the pointer, completes idempotency evidence, and commits.
+
+A4 ResearchSpec revision sets `syntrake.investing.expected_experiment_id` before pointer SELECT/lock, allowing the final A4 read policy to admit either null or exact non-null Experiment predecessor. A3 material revision sets expected/next Experiment and the preserved active Spec id before pointer UPDATE.
 
 ## Idempotency
 
@@ -59,6 +70,21 @@ Same authorized namespace plus same idempotency key plus same material request r
 `research_experiments` has RLS and FORCE RLS enabled. Public, anon, authenticated, and service_role application access is revoked. `investing_app` receives only `SELECT, INSERT`; no general UPDATE/DELETE grant is introduced. Pointer column grant adds only `active_experiment_id`.
 
 Policies bind operation, capability, actor, principal, tenant, membership, account/access when account scoped, investigation, active Spec, idempotency, and material request where applicable.
+
+Investigation authority uses two phases:
+
+- selector read before authority scope is resolved, with tenant/account/source GUCs required empty;
+- full parent read after authority resolution, bound to tenant, membership, scope, source, and account/access semantics.
+
+Experiment visibility is transition-only. BASELINE create can read only its exact just-created Experiment by idempotency/material context. A3 Hypothesis preserve can read an Experiment only when operation is `RESEARCH_HYPOTHESIS_REVISION_CREATE_V1`, predecessor Experiment is non-null, next Experiment equals predecessor, active Spec is exact, and the authority tuple matches. No generic Experiment listing authority is introduced.
+
+Idempotency update is bound to the exact current `idempotency_record_id`, idempotency key, material request hash, actor, principal, tenant, scope, and account semantics.
+
+## PostgreSQL 17 Evidence
+
+The candidate PG17 rehearsal chain is Genesis -> A1 -> A2 -> A3 -> A4 -> Experiment BASELINE persistence. The rehearsal is prepared to prove FORCE RLS, selector/full-parent authority, TENANT_SCOPE and ACCOUNT_SCOPE create, null-to-Experiment pointer update, duplicate replay, cross-Investigation/wrong-Spec blocking, Draft invalidation, ResearchSpec invalidation, Hypothesis dependent invalidation, Hypothesis independent preservation, and cross-scope denial.
+
+When `PG17_RECONCILIATION_URL` is absent, no READY verdict is available; the correct result is `BLOCKED - PG17 NOT EXECUTED`.
 
 ## Hash-Domain States
 

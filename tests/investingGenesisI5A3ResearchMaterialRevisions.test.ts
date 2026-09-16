@@ -467,6 +467,7 @@ describe("Investing I5-A3 Research material revisions", () => {
     expect(writer).not.toMatch(/from investing\.idempotency_records[^"]*for update/);
     expect(writer).toContain("await settransactionconfig(client, \"expected_experiment_id\", pointer.row.active_experiment_id ?? \"-\")");
     expect(writer).toContain("await settransactionconfig(client, \"next_experiment_id\", nextpointers.activeexperiment ?? \"-\")");
+    expect(writer).toContain("await settransactionconfig(client, \"research_spec_revision_id\", nextpointers.activespec?.id ?? \"-\")");
     expect(writer).toContain("active_experiment_id = $5");
     expect(writer).toContain("where research_investigation_id = $1 and pointer_version = $8::bigint");
     expect(writer).toContain("and active_draft_revision_id is not distinct from $9");

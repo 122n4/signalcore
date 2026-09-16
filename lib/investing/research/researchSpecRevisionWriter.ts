@@ -225,6 +225,7 @@ export async function createResearchSpecRevisionV1(
       if (idempotency.ok === false) return idempotency;
       if (idempotency.existing) return dispatchExistingIdempotency(client, input.authorizedContext, prepared, idempotency.row);
 
+      await setTransactionConfig(client, "expected_experiment_id", input.expectedPointers.expectedExperimentId ?? "-");
       const pointer = await lockOrCreatePointerState(client, input.authorizedContext);
       if (pointer.ok === false) return pointer;
       if (!expectedPointersMatch(pointer.row, input.expectedPointers)) return fail("CONFLICT");
