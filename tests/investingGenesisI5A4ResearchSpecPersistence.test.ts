@@ -341,7 +341,7 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     const constraint = normalize(extractAddedConstraint(read(migrationPath), "research_material_pointer_states_updated_by_operation_check"));
 
     expect(writer).toContain("const specoperation = \"research_spec_revision_create_v1\"");
-    expect(writer).toContain("updated_by_operation = $4");
+    expect(writer).toContain("updated_by_operation = $5");
     expect(writer).toContain("specoperation,");
     expect(writer).not.toContain("updated_by_operation = null");
     expect(writer).not.toContain("research_draft_revision_create_v1,");
@@ -494,6 +494,11 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     expect(writer).toContain("account.row.state !== \"active\"");
     expect(writer).toContain("access.row.state !== \"active\"");
     expect(writer).toContain("parentmatchescontext(parent.row, context)");
+    expect(writer).not.toContain("selected.rows[0]!.active_experiment_id !== null");
+    expect(writer).toContain("await settransactionconfig(client, \"expected_experiment_id\", pointer.row.active_experiment_id ?? \"-\")");
+    expect(writer).toContain("await settransactionconfig(client, \"next_experiment_id\", nextpointers.activeexperiment ?? \"-\")");
+    expect(writer).toContain("active_experiment_id = $3");
+    expect(writer).toContain("and active_experiment_id is not distinct from $10");
     const rootCreate = writer.slice(writer.indexOf("if (selected.rows.length === 0)"), writer.indexOf("const inserted = await client.query", writer.indexOf("if (selected.rows.length === 0)")));
     expect(rootCreate).toContain("await settransactionconfig(client, \"material_root_id\", materialrootid)");
   });

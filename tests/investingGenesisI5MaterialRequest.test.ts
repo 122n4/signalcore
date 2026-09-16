@@ -181,17 +181,15 @@ describe.each(["DRAFT", "HYPOTHESIS"])("%s revision material predecessor", (kind
       .not.toBe(calculate(scope, { ...successor, expectedPointers: noActive }).materialRequestHash);
   });
 
-  it("preserves full A4 predecessor evidence while rejecting non-null future Experiment pointers", () => {
+  it("preserves full A4 predecessor evidence and canonicalizes future Experiment predecessors", () => {
     for (const field of Object.keys(first.expectedPointers)) {
       const omitted = { ...first.expectedPointers };
       delete omitted[field];
       expect(() => calculate(scope, { ...first, expectedPointers: omitted })).toThrow("missing material field");
       expect(() => calculate(scope, { ...first, expectedPointers: { ...first.expectedPointers, [field]: undefined } })).toThrow();
     }
-    for (const field of ["expectedExperimentId"]) {
-      for (const invalid of [otherId, "-", "null", "", false]) {
-        expect(() => calculate(scope, { ...first, expectedPointers: { ...first.expectedPointers, [field]: invalid } })).toThrow();
-      }
+    for (const invalid of [otherId.toUpperCase(), "-", "null", "", false]) {
+      expect(() => calculate(scope, { ...first, expectedPointers: { ...first.expectedPointers, expectedExperimentId: invalid } })).toThrow();
     }
     expect(calculate(scope, {
       ...first,
@@ -199,6 +197,9 @@ describe.each(["DRAFT", "HYPOTHESIS"])("%s revision material predecessor", (kind
     }).materialRequestHash).not.toBe(firstVector.hashHex);
     const bytes = calculate(scope, first).preimageBytes.toString("utf8");
     expect(bytes).toContain("\0expected_spec=-\0expected_experiment=-\0");
+    const futureExperiment = calculate(scope, { ...first, expectedPointers: { ...first.expectedPointers, expectedExperimentId: otherId } });
+    expect(futureExperiment.materialRequestHash).not.toBe(firstVector.hashHex);
+    expect(futureExperiment.preimageBytes.toString("utf8")).toContain(`\0expected_spec=-\0expected_experiment=${otherId}\0`);
     expect(() => calculate(scope, first)).not.toThrow(); // Hypothesis requires no Draft.
   });
 
