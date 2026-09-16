@@ -1038,22 +1038,57 @@ begin
     raise exception 'I5 Experiment postcondition violation: missing or altered policies: %', v_missing_policy_count;
   end if;
 
+  with policy_checks(policyname, is_valid) as (
+    select
+      p.policyname,
+      case p.policyname
+        when 'research_material_pointer_states_i5_a3_update' then
+          p.cmd = 'UPDATE'
+          and p.roles = array['investing_app']::name[]
+          and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
+          and lower(coalesce(p.qual, '')) ~ 'active_experiment_id'
+          and (
+            lower(coalesce(p.qual, '')) ~ 'is not distinct from'
+            or lower(coalesce(p.qual, '')) ~ 'is distinct from'
+          )
+          and lower(coalesce(p.with_check, '')) ~ 'next_experiment_id'
+          and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id'
+        when 'research_material_pointer_states_i5_a4_update' then
+          p.cmd = 'UPDATE'
+          and p.roles = array['investing_app']::name[]
+          and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
+          and lower(coalesce(p.qual, '')) ~ 'active_experiment_id'
+          and (
+            lower(coalesce(p.qual, '')) ~ 'is not distinct from'
+            or lower(coalesce(p.qual, '')) ~ 'is distinct from'
+          )
+          and lower(coalesce(p.with_check, '')) ~ 'next_experiment_id'
+          and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id'
+          and lower(coalesce(p.with_check, '')) ~ 'is null'
+        when 'research_material_pointer_states_i5_a4_read' then
+          p.cmd = 'SELECT'
+          and p.roles = array['investing_app']::name[]
+          and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
+          and lower(coalesce(p.qual, '')) ~ 'active_experiment_id'
+          and (
+            lower(coalesce(p.qual, '')) ~ 'is not distinct from'
+            or lower(coalesce(p.qual, '')) ~ 'is distinct from'
+          )
+        else false
+      end
+    from pg_catalog.pg_policies p
+    where p.schemaname = 'investing'
+      and p.tablename = 'research_material_pointer_states'
+      and p.policyname in (
+        'research_material_pointer_states_i5_a3_update',
+        'research_material_pointer_states_i5_a4_update',
+        'research_material_pointer_states_i5_a4_read'
+      )
+  )
   select count(*)
   into v_pointer_policy_count
-  from pg_catalog.pg_policies p
-  where p.schemaname = 'investing'
-    and p.tablename = 'research_material_pointer_states'
-    and p.policyname in ('research_material_pointer_states_i5_a3_update', 'research_material_pointer_states_i5_a4_update', 'research_material_pointer_states_i5_a4_read')
-    and p.roles = array['investing_app']::name[]
-    and lower(coalesce(p.qual, '')) ~ 'expected_experiment_id'
-    and lower(coalesce(p.qual, '')) ~ 'is not distinct from'
-    and (
-      p.cmd = 'SELECT'
-      or (
-        lower(coalesce(p.with_check, '')) ~ 'next_experiment_id'
-        and lower(coalesce(p.with_check, '')) ~ 'active_experiment_id'
-      )
-    );
+  from policy_checks
+  where is_valid;
 
   if v_pointer_policy_count <> 3 then
     raise exception 'I5 Experiment postcondition violation: final A3/A4 pointer policies missing experiment predecessor/next guards: %', v_pointer_policy_count;
