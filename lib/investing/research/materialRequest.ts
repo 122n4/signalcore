@@ -13,6 +13,7 @@ import {
   type ResearchDraftProofV1,
   type ResearchSpecCandidateInputV1,
 } from "./semantic";
+import { admitExperimentBaselineV1, type ExperimentBaselineCandidateV1 } from "./experiment";
 
 const domain = "SYNTRAKE_INVESTING_I5_MATERIAL_COMMAND_REQUEST_V1";
 const investigationOperation = "RESEARCH_INVESTIGATION_CREATE_V1";
@@ -20,6 +21,7 @@ const draftCreateOperation = "RESEARCH_DRAFT_CREATE_V1";
 const draftOperation = "RESEARCH_DRAFT_REVISION_CREATE_V1";
 const hypothesisOperation = "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1";
 const specOperation = "RESEARCH_SPEC_REVISION_CREATE_V1";
+const experimentBaselineOperation = "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1";
 const maxCounter = "9223372036854775807";
 
 /** Derived data only. This is NOT AuthorizedInvestingContext or ownership proof. */
@@ -72,6 +74,12 @@ export type ResearchSpecRevisionCreateMaterialRequestV1 = RevisionMaterialReques
   sourceDraftRevisionId: string;
   hypothesisRevisionId: string | null;
   content: ResearchSpecCandidateInputV1;
+}>;
+export type ExperimentBaselineCreateMaterialRequestV1 = RequestMetadata & Readonly<{
+  operation: typeof experimentBaselineOperation;
+  investigationId: string;
+  expectedPointers: ExpectedResearchMaterialPointersV1 & { expectedResearchSpecRevisionId: string };
+  experiment: ExperimentBaselineCandidateV1;
 }>;
 
 export type ResearchMaterialRequestHashV1 = string & { readonly __researchMaterialRequestHashV1: unique symbol };
@@ -165,6 +173,50 @@ export function researchSpecRevisionCreateMaterialIdentityV1(
     "candidate_status=CANDIDATE_ONLY",
     `candidate_payload_utf8_hex=${candidate}`,
     "research_spec_scientific_hash=DISABLED",
+  ]);
+}
+
+export function experimentBaselineCreateMaterialIdentityV1(
+  scope: ResearchMaterialScopeEvidenceV1,
+  command: ExperimentBaselineCreateMaterialRequestV1,
+): ResearchMaterialIdentityV1 {
+  const input = closed(command, [
+    "operation",
+    "idempotencyKey",
+    "correlationId",
+    "investigationId",
+    "expectedPointers",
+    "experiment",
+  ]);
+  validateMetadata(input, experimentBaselineOperation);
+  const pointers = closed(input.expectedPointers, [
+    "expectedActivePointerVersion",
+    "expectedResearchDraftRevisionId",
+    "expectedHypothesisRevisionId",
+    "expectedResearchSpecRevisionId",
+    "expectedExperimentId",
+  ]);
+  if (pointers.expectedResearchSpecRevisionId === null) throw new Error("Experiment BASELINE requires expected Spec");
+  if (pointers.expectedExperimentId !== null) throw new Error("Experiment predecessor must be exact null");
+  const experiment = admitExperimentBaselineV1(input.experiment);
+  if (experiment.relation !== "BASELINE") throw new Error("unsupported Experiment relation");
+  if (experiment.researchSpecRevisionId !== pointers.expectedResearchSpecRevisionId) {
+    throw new Error("Experiment Spec must match expected active Spec");
+  }
+  return identity([
+    ...scopeFragments(scope, experimentBaselineOperation),
+    `investigation=${canonicalUuidV1(input.investigationId)}`,
+    `expected_active_pointer_version=${counter(pointers.expectedActivePointerVersion, "0")}`,
+    `expected_draft=${nullableUuid(pointers.expectedResearchDraftRevisionId)}`,
+    `expected_hypothesis=${nullableUuid(pointers.expectedHypothesisRevisionId)}`,
+    `expected_spec=${canonicalUuidV1(pointers.expectedResearchSpecRevisionId)}`,
+    "expected_experiment=-",
+    "relation=BASELINE",
+    `research_spec_revision=${experiment.researchSpecRevisionId}`,
+    `research_ir_algorithm=${experiment.researchIr.hashAlgorithm}`,
+    `research_ir_domain=${experiment.researchIr.hashDomain}`,
+    `research_ir_version=${experiment.researchIr.hashVersion}`,
+    `research_ir_hash=${experiment.researchIr.hashHex}`,
   ]);
 }
 
