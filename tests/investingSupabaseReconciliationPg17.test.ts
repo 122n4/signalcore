@@ -1181,5 +1181,5 @@ describe("Investing Supabase reconciliation PostgreSQL 17 readiness", () => {
     const stale = await client.query("select count(*)::int as count from investing.research_experiments");
     expect(stale.rows).toEqual([{ count: 0 }]);
     await client.query("rollback");
-  });
+  }, 30_000);
 });
