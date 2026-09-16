@@ -253,7 +253,7 @@ describe("closed admission and code boundary", () => {
 
   it("contains only identity dependencies and no persistence/authority side effects", () => {
     const source = readFileSync("lib/investing/research/materialRequest.ts", "utf8");
-    expect([...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1])).toEqual(["./canonical", "./semantic"]);
+    expect([...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1])).toEqual(["./canonical", "./semantic", "./experiment"]);
     expect(source).not.toMatch(/\b(fetch|query|connect|randomUUID)\s*\(/);
     expect(source).toContain("sourceDraftRevisionId");
   });

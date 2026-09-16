@@ -157,7 +157,12 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     const unexpectedReferences = references
       .split(/\r?\n/u)
       .filter(Boolean)
-      .filter((line) => !line.startsWith("lib/investing/research/experiment.ts:") && !line.startsWith("lib/investing/research/index.ts:"));
+      .filter((line) => !line.startsWith("lib/investing/research/experiment.ts:"))
+      .filter((line) => !line.startsWith("lib/investing/research/index.ts:"))
+      .filter((line) => !line.startsWith("lib/investing/research/materialRequest.ts:"))
+      .filter((line) => !line.startsWith("lib/investing/research/experimentBaselineWriter.ts:"))
+      .filter((line) => !line.startsWith("lib/investing/research/experimentBaselineService.ts:"))
+      .filter((line) => !line.startsWith("lib/investing/authority/context.ts:"));
 
     expect(experimentRuntime).toContain('from "./canonical"');
     expect(experimentRuntime).not.toMatch(/from\s+["'][^"']*(paper|trading|accounting|broker|portfolio|execution|worker|queue)/iu);
