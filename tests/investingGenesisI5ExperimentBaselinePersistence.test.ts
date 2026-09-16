@@ -183,6 +183,12 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(sql).toContain("revoke all on table investing.research_experiments from public");
     expect(sql).toContain("rolname in ('anon', 'authenticated', 'service_role')");
     for (const name of [
+      "tenants_i5_exp_authority_read",
+      "tenant_memberships_i5_exp_authority_read",
+      "accounts_i5_exp_account_authority_read",
+      "account_access_i5_exp_account_authority_read",
+      "research_investigations_i5_exp_selector_read",
+      "research_investigations_i5_exp_parent_read",
       "idempotency_records_i5_exp_insert",
       "idempotency_records_i5_exp_update",
       "research_experiments_i5_exp_insert",
@@ -193,8 +199,44 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
       expect(body).toContain("research_experiment_baseline_create_v1");
       expect(body).toContain("research_mutate");
     }
+    const selector = policy(sql, "research_investigations_i5_exp_selector_read");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.tenant_id', true), '') = ''");
+    expect(selector).toContain("coalesce(current_setting('syntrake.investing.account_id', true), '') = ''");
+    const parent = policy(sql, "research_investigations_i5_exp_parent_read");
+    expect(parent).toContain("operation_scope = 'tenant_scope'");
+    expect(parent).toContain("operation_scope = 'account_scope'");
+    expect(parent).toContain("account_access_id::text = current_setting('syntrake.investing.account_access_id', true)");
+    expect(policy(sql, "tenant_memberships_i5_exp_authority_read")).toContain("state = 'active'");
+    expect(policy(sql, "account_access_i5_exp_account_authority_read")).toContain("state = 'active'");
     expect(policy(sql, "research_experiments_i5_exp_insert")).toContain("material_request_hash = current_setting('syntrake.investing.material_request_hash', true)");
-    expect(policy(sql, "research_material_pointer_states_i5_exp_update")).toContain("active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)");
+    const expPointer = policy(sql, "research_material_pointer_states_i5_exp_update");
+    expect(expPointer).toContain("active_spec_revision_id::text = current_setting('syntrake.investing.research_spec_revision_id', true)");
+    expect(expPointer).toContain("active_experiment_id is null");
+    expect(expPointer).toContain("active_experiment_id::text = current_setting('syntrake.investing.research_experiment_id', true)");
+  });
+
+  it("evolves final A3/A4 pointer policies for exact Experiment predecessor and next state", () => {
+    const sql = normalize(read(migrationPath));
+    expect(sql).toContain("drop policy research_material_pointer_states_i5_a3_update on investing.research_material_pointer_states");
+    expect(sql).toContain("drop policy research_material_pointer_states_i5_a4_update on investing.research_material_pointer_states");
+    for (const name of ["research_material_pointer_states_i5_a3_update", "research_material_pointer_states_i5_a4_update"]) {
+      const body = policy(sql, name);
+      expect(body).toContain("expected_experiment_id");
+      expect(body).toContain("next_experiment_id");
+      expect(body).toContain("active_experiment_id is not distinct from");
+      expect(body).toContain("case when current_setting('syntrake.investing.expected_experiment_id', true) = '-' then null::uuid");
+      expect(body).toContain("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    }
+    const a3 = policy(sql, "research_material_pointer_states_i5_a3_update");
+    expect(a3).toContain("research_draft_revision_create_v1");
+    expect(a3).toContain("research_hypothesis_revision_create_v1");
+    expect(a3).toContain("active_spec_revision_id is null and active_experiment_id is null");
+    expect(a3).toContain("s.hypothesis_revision_id is null");
+    expect(a3).toContain("from investing.research_experiments e");
+    const a4 = policy(sql, "research_material_pointer_states_i5_a4_update");
+    expect(a4).toContain("research_spec_revision_create_v1");
+    expect(a4).toContain("current_setting('syntrake.investing.next_experiment_id', true) = '-'");
+    expect(a4).toContain("active_experiment_id is null");
   });
 
   it("keeps writer/service boundaries closed and avoids future scope imports", () => {

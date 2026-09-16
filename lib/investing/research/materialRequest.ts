@@ -40,7 +40,7 @@ export type ExpectedResearchMaterialPointersV1 = Readonly<{
   expectedResearchDraftRevisionId: string | null;
   expectedHypothesisRevisionId: string | null;
   expectedResearchSpecRevisionId: string | null;
-  expectedExperimentId: null;
+  expectedExperimentId: string | null;
 }>;
 
 export type ExpectedResearchMaterialRootV1 =
@@ -285,7 +285,6 @@ function revisionFragments(
     "expectedActivePointerVersion", "expectedResearchDraftRevisionId", "expectedHypothesisRevisionId",
     "expectedResearchSpecRevisionId", "expectedExperimentId",
   ]);
-  if (pointers.expectedExperimentId !== null) throw new Error("Experiment predecessor must be exact null in this subset");
   const root = closed(command.expectedRoot, ["state"], ["rootId", "headRevisionId", "headRevisionNumber"]);
   let rootFields: string[];
   if (root.state === "ABSENT") {
@@ -309,7 +308,8 @@ function revisionFragments(
     `expected_active_pointer_version=${counter(pointers.expectedActivePointerVersion, "0")}`,
     `expected_draft=${nullableUuid(pointers.expectedResearchDraftRevisionId)}`,
     `expected_hypothesis=${nullableUuid(pointers.expectedHypothesisRevisionId)}`,
-    `expected_spec=${nullableUuid(pointers.expectedResearchSpecRevisionId)}`, "expected_experiment=-",
+    `expected_spec=${nullableUuid(pointers.expectedResearchSpecRevisionId)}`,
+    `expected_experiment=${nullableUuid(pointers.expectedExperimentId)}`,
     ...rootFields,
   ];
 }
@@ -322,7 +322,6 @@ function revisionStateFragments(
     "expectedActivePointerVersion", "expectedResearchDraftRevisionId", "expectedHypothesisRevisionId",
     "expectedResearchSpecRevisionId", "expectedExperimentId",
   ]);
-  if (pointers.expectedExperimentId !== null) throw new Error("Experiment predecessor must be exact null in this subset");
   const root = closed(command.expectedRoot, ["state"], ["rootId", "headRevisionId", "headRevisionNumber"]);
   let rootFields: string[];
   if (root.state === "ABSENT") {
@@ -344,7 +343,8 @@ function revisionStateFragments(
     `expected_active_pointer_version=${counter(pointers.expectedActivePointerVersion, "0")}`,
     `expected_draft=${nullableUuid(pointers.expectedResearchDraftRevisionId)}`,
     `expected_hypothesis=${nullableUuid(pointers.expectedHypothesisRevisionId)}`,
-    `expected_spec=${nullableUuid(pointers.expectedResearchSpecRevisionId)}`, "expected_experiment=-",
+    `expected_spec=${nullableUuid(pointers.expectedResearchSpecRevisionId)}`,
+    `expected_experiment=${nullableUuid(pointers.expectedExperimentId)}`,
     ...rootFields,
   ];
 }

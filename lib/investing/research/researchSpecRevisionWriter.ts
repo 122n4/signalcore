@@ -188,6 +188,8 @@ const transactionContextKeys = [
   "syntrake.investing.idempotency_record_id",
   "syntrake.investing.material_request_hash",
   "syntrake.investing.research_investigation_id",
+  "syntrake.investing.expected_experiment_id",
+  "syntrake.investing.next_experiment_id",
   "syntrake.investing.material_root_id",
   "syntrake.investing.research_spec_revision_id",
 ] as const;
@@ -264,6 +266,8 @@ export async function createResearchSpecRevisionV1(
         },
       });
       const nextVersion = String(BigInt(pointer.row.pointer_version) + BigInt(1));
+      await setTransactionConfig(client, "expected_experiment_id", pointer.row.active_experiment_id ?? "-");
+      await setTransactionConfig(client, "next_experiment_id", nextPointers.activeExperiment ?? "-");
       const advanced = await updatePointerState(client, input.authorizedContext, pointer.row, nextPointers, nextVersion);
       if (advanced.ok === false) return advanced;
 
@@ -365,7 +369,6 @@ async function lockOrCreatePointerState(
       : [context.researchInvestigationId, context.tenantId, context.principalId, context.accountId],
   );
   if (selected.rows.length !== 1) return fail("CONFLICT");
-  if (selected.rows[0]!.active_experiment_id !== null) return fail("CONFLICT");
   return { ok: true, row: selected.rows[0]! };
 }
 
@@ -525,22 +528,25 @@ async function updatePointerState(
   const updated = await client.query(
     [
       "update investing.research_material_pointer_states",
-      "set active_spec_revision_id = $2, pointer_version = $3::bigint, updated_at = transaction_timestamp(), updated_by_operation = $4",
-      "where research_investigation_id = $1 and pointer_version = $5::bigint",
-      "and active_draft_revision_id is not distinct from $6",
-      "and active_hypothesis_revision_id is not distinct from $7",
-      "and active_spec_revision_id is not distinct from $8",
-      "and active_experiment_id is null",
+      "set active_spec_revision_id = $2, active_experiment_id = $3, pointer_version = $4::bigint,",
+      "updated_at = transaction_timestamp(), updated_by_operation = $5",
+      "where research_investigation_id = $1 and pointer_version = $6::bigint",
+      "and active_draft_revision_id is not distinct from $7",
+      "and active_hypothesis_revision_id is not distinct from $8",
+      "and active_spec_revision_id is not distinct from $9",
+      "and active_experiment_id is not distinct from $10",
     ].join(" "),
     [
       context.researchInvestigationId,
       next.activeSpec?.id ?? null,
+      next.activeExperiment,
       nextVersion,
       specOperation,
       previous.pointer_version,
       previous.active_draft_revision_id,
       previous.active_hypothesis_revision_id,
       previous.active_spec_revision_id,
+      previous.active_experiment_id,
     ],
   );
   return updated.rowCount === 1 ? { ok: true } : fail("CONFLICT");
@@ -579,6 +585,7 @@ async function pointerToSemantic(
         sourceDraft: spec.source_draft_revision_id,
         hypothesis: spec.hypothesis_revision_id,
       },
+      activeExperiment: row.active_experiment_id,
     },
   };
 }
