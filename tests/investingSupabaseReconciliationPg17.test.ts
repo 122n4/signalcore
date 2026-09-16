@@ -260,8 +260,8 @@ async function seedLabFixture(row: LabFixture, specHasHypothesis: boolean) {
     ? { accountId: "null", accountAccessId: "null" }
     : { accountId: `'${row.accountId}'`, accountAccessId: `'${row.accountAccessId}'` };
   const specBinding = specHasHypothesis
-    ? `'${row.hypothesisRevisionId}', '${hashC}', jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex','${hashC}')))`
-    : `null, null, jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','NO_HYPOTHESIS'))`;
+    ? `'${row.hypothesisRevisionId}', '${hashC}', 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY', jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex','${hashC}')))`
+    : `null, null, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY', jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex','${hashB}'),'hypothesisBinding',jsonb_build_object('kind','NO_HYPOTHESIS'))`;
 
   await client.query(`
     insert into investing.principals (principal_id, external_provider, external_subject)
