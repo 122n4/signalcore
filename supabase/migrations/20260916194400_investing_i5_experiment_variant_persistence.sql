@@ -187,6 +187,7 @@ create policy accounts_i5_variant_account_authority_read
     and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
     and account_id::text = current_setting('syntrake.investing.account_id', true)
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and initial_principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and state = 'ACTIVE'
   );
 
@@ -205,6 +206,20 @@ create policy account_access_i5_variant_account_authority_read
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and role = 'OWNER'
     and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.accounts a
+      join investing.tenant_memberships m
+        on m.tenant_membership_id = account_access.tenant_membership_id
+       and m.tenant_id = account_access.tenant_id
+       and m.principal_id = account_access.principal_id
+       and m.role = 'OWNER'
+       and m.state = 'ACTIVE'
+      where a.account_id = account_access.account_id
+        and a.tenant_id = account_access.tenant_id
+        and a.initial_principal_id = account_access.principal_id
+        and a.state = 'ACTIVE'
+    )
   );
 
 create policy research_investigations_i5_variant_selector_read
@@ -481,6 +496,10 @@ declare
   v_missing_policy_count integer;
   v_bad_grant_count integer;
   v_rls_count integer;
+  v_check_count integer;
+  v_column_count integer;
+  v_constraint_count integer;
+  v_index_count integer;
 begin
   if current_user <> 'investing_owner' then
     raise exception 'I5 Experiment VARIANT postcondition violation: migration role must be investing_owner, got %', current_user;
@@ -509,6 +528,178 @@ begin
 
   if v_bad_grant_count <> 0 then
     raise exception 'I5 Experiment VARIANT postcondition violation: forbidden research_experiments grant';
+  end if;
+
+  select count(*)::integer
+  into v_column_count
+  from information_schema.columns
+  where table_schema = 'investing'
+    and table_name = 'research_experiments'
+    and column_name = 'parent_experiment_id'
+    and udt_name = 'uuid';
+
+  if v_column_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: parent_experiment_id uuid column missing';
+  end if;
+
+  select count(*)::integer
+  into v_column_count
+  from information_schema.columns
+  where table_schema = 'investing'
+    and table_name = 'research_experiments'
+    and (
+      column_name ~* 'raw.*research.*ir'
+      or column_name ~* 'experiment.*parameters'
+      or column_name ~* 'scientific.*hash'
+      or column_name in ('experiment_hash', 'experiment_parameters_hash')
+    );
+
+  if v_column_count <> 0 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: forbidden raw/scientific Experiment storage column';
+  end if;
+
+  select count(*)::integer
+  into v_check_count
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_experiments'
+    and con.conname = 'research_experiments_operation_check'
+    and con.contype = 'c'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1';
+
+  if v_check_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: Experiment operation vocabulary mismatch';
+  end if;
+
+  select count(*)::integer
+  into v_check_count
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_experiments'
+    and con.conname = 'research_experiments_operation_relation_parent_shape_check'
+    and con.contype = 'c'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'BASELINE'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'parent_experiment_id IS NULL'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'VARIANT'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'parent_experiment_id IS NOT NULL';
+
+  if v_check_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: operation/relation/parent shape mismatch';
+  end if;
+
+  select count(*)::integer
+  into v_constraint_count
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_experiments'
+    and con.conname = 'research_experiments_parent_family_fk'
+    and con.contype = 'f'
+    and con.convalidated
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'parent_experiment_id'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_investigation_id'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_spec_revision_id'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_algorithm'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_domain'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_version'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_hex';
+
+  if v_constraint_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: parent family FK missing or altered';
+  end if;
+
+  select count(*)::integer
+  into v_constraint_count
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_experiments'
+    and con.conname = 'research_experiments_family_fk_source_key'
+    and con.contype = 'u'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_experiment_id'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_investigation_id'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_spec_revision_id'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_algorithm'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_domain'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_version'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'research_ir_hash_hex';
+
+  if v_constraint_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: family FK source key missing or altered';
+  end if;
+
+  select count(*)::integer
+  into v_index_count
+  from pg_catalog.pg_class i
+  join pg_catalog.pg_namespace n on n.oid = i.relnamespace
+  join pg_catalog.pg_index ix on ix.indexrelid = i.oid
+  where n.nspname = 'investing'
+    and i.relname = 'research_experiments_baseline_binding_key'
+    and ix.indisunique
+    and pg_catalog.pg_get_expr(ix.indpred, ix.indrelid) ~ 'relation = ''BASELINE''';
+
+  if v_index_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: BASELINE unique binding index missing or altered';
+  end if;
+
+  select count(*)::integer
+  into v_index_count
+  from pg_catalog.pg_class i
+  join pg_catalog.pg_namespace n on n.oid = i.relnamespace
+  join pg_catalog.pg_index ix on ix.indexrelid = i.oid
+  where n.nspname = 'investing'
+    and i.relname = 'research_experiments_variant_structural_binding_key'
+    and ix.indisunique
+    and pg_catalog.pg_get_expr(ix.indpred, ix.indrelid) ~ 'relation = ''VARIANT''';
+
+  if v_index_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: VARIANT structural unique binding index missing or altered';
+  end if;
+
+  select count(*)::integer
+  into v_check_count
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'idempotency_records'
+    and con.conname = 'idempotency_records_operation_check'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_SPEC_REVISION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1';
+
+  if v_check_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: idempotency operation vocabulary mismatch';
+  end if;
+
+  select count(*)::integer
+  into v_check_count
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'research_material_pointer_states'
+    and con.conname = 'research_material_pointer_states_updated_by_operation_check'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_SPEC_REVISION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1';
+
+  if v_check_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: pointer operation vocabulary mismatch';
   end if;
 
   with expected(tablename, policyname, cmd) as (
@@ -543,6 +734,35 @@ begin
 
   if v_missing_policy_count <> 0 then
     raise exception 'I5 Experiment VARIANT postcondition violation: missing or altered policies: %', v_missing_policy_count;
+  end if;
+
+  select count(*)::integer
+  into v_missing_policy_count
+  from pg_catalog.pg_policies p
+  where p.schemaname = 'investing'
+    and p.tablename = 'accounts'
+    and p.policyname = 'accounts_i5_variant_account_authority_read'
+    and lower(coalesce(p.qual, '')) ~ 'initial_principal_id'
+    and lower(coalesce(p.qual, '')) ~ 'principal_id'
+    and lower(coalesce(p.qual, '')) ~ 'state = ''active''';
+
+  if v_missing_policy_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: account authority policy missing owner closure';
+  end if;
+
+  select count(*)::integer
+  into v_missing_policy_count
+  from pg_catalog.pg_policies p
+  where p.schemaname = 'investing'
+    and p.tablename = 'account_access'
+    and p.policyname = 'account_access_i5_variant_account_authority_read'
+    and lower(coalesce(p.qual, '')) ~ 'exists'
+    and lower(coalesce(p.qual, '')) ~ 'initial_principal_id'
+    and lower(coalesce(p.qual, '')) ~ 'tenant_memberships'
+    and lower(coalesce(p.qual, '')) ~ 'accounts';
+
+  if v_missing_policy_count <> 1 then
+    raise exception 'I5 Experiment VARIANT postcondition violation: account access policy missing account/membership closure';
   end if;
 end $$;
 

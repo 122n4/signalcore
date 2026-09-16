@@ -173,6 +173,10 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
 
   it("defines the migration vocabulary, parent shape, family FK, uniqueness, RLS and minimal grants", () => {
     const sql = normalize(read(migrationPath));
+    const experimentEvolution = sql.slice(
+      sql.indexOf("alter table investing.research_experiments add column parent_experiment_id uuid"),
+      sql.indexOf("create unique index research_experiments_baseline_binding_key"),
+    );
     expect(sql).toContain("research_experiment_variant_create_v1");
     expect(sql).toContain("add column parent_experiment_id uuid");
     expect(sql).toContain("research_experiments_operation_relation_parent_shape_check");
@@ -180,16 +184,27 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(sql).toContain("operation = 'research_experiment_variant_create_v1' and relation = 'variant' and parent_experiment_id is not null");
     expect(sql).toContain("research_experiments_parent_family_fk");
     expect(sql).toContain("parent_experiment_id, research_investigation_id, research_spec_revision_id");
+    expect(sql).toContain("con.conname = 'research_experiments_parent_family_fk'");
+    expect(sql).toContain("con.contype = 'f'");
+    expect(sql).toContain("con.convalidated");
     expect(sql).toContain("research_experiments_baseline_binding_key");
     expect(sql).toContain("where relation = 'baseline'");
     expect(sql).toContain("research_experiments_variant_structural_binding_key");
     expect(sql).toContain("where relation = 'variant'");
+    expect(sql).toContain("con.conname = 'research_experiments_family_fk_source_key'");
+    expect(sql).toContain("con.contype = 'u'");
+    expect(sql).toContain("i.relname = 'research_experiments_baseline_binding_key'");
+    expect(sql).toContain("i.relname = 'research_experiments_variant_structural_binding_key'");
+    expect(sql).toContain("ix.indisunique");
+    expect(sql).toContain("idempotency_records_operation_check");
+    expect(sql).toContain("research_material_pointer_states_updated_by_operation_check");
+    expect(sql).toContain("forbidden raw/scientific experiment storage column");
     expect(sql).toContain("alter table investing.research_experiments");
     expect(sql).toContain("relrowsecurity");
     expect(sql).toContain("relforcerowsecurity");
-    expect(sql).not.toContain("raw_research_ir");
-    expect(sql).not.toContain("experiment_parameters");
-    expect(sql).not.toContain("scientific_hash");
+    expect(experimentEvolution).not.toContain("raw_research_ir");
+    expect(experimentEvolution).not.toContain("experiment_parameters");
+    expect(experimentEvolution).not.toContain("scientific_hash");
     expect(sql).not.toContain("grant update on table investing.research_experiments");
     expect(sql).not.toContain("grant delete on table investing.research_experiments");
   });
@@ -225,6 +240,18 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(policy(sql, "research_material_pointer_states_i5_variant_read")).toContain("research_experiment_id");
     expect(policy(sql, "research_material_pointer_states_i5_variant_update")).toContain("active_experiment_id::text = current_setting('syntrake.investing.expected_experiment_id', true)");
     expect(policy(sql, "research_material_pointer_states_i5_variant_update")).toContain("updated_by_operation = 'research_experiment_variant_create_v1'");
+    const account = policy(sql, "accounts_i5_variant_account_authority_read");
+    expect(account).toContain("initial_principal_id");
+    expect(account).toContain("principal_id");
+    expect(account).toContain("state = 'active'");
+    const access = policy(sql, "account_access_i5_variant_account_authority_read");
+    expect(access).toContain("exists");
+    expect(access).toContain("from investing.accounts");
+    expect(access).toContain("join investing.tenant_memberships");
+    expect(access).toContain("initial_principal_id = account_access.principal_id");
+    expect(access).toContain("m.principal_id = account_access.principal_id");
+    expect(access).toContain("m.role = 'owner'");
+    expect(access).toContain("m.state = 'active'");
   });
 
   it("keeps writer/service boundaries exact and avoids future scientific surfaces", () => {
