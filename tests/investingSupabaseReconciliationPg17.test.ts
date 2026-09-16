@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -217,6 +218,14 @@ type LabFixture = {
   materialRequestHash: string;
 };
 
+function experimentFixtureMaterialRequestHash(scope: LabScope, suffix: string, specHasHypothesis: boolean) {
+  const dependencyMode = specHasHypothesis ? "DEPENDENT" : "INDEPENDENT";
+  return createHash("sha256")
+    .update(`PG17_EXPERIMENT_BASELINE_FIXTURE_V1|${scope}|${suffix}|${dependencyMode}`)
+    .digest("hex")
+    .toUpperCase();
+}
+
 function fixture(scope: LabScope, suffix: string, specHasHypothesis: boolean): LabFixture {
   const accountScope = scope === "ACCOUNT_SCOPE";
   const tail = suffix.padStart(12, "0").slice(-12);
@@ -243,7 +252,7 @@ function fixture(scope: LabScope, suffix: string, specHasHypothesis: boolean): L
     idempotencyRecordId: `b0000000-0000-4000-8000-${tail}`,
     idempotencyKey: `idem-pg17-i5-${suffix}-0001`,
     correlationId: `corr-pg17-i5-${suffix}-0001`,
-    materialRequestHash: specHasHypothesis ? hashB : hashA,
+    materialRequestHash: experimentFixtureMaterialRequestHash(scope, suffix, specHasHypothesis),
   };
 }
 
