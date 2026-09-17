@@ -192,7 +192,7 @@ Policies use safe text comparison against session settings for UUID-bearing valu
 
 Acceptance was proven on PostgreSQL 17.11. The rehearsal proved the migration chain, RLS/FORCE RLS, ACL, family FK, BASELINE uniqueness preservation, VARIANT uniqueness, valid tenant/account create, parent-as-VARIANT, distinct parent versus active predecessor semantics, denials, idempotency and A3/A4 behavior with an active VARIANT.
 
-When `PG17_RECONCILIATION_URL` is absent, the rehearsal remains blocked and no READY verdict exists.
+A future rehearsal invocation without `PG17_RECONCILIATION_URL` is `BLOCKED` for that invocation and cannot produce new PG17 evidence. It does not invalidate the accepted PostgreSQL 17.11 provenance recorded in this contract.
 
 ## Failure Semantics
 

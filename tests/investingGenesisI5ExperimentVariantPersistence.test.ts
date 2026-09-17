@@ -280,9 +280,25 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED");
     expect(contract).toContain("VARIANT persistence != ExperimentParameters authority");
     expect(contract).toContain("operational Experiment UUID != scientific Experiment hash");
+    expect(contract).not.toContain("no READY verdict exists");
+    expect(contract).toContain(
+      "A future rehearsal invocation without `PG17_RECONCILIATION_URL` is `BLOCKED` for that invocation",
+    );
+    expect(contract).toContain("cannot produce new PG17 evidence");
+    expect(contract).toContain(
+      "does not invalidate the accepted PostgreSQL 17.11 provenance recorded in this contract",
+    );
     expect(state).toContain("I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("CURRENT_ACCEPTED / STRUCTURAL_LINEAGE_ONLY");
     expect(state).toContain("CURRENT_ACCEPTED / DURABLE_VARIANT_LINEAGE");
     expect(state).toContain("EXPERIMENT VARIANT PERSISTENCE = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(state).toContain("The structural admission itself does not");
+    expect(state).toContain("own persistence authority");
+    expect(state).toContain("At the time of structural admission, persistence");
+    expect(state).toContain("was deferred; that limitation is now superseded");
+    expect(state).toContain("separately accepted");
+    expect(state).toContain("Experiment VARIANT persistence owner contract");
+    expect(state).not.toContain("Persistence proof is deferred, and");
     expect(state).toContain("Permanent A-number:");
     expect(state).toContain("`NOT ASSIGNED`");
     expect(state).toContain("SYNTRAKE:EXPERIMENT:V1");

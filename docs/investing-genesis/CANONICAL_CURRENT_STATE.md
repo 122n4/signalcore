@@ -161,8 +161,11 @@ not become Investing Genesis authority merely because they use similar words.
 - I5 Experiment VARIANT structural lineage admission: current accepted,
   unnumbered. This structural runtime-only acceptance admits an immutable parent
   operational Experiment UUID, canonical ResearchSpecRevision identity and
-  Research IR HashRef family evidence. Persistence proof is deferred, and
-  scientific Experiment/ExperimentParameters hashing remains disabled.
+  Research IR HashRef family evidence. The structural admission itself does not
+  own persistence authority. At the time of structural admission, persistence
+  was deferred; that limitation is now superseded by the separately accepted
+  Experiment VARIANT persistence owner contract. Scientific
+  Experiment/ExperimentParameters hashing remains disabled.
 - I5 Experiment VARIANT persistence: current accepted, unnumbered. This
   acceptance establishes durable operational VARIANT lineage, immutable
   parent_experiment_id, exact parent-family binding, material request identity,
