@@ -303,16 +303,16 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
         'material-pre-existing', 'b0000000-0000-4000-8000-000000000071', 'idem-pre-existing', 'corr-pre-existing'
       )
     `);
-    let migrationFailedClosed = false;
+    let migrationError: unknown;
     try {
       await client.query(readSql(closureMigration));
     } catch (error) {
-      migrationFailedClosed = true;
-      expect(error).toBeInstanceOf(Error);
-      expect((error as Error).message).toMatch(/research_experiments must be empty/i);
+      migrationError = error;
+    } finally {
+      await client.query("rollback").catch(() => undefined);
     }
-    expect(migrationFailedClosed).toBe(true);
-    await client.query("rollback");
+    expect(migrationError).toBeInstanceOf(Error);
+    expect((migrationError as Error).message).toMatch(/research_experiments must be empty/i);
 
     await resetDisposableDatabase();
     await applyClosure();
