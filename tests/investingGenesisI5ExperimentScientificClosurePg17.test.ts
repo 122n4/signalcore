@@ -30,16 +30,27 @@ let client: PoolClient;
 
 const ids = {
   investigation: "60000000-0000-4000-8000-000000000071",
+  accountInvestigation: "60000000-0000-4000-8000-000000000081",
   tenant: "20000000-0000-4000-8000-000000000071",
+  accountTenant: "20000000-0000-4000-8000-000000000081",
   principal: "10000000-0000-4000-8000-000000000071",
+  accountPrincipal: "10000000-0000-4000-8000-000000000081",
   membership: "30000000-0000-4000-8000-000000000071",
+  accountMembership: "30000000-0000-4000-8000-000000000081",
+  account: "40000000-0000-4000-8000-000000000081",
+  accountAccess: "50000000-0000-4000-8000-000000000081",
+  wrongAccount: "40000000-0000-4000-8000-000000000082",
+  wrongAccountAccess: "50000000-0000-4000-8000-000000000082",
   spec: "91000000-0000-4000-8000-000000000071",
+  accountSpec: "91000000-0000-4000-8000-000000000081",
   e0: "a0000000-0000-4000-8000-000000000070",
   e1: "a1000000-0000-4000-8000-000000000071",
   e2: "a2000000-0000-4000-8000-000000000072",
   e3: "a3000000-0000-4000-8000-000000000073",
   duplicate: "a4000000-0000-4000-8000-000000000074",
   rollback: "a5000000-0000-4000-8000-000000000075",
+  accountE0: "a6000000-0000-4000-8000-000000000081",
+  accountE1: "a7000000-0000-4000-8000-000000000081",
 };
 
 const hashes = {
@@ -56,12 +67,81 @@ const hashes = {
   p3: "E333333333333333333333333333333333333333333333333333333333333333",
 };
 
+const seedHashes = {
+  investigation: "1111111111111111111111111111111111111111111111111111111111111111",
+  draft: "2222222222222222222222222222222222222222222222222222222222222222",
+  hypothesis: "3333333333333333333333333333333333333333333333333333333333333333",
+  spec: "4444444444444444444444444444444444444444444444444444444444444444",
+  nextDraft: "5555555555555555555555555555555555555555555555555555555555555555",
+  nextHypothesis: "6666666666666666666666666666666666666666666666666666666666666666",
+  nextSpec: "7777777777777777777777777777777777777777777777777777777777777777",
+};
+
+type Fixture = {
+  actorId: string;
+  principalId: string;
+  tenantId: string;
+  tenantMembershipId: string;
+  accountId: string | null;
+  accountAccessId: string | null;
+  sourceContext: "PURE_RESEARCH" | "USER_PORTFOLIO";
+  investigationId: string;
+  draftRootId: string;
+  draftRevisionId: string;
+  hypothesisRootId: string;
+  hypothesisRevisionId: string;
+  specRootId: string;
+  specRevisionId: string;
+};
+
+const tenantFixture: Fixture = {
+  actorId: "pg17-scientific-closure",
+  principalId: ids.principal,
+  tenantId: ids.tenant,
+  tenantMembershipId: ids.membership,
+  accountId: null,
+  accountAccessId: null,
+  sourceContext: "PURE_RESEARCH",
+  investigationId: ids.investigation,
+  draftRootId: "70000000-0000-4000-8000-000000000071",
+  draftRevisionId: "71000000-0000-4000-8000-000000000071",
+  hypothesisRootId: "80000000-0000-4000-8000-000000000071",
+  hypothesisRevisionId: "81000000-0000-4000-8000-000000000071",
+  specRootId: "90000000-0000-4000-8000-000000000071",
+  specRevisionId: ids.spec,
+};
+
+const accountFixture: Fixture = {
+  actorId: "pg17-scientific-closure-account",
+  principalId: ids.accountPrincipal,
+  tenantId: ids.accountTenant,
+  tenantMembershipId: ids.accountMembership,
+  accountId: ids.account,
+  accountAccessId: ids.accountAccess,
+  sourceContext: "USER_PORTFOLIO",
+  investigationId: ids.accountInvestigation,
+  draftRootId: "70000000-0000-4000-8000-000000000081",
+  draftRevisionId: "71000000-0000-4000-8000-000000000081",
+  hypothesisRootId: "80000000-0000-4000-8000-000000000081",
+  hypothesisRevisionId: "81000000-0000-4000-8000-000000000081",
+  specRootId: "90000000-0000-4000-8000-000000000081",
+  specRevisionId: ids.accountSpec,
+};
+
 function readSql(relativePath: string) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
 function idempotencyRecordIdFor(experimentId: string) {
   return `b${experimentId.slice(1)}`;
+}
+
+function materialHashFor(experimentId: string) {
+  return experimentId.replace(/[^A-Fa-f0-9]/gu, "").padEnd(64, "0").slice(0, 64).toUpperCase();
+}
+
+function scopeFor(fixture: Fixture) {
+  return fixture.accountId === null ? "TENANT_SCOPE" : "ACCOUNT_SCOPE";
 }
 
 async function applySql(relativePath: string) {
@@ -159,12 +239,114 @@ async function applyPredecessors() {
 async function applyClosure() {
   await applyPredecessors();
   await applySql(closureMigration);
-  await client.query("alter table investing.research_experiments disable trigger all");
+}
+
+async function seedAuthorityFixture(fixture: Fixture) {
+  const accountId = fixture.accountId === null ? null : fixture.accountId;
+  const accountAccessId = fixture.accountAccessId === null ? null : fixture.accountAccessId;
+  const scope = scopeFor(fixture);
+  await client.query(`
+    insert into investing.principals (principal_id, external_provider, external_subject)
+    values ($1, 'CLERK', $2);
+    insert into investing.tenants (tenant_id) values ($3);
+    insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id)
+    values ($4, $3, $1);
+  `, [fixture.principalId, fixture.actorId, fixture.tenantId, fixture.tenantMembershipId]);
+  if (fixture.accountId !== null && fixture.accountAccessId !== null) {
+    await client.query(`
+      insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
+      values ($1, $2, $3, $4, 'USD');
+      insert into investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
+      values ($5, $1, $2, $3, $4);
+    `, [fixture.accountId, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId, fixture.accountAccessId]);
+    await client.query(`
+      insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
+      values ($1, $2, $3, $4, 'USD');
+      insert into investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
+      values ($5, $1, $2, $3, $4);
+    `, [ids.wrongAccount, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId, ids.wrongAccountAccess]);
+  }
+  await client.query(`
+    insert into investing.idempotency_records (
+      idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+      operation_scope, operation, principal_id, tenant_id, account_id, status, completed_at
+    ) values
+      ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_INVESTIGATION_CREATE_V1', $7, $8, $9, 'SUCCEEDED', timestamptz '2026-09-17 00:00:00+00'),
+      ($10, $11, $12, $13, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_DRAFT_REVISION_CREATE_V1', $7, $8, $9, 'SUCCEEDED', timestamptz '2026-09-17 00:00:00+00'),
+      ($14, $15, $16, $17, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', $7, $8, $9, 'SUCCEEDED', timestamptz '2026-09-17 00:00:00+00'),
+      ($18, $19, $20, $21, 'USER_PRINCIPAL', $5, $6, 'RESEARCH_SPEC_REVISION_CREATE_V1', $7, $8, $9, 'SUCCEEDED', timestamptz '2026-09-17 00:00:00+00')
+  `, [
+    `c1000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-investigation-${fixture.principalId.slice(-12)}`, seedHashes.investigation, `corr-investigation-${fixture.principalId.slice(-12)}`,
+    fixture.actorId, scope, fixture.principalId, fixture.tenantId, accountId,
+    `c2000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-draft-${fixture.principalId.slice(-12)}`, seedHashes.draft, `corr-draft-${fixture.principalId.slice(-12)}`,
+    `c3000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-hypothesis-${fixture.principalId.slice(-12)}`, seedHashes.hypothesis, `corr-hypothesis-${fixture.principalId.slice(-12)}`,
+    `c4000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-spec-${fixture.principalId.slice(-12)}`, seedHashes.spec, `corr-spec-${fixture.principalId.slice(-12)}`,
+  ]);
+  await client.query(`
+    insert into investing.research_investigations (
+      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context,
+      material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values (
+      $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8,
+      'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', $9, $10, $11, $12, $13
+    );
+    insert into investing.research_material_roots (
+      material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
+    ) values
+      ($14, $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, 'DRAFT', 'RESEARCH_DRAFT_REVISION_CREATE_V1'),
+      ($15, $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, 'HYPOTHESIS', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
+      ($16, $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, 'RESEARCH_SPEC', 'RESEARCH_SPEC_REVISION_CREATE_V1');
+  `, [
+    fixture.investigationId, fixture.tenantId, accountId, fixture.principalId, fixture.actorId,
+    fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext, seedHashes.investigation,
+    `c1000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-investigation-${fixture.principalId.slice(-12)}`, `corr-investigation-${fixture.principalId.slice(-12)}`,
+    fixture.draftRootId, fixture.hypothesisRootId, fixture.specRootId,
+  ]);
+  await client.query(`
+    insert into investing.research_material_revisions (
+      material_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context, material_kind, revision_number,
+      predecessor_revision_id, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values
+      ($1, $2, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', $11, 'DRAFT', 1,
+       null, 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, $12, $12, $13, $14, $15),
+      ($16, $17, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', $11, 'HYPOTHESIS', 1,
+       null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $18, $18, $19, $20, $21);
+    insert into investing.research_spec_revisions (
+      research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
+      source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
+      canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values (
+      $22, $23, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, $11, 'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null,
+      $1, $12, $16, $18, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
+      jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex',$12),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex',$18))),
+      $24, $25, $26, $27
+    );
+    insert into investing.research_material_pointer_states (
+      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context,
+      active_draft_revision_id, active_hypothesis_revision_id, active_spec_revision_id, active_experiment_id, pointer_version
+    ) values (
+      $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, $11, $1, $16, $22, null, 7
+    );
+  `, [
+    fixture.draftRevisionId, fixture.draftRootId, fixture.investigationId, fixture.tenantId, accountId,
+    fixture.principalId, fixture.actorId, fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext,
+    seedHashes.draft, `c2000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-draft-${fixture.principalId.slice(-12)}`, `corr-draft-${fixture.principalId.slice(-12)}`,
+    fixture.hypothesisRevisionId, fixture.hypothesisRootId, seedHashes.hypothesis,
+    `c3000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-hypothesis-${fixture.principalId.slice(-12)}`, `corr-hypothesis-${fixture.principalId.slice(-12)}`,
+    fixture.specRevisionId, fixture.specRootId, seedHashes.spec,
+    `c4000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-spec-${fixture.principalId.slice(-12)}`, `corr-spec-${fixture.principalId.slice(-12)}`,
+  ]);
 }
 
 function experimentValues(input: {
   id: string;
   relation: "BASELINE" | "VARIANT";
+  fixture?: Fixture;
   parentId?: string | null;
   researchIr: string;
   experimentHash?: string | null;
@@ -172,25 +354,27 @@ function experimentValues(input: {
   material?: string;
   idempotencyRecordId?: string;
 }) {
+  const fixture = input.fixture ?? tenantFixture;
   const operation = input.relation === "BASELINE" ? "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1" : "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
   const idempotencyRecordId = input.idempotencyRecordId ?? idempotencyRecordIdFor(input.id);
+  const materialRequestHash = input.material ?? materialHashFor(input.id);
   return [
     input.id,
-    ids.investigation,
-    ids.tenant,
-    null,
-    ids.principal,
+    fixture.investigationId,
+    fixture.tenantId,
+    fixture.accountId,
+    fixture.principalId,
     "USER_PRINCIPAL",
-    "pg17-scientific-closure",
-    ids.membership,
-    null,
-    "TENANT_SCOPE",
-    "PURE_RESEARCH",
+    fixture.actorId,
+    fixture.tenantMembershipId,
+    fixture.accountAccessId,
+    scopeFor(fixture),
+    fixture.sourceContext,
     operation,
     "RESEARCH_MUTATE",
     input.relation,
     input.parentId ?? null,
-    ids.spec,
+    fixture.specRevisionId,
     "SHA-256",
     "SYNTRAKE:RESEARCH_IR:V1",
     "SYNTRAKE_SHA256_V1",
@@ -203,14 +387,38 @@ function experimentValues(input: {
     input.relation === "VARIANT" ? "SYNTRAKE:EXPERIMENT_PARAMETERS:V1" : null,
     input.relation === "VARIANT" ? "SYNTRAKE_SHA256_V1" : null,
     input.parametersHash ?? null,
-    input.material ?? `material-${input.id}`,
+    materialRequestHash,
     idempotencyRecordId,
     `idem-${input.id}`,
     `corr-${input.id}`,
   ];
 }
 
+async function seedExperimentIdempotency(input: Parameters<typeof experimentValues>[0]) {
+  const fixture = input.fixture ?? tenantFixture;
+  const operation = input.relation === "BASELINE" ? "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1" : "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
+  await client.query(`
+    insert into investing.idempotency_records (
+      idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+      operation_scope, operation, principal_id, tenant_id, account_id, status
+    ) values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, $10, 'STARTED')
+    on conflict (idempotency_record_id) do nothing
+  `, [
+    input.idempotencyRecordId ?? idempotencyRecordIdFor(input.id),
+    `idem-${input.id}`,
+    input.material ?? materialHashFor(input.id),
+    `corr-${input.id}`,
+    fixture.actorId,
+    scopeFor(fixture),
+    operation,
+    fixture.principalId,
+    fixture.tenantId,
+    fixture.accountId,
+  ]);
+}
+
 async function insertExperimentOwner(input: Parameters<typeof experimentValues>[0]) {
+  await seedExperimentIdempotency(input);
   await client.query(
     `
       insert into investing.research_experiments (
@@ -229,26 +437,33 @@ async function insertExperimentOwner(input: Parameters<typeof experimentValues>[
   );
 }
 
-async function withAppContext(operation: "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1" | "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", extra: Record<string, string>, work: () => Promise<void>) {
+async function withAppContext(
+  fixture: Fixture,
+  operation: "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1" | "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1",
+  extra: Record<string, string>,
+  work: () => Promise<void>,
+) {
   await client.query("begin");
   try {
     await client.query("set local role investing_app");
     const base = {
       actor_kind: "USER_PRINCIPAL",
-      actor_id: "pg17-scientific-closure",
-      principal_id: ids.principal,
-      tenant_id: ids.tenant,
-      tenant_membership_id: ids.membership,
+      actor_id: fixture.actorId,
+      principal_id: fixture.principalId,
+      tenant_id: fixture.tenantId,
+      tenant_membership_id: fixture.tenantMembershipId,
       operation,
       capability: "RESEARCH_MUTATE",
-      operation_scope: "TENANT_SCOPE",
-      source_context: "PURE_RESEARCH",
-      research_investigation_id: ids.investigation,
-      research_spec_revision_id: ids.spec,
+      operation_scope: scopeFor(fixture),
+      source_context: fixture.sourceContext,
+      research_investigation_id: fixture.investigationId,
+      research_spec_revision_id: fixture.specRevisionId,
+      account_id: fixture.accountId ?? "",
+      account_access_id: fixture.accountAccessId ?? "",
       ...extra,
     };
     for (const [key, value] of Object.entries(base)) {
-      await client.query("select set_config($1, $2, true)", [`syntrake.investing.${key}`, value]);
+      if (value !== "") await client.query("select set_config($1, $2, true)", [`syntrake.investing.${key}`, value]);
     }
     await work();
     await client.query("commit");
@@ -260,15 +475,27 @@ async function withAppContext(operation: "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1
 
 async function insertExperimentApp(
   input: Parameters<typeof experimentValues>[0],
-  gucOverrides: Partial<{ experimentHash: string; parametersHash: string; parentExperimentHash: string; parentResearchIr: string }> = {},
+  gucOverrides: Partial<{
+    experimentHash: string;
+    parametersHash: string;
+    parentExperimentHash: string;
+    parentResearchIr: string;
+    expectedExperimentId: string;
+    accountId: string;
+    accountAccessId: string;
+  }> = {},
 ) {
+  const fixture = input.fixture ?? tenantFixture;
   const operation = input.relation === "BASELINE" ? "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1" : "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
-  await withAppContext(operation, {
+  const idempotencyRecordId = input.idempotencyRecordId ?? idempotencyRecordIdFor(input.id);
+  const materialRequestHash = input.material ?? materialHashFor(input.id);
+  const expectedExperimentId = gucOverrides.expectedExperimentId ?? input.parentId ?? "";
+  await withAppContext(fixture, operation, {
     research_experiment_id: input.id,
     parent_experiment_id: input.parentId ?? "",
-    expected_experiment_id: input.parentId ?? "",
-    material_request_hash: input.material ?? `material-${input.id}`,
-    idempotency_record_id: input.idempotencyRecordId ?? idempotencyRecordIdFor(input.id),
+    expected_experiment_id: expectedExperimentId,
+    material_request_hash: materialRequestHash,
+    idempotency_record_id: idempotencyRecordId,
     idempotency_key: `idem-${input.id}`,
     correlation_id: `corr-${input.id}`,
     research_ir_hash_hex: input.researchIr,
@@ -276,8 +503,41 @@ async function insertExperimentApp(
     experiment_parameters_hash_hex: gucOverrides.parametersHash ?? input.parametersHash ?? "",
     parent_research_ir_hash_hex: gucOverrides.parentResearchIr ?? hashes.parentIr,
     parent_experiment_hash_hex: gucOverrides.parentExperimentHash ?? hashes.e0Experiment,
+    account_id: gucOverrides.accountId ?? fixture.accountId ?? "",
+    account_access_id: gucOverrides.accountAccessId ?? fixture.accountAccessId ?? "",
   }, async () => {
+    await client.query(`
+      insert into investing.idempotency_records (
+        idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+        operation_scope, operation, principal_id, tenant_id, account_id, status
+      ) values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, $10, 'STARTED')
+    `, [idempotencyRecordId, `idem-${input.id}`, materialRequestHash, `corr-${input.id}`, fixture.actorId, scopeFor(fixture), operation, fixture.principalId, fixture.tenantId, fixture.accountId]);
+    if (input.relation === "VARIANT") {
+      const parent = await client.query("select research_experiment_id from investing.research_experiments where research_experiment_id = $1", [input.parentId]);
+      expect(parent.rowCount).toBe(1);
+    }
     await insertExperimentOwner(input);
+    const updated = await client.query(`
+      update investing.research_material_pointer_states
+      set active_experiment_id = $1,
+          pointer_version = pointer_version + 1,
+          updated_by_operation = $2,
+          updated_at = transaction_timestamp()
+      where research_investigation_id = $3
+        and active_spec_revision_id = $4
+        and ${input.relation === "BASELINE" ? "active_experiment_id is null" : "active_experiment_id = $5"}
+    `, input.relation === "BASELINE"
+      ? [input.id, operation, fixture.investigationId, fixture.specRevisionId]
+      : [input.id, operation, fixture.investigationId, fixture.specRevisionId, expectedExperimentId]);
+    expect(updated.rowCount).toBe(1);
+    await client.query(`
+      update investing.idempotency_records
+      set status = 'SUCCEEDED',
+          canonical_result_reference = $2::jsonb,
+          completed_at = transaction_timestamp(),
+          updated_at = transaction_timestamp()
+      where idempotency_record_id = $1 and status = 'STARTED'
+    `, [idempotencyRecordId, JSON.stringify({ researchExperimentId: input.id, relation: input.relation })]);
   });
 }
 
@@ -295,7 +555,8 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
   it("applies predecessors, fails closed on pre-existing Experiment rows, then applies scientific closure", async () => {
     await resetDisposableDatabase();
     await applyPredecessors();
-    await client.query("alter table investing.research_experiments disable trigger all");
+    await seedAuthorityFixture(tenantFixture);
+    await seedExperimentIdempotency({ id: ids.e0, relation: "BASELINE", researchIr: hashes.parentIr, material: materialHashFor(ids.e0) });
     await client.query(`
       insert into investing.research_experiments (
         research_experiment_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id,
@@ -306,7 +567,7 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
         '${ids.e0}', '${ids.investigation}', '${ids.tenant}', '${ids.principal}', 'USER_PRINCIPAL', 'pg17-scientific-closure',
         '${ids.membership}', 'TENANT_SCOPE', 'PURE_RESEARCH', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE',
         '${ids.spec}', 'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', '${hashes.parentIr}',
-        'material-pre-existing', 'b0000000-0000-4000-8000-000000000071', 'idem-pre-existing', 'corr-pre-existing'
+        '${materialHashFor(ids.e0)}', '${idempotencyRecordIdFor(ids.e0)}', 'idem-${ids.e0}', 'corr-${ids.e0}'
       )
     `);
     let migrationError: unknown;
@@ -351,11 +612,14 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
   it("rejects malformed or missing scientific envelopes at the database layer", async () => {
     await resetDisposableDatabase();
     await applyClosure();
+    await seedAuthorityFixture(tenantFixture);
     await expect(insertExperimentOwner({ id: ids.e0, relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: null })).rejects.toThrow(/null value|not-null/i);
+    await insertExperimentOwner({ id: ids.e0, relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: hashes.e0Experiment });
     await expect(insertExperimentOwner({ id: ids.e1, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: null, parametersHash: hashes.p1 })).rejects.toThrow(/null value|not-null/i);
     await expect(insertExperimentOwner({ id: ids.e1, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e1Experiment, parametersHash: null })).rejects.toThrow(/experiment_parameters_shape/i);
     await expect(insertExperimentOwner({ id: ids.e1, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: "bad", parametersHash: hashes.p1 })).rejects.toThrow(/experiment_hash_envelope/i);
     await expect(insertExperimentOwner({ id: ids.e1, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e1Experiment, parametersHash: "bad" })).rejects.toThrow(/experiment_parameters_shape/i);
+    await seedExperimentIdempotency({ id: ids.duplicate, relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: hashes.e0Experiment });
     await expect(client.query(`
       insert into investing.research_experiments (
         research_experiment_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id,
@@ -367,37 +631,45 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
         'TENANT_SCOPE', 'PURE_RESEARCH', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE', '${ids.spec}',
         'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', '${hashes.parentIr}',
         'SHA-256', 'SYNTRAKE:RESEARCH_SPEC:V1', 'SYNTRAKE_SHA256_V1', '${hashes.e0Experiment}',
-        'wrong-domain', 'b0000000-0000-4000-8000-000000000071', 'idem-wrong-domain', 'corr-wrong-domain')
+        '${materialHashFor(ids.duplicate)}', '${idempotencyRecordIdFor(ids.duplicate)}', 'idem-${ids.duplicate}', 'corr-${ids.duplicate}')
     `)).rejects.toThrow(/experiment_hash_envelope/i);
   });
 
   it("enforces RLS scientific bindings and persists sibling and chained VARIANT scientific identity", async () => {
     await resetDisposableDatabase();
     await applyClosure();
-    await insertExperimentApp({ id: ids.e0, relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: hashes.e0Experiment, material: "material-e0" });
+    await seedAuthorityFixture(tenantFixture);
+    await seedAuthorityFixture(accountFixture);
+    await insertExperimentApp({ id: ids.e0, relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: hashes.e0Experiment });
     await expect(insertExperimentApp(
-      { id: "a9000000-0000-4000-8000-000000000090", relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: hashes.e1Experiment, material: "material-e0-bad" },
+      { id: "a9000000-0000-4000-8000-000000000090", relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: hashes.e1Experiment },
       { experimentHash: hashes.e0Experiment },
     )).rejects.toThrow(/row-level security/i);
-    await insertExperimentApp({ id: ids.e1, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e1Experiment, parametersHash: hashes.p1, material: "material-e1" });
-    await insertExperimentApp({ id: ids.e2, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e2Ir, experimentHash: hashes.e2Experiment, parametersHash: hashes.p2, material: "material-e2" });
-    await insertExperimentApp({ id: ids.e3, relation: "VARIANT", parentId: ids.e1, researchIr: hashes.e3Ir, experimentHash: hashes.e3Experiment, parametersHash: hashes.p3, material: "material-e3" });
+    await insertExperimentApp({ id: ids.e1, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e1Experiment, parametersHash: hashes.p1 });
+    await insertExperimentApp(
+      { id: ids.e2, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e2Ir, experimentHash: hashes.e2Experiment, parametersHash: hashes.p2 },
+      { expectedExperimentId: ids.e1 },
+    );
+    await insertExperimentApp(
+      { id: ids.e3, relation: "VARIANT", parentId: ids.e1, researchIr: hashes.e3Ir, experimentHash: hashes.e3Experiment, parametersHash: hashes.p3 },
+      { expectedExperimentId: ids.e2, parentResearchIr: hashes.e1Ir, parentExperimentHash: hashes.e1Experiment },
+    );
     await expect(insertExperimentApp(
-      { id: "a9100000-0000-4000-8000-000000000091", relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e2Experiment, parametersHash: hashes.p1, material: "material-e1-bad-hash" },
-      { experimentHash: hashes.e1Experiment },
+      { id: "a9100000-0000-4000-8000-000000000091", relation: "VARIANT", parentId: ids.e3, researchIr: hashes.e1Ir, experimentHash: hashes.e2Experiment, parametersHash: hashes.p1 },
+      { expectedExperimentId: ids.e3, experimentHash: hashes.e1Experiment, parentResearchIr: hashes.e3Ir, parentExperimentHash: hashes.e3Experiment },
     )).rejects.toThrow(/row-level security/i);
     await expect(insertExperimentApp(
-      { id: "a9200000-0000-4000-8000-000000000092", relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: "F111111111111111111111111111111111111111111111111111111111111111", parametersHash: hashes.p2, material: "material-e1-bad-parameters" },
-      { parametersHash: hashes.p1 },
+      { id: "a9200000-0000-4000-8000-000000000092", relation: "VARIANT", parentId: ids.e3, researchIr: hashes.e1Ir, experimentHash: "F111111111111111111111111111111111111111111111111111111111111111", parametersHash: hashes.p2 },
+      { expectedExperimentId: ids.e3, parametersHash: hashes.p1, parentResearchIr: hashes.e3Ir, parentExperimentHash: hashes.e3Experiment },
     )).rejects.toThrow(/row-level security/i);
-    await withAppContext("RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
-      parent_experiment_id: ids.e0,
-      parent_research_ir_hash_hex: hashes.parentIr,
+    await withAppContext(tenantFixture, "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1", {
+      parent_experiment_id: ids.e3,
+      parent_research_ir_hash_hex: hashes.e3Ir,
       parent_experiment_hash_hex: hashes.e1Experiment,
       research_experiment_id: ids.e1,
-      expected_experiment_id: ids.e0,
-      material_request_hash: "material-parent-probe",
-      idempotency_record_id: "b0000000-0000-4000-8000-000000000071",
+      expected_experiment_id: ids.e3,
+      material_request_hash: "9999999999999999999999999999999999999999999999999999999999999999",
+      idempotency_record_id: "b9900000-0000-4000-8000-000000000071",
       idempotency_key: "idem-parent-probe",
       correlation_id: "corr-parent-probe",
       research_ir_hash_hex: hashes.e1Ir,
@@ -407,6 +679,14 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
       const visible = await client.query("select research_experiment_id from investing.research_experiments where research_experiment_id = $1", [ids.e0]);
       expect(visible.rows).toHaveLength(0);
     });
+    await expect(insertExperimentOwner({
+      id: "a9300000-0000-4000-8000-000000000093",
+      relation: "VARIANT",
+      parentId: "a9900000-0000-4000-8000-000000000099",
+      researchIr: hashes.e1Ir,
+      experimentHash: "F222222222222222222222222222222222222222222222222222222222222222",
+      parametersHash: "F333333333333333333333333333333333333333333333333333333333333333",
+    })).rejects.toThrow(/research_experiments_parent_operational_fk|foreign key/i);
 
     const rows = await client.query<{ research_experiment_id: string; parent_experiment_id: string | null; research_ir_hash_hex: string; experiment_hash_hex: string; experiment_parameters_hash_hex: string | null }>(
       "select research_experiment_id, parent_experiment_id, research_ir_hash_hex, experiment_hash_hex, experiment_parameters_hash_hex from investing.research_experiments order by research_experiment_id",
@@ -419,12 +699,83 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
     ]));
     expect(rows.rows.find((row) => row.research_experiment_id === ids.e1)?.research_ir_hash_hex).not.toBe(rows.rows.find((row) => row.research_experiment_id === ids.e2)?.research_ir_hash_hex);
     expect(rows.rows.find((row) => row.research_experiment_id === ids.e1)?.experiment_parameters_hash_hex).not.toBe(rows.rows.find((row) => row.research_experiment_id === ids.e2)?.experiment_parameters_hash_hex);
-    await expect(insertExperimentOwner({ id: ids.duplicate, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e1Experiment, parametersHash: hashes.p1, material: "material-duplicate" })).rejects.toThrow(/duplicate key/i);
+    expect(rows.rows.find((row) => row.research_experiment_id === ids.e1)?.experiment_hash_hex).not.toBe(rows.rows.find((row) => row.research_experiment_id === ids.e2)?.experiment_hash_hex);
+    await expect(insertExperimentOwner({ id: ids.duplicate, relation: "VARIANT", parentId: ids.e0, researchIr: hashes.e1Ir, experimentHash: hashes.e1Experiment, parametersHash: hashes.p1 })).rejects.toThrow(/duplicate key/i);
 
+    await insertExperimentApp({ fixture: accountFixture, id: ids.accountE0, relation: "BASELINE", researchIr: hashes.parentIr, experimentHash: "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" });
+    await insertExperimentApp(
+      { fixture: accountFixture, id: ids.accountE1, relation: "VARIANT", parentId: ids.accountE0, researchIr: hashes.e1Ir, experimentHash: "ACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACAC", parametersHash: hashes.p1 },
+      { parentResearchIr: hashes.parentIr, parentExperimentHash: "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB" },
+    );
+    await expect(insertExperimentApp(
+      { fixture: accountFixture, id: "a8000000-0000-4000-8000-000000000081", relation: "VARIANT", parentId: ids.accountE1, researchIr: hashes.e2Ir, experimentHash: "ADADADADADADADADADADADADADADADADADADADADADADADADADADADADADADADAD", parametersHash: hashes.p2 },
+      { expectedExperimentId: ids.accountE1, parentResearchIr: hashes.e1Ir, parentExperimentHash: "ACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACACAC", accountId: ids.wrongAccount, accountAccessId: ids.wrongAccountAccess },
+    )).rejects.toThrow(/row-level security/i);
+
+    const beforeRollbackPointer = await client.query<{ active_experiment_id: string | null; pointer_version: string }>(
+      "select active_experiment_id, pointer_version::text from investing.research_material_pointer_states where research_investigation_id = $1",
+      [tenantFixture.investigationId],
+    );
     await client.query("begin");
-    await insertExperimentOwner({ id: ids.rollback, relation: "VARIANT", parentId: ids.e1, researchIr: hashes.e3Ir, experimentHash: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE", parametersHash: hashes.p3, material: "material-rollback" });
+    await client.query("set local role investing_app");
+    for (const [key, value] of Object.entries({
+      actor_kind: "USER_PRINCIPAL",
+      actor_id: tenantFixture.actorId,
+      principal_id: tenantFixture.principalId,
+      tenant_id: tenantFixture.tenantId,
+      tenant_membership_id: tenantFixture.tenantMembershipId,
+      operation: "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1",
+      capability: "RESEARCH_MUTATE",
+      operation_scope: "TENANT_SCOPE",
+      source_context: "PURE_RESEARCH",
+      research_investigation_id: tenantFixture.investigationId,
+      research_spec_revision_id: tenantFixture.specRevisionId,
+      parent_experiment_id: ids.e3,
+      expected_experiment_id: ids.e3,
+      research_experiment_id: ids.rollback,
+      material_request_hash: materialHashFor(ids.rollback),
+      idempotency_record_id: idempotencyRecordIdFor(ids.rollback),
+      idempotency_key: `idem-${ids.rollback}`,
+      correlation_id: `corr-${ids.rollback}`,
+      research_ir_hash_hex: hashes.e3Ir,
+      experiment_hash_hex: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+      experiment_parameters_hash_hex: hashes.p3,
+      parent_research_ir_hash_hex: hashes.e3Ir,
+      parent_experiment_hash_hex: hashes.e3Experiment,
+    })) {
+      await client.query("select set_config($1, $2, true)", [`syntrake.investing.${key}`, value]);
+    }
+    await client.query(`
+      insert into investing.idempotency_records (
+        idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+        operation_scope, operation, principal_id, tenant_id, account_id, status
+      ) values ($1, $2, $3, $4, 'USER_PRINCIPAL', $5, 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1', $6, $7, null, 'STARTED')
+    `, [idempotencyRecordIdFor(ids.rollback), `idem-${ids.rollback}`, materialHashFor(ids.rollback), `corr-${ids.rollback}`, tenantFixture.actorId, tenantFixture.principalId, tenantFixture.tenantId]);
+    await insertExperimentOwner({ id: ids.rollback, relation: "VARIANT", parentId: ids.e3, researchIr: hashes.e3Ir, experimentHash: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE", parametersHash: hashes.p3 });
+    const rollbackPointerUpdate = await client.query(`
+      update investing.research_material_pointer_states
+      set active_experiment_id = $1,
+          pointer_version = pointer_version + 1,
+          updated_by_operation = 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1',
+          updated_at = transaction_timestamp()
+      where research_investigation_id = $2 and active_spec_revision_id = $3 and active_experiment_id = $4
+    `, [ids.rollback, tenantFixture.investigationId, tenantFixture.specRevisionId, ids.e3]);
+    expect(rollbackPointerUpdate.rowCount).toBe(1);
+    await client.query(`
+      update investing.idempotency_records
+      set status = 'SUCCEEDED',
+          canonical_result_reference = $2::jsonb,
+          completed_at = transaction_timestamp(),
+          updated_at = transaction_timestamp()
+      where idempotency_record_id = $1 and status = 'STARTED'
+    `, [idempotencyRecordIdFor(ids.rollback), JSON.stringify({ researchExperimentId: ids.rollback })]);
     await client.query("rollback");
     await expect(client.query("select 1 from investing.research_experiments where research_experiment_id = $1", [ids.rollback])).resolves.toMatchObject({ rowCount: 0 });
+    await expect(client.query(
+      "select active_experiment_id, pointer_version::text from investing.research_material_pointer_states where research_investigation_id = $1",
+      [tenantFixture.investigationId],
+    )).resolves.toMatchObject({ rows: beforeRollbackPointer.rows });
+    await expect(client.query("select 1 from investing.idempotency_records where idempotency_record_id = $1", [idempotencyRecordIdFor(ids.rollback)])).resolves.toMatchObject({ rowCount: 0 });
 
     expect(ids.e0).not.toBe(ids.e1);
   });
