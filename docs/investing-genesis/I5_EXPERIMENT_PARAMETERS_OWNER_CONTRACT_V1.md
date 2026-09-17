@@ -1,10 +1,10 @@
 # I5 ExperimentParameters Owner Contract V1
 
-Status: CANDIDATE OWNER CONTRACT - EXPERIMENT PARAMETERS SCIENTIFIC IDENTITY - UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT PARAMETERS - UNNUMBERED
 
 ## Purpose
 
-This candidate-only unnumbered slice establishes the first exact scientific authority for:
+This current accepted unnumbered slice establishes the first exact scientific authority for:
 
 `SYNTRAKE:EXPERIMENT_PARAMETERS:V1`
 
@@ -202,9 +202,34 @@ ExperimentParameters V1 is not Experiment persistence evolution, ExperimentParam
 
 Persistence evolution is future work. Current accepted persistence still cannot persist multiple same-parent VARIANT rows distinguished only by ExperimentParameters.
 
-## Supersession If Accepted
+## Acceptance Provenance
 
-If accepted, this contract supersedes only the prior current assumption:
+```text
+canonical predecessor:
+399b731ce36db339b9720b091940d00da620261d
+
+accepted technical candidate:
+c4999b53146d4d873bf916fbd8e975acb2071328
+
+CI:
+35247704728 - SUCCESS
+
+Vercel:
+SUCCESS
+
+Architecture boundary:
+27/27 PASS
+
+ExperimentParameters runtime:
+8/8 PASS
+
+Permanent A-number:
+NOT ASSIGNED
+```
+
+## Supersession
+
+This contract supersedes only the prior current assumption:
 
 ```text
 SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = DECLARED_BUT_HASHING_DISABLED
@@ -212,7 +237,7 @@ SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = DECLARED_BUT_HASHING_DISABLED
 
 It does not supersede A5 Research IR authority, BASELINE structural admission, BASELINE persistence, VARIANT structural admission, VARIANT persistence, ResearchSpec, scientific Experiment identity, DatasetSnapshot, Run/Result/Evidence, Paper, Trading or Core.
 
-No permanent A-number is assigned by this candidate.
+No permanent A-number is assigned by this acceptance.
 
 ## PG17
 
