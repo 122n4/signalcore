@@ -1,11 +1,13 @@
 begin;
 
-set local role investing_owner;
-
 do $$
 declare
   v_existing_experiment_count integer;
 begin
+  if current_user <> 'postgres' then
+    raise exception 'I5 Experiment scientific closure precondition failed: migration preflight must run as postgres, got %', current_user;
+  end if;
+
   select count(*)::integer
   into v_existing_experiment_count
   from investing.research_experiments;
@@ -15,6 +17,8 @@ begin
       v_existing_experiment_count;
   end if;
 end $$;
+
+set local role investing_owner;
 
 alter table investing.research_experiments
   add column experiment_hash_algorithm text not null,
