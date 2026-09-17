@@ -232,6 +232,10 @@ export function experimentBaselineCreateMaterialIdentityV1(
     `research_ir_domain=${experiment.researchIr.hashDomain}`,
     `research_ir_version=${experiment.researchIr.hashVersion}`,
     `research_ir_hash=${experiment.researchIr.hashHex}`,
+    `experiment_algorithm=${experiment.experiment.hashAlgorithm}`,
+    `experiment_domain=${experiment.experiment.hashDomain}`,
+    `experiment_version=${experiment.experiment.hashVersion}`,
+    `experiment_hash=${experiment.experiment.hashHex}`,
   ]);
 }
 
@@ -272,11 +276,27 @@ export function experimentVariantCreateMaterialIdentityV1(
     `expected_experiment=${canonicalUuidV1(pointers.expectedExperimentId)}`,
     "relation=VARIANT",
     `parent_experiment=${canonicalUuidV1(experiment.parentExperimentId)}`,
+    `parent_experiment_algorithm=${experiment.parentExperiment.hashAlgorithm}`,
+    `parent_experiment_domain=${experiment.parentExperiment.hashDomain}`,
+    `parent_experiment_version=${experiment.parentExperiment.hashVersion}`,
+    `parent_experiment_hash=${experiment.parentExperiment.hashHex}`,
+    `parent_research_ir_algorithm=${experiment.parentResearchIr.hashAlgorithm}`,
+    `parent_research_ir_domain=${experiment.parentResearchIr.hashDomain}`,
+    `parent_research_ir_version=${experiment.parentResearchIr.hashVersion}`,
+    `parent_research_ir_hash=${experiment.parentResearchIr.hashHex}`,
     `research_spec_revision=${experiment.researchSpecRevisionId}`,
     `research_ir_algorithm=${experiment.researchIr.hashAlgorithm}`,
     `research_ir_domain=${experiment.researchIr.hashDomain}`,
     `research_ir_version=${experiment.researchIr.hashVersion}`,
     `research_ir_hash=${experiment.researchIr.hashHex}`,
+    `experiment_parameters_algorithm=${experiment.experimentParameters.hashAlgorithm}`,
+    `experiment_parameters_domain=${experiment.experimentParameters.hashDomain}`,
+    `experiment_parameters_version=${experiment.experimentParameters.hashVersion}`,
+    `experiment_parameters_hash=${experiment.experimentParameters.hashHex}`,
+    `experiment_algorithm=${experiment.experiment.hashAlgorithm}`,
+    `experiment_domain=${experiment.experiment.hashDomain}`,
+    `experiment_version=${experiment.experiment.hashVersion}`,
+    `experiment_hash=${experiment.experiment.hashHex}`,
   ]);
 }
 

@@ -317,6 +317,7 @@ const i5ResearchIndexModulePath = normalizeRelativePath(path.join("lib", "invest
 const i5ResearchSemanticModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "semantic.ts"));
 const i5ResearchIrModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "researchIr.ts"));
 const i5ExperimentParametersModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "experimentParameters.ts"));
+const i5ExperimentModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "experiment.ts"));
 
 function scriptKindFor(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -525,6 +526,7 @@ function canReferenceI5ResearchScientificPreimageModule(fromFile: string) {
     normalized === i5ResearchSemanticModulePath ||
     normalized === i5ResearchIrModulePath ||
     normalized === i5ExperimentParametersModulePath ||
+    normalized === i5ExperimentModulePath ||
     isExcludedSourcePath(normalized)
   );
 }
@@ -1011,6 +1013,9 @@ describe("Investing Genesis architecture boundaries", () => {
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
       source("lib/investing/research/experimentParameters.ts", 'import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";'),
+    ])).toEqual([]);
+    expect(analyzeArchitectureGraph([
+      source("lib/investing/research/experiment.ts", 'import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";'),
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
       source("lib/investing/research/public-consumer.ts", 'import { hashResearchDraftV1 } from "./index";'),

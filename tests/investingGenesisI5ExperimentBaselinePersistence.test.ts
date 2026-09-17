@@ -97,6 +97,10 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     expect(preimage).toContain("research_ir_algorithm=SHA-256");
     expect(preimage).toContain("research_ir_domain=SYNTRAKE:RESEARCH_IR:V1");
     expect(preimage).toContain(`research_ir_hash=${researchIr.hashHex}`);
+    expect(preimage).toContain("experiment_algorithm=SHA-256");
+    expect(preimage).toContain("experiment_domain=SYNTRAKE:EXPERIMENT:V1");
+    expect(preimage).toContain("experiment_version=SYNTRAKE_SHA256_V1");
+    expect(preimage).toContain("experiment_hash=");
 
     expect(experimentBaselineCreateMaterialIdentityV1(scope, structuredClone(command))).toEqual(identity);
     expect(experimentBaselineCreateMaterialIdentityV1(scope, {
@@ -146,10 +150,10 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     })).toThrow("Experiment Spec must match expected active Spec");
   });
 
-  it("keeps scientific Experiment hashing disabled while ExperimentParameters identity is admitted", () => {
+  it("records scientific Experiment and ExperimentParameters identity domains as owner-exact", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
   });
 

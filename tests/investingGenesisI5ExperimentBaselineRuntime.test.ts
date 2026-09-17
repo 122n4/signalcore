@@ -51,6 +51,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
       relation: "BASELINE",
       researchSpecRevisionId,
       researchIr: ref("SYNTRAKE:RESEARCH_IR:V1"),
+      experiment: admitted.experiment,
     });
     expect(Object.isFrozen(admitted)).toBe(true);
     expect(Object.isFrozen(admitted.researchIr)).toBe(true);
@@ -60,7 +61,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
   it("requires the accepted A5 Research IR hash domain and preserves disabled future hash domains", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(() => assertExperimentBaselineHashingDisabledV1()).not.toThrow();
 
@@ -112,9 +113,9 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     expect(() => admitExperimentBaselineV1(candidate({ researchSpecRevisionId: "not-a-uuid" }))).toThrow("invalid CanonicalUuidV1");
   });
 
-  it("keeps Experiment scientific hashing unavailable while publishing ExperimentParameters identity", () => {
+  it("publishes Experiment and ExperimentParameters scientific hashing", () => {
     expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
-    expect("hashExperimentV1" in publicResearchRuntime).toBe(false);
+    expect("hashExperimentV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
   });
 
@@ -168,8 +169,6 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     expect(experimentRuntime).not.toMatch(/from\s+["'][^"']*(paper|trading|accounting|broker|portfolio|execution|worker|queue)/iu);
     expect(experimentRuntime).not.toContain("canonicalResearchIrBytesV1");
     expect(experimentRuntime).not.toContain("hashResearchIrV1");
-    expect(experimentRuntime).not.toContain("hashExperimentV1");
-    expect(experimentRuntime).not.toContain("hashExperimentParametersV1");
     expect(unexpectedReferences).toEqual([]);
   });
 });

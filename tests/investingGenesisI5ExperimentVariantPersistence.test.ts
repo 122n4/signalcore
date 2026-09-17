@@ -7,9 +7,11 @@ import {
   type ExperimentVariantCandidateV1,
   type ResearchMaterialScopeEvidenceV1,
 } from "../lib/investing/research";
+import { i5ExperimentResolvedResearchIrV1, i5VariantCandidateV1 } from "./support/investingI5ExperimentScientificFixtures";
 
 const repoRoot = path.join(__dirname, "..");
 const migrationPath = path.join(repoRoot, "supabase", "migrations", "20260916194400_investing_i5_experiment_variant_persistence.sql");
+const scientificClosureMigrationPath = path.join(repoRoot, "supabase", "migrations", "20260917183000_investing_i5_experiment_scientific_closure.sql");
 const writerPath = path.join(repoRoot, "lib", "investing", "research", "experimentVariantWriter.ts");
 const servicePath = path.join(repoRoot, "lib", "investing", "research", "experimentVariantService.ts");
 const materialRequestPath = path.join(repoRoot, "lib", "investing", "research", "materialRequest.ts");
@@ -38,20 +40,11 @@ const scope: ResearchMaterialScopeEvidenceV1 = {
   sourceContext: "PURE_RESEARCH",
 };
 
-const researchIr = hashRefV1({
-  hashAlgorithm: "SHA-256",
-  hashDomain: "SYNTRAKE:RESEARCH_IR:V1",
-  hashVersion: "SYNTRAKE_SHA256_V1",
-  hashHex: "265D8F6AAC35DB919EC130EE978F1831383E74BC2F625230D61EB81C0F27B44F",
-});
-
 const experiment: ExperimentVariantCandidateV1 = {
-  schemaVersion: "EXPERIMENT_VARIANT_CANDIDATE_V1",
-  relation: "VARIANT",
-  parentExperimentId: ids.parentExperiment,
-  researchSpecRevisionId: ids.specRevision,
-  researchIr,
+  ...i5VariantCandidateV1({ parentExperimentId: ids.parentExperiment, researchSpecRevisionId: ids.specRevision }),
 };
+
+const researchIr = experiment.researchIr;
 
 const command = {
   operation: "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1" as const,
@@ -123,15 +116,11 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     }).materialRequestHash).not.toBe(identity.materialRequestHash);
     expect(experimentVariantCreateMaterialIdentityV1(scope, {
       ...command,
-      experiment: {
-        ...experiment,
-        researchIr: hashRefV1({
-          hashAlgorithm: "SHA-256",
-          hashDomain: "SYNTRAKE:RESEARCH_IR:V1",
-          hashVersion: "SYNTRAKE_SHA256_V1",
-          hashHex: "A".repeat(64),
-        }),
-      },
+      experiment: i5VariantCandidateV1({
+        parentExperimentId: ids.parentExperiment,
+        researchSpecRevisionId: ids.specRevision,
+        resolved: i5ExperimentResolvedResearchIrV1("0.20", "12", "0.65", "0.35"),
+      }),
     }).materialRequestHash).not.toBe(identity.materialRequestHash);
   });
 
@@ -253,6 +242,48 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(access).toContain("m.principal_id = account_access.principal_id");
     expect(access).toContain("m.role = 'owner'");
     expect(access).toContain("m.state = 'active'");
+  });
+
+  it("evolves persistence to scientific Experiment identity without child Research IR parent binding", () => {
+    const sql = normalize(read(scientificClosureMigrationPath));
+
+    for (const column of [
+      "experiment_hash_algorithm",
+      "experiment_hash_domain",
+      "experiment_hash_version",
+      "experiment_hash_hex",
+      "experiment_parameters_hash_algorithm",
+      "experiment_parameters_hash_domain",
+      "experiment_parameters_hash_version",
+      "experiment_parameters_hash_hex",
+    ]) {
+      expect(sql).toContain(`add column ${column} text`);
+    }
+    expect(sql).toContain("research_experiments_experiment_hash_envelope_check");
+    expect(sql).toContain("experiment_hash_domain = 'syntrake:experiment:v1'");
+    expect(sql).toContain("research_experiments_experiment_parameters_shape_check");
+    expect(sql).toContain("experiment_parameters_hash_domain = 'syntrake:experiment_parameters:v1'");
+    expect(sql).toContain("drop constraint if exists research_experiments_parent_family_fk");
+    expect(sql).toContain("drop constraint if exists research_experiments_family_fk_source_key");
+    expect(sql).toContain("drop index if exists investing.research_experiments_variant_structural_binding_key");
+    expect(sql).toContain("drop index if exists investing.research_experiments_baseline_binding_key");
+    expect(sql).toContain("research_experiments_parent_operational_fk");
+    expect(sql).toContain("foreign key (parent_experiment_id)");
+    expect(sql).not.toContain("foreign key ( parent_experiment_id, research_investigation_id, research_spec_revision_id, research_ir_hash_algorithm");
+    expect(sql).toContain("research_experiments_scientific_identity_key");
+    expect(sql).toContain("experiment_hash_hex");
+    expect(policy(sql, "research_experiments_i5_variant_parent_read")).toContain("parent_research_ir_hash_hex");
+    expect(policy(sql, "research_experiments_i5_variant_parent_read")).toContain("parent_experiment_hash_hex");
+    expect(policy(sql, "research_experiments_i5_variant_parent_read")).not.toContain(
+      "research_ir_hash_hex = current_setting('syntrake.investing.research_ir_hash_hex'",
+    );
+    expect(policy(sql, "research_experiments_i5_variant_insert")).toContain("experiment_hash_hex = current_setting('syntrake.investing.experiment_hash_hex', true)");
+    expect(policy(sql, "research_experiments_i5_variant_insert")).toContain(
+      "experiment_parameters_hash_hex = current_setting('syntrake.investing.experiment_parameters_hash_hex', true)",
+    );
+    expect(policy(sql, "research_experiments_i5_variant_result_read")).toContain("experiment_hash_hex");
+    expect(sql).not.toContain("grant update on table investing.research_experiments");
+    expect(sql).not.toContain("grant delete on table investing.research_experiments");
   });
 
   it("keeps writer/service boundaries exact and avoids future scientific surfaces", () => {

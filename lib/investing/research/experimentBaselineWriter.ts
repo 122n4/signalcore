@@ -34,6 +34,7 @@ export type ExperimentBaselineCreateSuccess = Readonly<{
   researchSpecRevisionId: string;
   relation: "BASELINE";
   researchIrHashHex: string;
+  experimentHashHex: string;
   materialRequestHash: string;
   pointerVersion: string;
   idempotencyRecordId: string;
@@ -122,6 +123,7 @@ type ExperimentRow = {
   research_spec_revision_id: string;
   relation: "BASELINE";
   research_ir_hash_hex: string;
+  experiment_hash_hex: string;
   material_request_hash: string;
   idempotency_record_id: string;
 };
@@ -146,6 +148,7 @@ const transactionContextKeys = [
   "syntrake.investing.material_request_hash",
   "syntrake.investing.research_investigation_id",
   "syntrake.investing.research_spec_revision_id",
+  "syntrake.investing.experiment_hash_hex",
   "syntrake.investing.research_experiment_id",
 ] as const;
 
@@ -203,6 +206,7 @@ export async function createExperimentBaselineV1(
         researchSpecRevisionId: prepared.admitted.researchSpecRevisionId,
         relation: "BASELINE",
         researchIrHashHex: prepared.admitted.researchIr.hashHex,
+        experimentHashHex: prepared.admitted.experiment.hashHex,
         materialRequestHash: prepared.materialRequestHash,
         pointerVersion: nextVersion,
       });
@@ -310,9 +314,10 @@ async function insertExperiment(
       "research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,",
       "tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,",
       "research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex,",
+      "experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex,",
       "material_request_hash, idempotency_record_id, idempotency_key, correlation_id",
       ") values ($1, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10, $11, $12, 'BASELINE', $13,",
-      "$14, $15, $16, $17, $18, $19, $20, $21)",
+      "$14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)",
     ].join(" "),
     [
       researchExperimentId,
@@ -332,6 +337,10 @@ async function insertExperiment(
       ir.hashDomain,
       ir.hashVersion,
       ir.hashHex,
+      prepared.admitted.experiment.hashAlgorithm,
+      prepared.admitted.experiment.hashDomain,
+      prepared.admitted.experiment.hashVersion,
+      prepared.admitted.experiment.hashHex,
       prepared.materialRequestHash,
       idempotencyRecordId,
       prepared.idempotencyKey,
@@ -441,7 +450,7 @@ async function dispatchExistingIdempotency(
   const experiment = await exactlyOne(
     client.query<ExperimentRow>(
       [
-        "select research_experiment_id, research_investigation_id, research_spec_revision_id, relation, research_ir_hash_hex,",
+        "select research_experiment_id, research_investigation_id, research_spec_revision_id, relation, research_ir_hash_hex, experiment_hash_hex,",
         "material_request_hash, idempotency_record_id",
         "from investing.research_experiments",
         "where research_experiment_id = $1 and research_investigation_id = $2 and tenant_id = $3",
@@ -563,6 +572,7 @@ async function setTransactionContext(
   await setTransactionConfig(client, "idempotency_key", prepared.idempotencyKey);
   await setTransactionConfig(client, "material_request_hash", prepared.materialRequestHash);
   await setTransactionConfig(client, "research_spec_revision_id", prepared.admitted.researchSpecRevisionId);
+  await setTransactionConfig(client, "experiment_hash_hex", prepared.admitted.experiment.hashHex);
 }
 
 async function selectParentBeforeAuthorityScope(
@@ -662,6 +672,7 @@ function parseReference(value: unknown): Omit<ExperimentBaselineCreateSuccess, "
     typeof reference.researchSpecRevisionId === "string" &&
     reference.relation === "BASELINE" &&
     typeof reference.researchIrHashHex === "string" &&
+    typeof reference.experimentHashHex === "string" &&
     typeof reference.materialRequestHash === "string" &&
     typeof reference.pointerVersion === "string"
     ? reference as Omit<ExperimentBaselineCreateSuccess, "ok" | "replayed" | "idempotencyRecordId">
