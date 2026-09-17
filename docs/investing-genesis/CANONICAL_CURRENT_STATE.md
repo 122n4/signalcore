@@ -90,6 +90,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Experiment baseline (unnumbered) | `I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md`, `I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md` |
 | I5 Experiment VARIANT structural lineage admission (unnumbered) | `I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md` |
 | I5 Experiment VARIANT persistence (unnumbered) | `I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md` |
+| I5 ExperimentParameters scientific identity (unnumbered) | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -123,6 +124,8 @@ freeze/master evidence still relies on its narrow classifications.
 - I5 Experiment VARIANT persistence:
   `lib/investing/research/experimentVariantWriter.ts` and
   `lib/investing/research/experimentVariantService.ts`.
+- I5 ExperimentParameters scientific identity:
+  `lib/investing/research/experimentParameters.ts`.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -164,16 +167,27 @@ not become Investing Genesis authority merely because they use similar words.
   Research IR HashRef family evidence. The structural admission itself does not
   own persistence authority. At the time of structural admission, persistence
   was deferred; that limitation is now superseded by the separately accepted
-  Experiment VARIANT persistence owner contract. Scientific
-  Experiment/ExperimentParameters hashing remains disabled.
+  Experiment VARIANT persistence owner contract. Scientific Experiment hashing
+  remains disabled; ExperimentParameters scientific identity is accepted
+  separately.
 - I5 Experiment VARIANT persistence: current accepted, unnumbered. This
   acceptance establishes durable operational VARIANT lineage, immutable
   parent_experiment_id, exact parent-family binding, material request identity,
   idempotency, active Experiment pointer transition, Tenant/Account authority,
   RLS/FORCE RLS, minimal ACL, VARIANT-to-VARIANT lineage, BASELINE uniqueness
   preservation, current structural VARIANT uniqueness and A3/A4 compatibility
-  with an active VARIANT. Scientific Experiment and ExperimentParameters
-  hashing remain disabled.
+  with an active VARIANT. Scientific Experiment hashing remains disabled.
+  ExperimentParameters scientific identity is accepted separately, but
+  ExperimentParameters persistence is not yet implemented and current VARIANT
+  persistence still cannot distinguish same-parent variants solely by
+  ExperimentParameters.
+- I5 ExperimentParameters scientific identity: current accepted, unnumbered.
+  This acceptance establishes deterministic scientific identity for
+  `SYNTRAKE:EXPERIMENT_PARAMETERS:V1` by binding exact BASE Research IR HashRef,
+  exact RESOLVED Research IR HashRef and immutable
+  `I5_EXPERIMENT_PARAMETERS_POLICY_V1`. It does not establish scientific
+  Experiment identity, ExperimentParameters persistence, DatasetSnapshot,
+  Run/Result/Evidence, Paper, Trading or Investing Core.
 - DatasetSnapshot: deferred. It has no current A-number and no current Investing
   Genesis owner contract.
 
@@ -193,6 +207,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Experiment BASELINE persistence / unnumbered | YES | YES | `I5_EXPERIMENT_BASELINE_PERSISTENCE_OWNER_CONTRACT_V1.md` + writer/service + migration/tests + PG17 | CURRENT ACCEPTED OWNER CONTRACT - BASELINE PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / DURABLE_OPERATIONAL_IDENTITY | NONE |
 | Experiment VARIANT structural lineage admission / unnumbered | YES | YES | `I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md` + `experiment.ts` + runtime test + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED | CURRENT_ACCEPTED / STRUCTURAL_LINEAGE_ONLY | NONE |
 | Experiment VARIANT persistence / unnumbered | YES | YES | `I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md` + writer/service + migration + static tests + PostgreSQL 17 functional matrix | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / DURABLE_VARIANT_LINEAGE | NONE |
+| ExperimentParameters scientific identity / unnumbered | YES | YES | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` + `experimentParameters.ts` + runtime tests + architecture boundary + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT PARAMETERS - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_IDENTITY | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -320,10 +335,48 @@ Experiment VARIANT persistence supersession:
 - Superseded prior-state sentence:
   Experiment VARIANT persistence remains `DEFERRED / NOT ACCEPTED`.
 - It does not supersede BASELINE structural admission, BASELINE persistence,
-  VARIANT structural admission, A1-A5, future ExperimentParameters,
-  DatasetSnapshot, Run/Result/Evidence, Paper, Trading, or Investing Core.
+  VARIANT structural admission, A1-A5, ExperimentParameters scientific
+  identity, future ExperimentParameters persistence, DatasetSnapshot,
+  Run/Result/Evidence, Paper, Trading, or Investing Core.
 
-Hash states remain:
+ExperimentParameters scientific identity acceptance evidence:
+
+- Canonical predecessor:
+  `399b731ce36db339b9720b091940d00da620261d`.
+- Accepted technical candidate:
+  `c4999b53146d4d873bf916fbd8e975acb2071328`.
+- CI:
+  `35247704728`.
+- Vercel:
+  `SUCCESS`.
+- Architecture boundary:
+  `27/27 PASS`.
+- ExperimentParameters runtime:
+  `8/8 PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+
+`EXPERIMENT PARAMETERS SCIENTIFIC IDENTITY = CURRENT_ACCEPTED / SCIENTIFIC_IDENTITY / UNNUMBERED`.
+
+ExperimentParameters scientific identity boundaries:
+
+- ExperimentParameters scientific identity is accepted.
+- Scientific Experiment identity is NOT yet accepted.
+- ExperimentParameters persistence is NOT yet implemented.
+- Current VARIANT persistence still cannot distinguish same-parent variants
+  solely by ExperimentParameters.
+- DatasetSnapshot remains deferred.
+
+ExperimentParameters scientific identity supersession:
+
+- This acceptance supersedes only the prior assumption that
+  `SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = DECLARED_BUT_HASHING_DISABLED`.
+- It does not supersede A5 Research IR authority, BASELINE structural
+  admission, BASELINE persistence, VARIANT structural admission, VARIANT
+  persistence, ResearchSpec, scientific Experiment identity, DatasetSnapshot,
+  Run/Result/Evidence, Paper, Trading or Investing Core.
+
+Hash states now:
 
 `SYNTRAKE:RESEARCH_IR:V1`
 = `OWNER_PAYLOAD_EXACT`
@@ -335,7 +388,7 @@ Hash states remain:
 = `DECLARED_BUT_HASHING_DISABLED`
 
 `SYNTRAKE:EXPERIMENT_PARAMETERS:V1`
-= `DECLARED_BUT_HASHING_DISABLED`
+= `OWNER_PAYLOAD_EXACT`
 
 ## What This Gate Record Supersedes
 
