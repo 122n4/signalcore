@@ -181,9 +181,9 @@ export function hashExperimentV1(input: ExperimentCandidateV1): CanonicalSha256H
   );
 }
 
-export function assertExperimentBaselineHashingDisabledV1() {
+export function assertExperimentHashingEnabledV1() {
   if (hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1") !== "OWNER_PAYLOAD_EXACT") {
-    throw new Error("Experiment scientific hashing enabled");
+    throw new Error("Experiment scientific hashing disabled");
   }
 }
 
