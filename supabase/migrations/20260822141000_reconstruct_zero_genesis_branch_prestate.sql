@@ -127,7 +127,14 @@ begin
     raise exception 'Zero Genesis branch-prestate repair failed: read_paper_trade_history_compact_v1 is missing';
   end if;
 
-  if has_function_privilege('public', 'public.read_paper_trade_history_compact_v1(text, integer, integer)', 'EXECUTE') then
+  if exists (
+    select 1
+    from pg_proc p
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+    where p.oid = 'public.read_paper_trade_history_compact_v1(text, integer, integer)'::regprocedure
+      and acl.grantee = 0
+      and acl.privilege_type = 'EXECUTE'
+  ) then
     raise exception 'Zero Genesis branch-prestate repair failed: compact history unexpectedly has PUBLIC EXECUTE';
   end if;
 end;
