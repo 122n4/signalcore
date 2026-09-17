@@ -60,6 +60,10 @@ function readSql(relativePath: string) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+function idempotencyRecordIdFor(experimentId: string) {
+  return `b${experimentId.slice(1)}`;
+}
+
 async function applySql(relativePath: string) {
   try {
     await client.query(readSql(relativePath));
@@ -166,8 +170,10 @@ function experimentValues(input: {
   experimentHash?: string | null;
   parametersHash?: string | null;
   material?: string;
+  idempotencyRecordId?: string;
 }) {
   const operation = input.relation === "BASELINE" ? "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1" : "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
+  const idempotencyRecordId = input.idempotencyRecordId ?? idempotencyRecordIdFor(input.id);
   return [
     input.id,
     ids.investigation,
@@ -198,7 +204,7 @@ function experimentValues(input: {
     input.relation === "VARIANT" ? "SYNTRAKE_SHA256_V1" : null,
     input.parametersHash ?? null,
     input.material ?? `material-${input.id}`,
-    "b0000000-0000-4000-8000-000000000071",
+    idempotencyRecordId,
     `idem-${input.id}`,
     `corr-${input.id}`,
   ];
@@ -262,7 +268,7 @@ async function insertExperimentApp(
     parent_experiment_id: input.parentId ?? "",
     expected_experiment_id: input.parentId ?? "",
     material_request_hash: input.material ?? `material-${input.id}`,
-    idempotency_record_id: "b0000000-0000-4000-8000-000000000071",
+    idempotency_record_id: input.idempotencyRecordId ?? idempotencyRecordIdFor(input.id),
     idempotency_key: `idem-${input.id}`,
     correlation_id: `corr-${input.id}`,
     research_ir_hash_hex: input.researchIr,
