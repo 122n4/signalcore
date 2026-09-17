@@ -1,10 +1,10 @@
 # I5 Experiment Variant Persistence Owner Contract V1
 
-Status: CANDIDATE OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED
 
 ## Purpose
 
-This candidate-only unnumbered slice establishes durable operational persistence for admitted Experiment `VARIANT` rows.
+This current accepted unnumbered slice establishes durable operational persistence for admitted Experiment `VARIANT` rows.
 
 It introduces exactly one new mutation operation:
 
@@ -188,9 +188,9 @@ Application access to `research_experiments` remains `SELECT, INSERT` only. No a
 
 Policies use safe text comparison against session settings for UUID-bearing values so missing or empty custom GUCs fail authorization instead of throwing accidental UUID cast errors.
 
-## PG17 Requirement
+## PG17 Evidence
 
-Acceptance requires PostgreSQL 17 rehearsal proving the migration chain, RLS/FORCE RLS, ACL, family FK, BASELINE uniqueness preservation, VARIANT uniqueness, valid tenant/account create, parent-as-VARIANT, distinct parent versus active predecessor semantics, denials, idempotency and A3/A4 behavior with an active VARIANT.
+Acceptance was proven on PostgreSQL 17.11. The rehearsal proved the migration chain, RLS/FORCE RLS, ACL, family FK, BASELINE uniqueness preservation, VARIANT uniqueness, valid tenant/account create, parent-as-VARIANT, distinct parent versus active predecessor semantics, denials, idempotency and A3/A4 behavior with an active VARIANT.
 
 When `PG17_RECONCILIATION_URL` is absent, the rehearsal remains blocked and no READY verdict exists.
 
@@ -223,6 +223,49 @@ No ExperimentParameters, parameter override, parameter patch, scientific Experim
 
 `LAB != PAPER`.
 
+## Acceptance Provenance
+
+```text
+Canonical predecessor:
+580a05429959f324e496dc465af642dc31baabdc
+
+Final audited candidate:
+27c70c3cd786ad4d1dc5c98d9d0e72a728cbf512
+
+PR:
+#69
+
+CI:
+35148779780 - SUCCESS
+
+PG17:
+35148779758 - SUCCESS
+
+PG17 job:
+104971476287 - SUCCESS
+
+PostgreSQL:
+17.11
+
+Static reconciliation:
+6/6 PASS
+
+PG17 rehearsal:
+6/6 PASS
+
+Experiment VARIANT functional matrix:
+PASS
+
+Vercel:
+SUCCESS
+
+Independent audit:
+PASS
+
+Permanent A-number:
+NOT ASSIGNED
+```
+
 ## What Did This Slice Supersede?
 
-Only the candidate limitation that VARIANT structural admission had no durable operational persistence. It does not supersede BASELINE admission, BASELINE persistence, A1-A5, ExperimentParameters, scientific Experiment hashing, DatasetSnapshot, Run, Result, Evidence, Paper, Trading, Core or Capital Kernel.
+Only the prior assumption that accepted VARIANT structural admission had no durable persistence authority. It does not supersede BASELINE admission, BASELINE persistence, VARIANT structural admission, A1-A5, future ExperimentParameters, scientific Experiment hashing, DatasetSnapshot, Run, Result, Evidence, Paper, Trading, Investing Core or Capital Kernel.

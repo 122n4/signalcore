@@ -14,6 +14,7 @@ const writerPath = path.join(repoRoot, "lib", "investing", "research", "experime
 const servicePath = path.join(repoRoot, "lib", "investing", "research", "experimentVariantService.ts");
 const materialRequestPath = path.join(repoRoot, "lib", "investing", "research", "materialRequest.ts");
 const contractPath = path.join(repoRoot, "docs", "investing-genesis", "I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md");
+const currentStatePath = path.join(repoRoot, "docs", "investing-genesis", "CANONICAL_CURRENT_STATE.md");
 
 const ids = {
   actorId: "user_i5_variant_fixture",
@@ -259,6 +260,7 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     const service = normalize(read(servicePath));
     const material = normalize(read(materialRequestPath));
     const contract = read(contractPath);
+    const state = read(currentStatePath);
 
     expect(writer).toContain("replay");
     expect(writer.indexOf("findexistingidempotency")).toBeLessThan(writer.indexOf("lockpointerstate"));
@@ -275,9 +277,23 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(service).toContain("research_experiment_variant_create_v1");
     expect(service).not.toContain('"authorizedcontext"');
     expect(material).toContain("experimentvariantcreatematerialidentityv1");
-    expect(contract).toContain("CANDIDATE OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED");
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED");
     expect(contract).toContain("VARIANT persistence != ExperimentParameters authority");
     expect(contract).toContain("operational Experiment UUID != scientific Experiment hash");
+    expect(state).toContain("I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("CURRENT_ACCEPTED / DURABLE_VARIANT_LINEAGE");
+    expect(state).toContain("EXPERIMENT VARIANT PERSISTENCE = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(state).toContain("Permanent A-number:");
+    expect(state).toContain("`NOT ASSIGNED`");
+    expect(state).toContain("SYNTRAKE:EXPERIMENT:V1");
+    expect(state).toContain("SYNTRAKE:EXPERIMENT_PARAMETERS:V1");
+    expect(state).toContain("DECLARED_BUT_HASHING_DISABLED");
+    expect(state).not.toContain("hashExperimentV1");
+    expect(state).not.toContain("hashExperimentParametersV1");
+    expect(state).not.toContain("DatasetSnapshot = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Run = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Result = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Evidence = CURRENT_ACCEPTED");
     for (const source of [writer, service, material, contract]) {
       expect(source).not.toMatch(/from\s+["'][^"']*(paper|trading|broker|execution|worker|queue|capital|core)/u);
       expect(source).not.toContain("hashexperimentv1");
