@@ -64,11 +64,11 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
 
     expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
     expect("hashExperimentV1" in publicResearchRuntime).toBe(false);
-    expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(false);
+    expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
   });
 
   it("rejects malformed HashRefV1 envelopes and wrong Research IR domain", () => {

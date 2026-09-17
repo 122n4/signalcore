@@ -94,6 +94,15 @@ export {
 } from "./experiment";
 
 export {
+  canonicalExperimentParametersBytesV1,
+  canonicalExperimentParametersHashPayloadV1,
+  hashExperimentParametersV1,
+  type ExperimentParametersCandidateV1,
+  type ExperimentParametersHashPayloadV1,
+  type ResearchIrProofForExperimentParametersV1,
+} from "./experimentParameters";
+
+export {
   investigationCreateMaterialIdentityV1,
   draftCreateMaterialIdentityV1,
   draftRevisionCreateMaterialIdentityV1,

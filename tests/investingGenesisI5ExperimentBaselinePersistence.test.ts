@@ -146,11 +146,11 @@ describe("I5 Experiment BASELINE persistence foundation", () => {
     })).toThrow("Experiment Spec must match expected active Spec");
   });
 
-  it("keeps scientific Experiment and parameter hashing disabled", () => {
+  it("keeps scientific Experiment hashing disabled while ExperimentParameters identity is admitted", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
   });
 
   it("defines the DB contract, pointer FK, exact envelope checks, and append-only grants", () => {

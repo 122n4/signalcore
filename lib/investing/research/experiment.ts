@@ -84,9 +84,6 @@ export function assertExperimentBaselineHashingDisabledV1() {
   if (hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1") !== "DECLARED_BUT_HASHING_DISABLED") {
     throw new Error("Experiment scientific hashing disabled");
   }
-  if (hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1") !== "DECLARED_BUT_HASHING_DISABLED") {
-    throw new Error("ExperimentParameters scientific hashing disabled");
-  }
 }
 
 function assertClosedPlainObject(value: unknown, allowedKeys: ReadonlySet<string>) {

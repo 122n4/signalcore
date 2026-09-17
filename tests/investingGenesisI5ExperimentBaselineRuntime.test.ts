@@ -61,7 +61,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(() => assertExperimentBaselineHashingDisabledV1()).not.toThrow();
 
     expect(() =>
@@ -112,10 +112,10 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     expect(() => admitExperimentBaselineV1(candidate({ researchSpecRevisionId: "not-a-uuid" }))).toThrow("invalid CanonicalUuidV1");
   });
 
-  it("keeps Experiment and ExperimentParameters scientific hashing unavailable from the public boundary", () => {
+  it("keeps Experiment scientific hashing unavailable while publishing ExperimentParameters identity", () => {
     expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
     expect("hashExperimentV1" in publicResearchRuntime).toBe(false);
-    expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(false);
+    expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
   });
 
   it("records the runtime-only owner contract without broadening scientific or execution scope", () => {
