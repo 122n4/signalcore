@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   admitExperimentBaselineV1,
-  assertExperimentBaselineHashingDisabledV1,
+  assertExperimentHashingEnabledV1,
   hashDomainStateV1,
   hashRefV1,
   type ExperimentBaselineCandidateV1,
@@ -63,7 +63,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(() => assertExperimentBaselineHashingDisabledV1()).not.toThrow();
+    expect(() => assertExperimentHashingEnabledV1()).not.toThrow();
 
     expect(() =>
       admitExperimentBaselineV1(candidate({ researchIr: ref("SYNTRAKE:RESEARCH_SPEC:V1") })),

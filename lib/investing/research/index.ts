@@ -86,7 +86,7 @@ export {
 export {
   admitExperimentBaselineV1,
   admitExperimentVariantV1,
-  assertExperimentBaselineHashingDisabledV1,
+  assertExperimentHashingEnabledV1,
   canonicalExperimentBytesV1,
   canonicalExperimentHashPayloadV1,
   hashExperimentV1,

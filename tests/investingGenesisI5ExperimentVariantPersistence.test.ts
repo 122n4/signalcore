@@ -247,11 +247,16 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
   it("evolves persistence to scientific Experiment identity without child Research IR parent binding", () => {
     const sql = normalize(read(scientificClosureMigrationPath));
 
+    expect(sql).toContain("research_experiments must be empty before scientific identity migration");
     for (const column of [
       "experiment_hash_algorithm",
       "experiment_hash_domain",
       "experiment_hash_version",
       "experiment_hash_hex",
+    ]) {
+      expect(sql).toContain(`add column ${column} text not null`);
+    }
+    for (const column of [
       "experiment_parameters_hash_algorithm",
       "experiment_parameters_hash_domain",
       "experiment_parameters_hash_version",
@@ -262,7 +267,14 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(sql).toContain("research_experiments_experiment_hash_envelope_check");
     expect(sql).toContain("experiment_hash_domain = 'syntrake:experiment:v1'");
     expect(sql).toContain("research_experiments_experiment_parameters_shape_check");
+    expect(sql).toContain("experiment_parameters_hash_algorithm is not null");
+    expect(sql).toContain("experiment_parameters_hash_domain is not null");
+    expect(sql).toContain("experiment_parameters_hash_version is not null");
+    expect(sql).toContain("experiment_parameters_hash_hex is not null");
     expect(sql).toContain("experiment_parameters_hash_domain = 'syntrake:experiment_parameters:v1'");
+    expect(sql).toContain("scientific constraints must be validated");
+    expect(sql).toContain("and con.convalidated");
+    expect(sql).not.toContain("not valid");
     expect(sql).toContain("drop constraint if exists research_experiments_parent_family_fk");
     expect(sql).toContain("drop constraint if exists research_experiments_family_fk_source_key");
     expect(sql).toContain("drop index if exists investing.research_experiments_variant_structural_binding_key");
@@ -272,6 +284,14 @@ describe("I5 Experiment VARIANT persistence foundation", () => {
     expect(sql).not.toContain("foreign key ( parent_experiment_id, research_investigation_id, research_spec_revision_id, research_ir_hash_algorithm");
     expect(sql).toContain("research_experiments_scientific_identity_key");
     expect(sql).toContain("experiment_hash_hex");
+    expect(policy(sql, "research_experiments_i5_exp_insert")).toContain(
+      "experiment_hash_hex = current_setting('syntrake.investing.experiment_hash_hex', true)",
+    );
+    expect(policy(sql, "research_experiments_i5_exp_insert")).toContain("experiment_parameters_hash_algorithm is null");
+    expect(policy(sql, "research_experiments_i5_exp_read")).toContain(
+      "experiment_hash_hex = current_setting('syntrake.investing.experiment_hash_hex', true)",
+    );
+    expect(policy(sql, "research_experiments_i5_exp_read")).toContain("experiment_parameters_hash_algorithm is null");
     expect(policy(sql, "research_experiments_i5_variant_parent_read")).toContain("parent_research_ir_hash_hex");
     expect(policy(sql, "research_experiments_i5_variant_parent_read")).toContain("parent_experiment_hash_hex");
     expect(policy(sql, "research_experiments_i5_variant_parent_read")).not.toContain(
