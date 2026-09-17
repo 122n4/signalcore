@@ -316,6 +316,7 @@ const i5ResearchScientificPreimageModulePath = normalizeRelativePath(path.join("
 const i5ResearchIndexModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "index.ts"));
 const i5ResearchSemanticModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "semantic.ts"));
 const i5ResearchIrModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "researchIr.ts"));
+const i5ExperimentParametersModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "experimentParameters.ts"));
 
 function scriptKindFor(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -520,7 +521,12 @@ function canReferenceI5ResearchCanonicalModule(fromFile: string) {
 
 function canReferenceI5ResearchScientificPreimageModule(fromFile: string) {
   const normalized = normalizeRelativePath(fromFile);
-  return normalized === i5ResearchSemanticModulePath || normalized === i5ResearchIrModulePath || isExcludedSourcePath(normalized);
+  return (
+    normalized === i5ResearchSemanticModulePath ||
+    normalized === i5ResearchIrModulePath ||
+    normalized === i5ExperimentParametersModulePath ||
+    isExcludedSourcePath(normalized)
+  );
 }
 
 function isForbiddenI5ResearchCanonicalReference(fromFile: string, toFile: string) {
@@ -536,6 +542,7 @@ function isForbiddenI5ResearchIrOwnerReference(fromFile: string, toFile: string)
   return (
     normalizeRelativePath(toFile) === i5ResearchIrModulePath &&
     normalizedFrom !== i5ResearchIndexModulePath &&
+    normalizedFrom !== i5ExperimentParametersModulePath &&
     !isExcludedSourcePath(normalizedFrom)
   );
 }
@@ -1003,8 +1010,16 @@ describe("Investing Genesis architecture boundaries", () => {
       source("lib/investing/research/researchIr.ts", 'import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";'),
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
+      source("lib/investing/research/experimentParameters.ts", 'import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";'),
+    ])).toEqual([]);
+    expect(analyzeArchitectureGraph([
       source("lib/investing/research/public-consumer.ts", 'import { hashResearchDraftV1 } from "./index";'),
     ])).toEqual([]);
+    expectViolation(
+      [source("lib/investing/unrelated-preimage.ts", 'import x from "./research/scientificPreimage";')],
+      "I5_RESEARCH_SCIENTIFIC_PREIMAGE_INTERNAL_NOT_ALLOWED",
+      ["lib/investing/unrelated-preimage.ts", i5ResearchScientificPreimageModulePath],
+    );
   });
 
   it("blocks production deep imports of the A5 Research IR owner module by resolved path", () => {
@@ -1030,8 +1045,16 @@ describe("Investing Genesis architecture boundaries", () => {
       source("lib/investing/research/index.ts", 'export { hashResearchIrV1 } from "./researchIr";'),
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
+      source("lib/investing/research/experimentParameters.ts", 'import { hashResearchIrV1 } from "./researchIr";'),
+    ])).toEqual([]);
+    expect(analyzeArchitectureGraph([
       source("lib/investing/research-consumer.ts", 'import { hashResearchIrV1 } from "./research";'),
     ])).toEqual([]);
+    expectViolation(
+      [source("lib/investing/unrelated-ir.ts", 'import x from "./research/researchIr";')],
+      "I5_RESEARCH_IR_OWNER_DEEP_IMPORT_NOT_ALLOWED",
+      ["lib/investing/unrelated-ir.ts", i5ResearchIrModulePath],
+    );
   });
 
   it("blocks Investing to Trading direct and transitive graph paths", () => {
