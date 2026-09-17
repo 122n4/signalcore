@@ -87,9 +87,14 @@ export {
   admitExperimentBaselineV1,
   admitExperimentVariantV1,
   assertExperimentBaselineHashingDisabledV1,
+  canonicalExperimentBytesV1,
+  canonicalExperimentHashPayloadV1,
+  hashExperimentV1,
   type AdmittedExperimentBaselineV1,
   type AdmittedExperimentVariantV1,
   type ExperimentBaselineCandidateV1,
+  type ExperimentCandidateV1,
+  type ExperimentHashPayloadV1,
   type ExperimentVariantCandidateV1,
 } from "./experiment";
 

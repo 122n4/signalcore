@@ -38,6 +38,10 @@ export type ExperimentVariantCreateSuccess = Readonly<{
   researchSpecRevisionId: string;
   relation: "VARIANT";
   researchIrHashHex: string;
+  parentExperimentHashHex: string;
+  parentResearchIrHashHex: string;
+  experimentParametersHashHex: string;
+  experimentHashHex: string;
   materialRequestHash: string;
   pointerVersion: string;
   idempotencyRecordId: string;
@@ -131,6 +135,14 @@ type ExperimentRow = {
   research_ir_hash_domain: string;
   research_ir_hash_version: string;
   research_ir_hash_hex: string;
+  experiment_hash_algorithm: string;
+  experiment_hash_domain: string;
+  experiment_hash_version: string;
+  experiment_hash_hex: string;
+  experiment_parameters_hash_algorithm: string | null;
+  experiment_parameters_hash_domain: string | null;
+  experiment_parameters_hash_version: string | null;
+  experiment_parameters_hash_hex: string | null;
   material_request_hash: string;
   idempotency_record_id: string;
 };
@@ -156,6 +168,10 @@ const transactionContextKeys = [
   "syntrake.investing.research_investigation_id",
   "syntrake.investing.research_spec_revision_id",
   "syntrake.investing.research_ir_hash_hex",
+  "syntrake.investing.experiment_hash_hex",
+  "syntrake.investing.experiment_parameters_hash_hex",
+  "syntrake.investing.parent_experiment_hash_hex",
+  "syntrake.investing.parent_research_ir_hash_hex",
   "syntrake.investing.expected_experiment_id",
   "syntrake.investing.parent_experiment_id",
   "syntrake.investing.research_experiment_id",
@@ -221,6 +237,10 @@ export async function createExperimentVariantV1(
         researchSpecRevisionId: prepared.admitted.researchSpecRevisionId,
         relation: "VARIANT",
         researchIrHashHex: prepared.admitted.researchIr.hashHex,
+        parentExperimentHashHex: prepared.admitted.parentExperiment.hashHex,
+        parentResearchIrHashHex: prepared.admitted.parentResearchIr.hashHex,
+        experimentParametersHashHex: prepared.admitted.experimentParameters.hashHex,
+        experimentHashHex: prepared.admitted.experiment.hashHex,
         materialRequestHash: prepared.materialRequestHash,
         pointerVersion: nextVersion,
       });
@@ -325,45 +345,38 @@ async function validateParentExperimentLineage(
   context: AuthorizedResearchMaterialRevisionCreateContext,
   prepared: PreparedInput,
 ): Promise<{ ok: true; row: ExperimentRow } | ExperimentVariantCreateFailure> {
-  const ir = prepared.admitted.researchIr;
   const selected = await exactlyOne(
     client.query<ExperimentRow>(
       [
         "select research_experiment_id, research_investigation_id, research_spec_revision_id, relation, parent_experiment_id,",
         "research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex,",
+        "experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex,",
+        "experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex,",
         "material_request_hash, idempotency_record_id",
         "from investing.research_experiments",
         "where research_experiment_id = $1 and research_investigation_id = $2 and tenant_id = $3",
-        "and research_spec_revision_id = $4 and research_ir_hash_algorithm = $5 and research_ir_hash_domain = $6",
-        "and research_ir_hash_version = $7 and research_ir_hash_hex = $8 and relation in ('BASELINE', 'VARIANT')",
-        context.operationScope === "TENANT_SCOPE" ? "and account_id is null" : "and account_id = $9",
+        "and research_spec_revision_id = $4 and relation in ('BASELINE', 'VARIANT')",
+        context.operationScope === "TENANT_SCOPE" ? "and account_id is null" : "and account_id = $5",
       ].join(" "),
       context.operationScope === "TENANT_SCOPE"
-        ? [
-            prepared.admitted.parentExperimentId,
-            context.researchInvestigationId,
-            context.tenantId,
-            prepared.admitted.researchSpecRevisionId,
-            ir.hashAlgorithm,
-            ir.hashDomain,
-            ir.hashVersion,
-            ir.hashHex,
-          ]
-        : [
-            prepared.admitted.parentExperimentId,
-            context.researchInvestigationId,
-            context.tenantId,
-            prepared.admitted.researchSpecRevisionId,
-            ir.hashAlgorithm,
-            ir.hashDomain,
-            ir.hashVersion,
-            ir.hashHex,
-            context.accountId,
-          ],
+        ? [prepared.admitted.parentExperimentId, context.researchInvestigationId, context.tenantId, prepared.admitted.researchSpecRevisionId]
+        : [prepared.admitted.parentExperimentId, context.researchInvestigationId, context.tenantId, prepared.admitted.researchSpecRevisionId, context.accountId],
     ),
     "CONFLICT",
   );
   if (selected.ok === false) return selected;
+  if (
+    selected.row.experiment_hash_algorithm !== prepared.admitted.parentExperiment.hashAlgorithm ||
+    selected.row.experiment_hash_domain !== prepared.admitted.parentExperiment.hashDomain ||
+    selected.row.experiment_hash_version !== prepared.admitted.parentExperiment.hashVersion ||
+    selected.row.experiment_hash_hex !== prepared.admitted.parentExperiment.hashHex ||
+    selected.row.research_ir_hash_algorithm !== prepared.admitted.parentResearchIr.hashAlgorithm ||
+    selected.row.research_ir_hash_domain !== prepared.admitted.parentResearchIr.hashDomain ||
+    selected.row.research_ir_hash_version !== prepared.admitted.parentResearchIr.hashVersion ||
+    selected.row.research_ir_hash_hex !== prepared.admitted.parentResearchIr.hashHex
+  ) {
+    return fail("CONFLICT");
+  }
   return { ok: true, row: selected.row };
 }
 
@@ -375,15 +388,19 @@ async function insertExperiment(
   researchExperimentId: string,
 ): Promise<void> {
   const ir = prepared.admitted.researchIr;
+  const experiment = prepared.admitted.experiment;
+  const parameters = prepared.admitted.experimentParameters;
   await client.query(
     [
       "insert into investing.research_experiments (",
       "research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,",
       "tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, relation,",
       "parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex,",
+      "experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex,",
+      "experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex,",
       "material_request_hash, idempotency_record_id, idempotency_key, correlation_id",
       ") values ($1, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10, $11, $12, 'VARIANT', $13, $14,",
-      "$15, $16, $17, $18, $19, $20, $21, $22)",
+      "$15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)",
     ].join(" "),
     [
       researchExperimentId,
@@ -404,6 +421,14 @@ async function insertExperiment(
       ir.hashDomain,
       ir.hashVersion,
       ir.hashHex,
+      experiment.hashAlgorithm,
+      experiment.hashDomain,
+      experiment.hashVersion,
+      experiment.hashHex,
+      parameters.hashAlgorithm,
+      parameters.hashDomain,
+      parameters.hashVersion,
+      parameters.hashHex,
       prepared.materialRequestHash,
       idempotencyRecordId,
       prepared.idempotencyKey,
@@ -515,6 +540,8 @@ async function dispatchExistingIdempotency(
       [
         "select research_experiment_id, research_investigation_id, research_spec_revision_id, relation, parent_experiment_id,",
         "research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex,",
+        "experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex,",
+        "experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex,",
         "material_request_hash, idempotency_record_id",
         "from investing.research_experiments",
         "where research_experiment_id = $1 and research_investigation_id = $2 and tenant_id = $3",
@@ -536,7 +563,15 @@ async function dispatchExistingIdempotency(
     experiment.row.research_ir_hash_algorithm !== prepared.admitted.researchIr.hashAlgorithm ||
     experiment.row.research_ir_hash_domain !== prepared.admitted.researchIr.hashDomain ||
     experiment.row.research_ir_hash_version !== prepared.admitted.researchIr.hashVersion ||
-    experiment.row.research_ir_hash_hex !== prepared.admitted.researchIr.hashHex
+    experiment.row.research_ir_hash_hex !== prepared.admitted.researchIr.hashHex ||
+    experiment.row.experiment_hash_algorithm !== prepared.admitted.experiment.hashAlgorithm ||
+    experiment.row.experiment_hash_domain !== prepared.admitted.experiment.hashDomain ||
+    experiment.row.experiment_hash_version !== prepared.admitted.experiment.hashVersion ||
+    experiment.row.experiment_hash_hex !== prepared.admitted.experiment.hashHex ||
+    experiment.row.experiment_parameters_hash_algorithm !== prepared.admitted.experimentParameters.hashAlgorithm ||
+    experiment.row.experiment_parameters_hash_domain !== prepared.admitted.experimentParameters.hashDomain ||
+    experiment.row.experiment_parameters_hash_version !== prepared.admitted.experimentParameters.hashVersion ||
+    experiment.row.experiment_parameters_hash_hex !== prepared.admitted.experimentParameters.hashHex
   ) {
     return fail("INTERNAL_ERROR");
   }
@@ -644,6 +679,10 @@ async function setTransactionContext(
   await setTransactionConfig(client, "material_request_hash", prepared.materialRequestHash);
   await setTransactionConfig(client, "research_spec_revision_id", prepared.admitted.researchSpecRevisionId);
   await setTransactionConfig(client, "research_ir_hash_hex", prepared.admitted.researchIr.hashHex);
+  await setTransactionConfig(client, "experiment_hash_hex", prepared.admitted.experiment.hashHex);
+  await setTransactionConfig(client, "experiment_parameters_hash_hex", prepared.admitted.experimentParameters.hashHex);
+  await setTransactionConfig(client, "parent_experiment_hash_hex", prepared.admitted.parentExperiment.hashHex);
+  await setTransactionConfig(client, "parent_research_ir_hash_hex", prepared.admitted.parentResearchIr.hashHex);
   await setTransactionConfig(client, "expected_experiment_id", prepared.expectedExperimentId);
   await setTransactionConfig(client, "parent_experiment_id", prepared.admitted.parentExperimentId);
 }
@@ -746,6 +785,10 @@ function parseReference(value: unknown): Omit<ExperimentVariantCreateSuccess, "o
     typeof reference.researchSpecRevisionId === "string" &&
     reference.relation === "VARIANT" &&
     typeof reference.researchIrHashHex === "string" &&
+    typeof reference.parentExperimentHashHex === "string" &&
+    typeof reference.parentResearchIrHashHex === "string" &&
+    typeof reference.experimentParametersHashHex === "string" &&
+    typeof reference.experimentHashHex === "string" &&
     typeof reference.materialRequestHash === "string" &&
     typeof reference.pointerVersion === "string"
     ? reference as Omit<ExperimentVariantCreateSuccess, "ok" | "replayed" | "idempotencyRecordId">

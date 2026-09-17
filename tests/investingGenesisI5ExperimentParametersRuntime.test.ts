@@ -142,12 +142,12 @@ function expectRejected(resolved: ResearchIrV1) {
 }
 
 describe("Investing Genesis I5 ExperimentParameters scientific identity runtime", () => {
-  it("admits ExperimentParameters as an owner-payload scientific domain while keeping Experiment disabled", () => {
+  it("admits ExperimentParameters and candidate Experiment scientific domains as owner-exact", () => {
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
-    expect("hashExperimentV1" in publicResearchRuntime).toBe(false);
+    expect("hashExperimentV1" in publicResearchRuntime).toBe(true);
   });
 
   it("pins exact canonical owner payload, deterministic bytes and golden hashes", () => {
@@ -301,7 +301,7 @@ describe("Investing Genesis I5 ExperimentParameters scientific identity runtime"
     expect(runtime).toContain('from "./scientificPreimage"');
     expect(runtime).not.toMatch(/from\s+["'][^"']*(server-only|supabase|authority|writer|service|paper|trading|broker|portfolio|accounting|execution|worker|queue|core|capital)/iu);
     expect(runtime).not.toContain("hashExperimentV1");
-    expect(canonical).toContain('"SYNTRAKE:EXPERIMENT:V1": "DECLARED_BUT_HASHING_DISABLED"');
+    expect(canonical).toContain('"SYNTRAKE:EXPERIMENT:V1": "OWNER_PAYLOAD_EXACT"');
     expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT PARAMETERS - UNNUMBERED");
     expect(contract).toContain("Permanent A-number:");
     expect(contract).toContain("NOT ASSIGNED");

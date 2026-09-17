@@ -10,6 +10,7 @@ import {
   type HashRefV1,
 } from "../lib/investing/research";
 import * as publicResearchRuntime from "../lib/investing/research";
+import { i5VariantCandidateV1 } from "./support/investingI5ExperimentScientificFixtures";
 
 const parentExperimentId = "123e4567-e89b-12d3-a456-426614174000";
 const researchSpecRevisionId = "223e4567-e89b-12d3-a456-426614174001";
@@ -26,11 +27,7 @@ function ref(hashDomain: HashRefV1["hashDomain"], hashHex = researchIrHash): Has
 
 function candidate(overrides: Partial<ExperimentVariantCandidateV1> = {}): ExperimentVariantCandidateV1 {
   return {
-    schemaVersion: "EXPERIMENT_VARIANT_CANDIDATE_V1",
-    relation: "VARIANT",
-    parentExperimentId,
-    researchSpecRevisionId,
-    researchIr: ref("SYNTRAKE:RESEARCH_IR:V1"),
+    ...i5VariantCandidateV1({ parentExperimentId, researchSpecRevisionId }),
     ...overrides,
   };
 }
@@ -52,8 +49,13 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
       schemaVersion: "EXPERIMENT_VARIANT_CANDIDATE_V1",
       relation: "VARIANT",
       parentExperimentId,
+      parentExperiment: input.parentExperiment,
+      parentResearchIr: input.parentResearchIr,
       researchSpecRevisionId,
-      researchIr: ref("SYNTRAKE:RESEARCH_IR:V1"),
+      researchIr: input.researchIr,
+      experimentParameters: admitted.experimentParameters,
+      experimentParametersPayload: admitted.experimentParametersPayload,
+      experiment: admitted.experiment,
     });
     expect(Object.isFrozen(admitted)).toBe(true);
     expect(Object.isFrozen(admitted.researchIr)).toBe(true);
@@ -63,11 +65,11 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
   it("preserves hash-domain boundaries without public scientific Experiment hash exports", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
 
     expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
-    expect("hashExperimentV1" in publicResearchRuntime).toBe(false);
+    expect("hashExperimentV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
   });
 
@@ -122,7 +124,6 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
       "rootExperimentId",
       "baselineExperimentId",
       "experimentFamilyId",
-      "experimentParameters",
       "parameters",
       "parameterOverrides",
       "parameterPatch",
@@ -194,8 +195,6 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
 
     expect(experimentRuntime).toContain('from "./canonical"');
     expect(experimentRuntime).not.toMatch(/from\s+["'][^"']*(paper|trading|accounting|broker|portfolio|execution|worker|queue|dataset|run|result|evidence)/iu);
-    expect(experimentRuntime).not.toContain("hashExperimentV1");
-    expect(experimentRuntime).not.toContain("hashExperimentParametersV1");
     expect(unexpectedReferences).toEqual([]);
   });
 });
