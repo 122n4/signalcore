@@ -114,10 +114,14 @@ describe("I5 Experiment scientific closure runtime", () => {
     ).toThrow("ExperimentParameters resolved Research IR must match VARIANT Research IR");
   });
 
-  it("admits immutable Experiment HashRefs and keeps accepted-state docs out of this candidate", () => {
+  it("admits immutable Experiment HashRefs and records accepted-state documentation", () => {
     const baseline = admitExperimentBaselineV1(i5BaselineCandidateV1(researchSpecRevisionId));
     const variant = admitExperimentVariantV1(i5VariantCandidateV1({ parentExperimentId, researchSpecRevisionId }));
     const state = fs.readFileSync(path.join(process.cwd(), "docs", "investing-genesis", "CANONICAL_CURRENT_STATE.md"), "utf8");
+    const contract = fs.readFileSync(
+      path.join(process.cwd(), "docs", "investing-genesis", "I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md"),
+      "utf8",
+    );
 
     expect(baseline.experiment).toEqual(i5Ref("SYNTRAKE:EXPERIMENT:V1", golden.baselineExperiment));
     expect(variant.parentExperiment).toEqual(baseline.experiment);
@@ -126,7 +130,17 @@ describe("I5 Experiment scientific closure runtime", () => {
     expect(variant.experiment).toEqual(i5Ref("SYNTRAKE:EXPERIMENT:V1", golden.variantExperiment));
     expect(Object.isFrozen(baseline.experiment)).toBe(true);
     expect(Object.isFrozen(variant.experiment)).toBe(true);
-    expect(state).not.toContain("EXPERIMENT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED");
-    expect(state).not.toContain("SYNTRAKE:EXPERIMENT:V1`\n= `OWNER_PAYLOAD_EXACT");
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT SCIENTIFIC CLOSURE - UNNUMBERED");
+    expect(contract).toContain("Permanent A-number:");
+    expect(contract).toContain("NOT ASSIGNED");
+    expect(contract).toContain("Production Supabase migration application:");
+    expect(contract).toContain("NOT PERFORMED");
+    expect(state).toContain("EXPERIMENT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED");
+    expect(state).toMatch(/`SYNTRAKE:EXPERIMENT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
+    expect(state).toMatch(/`SYNTRAKE:EXPERIMENT_PARAMETERS:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
+    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `DECLARED_BUT_HASHING_DISABLED`/u);
+    expect(state).toContain("DatasetSnapshot remains deferred");
+    expect(state).toContain("Production Supabase migration application:");
+    expect(state).toContain("`NOT PERFORMED`");
   });
 });
