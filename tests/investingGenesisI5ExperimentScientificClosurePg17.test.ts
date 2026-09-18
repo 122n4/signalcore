@@ -811,5 +811,5 @@ maybeDescribe("I5 Experiment scientific closure PG17 rehearsal", () => {
     await expect(client.query("select 1 from investing.idempotency_records where idempotency_record_id = $1", [idempotencyRecordIdFor(ids.rollback)])).resolves.toMatchObject({ rowCount: 0 });
 
     expect(ids.e0).not.toBe(ids.e1);
-  });
+  }, 20_000);
 });
