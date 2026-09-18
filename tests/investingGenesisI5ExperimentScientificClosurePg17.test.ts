@@ -35,8 +35,10 @@ const ids = {
   accountTenant: "20000000-0000-4000-8000-000000000081",
   principal: "10000000-0000-4000-8000-000000000071",
   accountPrincipal: "10000000-0000-4000-8000-000000000081",
+  wrongPrincipal: "10000000-0000-4000-8000-000000000082",
   membership: "30000000-0000-4000-8000-000000000071",
   accountMembership: "30000000-0000-4000-8000-000000000081",
+  wrongMembership: "30000000-0000-4000-8000-000000000082",
   account: "40000000-0000-4000-8000-000000000081",
   accountAccess: "50000000-0000-4000-8000-000000000081",
   wrongAccount: "40000000-0000-4000-8000-000000000082",
@@ -258,6 +260,14 @@ async function seedAuthorityFixture(fixture: Fixture) {
   `, [fixture.tenantMembershipId, fixture.tenantId, fixture.principalId]);
   if (fixture.accountId !== null && fixture.accountAccessId !== null) {
     await client.query(`
+      insert into investing.principals (principal_id, external_provider, external_subject)
+      values ($1, 'CLERK', $2)
+    `, [ids.wrongPrincipal, `${fixture.actorId}-wrong-account`]);
+    await client.query(`
+      insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id)
+      values ($1, $2, $3)
+    `, [ids.wrongMembership, fixture.tenantId, ids.wrongPrincipal]);
+    await client.query(`
       insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
       values ($1, $2, $3, $4, 'USD')
     `, [fixture.accountId, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
@@ -268,11 +278,11 @@ async function seedAuthorityFixture(fixture: Fixture) {
     await client.query(`
       insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
       values ($1, $2, $3, $4, 'USD')
-    `, [ids.wrongAccount, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
+    `, [ids.wrongAccount, fixture.tenantId, ids.wrongMembership, ids.wrongPrincipal]);
     await client.query(`
       insert into investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
       values ($1, $2, $3, $4, $5)
-    `, [ids.wrongAccountAccess, ids.wrongAccount, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
+    `, [ids.wrongAccountAccess, ids.wrongAccount, fixture.tenantId, ids.wrongMembership, ids.wrongPrincipal]);
   }
   await client.query(`
     insert into investing.idempotency_records (
