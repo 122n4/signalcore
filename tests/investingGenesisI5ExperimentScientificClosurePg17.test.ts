@@ -342,7 +342,7 @@ async function seedAuthorityFixture(fixture: Fixture) {
     ) values (
       $1, $2, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, $11, 'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null,
       $12, $13, $14, $15, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
-      jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex',$13),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex',$15))),
+      jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex',$13::text),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex',$15::text))),
       $16, $17, $18, $19
     )
   `, [
