@@ -106,6 +106,8 @@ When `PG17_RECONCILIATION_URL` is absent, no READY verdict is available; the cor
 
 ## Hash-Domain States
 
+State at the time this slice was accepted:
+
 `SYNTRAKE:RESEARCH_IR:V1 = OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:RESEARCH_SPEC:V1 = DECLARED_BUT_HASHING_DISABLED`
@@ -115,6 +117,12 @@ When `PG17_RECONCILIATION_URL` is absent, no READY verdict is available; the cor
 `SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = DECLARED_BUT_HASHING_DISABLED`
 
 No `hashExperimentV1` or `hashExperimentParametersV1` is introduced.
+
+Later supersession: Experiment hashing was accepted by the separate Experiment
+Scientific Closure owner contract, and ExperimentParameters scientific identity
+was accepted separately. Current runtime truth is owned by
+`lib/investing/research/canonical.ts` and
+`I5A_CANONICAL_HASH_DOMAINS_V1.md`. ResearchSpec remains hashing disabled.
 
 ## Failure Semantics
 

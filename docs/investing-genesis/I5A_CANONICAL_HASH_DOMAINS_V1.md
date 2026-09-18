@@ -52,8 +52,8 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:HYPOTHESIS:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_SPEC:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:RESEARCH_IR:V1` | `OWNER_PAYLOAD_EXACT` |
-| `SYNTRAKE:EXPERIMENT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
-| `SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `DECLARED_BUT_HASHING_DISABLED` |
+| `SYNTRAKE:EXPERIMENT:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:DATASET_SERIES:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:DATASET_SNAPSHOT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
@@ -99,9 +99,12 @@ ResearchSpec remains `CANDIDATE_ONLY`; scientific ResearchSpec hashing remains
 disabled. Its persistence request identity binds candidate canonical bytes as
 candidate payload bytes, not as a fake SHA-256 scientific content digest.
 
+Experiment and ExperimentParameters were not activated by the original
+hash-domain consolidation slice. They are current owner-exact domains because
+later dedicated accepted owner contracts admitted their exact owner payloads.
+
 ## Explicit Exclusions
 
-No future DatasetSnapshot, Experiment, Run, Result, MetricRequestSet,
-ExecutionConfig, ResearchTemplate or account-context hashing domain is activated
-by this contract unless the runtime already admits it with an exact owner
-payload.
+No future DatasetSnapshot, Run, Result, MetricRequestSet, ExecutionConfig,
+ResearchTemplate or account-context hashing domain is activated by this contract
+unless the runtime already admits it with an exact owner payload.
