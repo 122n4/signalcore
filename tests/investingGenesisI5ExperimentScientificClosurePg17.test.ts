@@ -247,24 +247,32 @@ async function seedAuthorityFixture(fixture: Fixture) {
   const scope = scopeFor(fixture);
   await client.query(`
     insert into investing.principals (principal_id, external_provider, external_subject)
-    values ($1, 'CLERK', $2);
-    insert into investing.tenants (tenant_id) values ($3);
+    values ($1, 'CLERK', $2)
+  `, [fixture.principalId, fixture.actorId]);
+  await client.query(`
+    insert into investing.tenants (tenant_id) values ($1)
+  `, [fixture.tenantId]);
+  await client.query(`
     insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id)
-    values ($4, $3, $1);
-  `, [fixture.principalId, fixture.actorId, fixture.tenantId, fixture.tenantMembershipId]);
+    values ($1, $2, $3)
+  `, [fixture.tenantMembershipId, fixture.tenantId, fixture.principalId]);
   if (fixture.accountId !== null && fixture.accountAccessId !== null) {
     await client.query(`
       insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
-      values ($1, $2, $3, $4, 'USD');
+      values ($1, $2, $3, $4, 'USD')
+    `, [fixture.accountId, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
+    await client.query(`
       insert into investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
-      values ($5, $1, $2, $3, $4);
-    `, [fixture.accountId, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId, fixture.accountAccessId]);
+      values ($1, $2, $3, $4, $5)
+    `, [fixture.accountAccessId, fixture.accountId, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
     await client.query(`
       insert into investing.accounts (account_id, tenant_id, initial_tenant_membership_id, initial_principal_id, base_currency)
-      values ($1, $2, $3, $4, 'USD');
+      values ($1, $2, $3, $4, 'USD')
+    `, [ids.wrongAccount, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
+    await client.query(`
       insert into investing.account_access (account_access_id, account_id, tenant_id, tenant_membership_id, principal_id)
-      values ($5, $1, $2, $3, $4);
-    `, [ids.wrongAccount, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId, ids.wrongAccountAccess]);
+      values ($1, $2, $3, $4, $5)
+    `, [ids.wrongAccountAccess, ids.wrongAccount, fixture.tenantId, fixture.tenantMembershipId, fixture.principalId]);
   }
   await client.query(`
     insert into investing.idempotency_records (
@@ -290,19 +298,23 @@ async function seedAuthorityFixture(fixture: Fixture) {
     ) values (
       $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8,
       'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', $9, $10, $11, $12, $13
-    );
-    insert into investing.research_material_roots (
-      material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
-      tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
-    ) values
-      ($14, $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, 'DRAFT', 'RESEARCH_DRAFT_REVISION_CREATE_V1'),
-      ($15, $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, 'HYPOTHESIS', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
-      ($16, $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, 'RESEARCH_SPEC', 'RESEARCH_SPEC_REVISION_CREATE_V1');
+    )
   `, [
     fixture.investigationId, fixture.tenantId, accountId, fixture.principalId, fixture.actorId,
     fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext, seedHashes.investigation,
     `c1000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-investigation-${fixture.principalId.slice(-12)}`, `corr-investigation-${fixture.principalId.slice(-12)}`,
-    fixture.draftRootId, fixture.hypothesisRootId, fixture.specRootId,
+  ]);
+  await client.query(`
+    insert into investing.research_material_roots (
+      material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
+    ) values
+      ($1, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10, 'DRAFT', 'RESEARCH_DRAFT_REVISION_CREATE_V1'),
+      ($11, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10, 'HYPOTHESIS', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
+      ($12, $2, $3, $4, $5, 'USER_PRINCIPAL', $6, $7, $8, $9, $10, 'RESEARCH_SPEC', 'RESEARCH_SPEC_REVISION_CREATE_V1')
+  `, [
+    fixture.draftRootId, fixture.investigationId, fixture.tenantId, accountId, fixture.principalId, fixture.actorId,
+    fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext, fixture.hypothesisRootId, fixture.specRootId,
   ]);
   await client.query(`
     insert into investing.research_material_revisions (
@@ -313,33 +325,44 @@ async function seedAuthorityFixture(fixture: Fixture) {
       ($1, $2, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', $11, 'DRAFT', 1,
        null, 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, $12, $12, $13, $14, $15),
       ($16, $17, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', $11, 'HYPOTHESIS', 1,
-       null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $18, $18, $19, $20, $21);
-    insert into investing.research_spec_revisions (
-      research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
-      tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
-      source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
-      canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
-    ) values (
-      $22, $23, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, $11, 'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null,
-      $1, $12, $16, $18, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
-      jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex',$12),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex',$18))),
-      $24, $25, $26, $27
-    );
-    insert into investing.research_material_pointer_states (
-      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
-      tenant_membership_id, account_access_id, operation_scope, source_context,
-      active_draft_revision_id, active_hypothesis_revision_id, active_spec_revision_id, active_experiment_id, pointer_version
-    ) values (
-      $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, $11, $1, $16, $22, null, 7
-    );
+       null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $18, $18, $19, $20, $21)
   `, [
     fixture.draftRevisionId, fixture.draftRootId, fixture.investigationId, fixture.tenantId, accountId,
     fixture.principalId, fixture.actorId, fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext,
     seedHashes.draft, `c2000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-draft-${fixture.principalId.slice(-12)}`, `corr-draft-${fixture.principalId.slice(-12)}`,
     fixture.hypothesisRevisionId, fixture.hypothesisRootId, seedHashes.hypothesis,
     `c3000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-hypothesis-${fixture.principalId.slice(-12)}`, `corr-hypothesis-${fixture.principalId.slice(-12)}`,
-    fixture.specRevisionId, fixture.specRootId, seedHashes.spec,
+  ]);
+  await client.query(`
+    insert into investing.research_spec_revisions (
+      research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
+      source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
+      canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values (
+      $1, $2, $3, $4, $5, $6, 'USER_PRINCIPAL', $7, $8, $9, $10, $11, 'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null,
+      $12, $13, $14, $15, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
+      jsonb_build_object('schemaVersion','RESEARCH_SPEC_CANDIDATE_V1','status','CANDIDATE_ONLY','sourceDraft',jsonb_build_object('hashHex',$13),'hypothesisBinding',jsonb_build_object('kind','EXPLICIT_HYPOTHESIS','hypothesis',jsonb_build_object('hashHex',$15))),
+      $16, $17, $18, $19
+    )
+  `, [
+    fixture.specRevisionId, fixture.specRootId, fixture.investigationId, fixture.tenantId, accountId,
+    fixture.principalId, fixture.actorId, fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext,
+    fixture.draftRevisionId, seedHashes.draft, fixture.hypothesisRevisionId, seedHashes.hypothesis, seedHashes.spec,
     `c4000000-0000-4000-8000-${fixture.principalId.slice(-12)}`, `idem-spec-${fixture.principalId.slice(-12)}`, `corr-spec-${fixture.principalId.slice(-12)}`,
+  ]);
+  await client.query(`
+    insert into investing.research_material_pointer_states (
+      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context,
+      active_draft_revision_id, active_hypothesis_revision_id, active_spec_revision_id, active_experiment_id, pointer_version
+    ) values (
+      $1, $2, $3, $4, 'USER_PRINCIPAL', $5, $6, $7, $8, $9, $10, $11, $12, null, 7
+    )
+  `, [
+    fixture.investigationId, fixture.tenantId, accountId, fixture.principalId, fixture.actorId,
+    fixture.tenantMembershipId, accountAccessId, scope, fixture.sourceContext, fixture.draftRevisionId,
+    fixture.hypothesisRevisionId, fixture.specRevisionId,
   ]);
 }
 
