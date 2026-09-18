@@ -91,6 +91,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Experiment VARIANT structural lineage admission (unnumbered) | `I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md` |
 | I5 Experiment VARIANT persistence (unnumbered) | `I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md` |
 | I5 ExperimentParameters scientific identity (unnumbered) | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` |
+| I5 Experiment Scientific Closure (unnumbered) | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -126,6 +127,11 @@ freeze/master evidence still relies on its narrow classifications.
   `lib/investing/research/experimentVariantService.ts`.
 - I5 ExperimentParameters scientific identity:
   `lib/investing/research/experimentParameters.ts`.
+- I5 Experiment Scientific Closure:
+  `lib/investing/research/experiment.ts`, Experiment BASELINE/VARIANT
+  persistence migrations and PostgreSQL 17 rehearsal establish durable
+  Experiment scientific hash-envelope persistence without changing production
+  Supabase.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -167,27 +173,38 @@ not become Investing Genesis authority merely because they use similar words.
   Research IR HashRef family evidence. The structural admission itself does not
   own persistence authority. At the time of structural admission, persistence
   was deferred; that limitation is now superseded by the separately accepted
-  Experiment VARIANT persistence owner contract. Scientific Experiment hashing
-  remains disabled; ExperimentParameters scientific identity is accepted
-  separately.
+  Experiment VARIANT persistence owner contract. At the time of structural
+  admission, scientific Experiment hashing was disabled; that limitation is now
+  superseded by the separately accepted Experiment Scientific Closure owner
+  contract. ExperimentParameters scientific identity is accepted separately.
 - I5 Experiment VARIANT persistence: current accepted, unnumbered. This
   acceptance establishes durable operational VARIANT lineage, immutable
   parent_experiment_id, exact parent-family binding, material request identity,
   idempotency, active Experiment pointer transition, Tenant/Account authority,
   RLS/FORCE RLS, minimal ACL, VARIANT-to-VARIANT lineage, BASELINE uniqueness
   preservation, current structural VARIANT uniqueness and A3/A4 compatibility
-  with an active VARIANT. Scientific Experiment hashing remains disabled.
-  ExperimentParameters scientific identity is accepted separately, but
-  ExperimentParameters persistence is not yet implemented and current VARIANT
-  persistence still cannot distinguish same-parent variants solely by
-  ExperimentParameters.
+  with an active VARIANT. Its former scientific-identity limitation is now
+  superseded by the accepted Experiment Scientific Closure owner contract.
 - I5 ExperimentParameters scientific identity: current accepted, unnumbered.
   This acceptance establishes deterministic scientific identity for
   `SYNTRAKE:EXPERIMENT_PARAMETERS:V1` by binding exact BASE Research IR HashRef,
   exact RESOLVED Research IR HashRef and immutable
-  `I5_EXPERIMENT_PARAMETERS_POLICY_V1`. It does not establish scientific
-  Experiment identity, ExperimentParameters persistence, DatasetSnapshot,
+  `I5_EXPERIMENT_PARAMETERS_POLICY_V1`. Experiment Scientific Closure now uses
+  that identity as a VARIANT HashRef binding and persists the VARIANT
+  ExperimentParameters hash envelope. It does not establish standalone raw
+  ExperimentParameters payload persistence, DatasetSnapshot,
   Run/Result/Evidence, Paper, Trading or Investing Core.
+- I5 Experiment Scientific Closure: current accepted, unnumbered. This
+  acceptance establishes BASELINE and VARIANT scientific Experiment identity,
+  durable Experiment HashRef persistence, durable VARIANT ExperimentParameters
+  hash-envelope persistence, scientific parent Experiment HashRef binding,
+  resolved Research IR binding, sibling VARIANT coexistence when scientific
+  identity differs, chained VARIANT lineage, Tenant/Account authority,
+  RLS/FORCE RLS, exact scientific duplicate rejection and rollback of
+  Experiment, pointer and idempotency state. Production Supabase has not
+  received the closure migration. It does not establish ResearchSpec scientific
+  hashing, standalone raw ExperimentParameters object persistence,
+  DatasetSnapshot, Run/Result/Evidence, Paper, Trading or Investing Core.
 - DatasetSnapshot: deferred. It has no current A-number and no current Investing
   Genesis owner contract.
 
@@ -208,6 +225,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Experiment VARIANT structural lineage admission / unnumbered | YES | YES | `I5_EXPERIMENT_VARIANT_LINEAGE_ADMISSION_OWNER_CONTRACT_V1.md` + `experiment.ts` + runtime test + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT LINEAGE ADMISSION - UNNUMBERED | CURRENT_ACCEPTED / STRUCTURAL_LINEAGE_ONLY | NONE |
 | Experiment VARIANT persistence / unnumbered | YES | YES | `I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md` + writer/service + migration + static tests + PostgreSQL 17 functional matrix | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / DURABLE_VARIANT_LINEAGE | NONE |
 | ExperimentParameters scientific identity / unnumbered | YES | YES | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` + `experimentParameters.ts` + runtime tests + architecture boundary + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT PARAMETERS - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_IDENTITY | NONE |
+| Experiment Scientific Closure / unnumbered | YES | YES | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + migration + static tests + PostgreSQL 17 scientific closure rehearsal | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -361,10 +379,14 @@ ExperimentParameters scientific identity acceptance evidence:
 ExperimentParameters scientific identity boundaries:
 
 - ExperimentParameters scientific identity is accepted.
-- Scientific Experiment identity is NOT yet accepted.
-- ExperimentParameters persistence is NOT yet implemented.
-- Current VARIANT persistence still cannot distinguish same-parent variants
-  solely by ExperimentParameters.
+- Experiment Scientific Closure is accepted separately and establishes
+  scientific Experiment identity plus durable VARIANT ExperimentParameters
+  hash-envelope persistence.
+- Standalone raw ExperimentParameters payload persistence is NOT yet
+  implemented.
+- Current scientific closure can distinguish same-parent VARIANTs when their
+  accepted scientific identity differs, including ExperimentParameters HashRef
+  differences.
 - DatasetSnapshot remains deferred.
 
 ExperimentParameters scientific identity supersession:
@@ -373,7 +395,52 @@ ExperimentParameters scientific identity supersession:
   `SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = DECLARED_BUT_HASHING_DISABLED`.
 - It does not supersede A5 Research IR authority, BASELINE structural
   admission, BASELINE persistence, VARIANT structural admission, VARIANT
-  persistence, ResearchSpec, scientific Experiment identity, DatasetSnapshot,
+  persistence, ResearchSpec, Experiment Scientific Closure, DatasetSnapshot,
+  Run/Result/Evidence, Paper, Trading or Investing Core.
+
+Experiment Scientific Closure acceptance evidence:
+
+- Technical candidate:
+  `59575f91bd276d607ca286a6dd1d485d3f68c497`.
+- Original implementation base:
+  `b10fed247ebeb04a43ff5dcda3a1e6040bf14148`.
+- Current canonical `main` predecessor at acceptance time:
+  `87e3083a5e3b8a95c65adf115f76a2aa7e2218d3`.
+- PR:
+  `#71`.
+- CI:
+  `35361968564`.
+- PG17:
+  `35361968472`.
+- PostgreSQL:
+  `17.11`.
+- Static reconciliation:
+  `6/6 PASS`.
+- Existing Genesis/I5 PG17 rehearsal:
+  `6/6 PASS`.
+- Dedicated Experiment Scientific Closure PG17 rehearsal:
+  `3/3 PASS`.
+- Integrated RLS + sibling/chained scientific identity matrix:
+  `PASS`.
+- Vercel:
+  `SUCCESS`.
+- Independent auditor verdict:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Production Supabase migration application:
+  `NOT PERFORMED`.
+
+`EXPERIMENT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED`.
+
+Experiment Scientific Closure supersession:
+
+- Supersedes the prior limitation that scientific Experiment identity was not
+  yet accepted.
+- Supersedes the prior limitation that current VARIANT persistence could not
+  distinguish same-parent variants solely by ExperimentParameters.
+- Does not supersede ResearchSpec scientific hashing deferral, standalone raw
+  ExperimentParameters payload persistence deferral, DatasetSnapshot,
   Run/Result/Evidence, Paper, Trading or Investing Core.
 
 Hash states now:
@@ -385,7 +452,7 @@ Hash states now:
 = `DECLARED_BUT_HASHING_DISABLED`
 
 `SYNTRAKE:EXPERIMENT:V1`
-= `DECLARED_BUT_HASHING_DISABLED`
+= `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:EXPERIMENT_PARAMETERS:V1`
 = `OWNER_PAYLOAD_EXACT`

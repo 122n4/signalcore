@@ -18,14 +18,14 @@ ExperimentParameters V1 does not mutate Research IR. It proves the scientific re
 SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = OWNER_PAYLOAD_EXACT
 ```
 
-The following domains remain unchanged:
+At the time this ExperimentParameters identity slice was accepted, the following related domain remained unchanged:
 
 ```text
 SYNTRAKE:EXPERIMENT:V1 = DECLARED_BUT_HASHING_DISABLED
 SYNTRAKE:RESEARCH_SPEC:V1 = DECLARED_BUT_HASHING_DISABLED
 ```
 
-No scientific Experiment identity is introduced.
+This ExperimentParameters contract did not introduce scientific Experiment identity. The Experiment hashing limitation was later superseded by the separately accepted Experiment Scientific Closure owner contract. ResearchSpec scientific hashing remains disabled.
 
 ## Candidate Proof Input
 
@@ -198,9 +198,9 @@ ExperimentParameters != DatasetSnapshot
 operational Experiment UUID != scientific Experiment hash
 ```
 
-ExperimentParameters V1 is not Experiment persistence evolution, ExperimentParameters database persistence, scientific Experiment identity, DatasetSnapshot, RunInput readiness, execution, Paper, Trading or Investing Core.
+ExperimentParameters V1 is not standalone raw ExperimentParameters database persistence, DatasetSnapshot, RunInput readiness, execution, Paper, Trading or Investing Core.
 
-Persistence evolution is future work. Current accepted persistence still cannot persist multiple same-parent VARIANT rows distinguished only by ExperimentParameters.
+Standalone raw ExperimentParameters payload persistence remains future work. Experiment Scientific Closure separately establishes VARIANT ExperimentParameters hash-envelope persistence and can distinguish same-parent VARIANT rows when scientific identity differs.
 
 ## Acceptance Provenance
 
@@ -235,7 +235,7 @@ This contract supersedes only the prior current assumption:
 SYNTRAKE:EXPERIMENT_PARAMETERS:V1 = DECLARED_BUT_HASHING_DISABLED
 ```
 
-It does not supersede A5 Research IR authority, BASELINE structural admission, BASELINE persistence, VARIANT structural admission, VARIANT persistence, ResearchSpec, scientific Experiment identity, DatasetSnapshot, Run/Result/Evidence, Paper, Trading or Core.
+It does not supersede A5 Research IR authority, BASELINE structural admission, BASELINE persistence, VARIANT structural admission, VARIANT persistence, ResearchSpec, Experiment Scientific Closure, DatasetSnapshot, Run/Result/Evidence, Paper, Trading or Core.
 
 No permanent A-number is assigned by this acceptance.
 

@@ -41,6 +41,7 @@ const requiredCurrentDocs = [
   "I5_MATERIAL_COMMAND_IDENTITY_V1.md",
   "I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md",
   "I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md",
+  "I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
 ] as const;
 
 const scannedRoots = ["AGENTS.md", "docs", "lib", "tests", "package.json", "tsconfig.json"] as const;
@@ -144,6 +145,29 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Experiment scientific hash");
     expect(state).toContain("ExperimentParameters hash");
     expect(state).toContain("DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`");
+  });
+
+  it("records accepted unnumbered Experiment Scientific Closure without overclaiming downstream domains", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const experiment = tableRow(state, "Experiment Scientific Closure / unnumbered");
+
+    expect(experiment).toContain("| YES | YES |");
+    expect(experiment).toContain("CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT SCIENTIFIC CLOSURE - UNNUMBERED");
+    expect(experiment).toContain("CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE");
+    expect(experiment).toContain("| NONE |");
+    expect(state).toContain("59575f91bd276d607ca286a6dd1d485d3f68c497");
+    expect(state).toContain("35361968564");
+    expect(state).toContain("35361968472");
+    expect(state).toContain("Dedicated Experiment Scientific Closure PG17 rehearsal:");
+    expect(state).toContain("3/3 PASS");
+    expect(state).toContain("DatasetSnapshot remains deferred");
+    expect(state).not.toContain("DatasetSnapshot = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Run = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Result = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Evidence = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Paper = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Trading = CURRENT_ACCEPTED");
+    expect(state).not.toContain("Core = CURRENT_ACCEPTED");
   });
 
   it("does not overclaim missing A1/A2/A4 dedicated owner contracts", () => {
