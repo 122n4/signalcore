@@ -270,4 +270,18 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("ResearchSpec remains `CANDIDATE_ONLY`");
     expect(hash).toContain("not as a fake SHA-256 scientific content digest");
   });
+
+  it("keeps consolidated hash-domain current truth aligned with canonical current state", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+
+    expect(hash).toContain("`SYNTRAKE:EXPERIMENT:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `DECLARED_BUT_HASHING_DISABLED`");
+    expect(hash).not.toContain("`SYNTRAKE:EXPERIMENT:V1` | `DECLARED_BUT_HASHING_DISABLED`");
+    expect(hash).not.toContain("`SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `DECLARED_BUT_HASHING_DISABLED`");
+    expect(state).toMatch(/`SYNTRAKE:EXPERIMENT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
+    expect(state).toMatch(/`SYNTRAKE:EXPERIMENT_PARAMETERS:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
+    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `DECLARED_BUT_HASHING_DISABLED`/u);
+  });
 });
