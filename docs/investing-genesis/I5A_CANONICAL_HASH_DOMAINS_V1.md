@@ -95,17 +95,18 @@ commands. It binds authority-derived scope evidence and operation-specific
 material fragments while excluding idempotency key and correlation ID from
 material semantics.
 
-ResearchSpec revision workflow status remains `CANDIDATE_ONLY`; the scientific
-ResearchSpec owner payload is now candidate-implemented by the Dataset/Run
-Scientific Closure slice and excludes operational revision, pointer, tenant,
-account, principal, idempotency and timestamp data.
+ResearchSpec revision workflow status remains `CANDIDATE_ONLY`; that workflow
+status is separate from scientific identity. The scientific ResearchSpec owner
+payload is current accepted through Dataset & Run Scientific Closure and excludes
+operational revision, pointer, tenant, account, principal, idempotency and
+timestamp data.
 
 Experiment and ExperimentParameters were not activated by the original
 hash-domain consolidation slice. They are current owner-exact domains because
 later dedicated accepted owner contracts admitted their exact owner payloads.
 DatasetSeries, DatasetSnapshot, MetricRequestSet, ExecutionConfig and
-ResearchSpec are candidate owner-exact domains for the I5 Dataset/Run
-Scientific Closure candidate and are not yet marked `CURRENT_ACCEPTED`.
+ResearchSpec are current owner-exact domains admitted by the accepted unnumbered
+Dataset & Run Scientific Closure owner contract.
 
 ## Explicit Exclusions
 
