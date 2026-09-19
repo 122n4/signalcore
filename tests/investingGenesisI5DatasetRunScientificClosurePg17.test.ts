@@ -210,10 +210,10 @@ async function seedAuthorityFixture() {
       operation_scope, operation, principal_id, tenant_id, account_id, status, completed_at
     ) values
       ('a1000000-0000-4000-8000-000000000091', 'idem-investigation', $1, 'corr-investigation', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
-      ('a2000000-0000-4000-8000-000000000091', 'idem-draft', $4, 'corr-draft', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
-      ('a3000000-0000-4000-8000-000000000091', 'idem-hypothesis', $5, 'corr-hypothesis', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
-      ('a4000000-0000-4000-8000-000000000091', 'idem-spec', $6, 'corr-spec', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_SPEC_REVISION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
-      ('a5000000-0000-4000-8000-000000000091', 'idem-experiment', $1, 'corr-experiment', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $2, $3, null, 'SUCCEEDED', now())
+      ('a2000000-0000-4000-8000-000000000091', 'idem-draft-000001', $4, 'corr-draft-000001', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
+      ('a3000000-0000-4000-8000-000000000091', 'idem-hypothesis-01', $5, 'corr-hypothesis-01', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
+      ('a4000000-0000-4000-8000-000000000091', 'idem-spec-00000001', $6, 'corr-spec-00000001', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_SPEC_REVISION_CREATE_V1', $2, $3, null, 'SUCCEEDED', now()),
+      ('a5000000-0000-4000-8000-000000000091', 'idem-experiment-01', $1, 'corr-experiment-01', 'USER_PRINCIPAL', 'pg17-dataset-run', 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $2, $3, null, 'SUCCEEDED', now())
   `, [hex.material, ids.principal, ids.tenant, hex.draft, hex.hypothesis, hex.specMaterial]);
   await client.query(`
     insert into investing.research_investigations (
@@ -237,8 +237,8 @@ async function seedAuthorityFixture() {
       tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context, material_kind, revision_number,
       predecessor_revision_id, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
     ) values
-      ($1, $2, $3, $4, null, $5, 'USER_PRINCIPAL', 'pg17-dataset-run', $6, null, 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'DRAFT', 1, null, 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, $7, $7, 'a2000000-0000-4000-8000-000000000091', 'idem-draft', 'corr-draft'),
-      ($8, $9, $3, $4, null, $5, 'USER_PRINCIPAL', 'pg17-dataset-run', $6, null, 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'HYPOTHESIS', 1, null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $10, $10, 'a3000000-0000-4000-8000-000000000091', 'idem-hypothesis', 'corr-hypothesis')
+      ($1, $2, $3, $4, null, $5, 'USER_PRINCIPAL', 'pg17-dataset-run', $6, null, 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'DRAFT', 1, null, 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, $7, $7, 'a2000000-0000-4000-8000-000000000091', 'idem-draft-000001', 'corr-draft-000001'),
+      ($8, $9, $3, $4, null, $5, 'USER_PRINCIPAL', 'pg17-dataset-run', $6, null, 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'HYPOTHESIS', 1, null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $10, $10, 'a3000000-0000-4000-8000-000000000091', 'idem-hypothesis-01', 'corr-hypothesis-01')
   `, [ids.draftRevision, ids.draftRoot, ids.investigation, ids.tenant, ids.principal, ids.membership, hex.draft, ids.hypothesisRevision, ids.hypothesisRoot, hex.hypothesis]);
   await client.query(`
     insert into investing.research_spec_revisions (
@@ -249,7 +249,7 @@ async function seedAuthorityFixture() {
     ) values (
       $1, $2, $3, $4, null, $5, 'USER_PRINCIPAL', 'pg17-dataset-run', $6, null, 'TENANT_SCOPE', 'PURE_RESEARCH',
       'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null, $7, $8, $9, $10, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
-      $11::jsonb, $12, 'a4000000-0000-4000-8000-000000000091', 'idem-spec', 'corr-spec'
+      $11::jsonb, $12, 'a4000000-0000-4000-8000-000000000091', 'idem-spec-00000001', 'corr-spec-00000001'
     )
   `, [
     ids.specRevision, ids.specRoot, ids.investigation, ids.tenant, ids.principal, ids.membership,
@@ -268,7 +268,7 @@ async function seedAuthorityFixture() {
       'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE', null, $6,
       'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', $7,
       'SHA-256', 'SYNTRAKE:EXPERIMENT:V1', 'SYNTRAKE_SHA256_V1', $8,
-      null, null, null, null, $9, 'a5000000-0000-4000-8000-000000000091', 'idem-experiment', 'corr-experiment'
+      null, null, null, null, $9, 'a5000000-0000-4000-8000-000000000091', 'idem-experiment-01', 'corr-experiment-01'
     )
   `, [ids.experiment, ids.investigation, ids.tenant, ids.principal, ids.membership, ids.specRevision, h.researchIr, h.experiment, hex.material]);
 }
@@ -443,9 +443,24 @@ maybeDescribe("I5 Dataset/Run scientific closure PG17 rehearsal", () => {
       from information_schema.role_table_grants
       where table_schema = 'investing'
         and table_name = any($1::text[])
-        and (grantee <> 'investing_app' or privilege_type not in ('SELECT','INSERT'))
+        and (
+          (grantee = 'investing_app' and privilege_type not in ('SELECT','INSERT'))
+          or grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role')
+        )
     `, [tables]);
     expect(badGrants.rowCount).toBe(0);
+    const appGrants = await client.query<{ table_name: string; privilege_type: string }>(`
+      select table_name, privilege_type
+      from information_schema.role_table_grants
+      where table_schema = 'investing'
+        and table_name = any($1::text[])
+        and grantee = 'investing_app'
+      order by table_name, privilege_type
+    `, [tables]);
+    expect(appGrants.rows).toHaveLength(12);
+    for (const table of tables) {
+      expect(appGrants.rows.filter((row) => row.table_name === table).map((row) => row.privilege_type).sort()).toEqual(["INSERT", "SELECT"]);
+    }
     const checks = await client.query<{ convalidated: boolean }>(`
       select convalidated
       from pg_catalog.pg_constraint con
