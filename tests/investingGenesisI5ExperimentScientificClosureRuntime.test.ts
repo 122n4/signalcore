@@ -138,9 +138,9 @@ describe("I5 Experiment scientific closure runtime", () => {
     expect(state).toContain("EXPERIMENT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED");
     expect(state).toMatch(/`SYNTRAKE:EXPERIMENT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
     expect(state).toMatch(/`SYNTRAKE:EXPERIMENT_PARAMETERS:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
-    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `OWNER_PAYLOAD_EXACT` \(candidate-only Dataset\/Run Scientific Closure/u);
-    expect(state).toContain("Dataset/Run Scientific Closure candidate");
-    expect(state).toContain("owner payloads for ResearchSpec, DatasetSeries, DatasetSnapshot");
+    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
+    expect(state).toContain("DATASET & RUN SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED");
+    expect(state).toContain("Dataset & Run Scientific Closure acceptance evidence:");
     expect(state).toContain("Production Supabase migration application:");
     expect(state).toContain("`NOT PERFORMED`");
   });
