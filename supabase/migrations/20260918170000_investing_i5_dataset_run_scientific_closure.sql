@@ -23,8 +23,11 @@ create table investing.dataset_series_scientific_identities (
   tenant_id uuid not null references investing.tenants (tenant_id),
   account_id uuid references investing.accounts (account_id),
   principal_id uuid not null references investing.principals (principal_id),
-  operation_scope text not null check (operation_scope in ('TENANT_SCOPE', 'ACCOUNT_SCOPE')),
-  source_context text not null check (source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO', 'USER_PORTFOLIO')),
+  tenant_membership_id uuid not null,
+  operation text not null check (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'),
+  capability text not null check (capability = 'RESEARCH_MUTATE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
+  source_context text not null check (source_context = 'PURE_RESEARCH'),
   hash_algorithm text not null,
   hash_domain text not null,
   hash_version text not null,
@@ -40,9 +43,11 @@ create table investing.dataset_series_scientific_identities (
   constraint dataset_series_payload_schema_check check (
     canonical_payload->>'schemaVersion' = 'DATASET_SERIES_HASH_PAYLOAD_V1'
   ),
+  constraint dataset_series_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint dataset_series_scope_shape_check check (
-    (operation_scope = 'TENANT_SCOPE' and account_id is null and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO'))
-    or (operation_scope = 'ACCOUNT_SCOPE' and account_id is not null and source_context = 'USER_PORTFOLIO')
+    account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'
   )
 );
 
@@ -51,8 +56,11 @@ create table investing.dataset_snapshots_scientific_identities (
   tenant_id uuid not null references investing.tenants (tenant_id),
   account_id uuid references investing.accounts (account_id),
   principal_id uuid not null references investing.principals (principal_id),
-  operation_scope text not null check (operation_scope in ('TENANT_SCOPE', 'ACCOUNT_SCOPE')),
-  source_context text not null check (source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO', 'USER_PORTFOLIO')),
+  tenant_membership_id uuid not null,
+  operation text not null check (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'),
+  capability text not null check (capability = 'RESEARCH_MUTATE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
+  source_context text not null check (source_context = 'PURE_RESEARCH'),
   hash_algorithm text not null,
   hash_domain text not null,
   hash_version text not null,
@@ -68,9 +76,11 @@ create table investing.dataset_snapshots_scientific_identities (
   constraint dataset_snapshots_payload_schema_check check (
     canonical_payload->>'schemaVersion' = 'DATASET_SNAPSHOT_HASH_PAYLOAD_V1'
   ),
+  constraint dataset_snapshots_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint dataset_snapshots_scope_shape_check check (
-    (operation_scope = 'TENANT_SCOPE' and account_id is null and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO'))
-    or (operation_scope = 'ACCOUNT_SCOPE' and account_id is not null and source_context = 'USER_PORTFOLIO')
+    account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'
   )
 );
 
@@ -79,8 +89,11 @@ create table investing.metric_request_sets_scientific_identities (
   tenant_id uuid not null references investing.tenants (tenant_id),
   account_id uuid references investing.accounts (account_id),
   principal_id uuid not null references investing.principals (principal_id),
-  operation_scope text not null check (operation_scope in ('TENANT_SCOPE', 'ACCOUNT_SCOPE')),
-  source_context text not null check (source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO', 'USER_PORTFOLIO')),
+  tenant_membership_id uuid not null,
+  operation text not null check (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'),
+  capability text not null check (capability = 'RESEARCH_MUTATE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
+  source_context text not null check (source_context = 'PURE_RESEARCH'),
   metric_registry_version text not null,
   hash_algorithm text not null,
   hash_domain text not null,
@@ -98,9 +111,11 @@ create table investing.metric_request_sets_scientific_identities (
     canonical_payload->>'schemaVersion' = 'METRIC_REQUEST_SET_HASH_PAYLOAD_V1'
     and canonical_payload->>'metricRegistryVersion' = metric_registry_version
   ),
+  constraint metric_request_sets_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint metric_request_sets_scope_shape_check check (
-    (operation_scope = 'TENANT_SCOPE' and account_id is null and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO'))
-    or (operation_scope = 'ACCOUNT_SCOPE' and account_id is not null and source_context = 'USER_PORTFOLIO')
+    account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'
   )
 );
 
@@ -109,8 +124,11 @@ create table investing.execution_configs_scientific_identities (
   tenant_id uuid not null references investing.tenants (tenant_id),
   account_id uuid references investing.accounts (account_id),
   principal_id uuid not null references investing.principals (principal_id),
-  operation_scope text not null check (operation_scope in ('TENANT_SCOPE', 'ACCOUNT_SCOPE')),
-  source_context text not null check (source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO', 'USER_PORTFOLIO')),
+  tenant_membership_id uuid not null,
+  operation text not null check (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'),
+  capability text not null check (capability = 'RESEARCH_MUTATE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
+  source_context text not null check (source_context = 'PURE_RESEARCH'),
   engine_compatibility_version text not null,
   hash_algorithm text not null,
   hash_domain text not null,
@@ -128,9 +146,11 @@ create table investing.execution_configs_scientific_identities (
     canonical_payload->>'schemaVersion' = 'EXECUTION_CONFIG_HASH_PAYLOAD_V1'
     and canonical_payload->>'engineCompatibilityVersion' = engine_compatibility_version
   ),
+  constraint execution_configs_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint execution_configs_scope_shape_check check (
-    (operation_scope = 'TENANT_SCOPE' and account_id is null and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO'))
-    or (operation_scope = 'ACCOUNT_SCOPE' and account_id is not null and source_context = 'USER_PORTFOLIO')
+    account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'
   )
 );
 
@@ -139,8 +159,12 @@ create table investing.research_specs_scientific_identities (
   tenant_id uuid not null references investing.tenants (tenant_id),
   account_id uuid references investing.accounts (account_id),
   principal_id uuid not null references investing.principals (principal_id),
-  operation_scope text not null check (operation_scope in ('TENANT_SCOPE', 'ACCOUNT_SCOPE')),
-  source_context text not null check (source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO', 'USER_PORTFOLIO')),
+  tenant_membership_id uuid not null,
+  operation text not null check (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'),
+  capability text not null check (capability = 'RESEARCH_MUTATE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
+  source_context text not null check (source_context = 'PURE_RESEARCH'),
+  research_spec_revision_id uuid not null references investing.research_spec_revisions (research_spec_revision_id),
   source_draft_hash_hex text not null check (source_draft_hash_hex ~ '^[0-9A-F]{64}$'),
   hypothesis_hash_hex text check (hypothesis_hash_hex ~ '^[0-9A-F]{64}$'),
   hash_algorithm text not null,
@@ -158,9 +182,11 @@ create table investing.research_specs_scientific_identities (
   constraint research_specs_payload_schema_check check (
     canonical_payload->>'schemaVersion' = 'RESEARCH_SPEC_HASH_PAYLOAD_V1'
   ),
+  constraint research_specs_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint research_specs_scope_shape_check check (
-    (operation_scope = 'TENANT_SCOPE' and account_id is null and source_context in ('PURE_RESEARCH', 'TEST_PORTFOLIO'))
-    or (operation_scope = 'ACCOUNT_SCOPE' and account_id is not null and source_context = 'USER_PORTFOLIO')
+    account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'
   )
 );
 
@@ -169,9 +195,13 @@ create table investing.run_inputs_scientific_identities (
   tenant_id uuid not null references investing.tenants (tenant_id),
   account_id uuid references investing.accounts (account_id),
   principal_id uuid not null references investing.principals (principal_id),
+  tenant_membership_id uuid not null,
   research_investigation_id uuid not null references investing.research_investigations (research_investigation_id),
   research_experiment_id uuid not null references investing.research_experiments (research_experiment_id),
-  operation_scope text not null check (operation_scope in ('TENANT_SCOPE', 'ACCOUNT_SCOPE')),
+  research_spec_revision_id uuid not null references investing.research_spec_revisions (research_spec_revision_id),
+  operation text not null check (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'),
+  capability text not null check (capability = 'RESEARCH_MUTATE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
   source_context text not null check (source_context = 'PURE_RESEARCH'),
   research_spec_hash_hex text not null check (research_spec_hash_hex ~ '^[0-9A-F]{64}$'),
   research_ir_hash_hex text not null check (research_ir_hash_hex ~ '^[0-9A-F]{64}$'),
@@ -199,6 +229,9 @@ create table investing.run_inputs_scientific_identities (
     and canonical_payload->>'metricRegistryVersion' = metric_registry_version
     and canonical_payload->>'engineVersion' = engine_version
   ),
+  constraint run_inputs_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint run_inputs_scope_shape_check check (
     operation_scope = 'TENANT_SCOPE' and account_id is null and source_context = 'PURE_RESEARCH'
   )
@@ -230,6 +263,13 @@ alter table investing.research_specs_scientific_identities force row level secur
 alter table investing.run_inputs_scientific_identities enable row level security;
 alter table investing.run_inputs_scientific_identities force row level security;
 
+revoke all on investing.dataset_series_scientific_identities from public, anon, authenticated, service_role;
+revoke all on investing.dataset_snapshots_scientific_identities from public, anon, authenticated, service_role;
+revoke all on investing.metric_request_sets_scientific_identities from public, anon, authenticated, service_role;
+revoke all on investing.execution_configs_scientific_identities from public, anon, authenticated, service_role;
+revoke all on investing.research_specs_scientific_identities from public, anon, authenticated, service_role;
+revoke all on investing.run_inputs_scientific_identities from public, anon, authenticated, service_role;
+
 grant select, insert on investing.dataset_series_scientific_identities to investing_app;
 grant select, insert on investing.dataset_snapshots_scientific_identities to investing_app;
 grant select, insert on investing.metric_request_sets_scientific_identities to investing_app;
@@ -240,41 +280,107 @@ grant select, insert on investing.run_inputs_scientific_identities to investing_
 create policy scientific_identity_insert_dataset_series
   on investing.dataset_series_scientific_identities for insert to investing_app
   with check (current_setting('syntrake.investing.operation', true) = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and hash_hex = current_setting('syntrake.investing.dataset_series_hash_hex', true));
 create policy scientific_identity_insert_dataset_snapshot
   on investing.dataset_snapshots_scientific_identities for insert to investing_app
   with check (current_setting('syntrake.investing.operation', true) = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and hash_hex = current_setting('syntrake.investing.dataset_snapshot_hash_hex', true));
 create policy scientific_identity_insert_metric_request_set
   on investing.metric_request_sets_scientific_identities for insert to investing_app
   with check (current_setting('syntrake.investing.operation', true) = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and metric_registry_version = current_setting('syntrake.investing.metric_registry_version', true)
     and hash_hex = current_setting('syntrake.investing.metric_request_set_hash_hex', true));
 create policy scientific_identity_insert_execution_config
   on investing.execution_configs_scientific_identities for insert to investing_app
   with check (current_setting('syntrake.investing.operation', true) = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and engine_compatibility_version = current_setting('syntrake.investing.engine_version', true)
     and hash_hex = current_setting('syntrake.investing.execution_config_hash_hex', true));
 create policy scientific_identity_insert_research_spec
   on investing.research_specs_scientific_identities for insert to investing_app
   with check (current_setting('syntrake.investing.operation', true) = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and hash_hex = current_setting('syntrake.investing.research_spec_hash_hex', true));
 create policy scientific_identity_insert_run_input
   on investing.run_inputs_scientific_identities for insert to investing_app
   with check (current_setting('syntrake.investing.operation', true) = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and account_id is null
     and source_context = 'PURE_RESEARCH'
+    and research_spec_hash_hex = current_setting('syntrake.investing.research_spec_hash_hex', true)
     and research_ir_hash_hex = current_setting('syntrake.investing.research_ir_hash_hex', true)
     and experiment_hash_hex = current_setting('syntrake.investing.experiment_hash_hex', true)
     and dataset_snapshot_hash_hex = current_setting('syntrake.investing.dataset_snapshot_hash_hex', true)
@@ -284,28 +390,85 @@ create policy scientific_identity_insert_run_input
 
 create policy scientific_identity_select_dataset_series
   on investing.dataset_series_scientific_identities for select to investing_app
-  using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+  using (operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true));
 create policy scientific_identity_select_dataset_snapshot
   on investing.dataset_snapshots_scientific_identities for select to investing_app
-  using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+  using (operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true));
 create policy scientific_identity_select_metric_request_set
   on investing.metric_request_sets_scientific_identities for select to investing_app
-  using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+  using (operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true));
 create policy scientific_identity_select_execution_config
   on investing.execution_configs_scientific_identities for select to investing_app
-  using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+  using (operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true));
 create policy scientific_identity_select_research_spec
   on investing.research_specs_scientific_identities for select to investing_app
-  using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+  using (operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true));
 create policy scientific_identity_select_run_input
   on investing.run_inputs_scientific_identities for select to investing_app
-  using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+  using (operation = current_setting('syntrake.investing.operation', true)
+    and capability = current_setting('syntrake.investing.capability', true)
+    and operation_scope = current_setting('syntrake.investing.operation_scope', true)
+    and source_context = current_setting('syntrake.investing.source_context', true)
+    and account_id is null
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true));
 
 do $$
 declare
   v_table text;
   v_bad_grants integer;
   v_missing_rls integer;
+  v_wrong_owner integer;
+  v_unvalidated_constraints integer;
+  v_bad_policy integer;
 begin
   foreach v_table in array array[
     'dataset_series_scientific_identities',
@@ -319,8 +482,10 @@ begin
     from information_schema.role_table_grants
     where table_schema = 'investing'
       and table_name = v_table
-      and grantee = 'investing_app'
-      and privilege_type not in ('SELECT', 'INSERT');
+      and (
+        (grantee = 'investing_app' and privilege_type not in ('SELECT', 'INSERT'))
+        or grantee in ('PUBLIC', 'anon', 'authenticated', 'service_role')
+      );
     if v_bad_grants <> 0 then
       raise exception 'I5 Dataset/Run scientific closure violation: forbidden grant on %', v_table;
     end if;
@@ -341,6 +506,64 @@ begin
     and not (c.relrowsecurity and c.relforcerowsecurity);
   if v_missing_rls <> 0 then
     raise exception 'I5 Dataset/Run scientific closure violation: RLS/FORCE RLS missing';
+  end if;
+
+  select count(*)::integer into v_wrong_owner
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  join pg_catalog.pg_roles r on r.oid = c.relowner
+  where n.nspname = 'investing'
+    and c.relname in (
+      'dataset_series_scientific_identities',
+      'dataset_snapshots_scientific_identities',
+      'metric_request_sets_scientific_identities',
+      'execution_configs_scientific_identities',
+      'research_specs_scientific_identities',
+      'run_inputs_scientific_identities'
+    )
+    and r.rolname <> 'investing_owner';
+  if v_wrong_owner <> 0 then
+    raise exception 'I5 Dataset/Run scientific closure violation: owner drift';
+  end if;
+
+  select count(*)::integer into v_unvalidated_constraints
+  from pg_catalog.pg_constraint con
+  join pg_catalog.pg_class c on c.oid = con.conrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname in (
+      'dataset_series_scientific_identities',
+      'dataset_snapshots_scientific_identities',
+      'metric_request_sets_scientific_identities',
+      'execution_configs_scientific_identities',
+      'research_specs_scientific_identities',
+      'run_inputs_scientific_identities'
+    )
+    and con.contype in ('c', 'f')
+    and con.convalidated is not true;
+  if v_unvalidated_constraints <> 0 then
+    raise exception 'I5 Dataset/Run scientific closure violation: unvalidated constraint';
+  end if;
+
+  select count(*)::integer into v_bad_policy
+  from pg_catalog.pg_policies p
+  where p.schemaname = 'investing'
+    and p.tablename in (
+      'dataset_series_scientific_identities',
+      'dataset_snapshots_scientific_identities',
+      'metric_request_sets_scientific_identities',
+      'execution_configs_scientific_identities',
+      'research_specs_scientific_identities',
+      'run_inputs_scientific_identities'
+    )
+    and (
+      coalesce(p.qual, p.with_check, '') not like '%tenant_membership_id%'
+      or coalesce(p.qual, p.with_check, '') not like '%RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1%'
+      or coalesce(p.qual, p.with_check, '') not like '%RESEARCH_MUTATE%'
+      or coalesce(p.qual, p.with_check, '') not like '%account_access_id%'
+    );
+  if v_bad_policy <> 0 then
+    raise exception 'I5 Dataset/Run scientific closure violation: policy authority binding drift';
   end if;
 end $$;
 

@@ -15,12 +15,12 @@ import {
   canonicalUuidV1,
   hashDomainStateV1,
   hashRefV1,
-  hashRunInputV1,
   immutableBehaviorTokenV1,
   sha256HexV1,
   type HashRefV1,
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
+import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import * as publicResearchCanonical from "../lib/investing/research";
 import {
   i5A2TestOnlyEvidenceObjectHashV1,
@@ -260,6 +260,7 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect("runInputPreimageV1" in publicResearchCanonical).toBe(false);
     expect("evidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
     expect("hashEvidenceObjectV1" in publicResearchCanonical).toBe(false);
+    expect("hashRunInputV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyCanonicalJsonEscapingVectorV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyEvidenceObjectPreimageV1" in publicResearchCanonical).toBe(false);
     expect("i5A2TestOnlyEvidenceObjectHashV1" in publicResearchCanonical).toBe(false);

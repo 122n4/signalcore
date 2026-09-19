@@ -7,8 +7,10 @@ import {
 } from "./canonical";
 import {
   hashDatasetSnapshotV1,
+  hashDatasetSeriesV1,
   hashExecutionConfigV1,
   hashMetricRequestSetV1,
+  type DatasetSeriesHashPayloadV1,
   type DatasetSnapshotHashPayloadV1,
   type ExecutionConfigHashPayloadV1,
   type MetricRequestSetHashPayloadV1,
@@ -22,6 +24,7 @@ export type ScientificRunInputCandidateV1 = Readonly<{
   researchSpec: ResearchSpecCandidateInputV1;
   researchIr: ResearchIrV1;
   experiment: ExperimentCandidateV1;
+  datasetSeries: readonly DatasetSeriesHashPayloadV1[];
   datasetSnapshot: DatasetSnapshotHashPayloadV1;
   metricRequestSet: MetricRequestSetHashPayloadV1;
   executionConfig: ExecutionConfigHashPayloadV1;
@@ -36,6 +39,7 @@ export function admitScientificRunInputV1(input: ScientificRunInputCandidateV1):
   const researchSpec = ref("SYNTRAKE:RESEARCH_SPEC:V1", hashResearchSpecV1(input.researchSpec));
   const researchIr = ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(input.researchIr));
   const experiment = ref("SYNTRAKE:EXPERIMENT:V1", hashExperimentV1(input.experiment));
+  const datasetSeries = canonicalDatasetSeriesRefs(input.datasetSeries);
   const datasetSnapshot = ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(input.datasetSnapshot));
   const metricRequestSet = ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(input.metricRequestSet));
   const executionConfig = ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(input.executionConfig));
@@ -46,6 +50,7 @@ export function admitScientificRunInputV1(input: ScientificRunInputCandidateV1):
   assertSameRef(input.runInput.datasetSnapshot, datasetSnapshot, "DatasetSnapshot");
   assertSameRef(input.runInput.metricRequestSet, metricRequestSet, "MetricRequestSet");
   assertSameRef(input.runInput.executionConfig, executionConfig, "ExecutionConfig");
+  assertDatasetSnapshotSeries(datasetSeries, input.datasetSnapshot.series);
   assertSameRef(input.runInput.researchIr, hashRefV1(input.experiment.researchIr), "RunInput Research IR must match Experiment Research IR");
 
   if (input.metricRequestSet.metricRegistryVersion !== input.runInput.metricRegistryVersion) {
@@ -60,6 +65,29 @@ export function admitScientificRunInputV1(input: ScientificRunInputCandidateV1):
 
   const runInputHash = hashRunInputV1(input.runInput);
   return Object.freeze({ runInput: input.runInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", runInputHash) });
+}
+
+export function admittedDatasetSeriesRefsV1(input: ScientificRunInputCandidateV1): readonly HashRefV1[] {
+  return canonicalDatasetSeriesRefs(input.datasetSeries);
+}
+
+function canonicalDatasetSeriesRefs(series: readonly DatasetSeriesHashPayloadV1[]) {
+  if (!Array.isArray(series) || series.length < 1) throw new Error("DatasetSeries payloads required");
+  const refs = series.map((payload) => ref("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(payload)));
+  const sorted = [...refs].sort((left, right) => left.hashHex < right.hashHex ? -1 : left.hashHex > right.hashHex ? 1 : 0);
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index - 1]!.hashHex === sorted[index]!.hashHex) throw new Error("duplicate DatasetSeries payload");
+  }
+  return sorted;
+}
+
+function assertDatasetSnapshotSeries(proven: readonly HashRefV1[], snapshotSeries: readonly HashRefV1[]) {
+  const snapshot = snapshotSeries.map(hashRefV1);
+  const sorted = [...snapshot].sort((left, right) => left.hashHex < right.hashHex ? -1 : left.hashHex > right.hashHex ? 1 : 0);
+  if (proven.length !== sorted.length) throw new Error("DatasetSnapshot DatasetSeries proof mismatch");
+  for (let index = 0; index < proven.length; index += 1) {
+    assertSameRef(sorted[index]!, proven[index]!, "DatasetSnapshot DatasetSeries proof");
+  }
 }
 
 function ref(hashDomain: HashRefV1["hashDomain"], hashHex: CanonicalSha256HexV1) {
