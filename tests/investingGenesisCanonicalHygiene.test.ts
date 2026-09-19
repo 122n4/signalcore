@@ -42,6 +42,7 @@ const requiredCurrentDocs = [
   "I5A_RESEARCH_IR_OWNER_CONTRACT_V1.md",
   "I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md",
   "I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
+  "I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
 ] as const;
 
 const scannedRoots = ["AGENTS.md", "docs", "lib", "tests", "package.json", "tsconfig.json"] as const;
@@ -160,14 +161,38 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("35361968472");
     expect(state).toContain("Dedicated Experiment Scientific Closure PG17 rehearsal:");
     expect(state).toContain("3/3 PASS");
-    expect(state).toContain("DatasetSnapshot remains deferred");
-    expect(state).not.toContain("DatasetSnapshot = CURRENT_ACCEPTED");
-    expect(state).not.toContain("Run = CURRENT_ACCEPTED");
+    expect(state).toContain("Dataset & Run Scientific Closure");
+    expect(state).toContain("DATASET & RUN SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED");
+    expect(state).not.toContain("Run execution lifecycle = CURRENT_ACCEPTED");
     expect(state).not.toContain("Result = CURRENT_ACCEPTED");
     expect(state).not.toContain("Evidence = CURRENT_ACCEPTED");
     expect(state).not.toContain("Paper = CURRENT_ACCEPTED");
     expect(state).not.toContain("Trading = CURRENT_ACCEPTED");
     expect(state).not.toContain("Core = CURRENT_ACCEPTED");
+  });
+
+  it("records accepted unnumbered Dataset & Run Scientific Closure without claiming execution results", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md");
+    const row = tableRow(state, "Dataset & Run Scientific Closure / unnumbered");
+
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - DATASET & RUN SCIENTIFIC CLOSURE - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE");
+    expect(row).toContain("| NONE |");
+    expect(contract).toContain("Status: CURRENT ACCEPTED OWNER CONTRACT - DATASET & RUN SCIENTIFIC CLOSURE - UNNUMBERED");
+    expect(state).toContain("9cdc89a052dd76b8ed58eb52c434672c4f05ec65");
+    expect(state).toContain("35453698054");
+    expect(state).toContain("35453698064");
+    expect(state).toContain("Dedicated Dataset/Run Scientific Closure PG17 rehearsal:");
+    expect(state).toContain("5/5 PASS");
+    expect(state).toContain("Production Supabase migration application:");
+    expect(state).toContain("`NOT PERFORMED`");
+    expect(contract).toContain("ACCOUNT_RESEARCH_CONTEXT:V1 = DECLARED_BUT_HASHING_DISABLED");
+    expect(contract).toContain("Run execution lifecycle");
+    expect(contract).toContain("Result");
+    expect(contract).toContain("Evidence");
+    expect(state).not.toContain("candidate-only Dataset/Run Scientific Closure");
   });
 
   it("does not overclaim missing A1/A2/A4 dedicated owner contracts", () => {
@@ -268,7 +293,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("Runtime truth is `lib/investing/research/canonical.ts`");
     expect(hash).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("ResearchSpec revision workflow status remains `CANDIDATE_ONLY`");
-    expect(hash).toContain("not yet marked `CURRENT_ACCEPTED`");
+    expect(hash).toContain("accepted unnumbered");
   });
 
   it("keeps consolidated hash-domain current truth aligned with canonical current state", () => {
@@ -286,7 +311,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).not.toContain("`SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `DECLARED_BUT_HASHING_DISABLED`");
     expect(state).toMatch(/`SYNTRAKE:EXPERIMENT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
     expect(state).toMatch(/`SYNTRAKE:EXPERIMENT_PARAMETERS:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
-    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `OWNER_PAYLOAD_EXACT` \(candidate-only Dataset\/Run Scientific Closure/u);
-    expect(state).toMatch(/`SYNTRAKE:DATASET_SNAPSHOT:V1`\r?\n= `OWNER_PAYLOAD_EXACT` \(candidate-only Dataset\/Run Scientific Closure/u);
+    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
+    expect(state).toMatch(/`SYNTRAKE:DATASET_SNAPSHOT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
   });
 });
