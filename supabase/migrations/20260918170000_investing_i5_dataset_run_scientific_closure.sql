@@ -180,7 +180,28 @@ create table investing.research_specs_scientific_identities (
     and hash_hex ~ '^[0-9A-F]{64}$'
   ),
   constraint research_specs_payload_schema_check check (
-    canonical_payload->>'schemaVersion' = 'RESEARCH_SPEC_HASH_PAYLOAD_V1'
+    (canonical_payload->>'schemaVersion' = 'RESEARCH_SPEC_HASH_PAYLOAD_V1') is true
+  ),
+  constraint research_specs_source_draft_payload_binding_check check (
+    (canonical_payload#>>'{sourceDraft,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{sourceDraft,hashDomain}' = 'SYNTRAKE:RESEARCH_DRAFT:V1') is true
+    and (canonical_payload#>>'{sourceDraft,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{sourceDraft,hashHex}' = source_draft_hash_hex) is true
+  ),
+  constraint research_specs_hypothesis_payload_binding_check check (
+    (
+      (canonical_payload#>>'{hypothesisBinding,kind}' = 'EXPLICIT_HYPOTHESIS') is true
+      and hypothesis_hash_hex is not null
+      and (canonical_payload#>>'{hypothesisBinding,hypothesis,hashAlgorithm}' = 'SHA-256') is true
+      and (canonical_payload#>>'{hypothesisBinding,hypothesis,hashDomain}' = 'SYNTRAKE:HYPOTHESIS:V1') is true
+      and (canonical_payload#>>'{hypothesisBinding,hypothesis,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+      and (canonical_payload#>>'{hypothesisBinding,hypothesis,hashHex}' = hypothesis_hash_hex) is true
+    )
+    or (
+      (canonical_payload#>>'{hypothesisBinding,kind}' = 'NO_HYPOTHESIS') is true
+      and hypothesis_hash_hex is null
+      and (canonical_payload#>'{hypothesisBinding,hypothesis}') is null
+    )
   ),
   constraint research_specs_authority_tuple_fk
     foreign key (tenant_membership_id, tenant_id, principal_id)
@@ -224,10 +245,46 @@ create table investing.run_inputs_scientific_identities (
     and hash_hex ~ '^[0-9A-F]{64}$'
   ),
   constraint run_inputs_payload_schema_check check (
-    canonical_payload->>'schemaVersion' = 'RUN_INPUT_HASH_PAYLOAD_V1'
-    and canonical_payload->>'researchSourceContext' = 'PURE_RESEARCH'
-    and canonical_payload->>'metricRegistryVersion' = metric_registry_version
-    and canonical_payload->>'engineVersion' = engine_version
+    (canonical_payload->>'schemaVersion' = 'RUN_INPUT_HASH_PAYLOAD_V1') is true
+    and (canonical_payload->>'researchSourceContext' = 'PURE_RESEARCH') is true
+    and (canonical_payload->>'metricRegistryVersion' = metric_registry_version) is true
+    and (canonical_payload->>'engineVersion' = engine_version) is true
+  ),
+  constraint run_inputs_research_spec_payload_binding_check check (
+    (canonical_payload#>>'{researchSpec,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{researchSpec,hashDomain}' = 'SYNTRAKE:RESEARCH_SPEC:V1') is true
+    and (canonical_payload#>>'{researchSpec,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{researchSpec,hashHex}' = research_spec_hash_hex) is true
+  ),
+  constraint run_inputs_research_ir_payload_binding_check check (
+    (canonical_payload#>>'{researchIr,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{researchIr,hashDomain}' = 'SYNTRAKE:RESEARCH_IR:V1') is true
+    and (canonical_payload#>>'{researchIr,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{researchIr,hashHex}' = research_ir_hash_hex) is true
+  ),
+  constraint run_inputs_experiment_payload_binding_check check (
+    (canonical_payload#>>'{experiment,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{experiment,hashDomain}' = 'SYNTRAKE:EXPERIMENT:V1') is true
+    and (canonical_payload#>>'{experiment,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{experiment,hashHex}' = experiment_hash_hex) is true
+  ),
+  constraint run_inputs_dataset_snapshot_payload_binding_check check (
+    (canonical_payload#>>'{datasetSnapshot,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{datasetSnapshot,hashDomain}' = 'SYNTRAKE:DATASET_SNAPSHOT:V1') is true
+    and (canonical_payload#>>'{datasetSnapshot,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{datasetSnapshot,hashHex}' = dataset_snapshot_hash_hex) is true
+  ),
+  constraint run_inputs_metric_request_payload_binding_check check (
+    (canonical_payload#>>'{metricRequestSet,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{metricRequestSet,hashDomain}' = 'SYNTRAKE:METRIC_REQUEST_SET:V1') is true
+    and (canonical_payload#>>'{metricRequestSet,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{metricRequestSet,hashHex}' = metric_request_set_hash_hex) is true
+  ),
+  constraint run_inputs_execution_config_payload_binding_check check (
+    (canonical_payload#>>'{executionConfig,hashAlgorithm}' = 'SHA-256') is true
+    and (canonical_payload#>>'{executionConfig,hashDomain}' = 'SYNTRAKE:EXECUTION_CONFIG:V1') is true
+    and (canonical_payload#>>'{executionConfig,hashVersion}' = 'SYNTRAKE_SHA256_V1') is true
+    and (canonical_payload#>>'{executionConfig,hashHex}' = execution_config_hash_hex) is true
   ),
   constraint run_inputs_authority_tuple_fk
     foreign key (tenant_membership_id, tenant_id, principal_id)
@@ -556,14 +613,55 @@ begin
       'research_specs_scientific_identities',
       'run_inputs_scientific_identities'
     )
+    and p.cmd = 'INSERT'
     and (
-      coalesce(p.qual, p.with_check, '') not like '%tenant_membership_id%'
-      or coalesce(p.qual, p.with_check, '') not like '%RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1%'
-      or coalesce(p.qual, p.with_check, '') not like '%RESEARCH_MUTATE%'
-      or coalesce(p.qual, p.with_check, '') not like '%account_access_id%'
+      coalesce(p.with_check, '') not like '%current_setting(''syntrake.investing.operation''%'
+      or coalesce(p.with_check, '') not like '%RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1%'
+      or coalesce(p.with_check, '') not like '%current_setting(''syntrake.investing.capability''%'
+      or coalesce(p.with_check, '') not like '%RESEARCH_MUTATE%'
+      or coalesce(p.with_check, '') not like '%current_setting(''syntrake.investing.operation_scope''%'
+      or coalesce(p.with_check, '') not like '%TENANT_SCOPE%'
+      or coalesce(p.with_check, '') not like '%current_setting(''syntrake.investing.source_context''%'
+      or coalesce(p.with_check, '') not like '%PURE_RESEARCH%'
+      or coalesce(p.with_check, '') not like '%tenant_membership_id%'
+      or coalesce(p.with_check, '') not like '%principal_id%'
+      or coalesce(p.with_check, '') not like '%tenant_id%'
+      or coalesce(p.with_check, '') not like '%account_id%'
+      or coalesce(p.with_check, '') not like '%account_access_id%'
+      or coalesce(p.with_check, '') not like '%operation = current_setting%'
+      or coalesce(p.with_check, '') not like '%capability = current_setting%'
+      or coalesce(p.with_check, '') not like '%operation_scope = current_setting%'
+      or coalesce(p.with_check, '') not like '%source_context = current_setting%'
     );
   if v_bad_policy <> 0 then
-    raise exception 'I5 Dataset/Run scientific closure violation: policy authority binding drift';
+    raise exception 'I5 Dataset/Run scientific closure violation: insert policy authority binding drift';
+  end if;
+
+  select count(*)::integer into v_bad_policy
+  from pg_catalog.pg_policies p
+  where p.schemaname = 'investing'
+    and p.tablename in (
+      'dataset_series_scientific_identities',
+      'dataset_snapshots_scientific_identities',
+      'metric_request_sets_scientific_identities',
+      'execution_configs_scientific_identities',
+      'research_specs_scientific_identities',
+      'run_inputs_scientific_identities'
+    )
+    and p.cmd = 'SELECT'
+    and (
+      coalesce(p.qual, '') not like '%operation = current_setting%'
+      or coalesce(p.qual, '') not like '%capability = current_setting%'
+      or coalesce(p.qual, '') not like '%operation_scope = current_setting%'
+      or coalesce(p.qual, '') not like '%source_context = current_setting%'
+      or coalesce(p.qual, '') not like '%tenant_membership_id%'
+      or coalesce(p.qual, '') not like '%principal_id%'
+      or coalesce(p.qual, '') not like '%tenant_id%'
+      or coalesce(p.qual, '') not like '%account_id%'
+      or coalesce(p.qual, '') not like '%account_access_id%'
+    );
+  if v_bad_policy <> 0 then
+    raise exception 'I5 Dataset/Run scientific closure violation: select policy authority binding drift';
   end if;
 end $$;
 

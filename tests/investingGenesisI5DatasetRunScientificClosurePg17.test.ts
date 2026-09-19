@@ -79,6 +79,10 @@ const hex = {
   hypothesis: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
   specMaterial: "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
   rollback: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+  wrongIr: "1111111111111111111111111111111111111111111111111111111111111111",
+  wrongDatasetSnapshot: "2222222222222222222222222222222222222222222222222222222222222222",
+  wrongMetricRequestSet: "3333333333333333333333333333333333333333333333333333333333333333",
+  wrongExecutionConfig: "4444444444444444444444444444444444444444444444444444444444444444",
 };
 
 let pool: Pool;
@@ -379,6 +383,7 @@ type RunInputProbeOverrides = Partial<Record<"researchSpec" | "researchIr" | "ex
 
 async function insertRunInputProbe(input: { id: string; hashHex: string; payload: unknown; overrides?: RunInputProbeOverrides }) {
   const h = { ...hashes(), ...input.overrides };
+  await client.query("select set_config($1, $2, true)", ["syntrake.investing.run_input_hash_hex", input.hashHex]);
   await client.query(`
     insert into investing.run_inputs_scientific_identities (
       run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
@@ -548,39 +553,41 @@ maybeDescribe("I5 Dataset/Run scientific closure PG17 rehearsal", () => {
 
     await expectRollback(() => insertScientificIdentities("092"), /run_inputs_scientific_identity_key/i);
     await expectRollback(async () => {
-      await client.query("select set_config($1, $2, true)", ["syntrake.investing.research_ir_hash_hex", hex.rollback]);
+      await client.query("select set_config($1, $2, true)", ["syntrake.investing.research_ir_hash_hex", hex.wrongIr]);
       await insertRunInputProbe({
         id: "d0100000-0000-4000-8000-000000000091",
-        hashHex: hashes().runInput,
+        hashHex: hex.wrongIr,
         payload: canonicalRunInputHashPayloadV1(runInputV1()),
-        overrides: { researchIr: hex.rollback },
+        overrides: { researchIr: hex.wrongIr },
       });
-    }, /row-level security|violates/);
+    }, /run_inputs_research_ir_payload_binding_check/i);
     await expectRollback(async () => {
-      await client.query("select set_config($1, $2, true)", ["syntrake.investing.dataset_snapshot_hash_hex", hex.rollback]);
+      await client.query("select set_config($1, $2, true)", ["syntrake.investing.dataset_snapshot_hash_hex", hex.wrongDatasetSnapshot]);
       await insertRunInputProbe({
         id: "d0200000-0000-4000-8000-000000000091",
-        hashHex: hashes().runInput,
+        hashHex: hex.wrongDatasetSnapshot,
         payload: canonicalRunInputHashPayloadV1(runInputV1()),
-        overrides: { datasetSnapshot: hex.rollback },
+        overrides: { datasetSnapshot: hex.wrongDatasetSnapshot },
       });
-    }, /row-level security|violates/);
+    }, /run_inputs_dataset_snapshot_payload_binding_check/i);
     await expectRollback(async () => {
-      await client.query("select set_config($1, $2, true)", ["syntrake.investing.metric_registry_version", "METRIC_REGISTRY_V20260919"]);
+      await client.query("select set_config($1, $2, true)", ["syntrake.investing.metric_request_set_hash_hex", hex.wrongMetricRequestSet]);
       await insertRunInputProbe({
         id: "d0300000-0000-4000-8000-000000000091",
-        hashHex: hashes().runInput,
+        hashHex: hex.wrongMetricRequestSet,
         payload: canonicalRunInputHashPayloadV1(runInputV1()),
+        overrides: { metricRequestSet: hex.wrongMetricRequestSet },
       });
-    }, /row-level security|violates/);
+    }, /run_inputs_metric_request_payload_binding_check/i);
     await expectRollback(async () => {
-      await client.query("select set_config($1, $2, true)", ["syntrake.investing.engine_version", "ENGINE_V20260919"]);
+      await client.query("select set_config($1, $2, true)", ["syntrake.investing.execution_config_hash_hex", hex.wrongExecutionConfig]);
       await insertRunInputProbe({
         id: "d0400000-0000-4000-8000-000000000091",
-        hashHex: hashes().runInput,
+        hashHex: hex.wrongExecutionConfig,
         payload: canonicalRunInputHashPayloadV1(runInputV1()),
+        overrides: { executionConfig: hex.wrongExecutionConfig },
       });
-    }, /row-level security|violates/);
+    }, /run_inputs_execution_config_payload_binding_check/i);
     await expectRollback(async () => {
       await client.query("select set_config($1, $2, true)", ["syntrake.investing.run_input_hash_hex", hex.rollback]);
       await insertRunInputProbe({
