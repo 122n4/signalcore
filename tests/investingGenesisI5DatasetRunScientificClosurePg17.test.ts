@@ -331,6 +331,13 @@ async function insertDatasetSeries(hashHex: string, payload: unknown, id: string
 
 async function insertScientificIdentities(idSuffix = "091") {
   const h = hashes();
+  const spec = researchSpecV1();
+  const sourceDraftHash = spec.sourceDraft.ref.hashHex;
+  if (spec.hypothesisBinding.kind !== "EXPLICIT_HYPOTHESIS") throw new Error("Expected explicit hypothesis fixture");
+  const hypothesisHash = spec.hypothesisBinding.hypothesis.ref.hashHex;
+  expect(sourceDraftHash).toBe(spec.sourceDraft.ref.hashHex);
+  expect(spec.hypothesisBinding.kind).toBe("EXPLICIT_HYPOTHESIS");
+  expect(hypothesisHash).toBe(spec.hypothesisBinding.hypothesis.ref.hashHex);
   await insertDatasetSeries(h.datasetSeries[0]!, canonicalDatasetSeriesHashPayloadV1(secondDatasetSeriesV1), `b1000000-0000-4000-8000-000000000${idSuffix}`);
   await insertDatasetSeries(h.datasetSeries[1]!, canonicalDatasetSeriesHashPayloadV1(datasetSeriesV1), `b2000000-0000-4000-8000-000000000${idSuffix}`);
   await client.query(`
@@ -364,7 +371,7 @@ async function insertScientificIdentities(idSuffix = "091") {
     ) values ($1, $2, null, $3, $4, 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1', 'RESEARCH_MUTATE', 'TENANT_SCOPE', 'PURE_RESEARCH',
       $5, $6, $7, 'SHA-256', 'SYNTRAKE:RESEARCH_SPEC:V1', 'SYNTRAKE_SHA256_V1', $8, $9::jsonb)
     on conflict do nothing
-  `, [`b6000000-0000-4000-8000-000000000${idSuffix}`, ids.tenant, ids.principal, ids.membership, ids.specRevision, hex.draft, hex.hypothesis, h.researchSpec, json(canonicalResearchSpecHashPayloadV1(researchSpecV1()))]);
+  `, [`b6000000-0000-4000-8000-000000000${idSuffix}`, ids.tenant, ids.principal, ids.membership, ids.specRevision, sourceDraftHash, hypothesisHash, h.researchSpec, json(canonicalResearchSpecHashPayloadV1(spec))]);
   await client.query(`
     insert into investing.run_inputs_scientific_identities (
       run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
