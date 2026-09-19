@@ -1,12 +1,12 @@
 # I5 Research Executable Field Semantics V1
 
-Status: CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED
+Status: CURRENT ACCEPTED DESIGN CONTRACT - EXECUTABLE FIELD SEMANTICS - UNNUMBERED
 
-Classification: DESIGN CANDIDATE / NOT CURRENT_ACCEPTED
+Classification: CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED
 
 Permanent A-number: NOT ASSIGNED
 
-This contract freezes candidate executable methodology for the first I5 Research
+This current accepted design contract freezes executable methodology for the first I5 Research
 Lab historical execution profile. Accepted A5 Research IR field identifiers are
 vocabulary handles; this document defines the candidate executable semantics.
 It does not activate Result hashing and does not implement the engine.

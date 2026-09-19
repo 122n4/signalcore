@@ -1,12 +1,12 @@
 # I5 Research Execution Engine Contract V1
 
-Status: CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED
+Status: CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH EXECUTION ENGINE FREEZE - UNNUMBERED
 
-Classification: DESIGN CANDIDATE / NOT CURRENT_ACCEPTED
+Classification: CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED
 
 Permanent A-number: NOT ASSIGNED
 
-This contract freezes the candidate execution semantics for the deterministic
+This current accepted design contract freezes the execution semantics for the deterministic
 scientific engine behind the I5 Research Lab / Mesa de Fabrico. It is a design
 freeze only. It does not implement the engine loop, does not create Run or
 Result persistence, does not activate `SYNTRAKE:RESULT:V1`, and does not mutate
@@ -523,7 +523,7 @@ This contract must not place an entire multi-year execution trace directly
 inside one scientific hash payload. Result artifacts are scalable and
 content-addressed.
 
-Candidate artifact schemas:
+Accepted design-freeze artifact schemas:
 
 ```text
 RESEARCH_EXECUTION_TRACE_V1
@@ -564,7 +564,7 @@ canonical JSON, records are emitted in deterministic execution order, line
 endings are LF, final newline is required, and byte hashes are over exact UTF-8
 bytes.
 
-Candidate `ResultHashPayloadV1` is a compact manifest binding:
+Accepted design-freeze `ResultHashPayloadV1` is a compact manifest binding:
 
 ```text
 schemaVersion
@@ -640,6 +640,44 @@ SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1 = DECLARED_BUT_HASHING_DISABLED
 
 ## Non-Authority
 
-This candidate design contract does not create a production migration, does not
+This accepted design contract does not create a production migration, does not
 mutate production Supabase, does not implement a runtime kernel, does not create
 Result authority, and does not assign an A-number.
+
+
+## Accepted Provenance
+
+```text
+canonical predecessor:
+557c5c95f3798eb5a2cce0cd28f3d47ed81997b4
+
+initial design candidate:
+d2c2d9d4c278ad93103de0dcae5e8de49bd544b3
+
+final independently audited technical candidate:
+e3c302aff00a73fa121051abaf839ae1cb9a2383
+
+CI:
+35464456177 - SUCCESS
+
+Vercel:
+SUCCESS
+
+Independent auditor verdict:
+PASS
+
+Permanent A-number:
+NOT ASSIGNED
+
+Production Supabase mutation:
+NOT PERFORMED
+
+Production migration:
+NONE
+```
+
+`I5 RESEARCH EXECUTION ENGINE DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
+
+This acceptance freezes design semantics only. Runtime implementation, Run
+persistence, Result scientific authority, Result hashing, Evidence and production
+migration remain outside this acceptance.
