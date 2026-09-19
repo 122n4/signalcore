@@ -92,6 +92,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Experiment VARIANT persistence (unnumbered) | `I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md` |
 | I5 ExperimentParameters scientific identity (unnumbered) | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` |
 | I5 Experiment Scientific Closure (unnumbered) | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 Dataset & Run Scientific Closure (unnumbered) | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -132,6 +133,14 @@ freeze/master evidence still relies on its narrow classifications.
   persistence migrations and PostgreSQL 17 rehearsal establish durable
   Experiment scientific hash-envelope persistence without changing production
   Supabase.
+
+- I5 Dataset & Run Scientific Closure:
+  `lib/investing/research/executionMaterials.ts`,
+  `lib/investing/research/runInputScientific.ts`,
+  `lib/investing/research/runInputScientificWriter.ts` and
+  `lib/investing/research/runInputScientificService.ts`; the accepted closure
+  owns PURE_RESEARCH scientific execution-input identity and durable append-only
+  persistence, not Run execution lifecycle.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -196,17 +205,22 @@ not become Investing Genesis authority merely because they use similar words.
   Run/Result/Evidence, Paper, Trading or Investing Core.
 - I5 Experiment Scientific Closure: current accepted, unnumbered. This
   acceptance establishes BASELINE and VARIANT scientific Experiment identity,
-  durable Experiment HashRef persistence, durable VARIANT ExperimentParameters
-  hash-envelope persistence, scientific parent Experiment HashRef binding,
-  resolved Research IR binding, sibling VARIANT coexistence when scientific
-  identity differs, chained VARIANT lineage, Tenant/Account authority,
-  RLS/FORCE RLS, exact scientific duplicate rejection and rollback of
-  Experiment, pointer and idempotency state. Production Supabase has not
-  received the closure migration. It does not establish ResearchSpec scientific
-  hashing, standalone raw ExperimentParameters object persistence,
-  DatasetSnapshot, Run/Result/Evidence, Paper, Trading or Investing Core.
-- DatasetSnapshot: deferred. It has no current A-number and no current Investing
-  Genesis owner contract.
+  durable Experiment HashRef persistence and the accepted Experiment lineage
+  guarantees. At the time this slice was accepted, ResearchSpec scientific
+  hashing and Dataset/Run scientific inputs were still deferred; those specific
+  limitations are now superseded by the separately accepted Dataset & Run
+  Scientific Closure. Standalone raw ExperimentParameters persistence remains
+  outside that later closure.
+- I5 Dataset & Run Scientific Closure: current accepted, unnumbered. This
+  acceptance establishes exact owner payloads for ResearchSpec, DatasetSeries,
+  DatasetSnapshot, MetricRequestSet and ExecutionConfig; preserves
+  `SYNTRAKE:RUN_INPUT:V1` as `PREIMAGE_ENVELOPE_EXACT`; admits a scientifically
+  consistent PURE_RESEARCH/HISTORICAL_BACKTEST RunInput; and establishes
+  durable append-only persistence for the six scientific identity surfaces.
+  Authority is intentionally limited to `TENANT_SCOPE / PURE_RESEARCH /
+  account_id = NULL`; AccountResearchContext and USER_PORTFOLIO remain
+  fail-closed. Run execution lifecycle, Result and Evidence are not established.
+  Production Supabase has not received the Dataset/Run closure migration.
 
 ## I5 Runtime Presence And Trust State
 
@@ -226,6 +240,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Experiment VARIANT persistence / unnumbered | YES | YES | `I5_EXPERIMENT_VARIANT_PERSISTENCE_OWNER_CONTRACT_V1.md` + writer/service + migration + static tests + PostgreSQL 17 functional matrix | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT VARIANT PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / DURABLE_VARIANT_LINEAGE | NONE |
 | ExperimentParameters scientific identity / unnumbered | YES | YES | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` + `experimentParameters.ts` + runtime tests + architecture boundary + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT PARAMETERS - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_IDENTITY | NONE |
 | Experiment Scientific Closure / unnumbered | YES | YES | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + migration + static tests + PostgreSQL 17 scientific closure rehearsal | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
+| Dataset & Run Scientific Closure / unnumbered | YES | YES | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + PostgreSQL 17 functional rehearsal | CURRENT ACCEPTED OWNER CONTRACT - DATASET & RUN SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -296,7 +311,7 @@ Experiment BASELINE persistence supersession:
 - It does not supersede Experiment structural admission, A1-A5, future VARIANT,
   DatasetSnapshot, Run/Result/Evidence, Paper, Trading, or Investing Core.
 
-DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`.
+At Experiment BASELINE acceptance time, DatasetSnapshot remains `DEFERRED / NO CURRENT A-NUMBER`; that historical limitation is now superseded by accepted Dataset & Run Scientific Closure.
 
 Experiment VARIANT structural lineage admission acceptance evidence:
 
@@ -387,7 +402,7 @@ ExperimentParameters scientific identity boundaries:
 - Current scientific closure can distinguish same-parent VARIANTs when their
   accepted scientific identity differs, including ExperimentParameters HashRef
   differences.
-- DatasetSnapshot remains deferred.
+- At ExperimentParameters acceptance time, DatasetSnapshot remains deferred; that historical limitation is now superseded by accepted Dataset & Run Scientific Closure.
 
 ExperimentParameters scientific identity supersession:
 
@@ -442,10 +457,47 @@ Experiment Scientific Closure supersession:
 - Does not by itself supersede standalone raw ExperimentParameters payload
   persistence deferral, Run execution lifecycle, Result/Evidence, Paper,
   Trading or Investing Core.
-- The later Dataset/Run Scientific Closure candidate implements candidate-only
-  owner payloads for ResearchSpec, DatasetSeries, DatasetSnapshot,
-  MetricRequestSet, ExecutionConfig and RunInput persistence, but that
-  milestone is not yet `CURRENT_ACCEPTED` and has no A-number here.
+- The later Dataset & Run Scientific Closure is now separately accepted and
+  supersedes only those Dataset/Run scientific-input deferrals; it does not
+  reopen or alter the accepted Experiment scientific payloads.
+
+Dataset & Run Scientific Closure acceptance evidence:
+
+- Canonical predecessor:
+  `acd6cf5140bf044281b04381456f8c4fc7e98e88`.
+- Final independently audited technical candidate:
+  `9cdc89a052dd76b8ed58eb52c434672c4f05ec65`.
+- PR:
+  `#74`.
+- CI:
+  `35453698054` — `SUCCESS`.
+- PG17:
+  `35453698064` — `SUCCESS`.
+- PostgreSQL:
+  `17.11`.
+- Existing Experiment Scientific Closure PG17 rehearsal:
+  `3/3 PASS`.
+- Dedicated Dataset/Run Scientific Closure PG17 rehearsal:
+  `5/5 PASS`.
+- Vercel:
+  `SUCCESS`.
+- Independent auditor verdict:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Production Supabase migration application:
+  `NOT PERFORMED`.
+
+`DATASET & RUN SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED`.
+
+Accepted golden scientific hashes:
+
+- DatasetSeries: `87C9363E3E5EF9B055F9DF76FDB51C60EBA2A64D50B78FEB66339EFC06BCF382`.
+- DatasetSnapshot: `61BF6FE8CA033A410CFB93E5B4AEAA84C2DE6BD1A29A35A592D5CF8479DFA15E`.
+- MetricRequestSet: `547B5615C8893BB5B73B7912BD668A4CD013013923D184D5F9CCA6B27D1A2EC2`.
+- ExecutionConfig: `B72AC58668D720FA6783328CCC14516E01A49DE021B919F9CD5390A60E561210`.
+- ResearchSpec: `7F6BD62D54BC1AD6305F0B39974FC2D7D1DA5D93F03C8082D0E909DD68CC8A3D`.
+- RunInput: `D551B5200CB6E15E6A5479FE69CB958E11500BE747B0C911AD59A3098A728749`.
 
 Hash states now:
 
@@ -453,7 +505,7 @@ Hash states now:
 = `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:RESEARCH_SPEC:V1`
-= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+= `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:EXPERIMENT:V1`
 = `OWNER_PAYLOAD_EXACT`
@@ -462,16 +514,16 @@ Hash states now:
 = `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:DATASET_SERIES:V1`
-= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+= `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:DATASET_SNAPSHOT:V1`
-= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+= `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:METRIC_REQUEST_SET:V1`
-= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+= `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:EXECUTION_CONFIG:V1`
-= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+= `OWNER_PAYLOAD_EXACT`
 
 ## What This Gate Record Supersedes
 
@@ -529,7 +581,7 @@ map and protected canonical refs.
 This control-plane acceptance record supersedes active `REPOSITORY CONTROL PLANE = RED`,
 disconnected active `main`, empty rulesets and unprotected canonical refs. It
 does not supersede final A+B+C rehearsal, Trusted Genesis Baseline declaration,
-future Research Lab work, DatasetSnapshot deferral or any Investing/Trading/Paper
+future Research Lab work, Run execution/Result/Evidence or any Investing/Trading/Paper
 feature requirement.
 
 Final complete rehearsal across:
