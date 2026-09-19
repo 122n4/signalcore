@@ -7,13 +7,13 @@ import {
   hashDomainStateV1,
   hashRefV1,
   hashResearchIrV1,
-  hashRunInputV1,
   sha256HexV1,
   type BooleanExpressionV1,
   type HashRefV1,
   type ResearchIrV1,
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
+import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import * as publicResearchRuntime from "../lib/investing/research";
 import {
   i5A2TestOnlyCanonicalTextVectorHashV1,

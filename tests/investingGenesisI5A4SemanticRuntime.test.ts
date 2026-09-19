@@ -10,13 +10,13 @@ import {
   hashHypothesisV1,
   hashRefV1,
   hashResearchDraftV1,
-  hashRunInputV1,
   type HashRefV1,
   type HypothesisHashPayloadInputV1,
   type ResearchDraftHashPayloadInputV1,
   type ResearchSpecCandidateInputV1,
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
+import { hashRunInputV1 } from "../lib/investing/research/canonical";
 
 const disabledHash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 

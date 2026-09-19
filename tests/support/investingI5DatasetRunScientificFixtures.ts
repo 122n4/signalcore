@@ -149,6 +149,7 @@ export function scientificRunInputCandidateV1() {
     researchSpec: researchSpecV1(),
     researchIr: i5ExperimentBaseResearchIrV1,
     experiment: i5BaselineCandidateV1("91000000-0000-4000-8000-000000000071"),
+    datasetSeries: [datasetSeriesV1, secondDatasetSeriesV1],
     datasetSnapshot: datasetSnapshotV1(),
     metricRequestSet: metricRequestSetV1,
     executionConfig: executionConfigV1,

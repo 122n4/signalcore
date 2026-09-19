@@ -7,6 +7,7 @@ export {
   canonicalIntegerV1,
   canonicalOpaqueStringV1,
   canonicalRunInputBytesV1,
+  canonicalRunInputHashPayloadV1,
   canonicalSha256HexV1,
   canonicalTextV1,
   canonicalTimestampUtcMicrosV1,
@@ -14,7 +15,6 @@ export {
   canonicalUuidV1,
   hashDomainStateV1,
   hashRefV1,
-  hashRunInputV1,
   immutableBehaviorTokenV1,
   sha256HexV1,
   type CanonicalDateV1,
@@ -102,6 +102,7 @@ export {
 
 export {
   admitScientificRunInputV1,
+  admittedDatasetSeriesRefsV1,
   type AdmittedScientificRunInputV1,
   type ScientificRunInputCandidateV1,
 } from "./runInputScientific";

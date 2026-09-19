@@ -7,8 +7,8 @@ import {
   hashExecutionConfigV1,
   hashMetricRequestSetV1,
   hashResearchSpecV1,
-  hashRunInputV1,
 } from "../lib/investing/research";
+import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import {
   datasetSeriesV1,
   datasetSnapshotV1,
@@ -82,6 +82,18 @@ describe("I5 Dataset/Run scientific closure runtime", () => {
       ...scientificRunInputCandidateV1(),
       researchIr: { ...scientificRunInputCandidateV1().researchIr, valuationCurrency: "EUR" },
     })).toThrow("Research IR HashRef mismatch");
+    expect(() => admitScientificRunInputV1({
+      ...scientificRunInputCandidateV1(),
+      datasetSeries: [datasetSeriesV1],
+    })).toThrow("DatasetSnapshot DatasetSeries proof mismatch");
+    expect(() => admitScientificRunInputV1({
+      ...scientificRunInputCandidateV1(),
+      datasetSeries: [datasetSeriesV1, datasetSeriesV1],
+    })).toThrow("duplicate DatasetSeries payload");
+    expect(() => admitScientificRunInputV1({
+      ...scientificRunInputCandidateV1(),
+      datasetSeries: [{ ...secondDatasetSeriesV1, instrumentId: "US:GOOG" }],
+    })).toThrow("DatasetSnapshot DatasetSeries proof mismatch");
     expect(() => admitScientificRunInputV1({
       ...scientificRunInputCandidateV1(),
       metricRequestSet: { ...metricRequestSetV1, metricRegistryVersion: "METRIC_REGISTRY_V20260919" },
