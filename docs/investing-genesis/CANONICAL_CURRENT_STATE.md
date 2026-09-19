@@ -93,6 +93,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 ExperimentParameters scientific identity (unnumbered) | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` |
 | I5 Experiment Scientific Closure (unnumbered) | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Dataset & Run Scientific Closure (unnumbered) | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 Research Execution Engine design candidate (unnumbered) | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`, `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md`, `I5_RESEARCH_METRIC_REGISTRY_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -141,6 +142,13 @@ freeze/master evidence still relies on its narrow classifications.
   `lib/investing/research/runInputScientificService.ts`; the accepted closure
   owns PURE_RESEARCH scientific execution-input identity and durable append-only
   persistence, not Run execution lifecycle.
+- I5 Research Execution Engine design candidate:
+  `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`,
+  `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md` and
+  `I5_RESEARCH_METRIC_REGISTRY_V1.md`; this candidate freezes proposed
+  deterministic execution, field and metric semantics only. It does not
+  implement the engine loop, create persistence, activate Result hashing or
+  mutate production Supabase.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -221,6 +229,11 @@ not become Investing Genesis authority merely because they use similar words.
   account_id = NULL`; AccountResearchContext and USER_PORTFOLIO remain
   fail-closed. Run execution lifecycle, Result and Evidence are not established.
   Production Supabase has not received the Dataset/Run closure migration.
+- I5 Research Execution Engine = DESIGN CANDIDATE / NOT CURRENT_ACCEPTED. This
+  candidate freezes proposed deterministic Research Lab execution, executable
+  field and metric semantics for PURE_RESEARCH/HISTORICAL_BACKTEST only. It
+  does not establish Run execution lifecycle, Result authority, Evidence,
+  production persistence, production Supabase mutation or an A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -241,6 +254,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | ExperimentParameters scientific identity / unnumbered | YES | YES | `I5_EXPERIMENT_PARAMETERS_OWNER_CONTRACT_V1.md` + `experimentParameters.ts` + runtime tests + architecture boundary + CI | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT PARAMETERS - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_IDENTITY | NONE |
 | Experiment Scientific Closure / unnumbered | YES | YES | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + migration + static tests + PostgreSQL 17 scientific closure rehearsal | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
 | Dataset & Run Scientific Closure / unnumbered | YES | YES | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + PostgreSQL 17 functional rehearsal | CURRENT ACCEPTED OWNER CONTRACT - DATASET & RUN SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
+| Research Execution Engine design candidate / unnumbered | NO | YES | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md` + `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md` + `I5_RESEARCH_METRIC_REGISTRY_V1.md` + contract tests | CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED | DESIGN CANDIDATE / NOT CURRENT_ACCEPTED | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -524,6 +538,15 @@ Hash states now:
 
 `SYNTRAKE:EXECUTION_CONFIG:V1`
 = `OWNER_PAYLOAD_EXACT`
+
+`SYNTRAKE:RUN_INPUT:V1`
+= `PREIMAGE_ENVELOPE_EXACT`
+
+`SYNTRAKE:RESULT:V1`
+= `DECLARED_BUT_HASHING_DISABLED`
+
+`SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1`
+= `DECLARED_BUT_HASHING_DISABLED`
 
 ## What This Gate Record Supersedes
 
