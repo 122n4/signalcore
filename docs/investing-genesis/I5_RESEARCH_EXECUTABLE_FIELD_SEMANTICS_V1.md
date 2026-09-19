@@ -50,17 +50,29 @@ no synthetic volume.
 `TOTAL_RETURN` is defined exactly as:
 
 ```text
+previous_session(t)
+=
+the immediately preceding eligible session in XNYS_TRADING_CALENDAR_V1
+
 TOTAL_RETURN(t)
 =
-ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(previous eligible observed session) - 1
+ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(previous_session(t)) - 1
 ```
 
 Rules:
 
 - use only observations available at or before `t`;
-- previous session must be earlier than `t`;
+- `previous_session(t) < t`;
+- the exact immediately preceding eligible calendar session is resolved from
+  `XNYS_TRADING_CALENDAR_V1`;
+- the exact `ADJUSTED_CLOSE` observation for `previous_session(t)` must exist;
+- if that exact observation is missing, `TOTAL_RETURN(t) = MISSING`;
+- do not search farther backward;
+- do not bridge the gap;
+- do not substitute the previous available observation;
 - no forward fill from the future;
-- first valid observation has missing `TOTAL_RETURN`;
+- the first eligible session for which no prior required calendar observation
+  is available has missing `TOTAL_RETURN`;
 - missing required source observation yields missing result;
 - computation uses deterministic decimal arithmetic, never JS binary floating
   point.

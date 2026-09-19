@@ -10,6 +10,18 @@ This registry freezes the candidate metric formulas for the first I5 Research
 Lab execution contract. Metrics consume deterministic Result valuation truth.
 They do not independently replay market data or strategy logic.
 
+Metric calculations use exact rational arithmetic from exact NAV inputs. Metric
+calculations must not consume previously rounded ratio intermediates when exact
+NAV inputs are available.
+
+Metric ratio outputs are serialized using:
+
+```text
+RESEARCH_RATIO_OUTPUT_V1
+scale <= 18
+ROUND_HALF_EVEN
+```
+
 The current accepted `MetricRequestSet` supports exactly:
 
 ```text
@@ -27,7 +39,9 @@ TOTAL_RETURN
 ```
 
 Portfolio starting NAV is the Research IR simulated starting capital. The
-metric is stored as a canonical ratio decimal, not percentage text.
+metric is calculated using exact rational arithmetic and serialized as a
+canonical ratio decimal using `RESEARCH_RATIO_OUTPUT_V1`, scale <= 18,
+`ROUND_HALF_EVEN`. It is not percentage text.
 
 ## MAX_DRAWDOWN / METRIC_V1
 
@@ -50,7 +64,9 @@ No drawdown:
 ```
 
 All metric arithmetic uses deterministic decimal arithmetic, never JavaScript
-binary floating point.
+binary floating point. `MAX_DRAWDOWN / METRIC_V1` is calculated using exact
+rational arithmetic and serialized using `RESEARCH_RATIO_OUTPUT_V1`, scale <=
+18, `ROUND_HALF_EVEN`.
 
 ## Versioning
 

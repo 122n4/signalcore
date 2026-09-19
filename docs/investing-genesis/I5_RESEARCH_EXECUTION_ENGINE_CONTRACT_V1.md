@@ -123,25 +123,132 @@ future versioned policies without changing historical Run results.
 
 ## Numeric Model
 
+The V1 numeric model token is:
+
+```text
+RESEARCH_EXACT_DECIMAL_RATIONAL_V1
+```
+
+This behavior is owned by:
+
+```text
+ENGINE_V20260918
+```
+
+Changing any rule in this numeric model requires a new engine version.
+
 Scientific engine arithmetic must not use JavaScript `number` for money, price,
 quantity, return, weight, FX, or metric truth.
 
-The deterministic decimal model must use decimal-string input and a
-BigInt-backed coefficient/scale representation or an equivalent exact
-deterministic representation. It must have explicit scale limits, explicit
-rounding, no locale behavior, no exponent notation, deterministic
-normalization, and must forbid `-0`.
+Canonical decimal-string inputs are parsed as:
+
+```text
+coefficient: BigInt
+scale: non-negative integer
+```
+
+The represented value is exact:
+
+```text
+coefficient / 10^scale
+```
+
+No IEEE-754 floating-point representation may participate in scientific
+arithmetic. Addition, subtraction and multiplication are exact. Trailing decimal
+zeros are semantically irrelevant and normalize deterministically. There is no
+locale behavior, no exponent notation, and `-0` is forbidden.
+
+Division must not immediately round. Non-terminating division results are
+represented internally as an exact reduced rational:
+
+```text
+numerator: BigInt
+denominator: positive BigInt
+```
+
+The rational is reduced by GCD. Comparisons between ratios, decimal literals,
+weights and derived fields use exact integer/rational comparison. The engine
+must not round a signal field before evaluating a predicate or rank. This
+applies to `TOTAL_RETURN`, `MOMENTUM_12M`, `EQUAL` weights, benchmark ratios
+and metric ratios.
+
+For `ADJUSTED_CLOSE` under the first executable profile, verified
+materialization accepts only:
+
+```text
+positive
+max integer digits = 16
+max scale = 8
+```
+
+Values outside that bound are rejected during verified materialization. Admitted
+market-data observations are not silently rounded.
 
 V1 quantity conversion is:
 
 ```text
 RESEARCH_FRACTIONAL_QUANTITY_V1
-max quantity scale = 8
-buy target quantity = round toward zero/down to 8 decimal places
+max scale = 8
+rounding = TOWARD_ZERO
 ```
 
-No shorting, no leverage, and cash may never become negative. Changing numeric
-or rounding semantics requires a new engine version.
+For positive long-only quantities this is equivalent to rounding down. Target
+quantity conversion is:
+
+```text
+target_quantity
+=
+truncate_toward_zero(
+  target_notional / execution_price,
+  8 decimal places
+)
+```
+
+This is the only mandatory rounding applied during strategy position sizing.
+
+Quantity scale is at most 8 and admitted price scale is at most 8, so:
+
+```text
+fill_notional = quantity * price
+```
+
+is represented exactly with scale at most 16. Research cash and strategy NAV
+must remain exact finite decimals with:
+
+```text
+max scale = 16
+```
+
+Do not round cash or strategy NAV after each event beyond canonical
+normalization. All additions, subtractions and multiplications remain exact.
+
+Canonical ratio outputs use:
+
+```text
+RESEARCH_RATIO_OUTPUT_V1
+max scale = 18
+rounding = ROUND_HALF_EVEN
+```
+
+This applies when an exact rational must be serialized as a decimal string,
+including `TOTAL_RETURN` artifact value, `MOMENTUM_12M` artifact value,
+`TOTAL_RETURN / METRIC_V1` and `MAX_DRAWDOWN / METRIC_V1`.
+
+Signal evaluation must use the exact internal rational, not the rounded
+18-decimal serialized representation. Serialization is downstream of scientific
+comparison.
+
+Benchmark monetary output uses:
+
+```text
+RESEARCH_MONEY_OUTPUT_V1
+max scale = 16
+rounding = ROUND_HALF_EVEN
+```
+
+The internal benchmark ratio remains exact until output serialization.
+
+No shorting, no leverage, and cash may never become negative.
 
 ## Verified Dataset Material Boundary
 
@@ -301,9 +408,10 @@ pre-trade NAV
 All target quantities are computed from one pre-trade state. Execution ordering
 is compute complete target map, execute reductions/sells, then execute
 increases/buys. Within each group, order by instrumentId byte lexical order.
-Quantity precision uses max 8 decimals and round toward zero/down. Buys may not
-exceed available research cash. Rounding residual remains cash. No short
-positions and no leverage are allowed.
+Quantity precision uses max 8 decimals and `TOWARD_ZERO` rounding. For positive
+long-only quantities this is equivalent to rounding down. Buys may not exceed
+available research cash. Rounding residual remains cash. No short positions and
+no leverage are allowed.
 
 ## Corporate Action Model V1
 
@@ -369,15 +477,45 @@ If `benchmark = NONE`, no benchmark result is produced. If
 admitted DatasetSnapshot material. The benchmark is a passive normalized
 comparison curve using the same test-period valuation calendar.
 
-Starting benchmark notional is `Research IR startingCapital.amount`. Benchmark
-does not create strategy fills or modify portfolio cash. For adjusted-price V1:
+Freeze one common start session:
 
 ```text
-benchmark value(t)
-= starting capital * adjusted_close(t) / adjusted_close(first eligible benchmark session in test period)
+D0
+=
+first eligible portfolio valuation session inside testPeriod
+under the accepted execution calendar
 ```
 
-Missing required benchmark price material fails closed.
+For `benchmark = INSTRUMENT`, the benchmark must have an admitted
+`ADJUSTED_CLOSE` observation on exactly `D0`.
+
+```text
+benchmark_value(D0)
+=
+starting_capital
+```
+
+The benchmark is evaluated on the exact same ordered valuation-session set as
+the portfolio. For every required portfolio valuation session `t`:
+
+```text
+benchmark_value(t)
+=
+starting_capital
+*
+adjusted_close(t)
+/
+adjusted_close(D0)
+```
+
+If benchmark `ADJUSTED_CLOSE` is missing on `D0` or on any later required
+portfolio valuation session, fail closed. Do not shift the benchmark start, use
+its own first available date, forward-fill, back-fill, or silently omit a
+benchmark point. This is required for scientifically comparable curves.
+
+Starting benchmark notional is `Research IR startingCapital.amount`. Benchmark
+does not create strategy fills or modify portfolio cash. Missing required
+benchmark price material fails closed.
 
 ## Result Artifact Architecture
 
@@ -403,6 +541,22 @@ contentSha256
 contentByteLength
 recordCount
 ```
+
+Construction order is:
+
+```text
+Deterministic kernel
+-> ExecutionTrace artifact
+-> ValuationSeries artifact
+-> Metric engine consumes ValuationSeries truth
+-> MetricResultSet artifact
+-> Result manifest binds all artifact descriptors
+-> future Result hash
+```
+
+`MetricResultSet` is included in the future Result manifest, but metric
+computation does not require an already-created Result hash. There is no
+circular dependency.
 
 Canonical artifact format is deterministic canonical JSONL unless a future
 accepted contract introduces a different explicit format. Each JSONL record is
