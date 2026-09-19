@@ -398,6 +398,15 @@ async function insertRunInputProbe(input: { id: string; hashHex: string; payload
   ]);
 }
 
+describe("I5 Dataset/Run scientific closure migration policy text", () => {
+  it("binds RunInput INSERT source_context to the transaction context while requiring PURE_RESEARCH", () => {
+    const migration = readSql(closureMigration);
+    const policy = migration.match(/create policy scientific_identity_insert_run_input[\s\S]*?;\r?\n\r?\ncreate policy scientific_identity_select_dataset_series/);
+    expect(policy?.[0]).toContain("current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'");
+    expect(policy?.[0]).toContain("source_context = current_setting('syntrake.investing.source_context', true)");
+  });
+});
+
 maybeDescribe("I5 Dataset/Run scientific closure PG17 rehearsal", () => {
   beforeAll(async () => {
     pool = new Pool({ connectionString });

@@ -436,7 +436,7 @@ create policy scientific_identity_insert_run_input
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
     and account_id is null
-    and source_context = 'PURE_RESEARCH'
+    and source_context = current_setting('syntrake.investing.source_context', true)
     and research_spec_hash_hex = current_setting('syntrake.investing.research_spec_hash_hex', true)
     and research_ir_hash_hex = current_setting('syntrake.investing.research_ir_hash_hex', true)
     and experiment_hash_hex = current_setting('syntrake.investing.experiment_hash_hex', true)
