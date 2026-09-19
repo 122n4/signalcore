@@ -18,11 +18,13 @@ import {
   canonicalExecutionConfigHashPayloadV1,
   canonicalMetricRequestSetHashPayloadV1,
   hashDatasetSnapshotV1,
+  hashDatasetSeriesV1,
   hashExecutionConfigV1,
   hashMetricRequestSetV1,
+  type DatasetSeriesHashPayloadV1,
 } from "./executionMaterials";
 import { hashExperimentV1 } from "./experiment";
-import { admitScientificRunInputV1, admittedDatasetSeriesRefsV1, type ScientificRunInputCandidateV1 } from "./runInputScientific";
+import { admitScientificRunInputV1, type ScientificRunInputCandidateV1 } from "./runInputScientific";
 import { canonicalResearchSpecCandidatePayloadV1, canonicalResearchSpecHashPayloadV1, hashResearchSpecV1 } from "./semantic";
 
 const operation = "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1";
@@ -55,7 +57,7 @@ export type ScientificRunInputCreateResult = ScientificRunInputCreateSuccess | S
 
 type Prepared = {
   admittedRunInput: HashRefV1;
-  datasetSeriesRefs: readonly HashRefV1[];
+  datasetSeries: readonly DatasetSeriesPair[];
   hashes: {
     researchSpec: string;
     researchIr: string;
@@ -68,7 +70,6 @@ type Prepared = {
   metricRegistryVersion: string;
   engineVersion: string;
   payloadJson: {
-    datasetSeries: readonly string[];
     datasetSnapshot: string;
     metricRequestSet: string;
     executionConfig: string;
@@ -76,6 +77,12 @@ type Prepared = {
     runInput: string;
   };
 };
+
+type DatasetSeriesPair = Readonly<{
+  ref: HashRefV1;
+  canonicalPayload: CanonicalJsonValue;
+  canonicalPayloadJson: string;
+}>;
 
 type ExperimentRow = {
   research_experiment_id: string;
@@ -92,6 +99,16 @@ type ExperimentRow = {
 
 type SpecRow = {
   research_spec_revision_id: string;
+};
+
+type ExistingIdentityRow = {
+  tenant_id: string;
+  principal_id: string;
+  tenant_membership_id: string;
+  hash_algorithm: string;
+  hash_domain: string;
+  hash_version: string;
+  hash_hex: string;
 };
 
 const transactionContextKeys = [
@@ -138,26 +155,32 @@ export async function createScientificRunInputV1(
       const lineage = await verifyOperationalLineage(client, input, prepared, experiment.row);
       if (lineage.ok === false) return lineage;
 
-      await persistDatasetSeries(client, input, prepared);
-      await persistIdentity(client, "dataset_snapshots_scientific_identities", "dataset_snapshot_identity_id", input, {
+      const datasetSeries = await persistDatasetSeries(client, input, prepared);
+      if (datasetSeries.ok === false) return datasetSeries;
+      const datasetSnapshot = await persistIdentity(client, "dataset_snapshots_scientific_identities", "dataset_snapshot_identity_id", input, {
         domain: "SYNTRAKE:DATASET_SNAPSHOT:V1",
         hashHex: prepared.hashes.datasetSnapshot,
         payloadJson: prepared.payloadJson.datasetSnapshot,
       });
-      await persistIdentity(client, "metric_request_sets_scientific_identities", "metric_request_set_identity_id", input, {
+      if (datasetSnapshot.ok === false) return datasetSnapshot;
+      const metricRequestSet = await persistIdentity(client, "metric_request_sets_scientific_identities", "metric_request_set_identity_id", input, {
         domain: "SYNTRAKE:METRIC_REQUEST_SET:V1",
         hashHex: prepared.hashes.metricRequestSet,
         payloadJson: prepared.payloadJson.metricRequestSet,
-        metricRegistryVersion: input.candidate.metricRequestSet.metricRegistryVersion,
+        metricRegistryVersion: prepared.metricRegistryVersion,
       });
-      await persistIdentity(client, "execution_configs_scientific_identities", "execution_config_identity_id", input, {
+      if (metricRequestSet.ok === false) return metricRequestSet;
+      const executionConfig = await persistIdentity(client, "execution_configs_scientific_identities", "execution_config_identity_id", input, {
         domain: "SYNTRAKE:EXECUTION_CONFIG:V1",
         hashHex: prepared.hashes.executionConfig,
         payloadJson: prepared.payloadJson.executionConfig,
-        engineVersion: input.candidate.executionConfig.engineCompatibilityVersion,
+        engineVersion: prepared.engineVersion,
       });
-      await persistResearchSpec(client, input, prepared, experiment.row.research_spec_revision_id);
-      await persistRunInput(client, input, prepared, experiment.row.research_spec_revision_id);
+      if (executionConfig.ok === false) return executionConfig;
+      const researchSpec = await persistResearchSpec(client, input, prepared, experiment.row.research_spec_revision_id);
+      if (researchSpec.ok === false) return researchSpec;
+      const runInput = await persistRunInput(client, input, prepared, experiment.row.research_spec_revision_id);
+      if (runInput.ok === false) return runInput;
       return {
         ok: true,
         replayed: false,
@@ -175,10 +198,10 @@ export async function createScientificRunInputV1(
 function prepare(candidate: ScientificRunInputCandidateV1): Prepared | null {
   try {
     const admitted = admitScientificRunInputV1(candidate).runInputHash;
-    const datasetSeriesRefs = admittedDatasetSeriesRefsV1(candidate);
+    const datasetSeries = canonicalDatasetSeriesPairs(candidate.datasetSeries);
     return {
       admittedRunInput: admitted,
-      datasetSeriesRefs,
+      datasetSeries,
       hashes: {
         researchSpec: hashResearchSpecV1(candidate.researchSpec),
         researchIr: candidate.runInput.researchIr.hashHex,
@@ -189,7 +212,6 @@ function prepare(candidate: ScientificRunInputCandidateV1): Prepared | null {
         runInput: admitted.hashHex,
       },
       payloadJson: {
-        datasetSeries: candidate.datasetSeries.map((payload) => canonicalJson(canonicalDatasetSeriesHashPayloadV1(payload))),
         datasetSnapshot: canonicalJson(canonicalDatasetSnapshotHashPayloadV1(candidate.datasetSnapshot)),
         metricRequestSet: canonicalJson(canonicalMetricRequestSetHashPayloadV1(candidate.metricRequestSet)),
         executionConfig: canonicalJson(canonicalExecutionConfigHashPayloadV1(candidate.executionConfig)),
@@ -258,15 +280,17 @@ async function verifyOperationalLineage(
 }
 
 async function persistDatasetSeries(client: InvestingAuthorityTransactionClient, input: CreateScientificRunInputV1Input, prepared: Prepared) {
-  for (let index = 0; index < prepared.datasetSeriesRefs.length; index += 1) {
-    const ref = prepared.datasetSeriesRefs[index]!;
+  for (const pair of prepared.datasetSeries) {
+    const ref = pair.ref;
     await setConfig(client, "dataset_series_hash_hex", ref.hashHex);
-    await persistIdentity(client, "dataset_series_scientific_identities", "dataset_series_identity_id", input, {
+    const result = await persistIdentity(client, "dataset_series_scientific_identities", "dataset_series_identity_id", input, {
       domain: "SYNTRAKE:DATASET_SERIES:V1",
       hashHex: ref.hashHex,
-      payloadJson: prepared.payloadJson.datasetSeries[index]!,
+      payloadJson: pair.canonicalPayloadJson,
     });
+    if (result.ok === false) return result;
   }
+  return { ok: true } as const;
 }
 
 async function persistResearchSpec(
@@ -297,6 +321,12 @@ async function persistResearchSpec(
       prepared.payloadJson.researchSpec,
     ],
   );
+  return verifyExistingIdentity(client, "research_specs_scientific_identities", input, {
+    domain: "SYNTRAKE:RESEARCH_SPEC:V1",
+    hashHex: prepared.hashes.researchSpec,
+    payloadJson: prepared.payloadJson.researchSpec,
+    researchSpecRevisionId,
+  });
 }
 
 async function persistRunInput(
@@ -305,14 +335,14 @@ async function persistRunInput(
   prepared: Prepared,
   researchSpecRevisionId: string,
 ) {
-  await client.query(
+  const result = await client.query<{ run_input_identity_id: string }>(
     [
       "insert into investing.run_inputs_scientific_identities (",
       "run_input_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,",
       "operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex,",
       "metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload",
       ") values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'TENANT_SCOPE','PURE_RESEARCH',$10,$11,$12,$13,$14,$15,$16,$17,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$18,$19::jsonb)",
-      "on conflict do nothing",
+      "on conflict do nothing returning run_input_identity_id",
     ].join(" "),
     [
       randomUUID(),
@@ -336,6 +366,8 @@ async function persistRunInput(
       prepared.payloadJson.runInput,
     ],
   );
+  if ((result.rowCount ?? result.rows.length) !== 1) return fail("CONFLICT");
+  return { ok: true } as const;
 }
 
 async function persistIdentity(
@@ -368,6 +400,53 @@ async function persistIdentity(
       identity.metricRegistryVersion ?? identity.engineVersion,
     ],
   );
+  return verifyExistingIdentity(client, table, input, identity);
+}
+
+async function verifyExistingIdentity(
+  client: InvestingAuthorityTransactionClient,
+  table: string,
+  input: CreateScientificRunInputV1Input,
+  identity: { domain: string; hashHex: string; payloadJson: string; metricRegistryVersion?: string; engineVersion?: string; researchSpecRevisionId?: string },
+) {
+  const extraPredicates: string[] = [];
+  const values = [input.authorizedContext.tenantId, identity.domain, identity.hashHex, identity.payloadJson];
+  if (identity.metricRegistryVersion !== undefined) {
+    values.push(identity.metricRegistryVersion);
+    extraPredicates.push(`metric_registry_version = $${values.length}`);
+  }
+  if (identity.engineVersion !== undefined) {
+    values.push(identity.engineVersion);
+    extraPredicates.push(`engine_compatibility_version = $${values.length}`);
+  }
+  if (identity.researchSpecRevisionId !== undefined) {
+    values.push(identity.researchSpecRevisionId);
+    extraPredicates.push(`research_spec_revision_id = $${values.length}`);
+  }
+  const result = await client.query<ExistingIdentityRow>(
+    [
+      "select tenant_id, principal_id, tenant_membership_id, hash_algorithm, hash_domain, hash_version, hash_hex",
+      `from investing.${table}`,
+      "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = $2 and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $3",
+      "and canonical_payload = $4::jsonb",
+      ...extraPredicates.map((predicate) => `and ${predicate}`),
+    ].join(" "),
+    values,
+  );
+  if (result.rows.length !== 1) return fail("CONFLICT");
+  const row = result.rows[0]!;
+  if (
+    row.tenant_id !== input.authorizedContext.tenantId ||
+    row.principal_id !== input.authorizedContext.principalId ||
+    row.tenant_membership_id !== input.authorizedContext.tenantMembershipId ||
+    row.hash_algorithm !== "SHA-256" ||
+    row.hash_domain !== identity.domain ||
+    row.hash_version !== "SYNTRAKE_SHA256_V1" ||
+    row.hash_hex !== identity.hashHex
+  ) {
+    return fail("CONFLICT");
+  }
+  return { ok: true } as const;
 }
 
 async function withTransaction(
@@ -437,6 +516,24 @@ async function exactlyOne<Row>(
 
 function canonicalJson(value: CanonicalJsonValue) {
   return JSON.stringify(value);
+}
+
+function canonicalDatasetSeriesPairs(series: readonly DatasetSeriesHashPayloadV1[]) {
+  if (!Array.isArray(series) || series.length < 1) throw new Error("DatasetSeries payloads required");
+  const pairs = series.map((payload) => {
+    const canonicalPayload = canonicalDatasetSeriesHashPayloadV1(payload);
+    const ref = {
+      hashAlgorithm: "SHA-256",
+      hashDomain: "SYNTRAKE:DATASET_SERIES:V1",
+      hashVersion: "SYNTRAKE_SHA256_V1",
+      hashHex: hashDatasetSeriesV1(payload),
+    } as const;
+    return { ref, canonicalPayload, canonicalPayloadJson: canonicalJson(canonicalPayload) };
+  }).sort((left, right) => left.ref.hashHex < right.ref.hashHex ? -1 : left.ref.hashHex > right.ref.hashHex ? 1 : 0);
+  for (let index = 1; index < pairs.length; index += 1) {
+    if (pairs[index - 1]!.ref.hashHex === pairs[index]!.ref.hashHex) throw new Error("duplicate DatasetSeries payload");
+  }
+  return pairs;
 }
 
 function fail(code: ScientificRunInputCreateFailureCode): ScientificRunInputCreateFailure {
