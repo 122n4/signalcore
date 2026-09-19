@@ -171,7 +171,7 @@ describe("I5 Research execution engine contract freeze", () => {
     expect(source).toContain("-> Result manifest binds all artifact descriptors");
     expect(source).toContain("-> future Result hash");
     expect(compact).toContain("metric computation does not require an already-created Result hash");
-    expect(source).toContain("Candidate `ResultHashPayloadV1` is a compact manifest binding");
+    expect(source).toContain("Accepted design-freeze `ResultHashPayloadV1` is a compact manifest binding");
     expect(source).toContain("`Run` is operational execution-attempt identity and lifecycle");
     expect(compact).toContain("`Result` is deterministic scientific output identity");
     expect(compact).toContain("must not include worker ID, queue ID, host, PID, timestamps, or attempt UUID");
