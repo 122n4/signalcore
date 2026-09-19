@@ -60,7 +60,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
 
   it("requires the accepted A5 Research IR hash domain and preserves disabled future hash domains", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(() => assertExperimentHashingEnabledV1()).not.toThrow();
@@ -114,7 +114,7 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
   });
 
   it("publishes Experiment and ExperimentParameters scientific hashing", () => {
-    expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
+    expect("hashResearchSpecV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
   });

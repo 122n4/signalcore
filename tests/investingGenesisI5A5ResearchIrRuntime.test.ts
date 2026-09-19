@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  assertResearchSpecHashingDisabledV1,
+  assertResearchSpecHashingEnabledV1,
   canonicalResearchIrBytesV1,
   hashDomainStateV1,
   hashRefV1,
@@ -155,14 +155,14 @@ function nestedNot(depth: number): BooleanExpressionV1 {
 }
 
 describe("Investing Genesis I5-A5 Research IR canonical runtime", () => {
-  it("admits corrected Research IR and candidate Experiment domains while keeping remaining future domains disabled", () => {
+  it("admits corrected Research IR and candidate execution-chain domains", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:DATASET_SNAPSHOT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:METRIC_REQUEST_SET:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXECUTION_CONFIG:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(() => assertResearchSpecHashingDisabledV1()).toThrow("ResearchSpec scientific hashing disabled");
+    expect(hashDomainStateV1("SYNTRAKE:DATASET_SNAPSHOT:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:METRIC_REQUEST_SET:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:EXECUTION_CONFIG:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(assertResearchSpecHashingEnabledV1()).toBe(true);
   });
 
   it("freezes corrected Research IR canonical bytes, semantic IR version and uppercase hash vector", () => {
@@ -303,10 +303,10 @@ describe("Investing Genesis I5-A5 Research IR canonical runtime", () => {
     );
   });
 
-  it("keeps RunInput fail-closed even when Research IR is now admitted", () => {
+  it("allows RunInput hashing when Research IR and later nested domains are admitted", () => {
     const runInput = runInputWithResearchIrHash(hashResearchIrV1(researchIrVector));
 
-    expect(() => hashRunInputV1(runInput)).toThrow("required nested scientific domain still hashing-disabled");
+    expect(() => hashRunInputV1(runInput)).not.toThrow();
     expect(sha256HexV1(i5A2TestOnlyRunInputPreimageV1(runInput))).not.toBe(hashResearchIrV1(researchIrVector));
   });
 
@@ -334,7 +334,7 @@ describe("Investing Genesis I5-A5 Research IR canonical runtime", () => {
     const researchIrSource = fs.readFileSync(path.join(__dirname, "..", "lib", "investing", "research", "researchIr.ts"), "utf8").toLowerCase();
 
     expect("researchIrPreimageV1" in publicResearchRuntime).toBe(false);
-    expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
+    expect("hashResearchSpecV1" in publicResearchRuntime).toBe(true);
     expect("ownerStructuredHashPreimageV1" in publicResearchRuntime).toBe(false);
     expect("ConditionOnNodeV1" in publicResearchRuntime).toBe(false);
     expect("GroupNodeV1" in publicResearchRuntime).toBe(false);

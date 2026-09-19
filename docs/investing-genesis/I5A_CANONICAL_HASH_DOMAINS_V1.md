@@ -50,19 +50,19 @@ Current `HashDomainV1` states:
 | --- | --- |
 | `SYNTRAKE:RESEARCH_DRAFT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:HYPOTHESIS:V1` | `OWNER_PAYLOAD_EXACT` |
-| `SYNTRAKE:RESEARCH_SPEC:V1` | `DECLARED_BUT_HASHING_DISABLED` |
+| `SYNTRAKE:RESEARCH_SPEC:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_IR:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXPERIMENT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `OWNER_PAYLOAD_EXACT` |
-| `SYNTRAKE:DATASET_SERIES:V1` | `DECLARED_BUT_HASHING_DISABLED` |
-| `SYNTRAKE:DATASET_SNAPSHOT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
+| `SYNTRAKE:DATASET_SERIES:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:DATASET_SNAPSHOT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:RUN_INPUT:V1` | `PREIMAGE_ENVELOPE_EXACT` |
 | `SYNTRAKE:RESULT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
-| `SYNTRAKE:METRIC_REQUEST_SET:V1` | `DECLARED_BUT_HASHING_DISABLED` |
-| `SYNTRAKE:EXECUTION_CONFIG:V1` | `DECLARED_BUT_HASHING_DISABLED` |
+| `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:CANONICAL_TEST:V1` | `TEST_ONLY` |
 
 `HASH DOMAIN DECLARED != HASH DOMAIN ADMISSIBLE`.
@@ -95,16 +95,19 @@ commands. It binds authority-derived scope evidence and operation-specific
 material fragments while excluding idempotency key and correlation ID from
 material semantics.
 
-ResearchSpec remains `CANDIDATE_ONLY`; scientific ResearchSpec hashing remains
-disabled. Its persistence request identity binds candidate canonical bytes as
-candidate payload bytes, not as a fake SHA-256 scientific content digest.
+ResearchSpec revision workflow status remains `CANDIDATE_ONLY`; the scientific
+ResearchSpec owner payload is now candidate-implemented by the Dataset/Run
+Scientific Closure slice and excludes operational revision, pointer, tenant,
+account, principal, idempotency and timestamp data.
 
 Experiment and ExperimentParameters were not activated by the original
 hash-domain consolidation slice. They are current owner-exact domains because
 later dedicated accepted owner contracts admitted their exact owner payloads.
+DatasetSeries, DatasetSnapshot, MetricRequestSet, ExecutionConfig and
+ResearchSpec are candidate owner-exact domains for the I5 Dataset/Run
+Scientific Closure candidate and are not yet marked `CURRENT_ACCEPTED`.
 
 ## Explicit Exclusions
 
-No future DatasetSnapshot, Run, Result, MetricRequestSet, ExecutionConfig,
-ResearchTemplate or account-context hashing domain is activated by this contract
-unless the runtime already admits it with an exact owner payload.
+No Result, ResearchTemplate or account-context hashing domain is activated by
+this contract unless the runtime already admits it with an exact owner payload.

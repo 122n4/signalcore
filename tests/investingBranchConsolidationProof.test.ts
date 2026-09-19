@@ -34,7 +34,8 @@ describe("Investing branch consolidation proof", () => {
 
     expect(hashDomains).toContain("`SYNTRAKE:EXPERIMENT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hashDomains).toContain("`SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `OWNER_PAYLOAD_EXACT`");
-    expect(hashDomains).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `DECLARED_BUT_HASHING_DISABLED`");
+    expect(hashDomains).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hashDomains).toContain("`SYNTRAKE:DATASET_SNAPSHOT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(a5).toContain("Experiment, DatasetSnapshot, MetricRequestSet, ExecutionConfig, Result, EvidenceObject admission");
     expect(experiment).toContain("Status: CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT BASELINE (UNNUMBERED)");
     expect(experiment).toContain("State at the time this slice was accepted");

@@ -71,6 +71,15 @@ export type ResearchSpecCandidateInputV1 = Readonly<{
   status: "CANDIDATE_ONLY";
 }>;
 
+export type ResearchSpecHashPayloadV1 = Readonly<{
+  schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1";
+  sourceDraft: HashRefV1;
+  hypothesisBinding:
+    | Readonly<{ kind: "NO_HYPOTHESIS" }>
+    | Readonly<{ kind: "EXPLICIT_HYPOTHESIS"; hypothesis: HashRefV1 }>;
+  objective: CanonicalJsonValue;
+}>;
+
 export type InvestigationPointersV1 = Readonly<{
   activeDraft: string | null;
   activeHypothesis: string | null;
@@ -178,8 +187,30 @@ export function canonicalResearchSpecCandidateBytesV1(input: ResearchSpecCandida
   return i5ResearchInternalCanonicalJsonBytesV1(canonicalResearchSpecCandidatePayloadV1(input));
 }
 
-export function assertResearchSpecHashingDisabledV1(): never {
-  throw new Error("ResearchSpec scientific hashing disabled until complete execution-material owner payloads are frozen");
+export function canonicalResearchSpecHashPayloadV1(input: ResearchSpecCandidateInputV1): ResearchSpecHashPayloadV1 {
+  const candidate = canonicalResearchSpecCandidatePayloadV1(input) as {
+    sourceDraft: HashRefV1;
+    hypothesisBinding: ResearchSpecHashPayloadV1["hypothesisBinding"];
+    objective: CanonicalJsonValue;
+  };
+  return {
+    schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1",
+    sourceDraft: candidate.sourceDraft,
+    hypothesisBinding: candidate.hypothesisBinding,
+    objective: candidate.objective,
+  };
+}
+
+export function canonicalResearchSpecBytesV1(input: ResearchSpecCandidateInputV1): Buffer {
+  return i5ResearchInternalCanonicalJsonBytesV1(canonicalResearchSpecHashPayloadV1(input) as CanonicalJsonValue);
+}
+
+export function hashResearchSpecV1(input: ResearchSpecCandidateInputV1): CanonicalSha256HexV1 {
+  return sha256HexV1(ownerStructuredHashPreimageV1("SYNTRAKE:RESEARCH_SPEC:V1", canonicalResearchSpecHashPayloadV1(input) as CanonicalJsonValue));
+}
+
+export function assertResearchSpecHashingEnabledV1() {
+  return true;
 }
 
 export function applyA3PointerEffectV1(input: A3PointerEffectInputV1): InvestigationPointersV1 {

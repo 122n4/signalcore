@@ -266,9 +266,9 @@ describe("Investing Genesis canonical hygiene", () => {
 
     const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
     expect(hash).toContain("Runtime truth is `lib/investing/research/canonical.ts`");
-    expect(hash).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `DECLARED_BUT_HASHING_DISABLED`");
-    expect(hash).toContain("ResearchSpec remains `CANDIDATE_ONLY`");
-    expect(hash).toContain("not as a fake SHA-256 scientific content digest");
+    expect(hash).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("ResearchSpec revision workflow status remains `CANDIDATE_ONLY`");
+    expect(hash).toContain("not yet marked `CURRENT_ACCEPTED`");
   });
 
   it("keeps consolidated hash-domain current truth aligned with canonical current state", () => {
@@ -277,11 +277,16 @@ describe("Investing Genesis canonical hygiene", () => {
 
     expect(hash).toContain("`SYNTRAKE:EXPERIMENT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("`SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `OWNER_PAYLOAD_EXACT`");
-    expect(hash).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `DECLARED_BUT_HASHING_DISABLED`");
+    expect(hash).toContain("`SYNTRAKE:RESEARCH_SPEC:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:DATASET_SERIES:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:DATASET_SNAPSHOT:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).not.toContain("`SYNTRAKE:EXPERIMENT:V1` | `DECLARED_BUT_HASHING_DISABLED`");
     expect(hash).not.toContain("`SYNTRAKE:EXPERIMENT_PARAMETERS:V1` | `DECLARED_BUT_HASHING_DISABLED`");
     expect(state).toMatch(/`SYNTRAKE:EXPERIMENT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
     expect(state).toMatch(/`SYNTRAKE:EXPERIMENT_PARAMETERS:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
-    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `DECLARED_BUT_HASHING_DISABLED`/u);
+    expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `OWNER_PAYLOAD_EXACT` \(candidate-only Dataset\/Run Scientific Closure/u);
+    expect(state).toMatch(/`SYNTRAKE:DATASET_SNAPSHOT:V1`\r?\n= `OWNER_PAYLOAD_EXACT` \(candidate-only Dataset\/Run Scientific Closure/u);
   });
 });
