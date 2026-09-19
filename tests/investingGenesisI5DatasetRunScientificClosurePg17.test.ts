@@ -77,7 +77,7 @@ const hex = {
   material: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
   draft: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
   hypothesis: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
-  specMaterial: "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+  specMaterial: "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
   rollback: "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
   wrongIr: "1111111111111111111111111111111111111111111111111111111111111111",
   wrongDatasetSnapshot: "2222222222222222222222222222222222222222222222222222222222222222",
@@ -472,18 +472,31 @@ maybeDescribe("I5 Dataset/Run scientific closure PG17 rehearsal", () => {
     `, [tables]);
     expect(checks.rows.length).toBeGreaterThan(24);
     expect(checks.rows.every((row) => row.convalidated)).toBe(true);
-    const policies = await client.query<{ qual: string | null; with_check: string | null }>(`
-      select qual, with_check
+    const policies = await client.query<{ cmd: string; qual: string | null; with_check: string | null }>(`
+      select cmd, qual, with_check
       from pg_catalog.pg_policies
       where schemaname = 'investing' and tablename = any($1::text[])
     `, [tables]);
     expect(policies.rows.length).toBe(12);
+    expect(policies.rows.filter((policy) => policy.cmd === "INSERT")).toHaveLength(6);
+    expect(policies.rows.filter((policy) => policy.cmd === "SELECT")).toHaveLength(6);
     for (const policy of policies.rows) {
       const text = `${policy.qual ?? ""} ${policy.with_check ?? ""}`;
       expect(text).toMatch(/tenant_membership_id/);
-      expect(text).toMatch(/RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1/);
-      expect(text).toMatch(/RESEARCH_MUTATE/);
+      expect(text).toMatch(/principal_id/);
+      expect(text).toMatch(/tenant_id/);
+      expect(text).toMatch(/account_id/);
       expect(text).toMatch(/account_access_id/);
+      expect(text).toMatch(/operation = current_setting/);
+      expect(text).toMatch(/capability = current_setting/);
+      expect(text).toMatch(/operation_scope = current_setting/);
+      expect(text).toMatch(/source_context = current_setting/);
+      if (policy.cmd === "INSERT") {
+        expect(text).toMatch(/RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1/);
+        expect(text).toMatch(/RESEARCH_MUTATE/);
+        expect(text).toMatch(/TENANT_SCOPE/);
+        expect(text).toMatch(/PURE_RESEARCH/);
+      }
     }
   }, 20_000);
 
