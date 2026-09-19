@@ -94,6 +94,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Experiment Scientific Closure (unnumbered) | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Dataset & Run Scientific Closure (unnumbered) | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Execution Engine design freeze (unnumbered) | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`, `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md`, `I5_RESEARCH_METRIC_REGISTRY_V1.md` |
+| I5 Research Execution Closure candidate (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -150,6 +151,11 @@ freeze/master evidence still relies on its narrow classifications.
   PURE_RESEARCH/HISTORICAL_BACKTEST execution profile. It does not implement
   the engine loop, create persistence, activate Result hashing or mutate
   production Supabase.
+- I5 Research Execution Closure:
+  `IMPLEMENTED_CANDIDATE / NOT CURRENT_ACCEPTED / UNNUMBERED`. This candidate
+  implements the PURE_RESEARCH/HISTORICAL_BACKTEST execution chain and activates
+  candidate `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT`; it does not claim
+  acceptance, assign an A-number or apply a production migration.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -568,7 +574,7 @@ Hash states now:
 = `PREIMAGE_ENVELOPE_EXACT`
 
 `SYNTRAKE:RESULT:V1`
-= `DECLARED_BUT_HASHING_DISABLED`
+= `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1`
 = `DECLARED_BUT_HASHING_DISABLED`

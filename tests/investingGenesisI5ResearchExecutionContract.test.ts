@@ -232,14 +232,14 @@ describe("I5 Research execution engine contract freeze", () => {
     expect(source).toContain("The internal benchmark ratio remains exact until output serialization");
   });
 
-  it("keeps Result and AccountResearchContext hashing disabled while preserving accepted RunInput", () => {
+  it("keeps AccountResearchContext disabled and records candidate Result hashing while preserving accepted RunInput", () => {
     const source = engine();
 
     expect(source).toContain("SYNTRAKE:RUN_INPUT:V1 = PREIMAGE_ENVELOPE_EXACT");
     expect(source).toContain("SYNTRAKE:RESULT:V1 = DECLARED_BUT_HASHING_DISABLED");
     expect(source).toContain("SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1 = DECLARED_BUT_HASHING_DISABLED");
     expect(hashDomainStateV1("SYNTRAKE:RUN_INPUT:V1")).toBe("PREIMAGE_ENVELOPE_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESULT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESULT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
     expect(source).toContain("D551B5200CB6E15E6A5479FE69CB958E11500BE747B0C911AD59A3098A728749");
   });
