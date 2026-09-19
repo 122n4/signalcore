@@ -439,9 +439,13 @@ Experiment Scientific Closure supersession:
   yet accepted.
 - Supersedes the prior limitation that current VARIANT persistence could not
   distinguish same-parent variants solely by ExperimentParameters.
-- Does not supersede ResearchSpec scientific hashing deferral, standalone raw
-  ExperimentParameters payload persistence deferral, DatasetSnapshot,
-  Run/Result/Evidence, Paper, Trading or Investing Core.
+- Does not by itself supersede standalone raw ExperimentParameters payload
+  persistence deferral, Run execution lifecycle, Result/Evidence, Paper,
+  Trading or Investing Core.
+- The later Dataset/Run Scientific Closure candidate implements candidate-only
+  owner payloads for ResearchSpec, DatasetSeries, DatasetSnapshot,
+  MetricRequestSet, ExecutionConfig and RunInput persistence, but that
+  milestone is not yet `CURRENT_ACCEPTED` and has no A-number here.
 
 Hash states now:
 
@@ -449,13 +453,25 @@ Hash states now:
 = `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:RESEARCH_SPEC:V1`
-= `DECLARED_BUT_HASHING_DISABLED`
+= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
 
 `SYNTRAKE:EXPERIMENT:V1`
 = `OWNER_PAYLOAD_EXACT`
 
 `SYNTRAKE:EXPERIMENT_PARAMETERS:V1`
 = `OWNER_PAYLOAD_EXACT`
+
+`SYNTRAKE:DATASET_SERIES:V1`
+= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+
+`SYNTRAKE:DATASET_SNAPSHOT:V1`
+= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+
+`SYNTRAKE:METRIC_REQUEST_SET:V1`
+= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
+
+`SYNTRAKE:EXECUTION_CONFIG:V1`
+= `OWNER_PAYLOAD_EXACT` (candidate-only Dataset/Run Scientific Closure; not yet `CURRENT_ACCEPTED`)
 
 ## What This Gate Record Supersedes
 

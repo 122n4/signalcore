@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   applyA3PointerEffectV1,
-  assertResearchSpecHashingDisabledV1,
+  assertResearchSpecHashingEnabledV1,
   canonicalHypothesisBytesV1,
   canonicalResearchDraftBytesV1,
   canonicalResearchSpecCandidateBytesV1,
+  hashResearchSpecV1,
   hashDomainStateV1,
   hashHypothesisV1,
   hashRefV1,
@@ -134,16 +135,16 @@ const runInputVector: RunInputHashPayloadV1 = {
 };
 
 describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime", () => {
-  it("admits owner-specific Draft, Hypothesis, Research IR and Experiment hash domains while keeping remaining future domains disabled", () => {
+  it("admits owner-specific Draft, Hypothesis, ResearchSpec, Research IR and execution-material hash domains", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_DRAFT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:HYPOTHESIS:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:DATASET_SNAPSHOT:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:DATASET_SNAPSHOT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:METRIC_REQUEST_SET:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(hashDomainStateV1("SYNTRAKE:EXECUTION_CONFIG:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
-    expect(() => assertResearchSpecHashingDisabledV1()).toThrow("ResearchSpec scientific hashing disabled");
+    expect(hashDomainStateV1("SYNTRAKE:METRIC_REQUEST_SET:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:EXECUTION_CONFIG:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(assertResearchSpecHashingEnabledV1()).toBe(true);
   });
 
   it("freezes Draft canonical bytes/hash while preserving raw intent separate from interpretation", () => {
@@ -170,7 +171,7 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
     );
   });
 
-  it("validates candidate ResearchSpec bytes through Draft/Hypothesis content proofs without emitting a scientific Spec hash", async () => {
+  it("validates candidate ResearchSpec bytes through Draft/Hypothesis content proofs and emits a scientific Spec hash", async () => {
     const withoutHypothesis = specCandidate(draftProof(closedDraftVector), { kind: "NO_HYPOTHESIS" });
     const withHypothesis = specCandidate(draftProof(closedDraftVector), {
       kind: "EXPLICIT_HYPOTHESIS",
@@ -183,7 +184,8 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
     expect(canonicalResearchSpecCandidateBytesV1(withHypothesis).toString("utf8")).toBe(
       '{"hypothesisBinding":{"hypothesis":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:HYPOTHESIS:V1","hashHex":"F01F559FD3E11C6FF019EB6D05B30FF61D04E58C1231F2417C6FAA2C386D7A05","hashVersion":"SYNTRAKE_SHA256_V1"},"kind":"EXPLICIT_HYPOTHESIS"},"objective":{"state":"USER_SUPPLIED","value":"Canonicalize a candidate research specification for large-cap momentum."},"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1","sourceDraft":{"hashAlgorithm":"SHA-256","hashDomain":"SYNTRAKE:RESEARCH_DRAFT:V1","hashHex":"68A6262EAF4E0583BE7F4BB90F7098CF8EE44BA1B4C51C0B9044934DC385973B","hashVersion":"SYNTRAKE_SHA256_V1"},"status":"CANDIDATE_ONLY"}',
     );
-    expect("hashResearchSpecV1" in await import("../lib/investing/research")).toBe(false);
+    expect(hashResearchSpecV1(withHypothesis)).toBe("D43FC43DA71880343D67096EA22DDB15270A7654C197E0515C47FB2758F25098");
+    expect("hashResearchSpecV1" in await import("../lib/investing/research")).toBe(true);
   });
 
   it("proves Draft closure by recomputing payload hash and inspecting material blockers", () => {
@@ -400,7 +402,7 @@ describe("Investing Genesis I5-A4 Draft/Hypothesis/ResearchSpec semantic runtime
     ).toThrow("contradictory command field newHypothesis");
   });
 
-  it("keeps RunInput hashing blocked while ResearchSpec and later nested domains remain disabled", () => {
-    expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
+  it("allows RunInput envelope hashing once all PURE_RESEARCH nested domains are admitted", () => {
+    expect(() => hashRunInputV1(runInputVector)).not.toThrow();
   });
 });

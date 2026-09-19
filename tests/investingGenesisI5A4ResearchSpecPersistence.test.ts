@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applyA3PointerEffectV1,
-  assertResearchSpecHashingDisabledV1,
+  assertResearchSpecHashingEnabledV1,
   canonicalResearchSpecCandidateBytesV1,
   hashHypothesisV1,
   hashResearchDraftV1,
@@ -126,10 +126,10 @@ function presentRoot(headRevisionId: string, headRevisionNumber = "1"): Expected
 }
 
 describe("Investing Genesis I5-A4 Research Spec persistence", () => {
-  it("keeps ResearchSpec candidate-only and scientific Spec hashing disabled", () => {
+  it("keeps ResearchSpec revision workflow candidate-only while scientific Spec hashing is now enabled by dataset/run closure", () => {
     expect(canonicalResearchSpecCandidateBytesV1(spec()).toString("utf8")).toContain('"status":"CANDIDATE_ONLY"');
-    expect(() => assertResearchSpecHashingDisabledV1()).toThrow("ResearchSpec scientific hashing disabled");
-    expect(read(researchIndexPath)).not.toContain("hashResearchSpecV1");
+    expect(assertResearchSpecHashingEnabledV1()).toBe(true);
+    expect(read(researchIndexPath)).toContain("hashResearchSpecV1");
   });
 
   it("makes Spec request identity material without creating a scientific Spec hash", () => {

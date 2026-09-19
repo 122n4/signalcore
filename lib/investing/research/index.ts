@@ -47,6 +47,7 @@ export {
   type ResearchDraftHashPayloadInputV1,
   type ResearchSpecCandidateHypothesisBindingV1,
   type ResearchSpecCandidateInputV1,
+  type ResearchSpecHashPayloadV1,
 } from "./semantic";
 
 export {
@@ -68,14 +69,42 @@ export {
 
 export {
   applyA3PointerEffectV1,
-  assertResearchSpecHashingDisabledV1,
+  assertResearchSpecHashingEnabledV1,
   canonicalHypothesisBytesV1,
   canonicalResearchDraftBytesV1,
   canonicalResearchSpecCandidateBytesV1,
+  canonicalResearchSpecBytesV1,
   emptyInvestigationPointersV1,
   hashHypothesisV1,
   hashResearchDraftV1,
+  hashResearchSpecV1,
 } from "./semantic";
+
+export {
+  canonicalDatasetSeriesBytesV1,
+  canonicalDatasetSeriesHashPayloadV1,
+  canonicalDatasetSnapshotBytesV1,
+  canonicalDatasetSnapshotHashPayloadV1,
+  canonicalExecutionConfigBytesV1,
+  canonicalExecutionConfigHashPayloadV1,
+  canonicalMetricRequestSetBytesV1,
+  canonicalMetricRequestSetHashPayloadV1,
+  hashDatasetSeriesV1,
+  hashDatasetSnapshotV1,
+  hashExecutionConfigV1,
+  hashMetricRequestSetV1,
+  type DatasetSeriesHashPayloadV1,
+  type DatasetSnapshotHashPayloadV1,
+  type ExecutionConfigHashPayloadV1,
+  type MetricRequestSetHashPayloadV1,
+  type MetricRequestV1,
+} from "./executionMaterials";
+
+export {
+  admitScientificRunInputV1,
+  type AdmittedScientificRunInputV1,
+  type ScientificRunInputCandidateV1,
+} from "./runInputScientific";
 
 export {
   canonicalResearchIrBytesV1,

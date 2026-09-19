@@ -145,7 +145,7 @@ describe("Investing Genesis I5 ExperimentParameters scientific identity runtime"
   it("admits ExperimentParameters and candidate Experiment scientific domains as owner-exact", () => {
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentV1" in publicResearchRuntime).toBe(true);
   });

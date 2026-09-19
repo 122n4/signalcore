@@ -8,6 +8,7 @@ on:
       - "tests/investingSupabaseReconciliationCandidate.test.ts"
       - "tests/investingSupabaseReconciliationPg17.test.ts"
       - "tests/investingGenesisI5ExperimentScientificClosurePg17.test.ts"
+      - "tests/investingGenesisI5DatasetRunScientificClosurePg17.test.ts"
       - "docs/investing-genesis/SUPABASE_RECONCILIATION_CANDIDATE_20260915.md"
       - ".github/workflows/investing-supabase-reconciliation-pg17.yml"
 
@@ -55,3 +56,6 @@ jobs:
 
       - name: PostgreSQL 17 Experiment scientific closure rehearsal
         run: npx vitest run tests/investingGenesisI5ExperimentScientificClosurePg17.test.ts
+
+      - name: PostgreSQL 17 Dataset/Run scientific closure rehearsal
+        run: npx vitest run tests/investingGenesisI5DatasetRunScientificClosurePg17.test.ts

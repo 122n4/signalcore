@@ -69,7 +69,10 @@ Later supersession: Experiment hashing was accepted by the separate Experiment
 Scientific Closure owner contract, and ExperimentParameters scientific identity
 was accepted separately. Current runtime truth is owned by
 `lib/investing/research/canonical.ts` and
-`I5A_CANONICAL_HASH_DOMAINS_V1.md`. ResearchSpec remains hashing disabled.
+`I5A_CANONICAL_HASH_DOMAINS_V1.md`. At the time this slice was accepted,
+ResearchSpec remained hashing disabled; that limitation is superseded only by
+the later Dataset/Run Scientific Closure candidate and is not acceptance
+evidence for that candidate.
 
 ## Architecture Boundary
 

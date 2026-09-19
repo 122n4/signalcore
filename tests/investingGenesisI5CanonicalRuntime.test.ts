@@ -137,11 +137,11 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
   it("validates HashRefV1 domain/version and fails closed for unknown or disabled domains", () => {
     const researchSpec = ref("SYNTRAKE:RESEARCH_SPEC:V1", hexA);
 
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:RUN_INPUT:V1")).toBe("PREIMAGE_ENVELOPE_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EVIDENCE_OBJECT:V1")).toBe("CONTENT_PREIMAGE_EXACT");
     expect(() => canonicalHashDomainV1("SYNTRAKE:UNKNOWN:V1")).toThrow("unknown hash domain");
-    expect(() => assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_SPEC:V1")).toThrow("hashing disabled");
+    expect(assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(() => assertHashRefDomainV1(researchSpec, "SYNTRAKE:HYPOTHESIS:V1")).toThrow("wrong-domain HashRefV1");
     expect(() => hashRefV1({ hashAlgorithm: "SHA-512", hashDomain: "SYNTRAKE:RESEARCH_SPEC:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hexA })).toThrow(
       "invalid hash algorithm",
@@ -151,7 +151,7 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     );
   });
 
-  it("matches A2 Vector E canonical RunInput bytes and proves production RunInput hashing remains blocked", () => {
+  it("matches A2 Vector E canonical RunInput bytes and hashes once nested domains are admitted", () => {
     const bytes = canonicalRunInputBytesV1(runInputVector);
     const reorderedBytes = canonicalRunInputBytesV1({
       ...runInputVector,
@@ -163,7 +163,7 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect(sha256HexV1(i5A2TestOnlyRunInputPreimageV1(runInputVector))).toBe(
       "48605C6D47930999F42958C52851B45B18EDBF35F2045628BF108A31F89352B6",
     );
-    expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
+    expect(hashRunInputV1(runInputVector)).toBe("48605C6D47930999F42958C52851B45B18EDBF35F2045628BF108A31F89352B6");
     expect(() =>
       canonicalRunInputBytesV1({
         ...runInputVector,
@@ -268,6 +268,6 @@ describe("Investing Genesis I5-A2 canonical runtime foundation", () => {
     expect(assertHashDomainAdmittedForHashingV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(() => canonicalRunInputBytesV1({ arbitraryMap: { x: "y" } } as never)).toThrow("undeclared field arbitraryMap");
     expect(() => canonicalRunInputBytesV1([] as never)).toThrow("expected closed plain object");
-    expect(() => hashRunInputV1(runInputVector)).toThrow("required nested scientific domain still hashing-disabled");
+    expect(hashRunInputV1(runInputVector)).toBe("48605C6D47930999F42958C52851B45B18EDBF35F2045628BF108A31F89352B6");
   });
 });

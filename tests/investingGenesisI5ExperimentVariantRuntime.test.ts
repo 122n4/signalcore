@@ -64,11 +64,11 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
 
   it("preserves hash-domain boundaries without public scientific Experiment hash exports", () => {
     expect(hashDomainStateV1("SYNTRAKE:RESEARCH_IR:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("DECLARED_BUT_HASHING_DISABLED");
+    expect(hashDomainStateV1("SYNTRAKE:RESEARCH_SPEC:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_PARAMETERS:V1")).toBe("OWNER_PAYLOAD_EXACT");
 
-    expect("hashResearchSpecV1" in publicResearchRuntime).toBe(false);
+    expect("hashResearchSpecV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentV1" in publicResearchRuntime).toBe(true);
     expect("hashExperimentParametersV1" in publicResearchRuntime).toBe(true);
   });

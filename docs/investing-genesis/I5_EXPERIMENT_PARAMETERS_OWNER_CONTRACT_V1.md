@@ -25,7 +25,7 @@ SYNTRAKE:EXPERIMENT:V1 = DECLARED_BUT_HASHING_DISABLED
 SYNTRAKE:RESEARCH_SPEC:V1 = DECLARED_BUT_HASHING_DISABLED
 ```
 
-This ExperimentParameters contract did not introduce scientific Experiment identity. The Experiment hashing limitation was later superseded by the separately accepted Experiment Scientific Closure owner contract. ResearchSpec scientific hashing remains disabled.
+This ExperimentParameters contract did not introduce scientific Experiment identity. The Experiment hashing limitation was later superseded by the separately accepted Experiment Scientific Closure owner contract. At the time this contract was accepted, ResearchSpec scientific hashing remained disabled; that limitation is superseded only by the later Dataset/Run Scientific Closure candidate and is not acceptance evidence for that candidate.
 
 ## Candidate Proof Input
 
