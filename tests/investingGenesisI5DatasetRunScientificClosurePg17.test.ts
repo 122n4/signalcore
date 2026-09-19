@@ -632,21 +632,27 @@ maybeDescribe("I5 Dataset/Run scientific closure PG17 rehearsal", () => {
         overrides: { executionConfig: hex.wrongExecutionConfig },
       });
     }, /run_inputs_execution_config_payload_binding_check/i);
+    const rollbackRunInput = {
+      ...runInputV1(),
+      deterministicSeed: "dataset-run-seed-rollback",
+    };
+    const rollbackRunInputHash = hashRunInputV1(rollbackRunInput);
+    const rollbackCanonicalPayload = canonicalRunInputHashPayloadV1(rollbackRunInput);
     await expectRollback(async () => {
-      await client.query("select set_config($1, $2, true)", ["syntrake.investing.run_input_hash_hex", hex.rollback]);
+      await client.query("select set_config($1, $2, true)", ["syntrake.investing.run_input_hash_hex", rollbackRunInputHash]);
       await insertRunInputProbe({
         id: "d1000000-0000-4000-8000-000000000091",
-        hashHex: hex.rollback,
-        payload: {
-          schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1",
-          researchSourceContext: "PURE_RESEARCH",
-          metricRegistryVersion: metricRequestSetV1.metricRegistryVersion,
-          engineVersion: executionConfigV1.engineCompatibilityVersion,
-        },
+        hashHex: rollbackRunInputHash,
+        payload: rollbackCanonicalPayload,
       });
+      const duringRollback = await client.query<{ count: string }>(
+        "select count(*) from investing.run_inputs_scientific_identities where hash_hex = $1",
+        [rollbackRunInputHash],
+      );
+      expect(duringRollback.rows[0]?.count).toBe("1");
       throw new Error("rollback probe");
     }, /rollback probe/);
-    const afterRollback = await client.query<{ count: string }>("select count(*) from investing.run_inputs_scientific_identities where hash_hex = $1", [hex.rollback]);
+    const afterRollback = await client.query<{ count: string }>("select count(*) from investing.run_inputs_scientific_identities where hash_hex = $1", [rollbackRunInputHash]);
     expect(afterRollback.rows[0]?.count).toBe("0");
 
     await client.query("begin");
