@@ -170,16 +170,26 @@ NOT PERFORMED
 
 ## Boundaries And Non-Goals
 
-This contract does not claim Research Spec scientific hashing, standalone raw ExperimentParameters object persistence, DatasetSnapshot, MetricRequestSet, ExecutionConfig, RunInput, execution engine, Run, Result, Evidence, Passport completion, Paper, Trading, Capital, broker, Live, optimizer, Strategy DNA, Strategy Autopsy, Blind Truth Test or UI completion.
+At the time Experiment Scientific Closure was accepted, this contract did not
+claim ResearchSpec scientific hashing, DatasetSnapshot, MetricRequestSet,
+ExecutionConfig or RunInput. Those specific scientific-input deferrals are now
+superseded by the separately accepted Dataset & Run Scientific Closure owner
+contract.
 
-```text
-SYNTRAKE:RESEARCH_SPEC:V1 = DECLARED_BUT_HASHING_DISABLED
-```
-
-DatasetSnapshot remains deferred and is the next scientific dependency.
+This Experiment contract still does not establish standalone raw
+ExperimentParameters object persistence, execution engine, Run execution
+lifecycle, Result, Evidence, Passport completion, Paper, Trading, Capital,
+broker, Live, optimizer, Strategy DNA, Strategy Autopsy, Blind Truth Test or UI
+completion.
 
 ## Supersession
 
-This acceptance supersedes the prior limitations that scientific Experiment identity was not yet accepted and current VARIANT persistence could not distinguish same-parent variants solely by ExperimentParameters.
+This acceptance superseded the prior limitations that scientific Experiment
+identity was not yet accepted and current VARIANT persistence could not
+distinguish same-parent variants solely by ExperimentParameters.
 
-It does not supersede DatasetSnapshot deferral, ResearchSpec disabled scientific hashing, standalone raw ExperimentParameters persistence deferral, Run/Result/Evidence, Paper, Trading or Investing Core.
+The later accepted Dataset & Run Scientific Closure supersedes only the
+ResearchSpec/Dataset/RunInput scientific-input deferrals that existed when this
+Experiment contract was accepted. It does not alter Experiment scientific
+identity or establish standalone raw ExperimentParameters persistence,
+Run execution, Result/Evidence, Paper, Trading or Investing Core.
