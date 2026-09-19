@@ -47,26 +47,42 @@ describe("I5 Research execution engine contract freeze", () => {
 
   it("pins deterministic kernel prohibitions and no-JS-number scientific arithmetic", () => {
     const source = engine();
+    const compact = squish(source);
 
     for (const forbidden of ["Date.now()", "new Date() as execution truth", "Math.random()", "crypto.random*", "fetch()", "DB client", "process.env"]) {
       expect(source).toContain(forbidden);
     }
 
     expect(source).toContain("Scientific engine arithmetic must not use JavaScript `number`");
-    expect(source).toContain("BigInt-backed coefficient/scale");
     expect(source).toContain("no exponent notation");
-    expect(source).toContain("must forbid `-0`");
+    expect(source).toContain("`-0` is forbidden");
     expect(source).toContain("RESEARCH_FRACTIONAL_QUANTITY_V1");
-    expect(source).toContain("max quantity scale = 8");
-    expect(source).toContain("round toward zero/down to 8 decimal places");
+    expect(source).toContain("RESEARCH_EXACT_DECIMAL_RATIONAL_V1");
+    expect(source).toContain("This behavior is owned by:");
+    expect(source).toContain("ENGINE_V20260918");
+    expect(source).toContain("coefficient: BigInt");
+    expect(source).toContain("scale: non-negative integer");
+    expect(source).toContain("No IEEE-754 floating-point representation may participate");
+    expect(compact).toContain("division results are represented internally as an exact reduced rational");
+    expect(source).toContain("The rational is reduced by GCD");
+    expect(source).toContain("must not round a signal field before evaluating a predicate or rank");
+    expect(source).toContain("max scale = 8");
+    expect(source).toContain("rounding = TOWARD_ZERO");
   });
 
   it("freezes executable field methodology for TOTAL_RETURN and MOMENTUM_12M", () => {
     const source = fields();
 
-    expect(source).toContain("ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(previous eligible observed session) - 1");
-    expect(source).toContain("previous session must be earlier than `t`");
-    expect(source).toContain("first valid observation has missing `TOTAL_RETURN`");
+    expect(source).toContain("previous_session(t)");
+    expect(source).toContain("the immediately preceding eligible session in XNYS_TRADING_CALENDAR_V1");
+    expect(source).toContain("ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(previous_session(t)) - 1");
+    expect(source).toContain("`previous_session(t) < t`");
+    expect(source).toContain("the exact `ADJUSTED_CLOSE` observation for `previous_session(t)` must exist");
+    expect(source).toContain("if that exact observation is missing, `TOTAL_RETURN(t) = MISSING`");
+    expect(source).toContain("do not search farther backward");
+    expect(source).toContain("do not bridge the gap");
+    expect(source).toContain("do not substitute the previous available observation");
+    expect(source).toContain("the first eligible session for which no prior required calendar observation");
     expect(source).toContain("deterministic decimal arithmetic, never JS binary floating");
     expect(source).toContain("ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(anchor(t)) - 1");
     expect(source).toContain("anchor_target_date = t minus 12 calendar months");
@@ -115,11 +131,18 @@ describe("I5 Research execution engine contract freeze", () => {
     expect(source).toContain("cash_after + market_value_after");
     expect(source).toContain("no negative cash");
     expect(source).toContain("no negative position quantity");
+    expect(source).toContain("target_quantity");
+    expect(source).toContain("truncate_toward_zero");
+    expect(source).toContain("8 decimal places");
+    expect(source).toContain("fill_notional = quantity * price");
+    expect(source).toContain("max scale = 16");
+    expect(compact).toContain("Do not round cash or strategy NAV after each event beyond canonical normalization");
     expect(compact).toContain("no hidden leverage");
     expect(compact).toContain("no value created by rebalance");
     expect(source).toContain("CLOSE_TO_CLOSE_V1` is a synthetic Research Lab execution model");
     expect(source).toContain("execute reductions/sells");
     expect(compact).toContain("execute increases/buys");
+    expect(source).toContain("`TOWARD_ZERO` rounding");
   });
 
   it("freezes Result manifest artifact split and Run is not Result", () => {
@@ -133,6 +156,14 @@ describe("I5 Research execution engine contract freeze", () => {
     expect(source).toContain("contentSha256");
     expect(source).toContain("contentByteLength");
     expect(source).toContain("recordCount");
+    expect(source).toContain("Deterministic kernel");
+    expect(source).toContain("-> ExecutionTrace artifact");
+    expect(source).toContain("-> ValuationSeries artifact");
+    expect(source).toContain("-> Metric engine consumes ValuationSeries truth");
+    expect(source).toContain("-> MetricResultSet artifact");
+    expect(source).toContain("-> Result manifest binds all artifact descriptors");
+    expect(source).toContain("-> future Result hash");
+    expect(compact).toContain("metric computation does not require an already-created Result hash");
     expect(source).toContain("Candidate `ResultHashPayloadV1` is a compact manifest binding");
     expect(source).toContain("`Run` is operational execution-attempt identity and lifecycle");
     expect(compact).toContain("`Result` is deterministic scientific output identity");
@@ -141,16 +172,57 @@ describe("I5 Research execution engine contract freeze", () => {
 
   it("pins metric formulas and keeps metrics downstream of deterministic Result truth", () => {
     const source = metrics();
+    const compact = squish(source);
 
     expect(source).toContain("TOTAL_RETURN / METRIC_V1");
     expect(source).toContain("MAX_DRAWDOWN / METRIC_V1");
+    expect(source).toContain("Metric calculations use exact rational arithmetic");
+    expect(source).toContain("must not consume previously rounded ratio intermediates");
+    expect(source).toContain("RESEARCH_RATIO_OUTPUT_V1");
+    expect(source).toContain("scale <= 18");
+    expect(source).toContain("ROUND_HALF_EVEN");
     expect(source).toContain("ending_nav / starting_nav - 1");
     expect(source).toContain("peak_t = max(NAV_0 ... NAV_t)");
     expect(source).toContain("drawdown_t = (peak_t - NAV_t) / peak_t");
     expect(source).toContain("MAX_DRAWDOWN = max(drawdown_t)");
     expect(source).toContain("non-negative magnitude ratio");
     expect(source).toContain("Metrics consume deterministic Result valuation truth");
-    expect(source).toContain("do not independently replay market data or strategy logic");
+    expect(compact).toContain("do not independently replay market data or strategy logic");
+  });
+
+  it("freezes benchmark D0 alignment and fail-closed valuation session coverage", () => {
+    const source = engine();
+    const compact = squish(source);
+
+    expect(source).toContain("D0");
+    expect(source).toContain("first eligible portfolio valuation session inside testPeriod");
+    expect(source).toContain("under the accepted execution calendar");
+    expect(source).toContain("the benchmark must have an admitted");
+    expect(source).toContain("`ADJUSTED_CLOSE` observation on exactly `D0`");
+    expect(source).toContain("benchmark_value(D0)");
+    expect(source).toContain("starting_capital");
+    expect(compact).toContain("The benchmark is evaluated on the exact same ordered valuation-session set as the portfolio");
+    expect(source).toContain("benchmark_value(t)");
+    expect(source).toContain("adjusted_close(D0)");
+    expect(compact).toContain("If benchmark `ADJUSTED_CLOSE` is missing on `D0` or on any later required portfolio valuation session, fail closed");
+    expect(compact).toContain("Do not shift the benchmark start, use its own first available date, forward-fill, back-fill, or silently omit a benchmark point");
+  });
+
+  it("freezes ratio and benchmark output serialization without contaminating signal comparison", () => {
+    const source = engine();
+    const compact = squish(source);
+
+    expect(source).toContain("RESEARCH_RATIO_OUTPUT_V1");
+    expect(source).toContain("max scale = 18");
+    expect(source).toContain("rounding = ROUND_HALF_EVEN");
+    expect(source).toContain("`TOTAL_RETURN` artifact value");
+    expect(source).toContain("`MOMENTUM_12M` artifact value");
+    expect(source).toContain("`TOTAL_RETURN / METRIC_V1`");
+    expect(source).toContain("`MAX_DRAWDOWN / METRIC_V1`");
+    expect(compact).toContain("Signal evaluation must use the exact internal rational, not the rounded 18-decimal serialized representation");
+    expect(source).toContain("RESEARCH_MONEY_OUTPUT_V1");
+    expect(source).toContain("max scale = 16");
+    expect(source).toContain("The internal benchmark ratio remains exact until output serialization");
   });
 
   it("keeps Result and AccountResearchContext hashing disabled while preserving accepted RunInput", () => {
