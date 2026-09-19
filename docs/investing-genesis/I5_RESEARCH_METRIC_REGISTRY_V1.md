@@ -1,12 +1,12 @@
 # I5 Research Metric Registry V1
 
-Status: CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED
+Status: CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH METRIC REGISTRY - UNNUMBERED
 
-Classification: DESIGN CANDIDATE / NOT CURRENT_ACCEPTED
+Classification: CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED
 
 Permanent A-number: NOT ASSIGNED
 
-This registry freezes the candidate metric formulas for the first I5 Research
+This current accepted registry freezes the metric formulas for the first I5 Research
 Lab execution contract. Metrics consume deterministic Result valuation truth.
 They do not independently replay market data or strategy logic.
 
@@ -29,7 +29,7 @@ TOTAL_RETURN / METRIC_V1
 MAX_DRAWDOWN / METRIC_V1
 ```
 
-No broader metric catalogue is admitted by this candidate contract.
+No broader metric catalogue is admitted by this accepted design freeze.
 
 ## TOTAL_RETURN / METRIC_V1
 

@@ -19,17 +19,24 @@ const metrics = () => read("docs/investing-genesis/I5_RESEARCH_METRIC_REGISTRY_V
 const state = () => read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
 describe("I5 Research execution engine contract freeze", () => {
-  it("records candidate-only contract status without assigning acceptance or an A-number", () => {
+  it("records accepted design-freeze authority without assigning runtime authority or an A-number", () => {
+    expect(engine()).toContain("Status: CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH EXECUTION ENGINE FREEZE - UNNUMBERED");
+    expect(fields()).toContain("Status: CURRENT ACCEPTED DESIGN CONTRACT - EXECUTABLE FIELD SEMANTICS - UNNUMBERED");
+    expect(metrics()).toContain("Status: CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH METRIC REGISTRY - UNNUMBERED");
     for (const source of [engine(), fields(), metrics()]) {
-      expect(source).toContain("Status: CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED");
-      expect(source).toContain("Classification: DESIGN CANDIDATE / NOT CURRENT_ACCEPTED");
+      expect(source).toContain("Classification: CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
       expect(source).toContain("Permanent A-number: NOT ASSIGNED");
-      expect(source).not.toContain("Status: CURRENT ACCEPTED");
-      expect(source).not.toContain("Classification: CURRENT_ACCEPTED");
+      expect(source).not.toContain("Status: CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED");
     }
 
-    expect(state()).toContain("I5 Research Execution Engine = DESIGN CANDIDATE / NOT CURRENT_ACCEPTED");
-    expect(state()).toContain("Run execution lifecycle, Result and Evidence are not established");
+    expect(state()).toContain("I5 RESEARCH EXECUTION ENGINE DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
+    expect(state()).toContain("e3c302aff00a73fa121051abaf839ae1cb9a2383");
+    expect(state()).toContain("35464456177");
+    expect(state()).toContain("Production Supabase mutation:");
+    expect(state()).toContain("`NOT PERFORMED`");
+    expect(state()).toContain("Production migration:");
+    expect(state()).toContain("`NONE`");
+    expect(state()).toContain("does not establish engine runtime implementation");
   });
 
   it("freezes the PURE_RESEARCH HISTORICAL_BACKTEST-only V1 profile and current engine tokens", () => {
