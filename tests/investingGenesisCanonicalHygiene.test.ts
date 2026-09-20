@@ -45,6 +45,7 @@ const requiredCurrentDocs = [
   "I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
+  "I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
 ] as const;
 
 const scannedRoots = ["AGENTS.md", "docs", "lib", "tests", "package.json", "tsconfig.json"] as const;
@@ -127,7 +128,32 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-1_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
+  });
+
+  it("records accepted RL-1 Evidence Object closure without closing later Research Lab slices", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md");
+    const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+    const row = tableRow(state, "RL-1 Evidence Object Scientific Closure / unnumbered");
+
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE / UNNUMBERED");
+    expect(contract).toContain("c47baa4e0d95b5f94b2e18d60bb2f69b3b9d229d");
+    expect(contract).toContain("35509460004 - SUCCESS");
+    expect(contract).toContain("35509460002 - SUCCESS");
+    expect(contract).toContain("Production migration application:");
+    expect(contract).toContain("NOT PERFORMED");
+    expect(hash).toContain("`SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT`");
+    expect(hash).toContain("current accepted through the unnumbered RL-1 Evidence Object Scientific Closure");
+    expect(hash).toContain("Generic/arbitrary raw Evidence hashing is not a sanctioned public Research");
+    expect(state).toContain("I5 RL-1 Evidence Object Scientific Closure (unnumbered)");
+    expect(state).toContain("I5 RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE");
+    expect(row).toContain("| NONE |");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toContain("I5 RESEARCH LAB = BACKEND_COMPLETE / PRODUCT_UI_DEFERRED`.");
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {
