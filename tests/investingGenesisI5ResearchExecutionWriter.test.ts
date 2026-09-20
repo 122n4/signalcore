@@ -144,6 +144,7 @@ function createStore() {
     events: [] as { runId: string; status: string; resultId: string | null; failure: string | null }[],
     artifacts: [] as { id: string; kind: string; descriptor: { artifactSchemaVersion: string; format: string; contentSha256: string; contentByteLength: string; recordCount: string }; bytes: Buffer }[],
     results: [] as { id: string; hash: string; payload: unknown; trace: string; valuation: string; metrics: string; benchmark: string | null }[],
+    evidence: [] as { id: string; hash: string; runInputId: string; resultId: string; kind: string; schema: string; format: string; contentSha256: string; contentByteLength: string; content: Buffer }[],
   };
 }
 
@@ -203,6 +204,40 @@ class FakeClient implements InvestingAuthorityTransactionClient {
       const found = this.store.results.find((r) => r.hash === values[1]);
       return { rows: found ? [{ result_identity_id: found.id, canonical_payload: found.payload } as Row] : [], rowCount: found ? 1 : 0 };
     }
+    if (sql.startsWith("insert into investing.research_evidence_objects_scientific_identities")) {
+      if (!this.store.evidence.some((entry) => entry.hash === values[12])) {
+        this.store.evidence.push({
+          id: values[0] as string,
+          hash: values[12] as string,
+          runInputId: values[4] as string,
+          resultId: values[5] as string,
+          kind: values[6] as string,
+          schema: values[7] as string,
+          format: values[8] as string,
+          contentSha256: values[9] as string,
+          contentByteLength: values[10] as string,
+          content: Buffer.from(values[11] as Buffer),
+        });
+      }
+      return { rows: [] as Row[], rowCount: 1 };
+    }
+    if (sql.includes("from investing.research_evidence_objects_scientific_identities")) {
+      const found = this.store.evidence.find((entry) => entry.hash === values[1]);
+      return {
+        rows: found ? [{
+          evidence_object_identity_id: found.id,
+          run_input_identity_id: found.runInputId,
+          result_identity_id: found.resultId,
+          evidence_kind: found.kind,
+          artifact_schema_version: found.schema,
+          format: found.format,
+          content_sha256: found.contentSha256,
+          content_byte_length: found.contentByteLength,
+          content: found.content,
+        } as Row] : [],
+        rowCount: found ? 1 : 0,
+      };
+    }
     throw new Error(`Unexpected query: ${text}`);
   }
   release() {}
@@ -218,6 +253,7 @@ function structuredCloneStore(store: Store): Store {
     events: structuredClone(store.events),
     artifacts: store.artifacts.map((a) => ({ ...structuredClone(a), bytes: Buffer.from(a.bytes) })),
     results: structuredClone(store.results),
+    evidence: store.evidence.map((entry) => ({ ...structuredClone(entry), content: Buffer.from(entry.content) })),
   };
 }
 
@@ -229,6 +265,7 @@ function copyStore(from: Store, to: Store) {
   to.events = from.events;
   to.artifacts = from.artifacts;
   to.results = from.results;
+  to.evidence = from.evidence;
 }
 
 function databaseFor(store: Store): InvestingAuthorityDatabase {
@@ -288,7 +325,10 @@ describe("I5 Research Execution writer", () => {
     expect(first.researchExecutionRunId).not.toBe(second.researchExecutionRunId);
     expect(first.resultHashHex).toBe(second.resultHashHex);
     expect(first.resultIdentityId).toBe(second.resultIdentityId);
+    expect(first.evidenceHashHex).toBe(second.evidenceHashHex);
+    expect(first.evidenceIdentityId).toBe(second.evidenceIdentityId);
     expect(store.results).toHaveLength(1);
+    expect(store.evidence).toHaveLength(1);
     const succeeded = store.events.filter((event) => event.status === "SUCCEEDED");
     expect(succeeded).toHaveLength(2);
     expect(store.artifacts).toHaveLength(4);
@@ -306,6 +346,7 @@ describe("I5 Research Execution writer", () => {
     expect(result).toEqual({ ok: false, code: "CONFLICT" });
     expect(store.artifacts).toHaveLength(0);
     expect(store.results).toHaveLength(1);
+    expect(store.evidence).toHaveLength(0);
     expect(store.events.filter((event) => event.status === "SUCCEEDED")).toHaveLength(0);
     expect(store.events.filter((event) => event.status === "FAILED")).toHaveLength(1);
   });
