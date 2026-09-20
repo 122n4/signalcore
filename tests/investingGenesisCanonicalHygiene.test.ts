@@ -43,6 +43,7 @@ const requiredCurrentDocs = [
   "I5_EXPERIMENT_BASELINE_ADMISSION_OWNER_CONTRACT_V1.md",
   "I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
+  "I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md",
 ] as const;
 
 const scannedRoots = ["AGENTS.md", "docs", "lib", "tests", "package.json", "tsconfig.json"] as const;
@@ -235,8 +236,12 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Historical/candidate branches do not become authority merely by existing");
     expect(state).toContain("REPOSITORY CONTROL PLANE = GREEN / TRUST_RECOVERY_CLOSED");
     expect(state).toContain("C. `REPOSITORY CONTROL PLANE REHEARSAL`");
-    expect(state).toContain("TRUSTED GENESIS BASELINE = NOT YET DECLARED");
-    expect(state).toContain("active `REPOSITORY CONTROL PLANE = RED`");
+    expect(state).toContain("TRUSTED GENESIS BASELINE = REHEARSAL_CANDIDATE / NOT CURRENT_ACCEPTED");
+    expect(state).toContain("TRUSTED_GENESIS_BASELINE_REHEARSAL_20260920.md");
+    expect(state).toContain("A. `EXECUTION REHEARSAL = PASS`");
+    expect(state).toContain("B. `CANONICAL INTEGRITY REHEARSAL = PASS`");
+    expect(state).toContain("C. `REPOSITORY CONTROL PLANE REHEARSAL = PASS`");
+    expect(state).not.toContain("TRUSTED GENESIS BASELINE = CURRENT_ACCEPTED");
     expect(state).not.toContain("REPOSITORY CONTROL PLANE = RED / REQUIRES SEPARATE OWNER-AUTHORIZED GATE");
     expect(state).not.toContain("Current canonical before A5 promotion");
     expect(state).not.toContain("A5 acceptance target, not yet canonical");
@@ -257,6 +262,32 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).not.toContain("Known dependency/security audit failures are");
     expect(state).not.toContain("sharp `<0.35.4`");
     expect(state).not.toContain("while that blocker remains");
+  });
+
+  it("records the full Trusted Genesis rehearsal candidate without premature acceptance", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const rehearsal = read("docs/investing-genesis/TRUSTED_GENESIS_BASELINE_REHEARSAL_20260920.md");
+    const executionClosure = read("docs/investing-genesis/I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md");
+
+    expect(executionClosure).toContain("CURRENT ACCEPTED OWNER CONTRACT - RESEARCH EXECUTION CLOSURE - UNNUMBERED");
+    expect(rehearsal).toContain("CANDIDATE REHEARSAL EVIDENCE - TRUSTED GENESIS BASELINE - NOT CURRENT_ACCEPTED");
+    expect(rehearsal).toContain("a93dbb9e3c7c548efa8066cc680f64e0d2b05403");
+    expect(rehearsal).toContain("5a70fa65c19ff8b1511711dad65ec90ef02b9a10");
+    expect(rehearsal).toContain("e1bfdd8a67429ff33b4d5d425fba4b68ce688446");
+    expect(rehearsal).toContain("35507108244 - SUCCESS");
+    expect(rehearsal).toContain("35506819586");
+    expect(rehearsal).toContain("A. EXECUTION REHEARSAL = PASS");
+    expect(rehearsal).toContain("B. CANONICAL INTEGRITY REHEARSAL = PASS");
+    expect(rehearsal).toContain("C. REPOSITORY CONTROL PLANE REHEARSAL = PASS");
+    expect(rehearsal).toContain("23141231");
+    expect(rehearsal).toContain("23141335");
+    expect(rehearsal).toContain("67393626c3bd3dbb7c18a4ff7235f9ea06f93e13");
+    expect(rehearsal).toContain("216bec5e09bfa81a771048f1d693210942f02368");
+    expect(rehearsal).toContain("Production mutation:");
+    expect(rehearsal).toContain("Production Supabase migration application:");
+    expect(rehearsal).toContain("`NOT PERFORMED`");
+    expect(state).toContain("TRUSTED GENESIS BASELINE = REHEARSAL_CANDIDATE / NOT CURRENT_ACCEPTED");
+    expect(state).not.toContain("TRUSTED GENESIS BASELINE = CURRENT_ACCEPTED");
   });
 
   it("does not invent A2/A4/A5 owner-contract groups", () => {
