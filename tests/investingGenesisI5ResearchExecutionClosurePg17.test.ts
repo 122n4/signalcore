@@ -282,8 +282,21 @@ function useRealPgAuthorityTransport() {
       const pgClient = await pool.connect();
       return {
         query: async <Row = Record<string, unknown>>(text: string, values: readonly unknown[] = []) => {
-          const result = await pgClient.query<Row>(text, values as unknown[]);
-          return { rows: result.rows, rowCount: result.rowCount };
+          try {
+            const result = await pgClient.query<Row>(text, values as unknown[]);
+            return { rows: result.rows, rowCount: result.rowCount };
+          } catch (error) {
+            const pgError = error as { message?: string; code?: string; constraint?: string; detail?: string };
+            console.error("PG17 real writer query failed", {
+              code: pgError.code,
+              constraint: pgError.constraint,
+              detail: pgError.detail,
+              message: pgError.message,
+              text,
+              values,
+            });
+            throw error;
+          }
         },
         release: (destroy?: boolean) => pgClient.release(destroy),
       };
