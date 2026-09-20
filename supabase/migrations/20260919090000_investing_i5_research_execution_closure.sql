@@ -17,6 +17,8 @@ begin
   end if;
 end $$;
 
+grant usage on schema extensions to investing_owner, investing_app;
+
 set local role investing_owner;
 
 create table if not exists investing.research_ir_scientific_identities (
