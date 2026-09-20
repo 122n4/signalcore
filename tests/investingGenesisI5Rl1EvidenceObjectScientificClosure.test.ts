@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildResearchExecutionEvidenceV1,
   canonicalEvidenceContentDescriptorV1,
+  canonicalEvidenceObjectPreimageV1,
   hashEvidenceObjectV1,
   hashDatasetSnapshotV1,
   hashRefV1,
@@ -10,6 +11,10 @@ import {
 } from "../lib/investing/research";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import { hashResultV1 } from "../lib/investing/research/resultArtifacts";
+import {
+  i5A2TestOnlyEvidenceObjectHashV1,
+  i5A2TestOnlyEvidenceObjectPreimageV1,
+} from "./support/investingI5A2TestOnlyVectors";
 
 const ref = (domain: Parameters<typeof hashRefV1>[0]["hashDomain"], hex: string) =>
   hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: domain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hex });
@@ -73,6 +78,23 @@ function fixture() {
 }
 
 describe("I5 RL-1 Evidence Object scientific identity", () => {
+  it("preserves the previously accepted A2 Evidence content-preimage bytes exactly", () => {
+    const descriptor = {
+      schemaVersion: "EVIDENCE_CONTENT_DESCRIPTOR_V1" as const,
+      kind: "ENGINE_LOG_SUMMARY",
+      artifactSchemaVersion: "ENGINE_LOG_SUMMARY_V1",
+      format: "text/plain; charset=utf-8",
+      contentByteLength: "4",
+    };
+    const content = Buffer.from("abc\n", "utf8");
+    expect(canonicalEvidenceObjectPreimageV1(descriptor, content).equals(
+      i5A2TestOnlyEvidenceObjectPreimageV1(descriptor, content),
+    )).toBe(true);
+    expect(hashEvidenceObjectV1(descriptor, content)).toBe(
+      i5A2TestOnlyEvidenceObjectHashV1(descriptor, content),
+    );
+  });
+
   it("binds Result, RunInput, datasets, metrics and artifacts into deterministic exact content", () => {
     const f = fixture();
     const first = buildResearchExecutionEvidenceV1({
