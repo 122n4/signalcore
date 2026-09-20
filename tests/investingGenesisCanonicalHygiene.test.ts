@@ -127,7 +127,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).not.toContain("I5 RESEARCH LAB = BACKEND_COMPLETE / PRODUCT_UI_DEFERRED`.");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-1_TO_RL-11 / PRODUCT_UI_DEFERRED");
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {
