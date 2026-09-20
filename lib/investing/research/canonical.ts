@@ -379,6 +379,58 @@ export function hashRunInputV1(input: RunInputHashPayloadV1): CanonicalSha256Hex
   return sha256HexV1(runInputPreimageV1(input));
 }
 
+export function canonicalEvidenceContentDescriptorV1(
+  descriptor: EvidenceContentDescriptorV1,
+  actualContentByteLength: number,
+): CanonicalJsonValue {
+  assertClosedPlainObject(
+    descriptor,
+    new Set(["schemaVersion", "kind", "artifactSchemaVersion", "format", "contentByteLength"]),
+  );
+  if (descriptor.schemaVersion !== "EVIDENCE_CONTENT_DESCRIPTOR_V1") {
+    throw new Error("invalid Evidence descriptor schemaVersion");
+  }
+  if (!Number.isSafeInteger(actualContentByteLength) || actualContentByteLength < 0) {
+    throw new Error("invalid Evidence actual content byte length");
+  }
+  const contentByteLength = canonicalIntegerV1(descriptor.contentByteLength, {
+    min: "0",
+    allowNegative: false,
+  });
+  if (contentByteLength !== String(actualContentByteLength)) {
+    throw new Error("Evidence contentByteLength mismatch");
+  }
+  return {
+    schemaVersion: descriptor.schemaVersion,
+    kind: canonicalRunInputAsciiIdentifierV1(descriptor.kind, "Evidence kind"),
+    artifactSchemaVersion: immutableBehaviorTokenV1(descriptor.artifactSchemaVersion),
+    format: canonicalTextV1(descriptor.format, { minBytes: 1, maxBytes: 128 }),
+    contentByteLength,
+  };
+}
+
+export function canonicalEvidenceObjectPreimageV1(
+  descriptor: EvidenceContentDescriptorV1,
+  contentBytes: Uint8Array,
+): Buffer {
+  const bytes = Buffer.from(contentBytes);
+  const descriptorPayload = canonicalEvidenceContentDescriptorV1(descriptor, bytes.byteLength);
+  return Buffer.concat([
+    Buffer.from("SYNTRAKE:EVIDENCE_OBJECT:V1\n", "utf8"),
+    i5ResearchInternalCanonicalJsonBytesV1(descriptorPayload),
+    Buffer.from("\n", "utf8"),
+    bytes,
+  ]);
+}
+
+export function hashEvidenceObjectV1(
+  descriptor: EvidenceContentDescriptorV1,
+  contentBytes: Uint8Array,
+): CanonicalSha256HexV1 {
+  assertHashDomainAdmittedForHashingV1("SYNTRAKE:EVIDENCE_OBJECT:V1");
+  return sha256HexV1(canonicalEvidenceObjectPreimageV1(descriptor, contentBytes));
+}
+
 function runInputPreimageV1(input: RunInputHashPayloadV1): Buffer {
   return Buffer.concat([Buffer.from("SYNTRAKE:RUN_INPUT:V1\n", "utf8"), canonicalRunInputBytesV1(input)]);
 }
