@@ -388,6 +388,20 @@ async function persistIdentity(
 ) {
   const extraColumns = identity.metricRegistryVersion ? ", metric_registry_version" : identity.engineVersion ? ", engine_compatibility_version" : "";
   const extraValues = identity.metricRegistryVersion ? ", $10" : identity.engineVersion ? ", $10" : "";
+  const values = [
+    randomUUID(),
+    input.authorizedContext.tenantId,
+    input.authorizedContext.principalId,
+    input.authorizedContext.tenantMembershipId,
+    operation,
+    capability,
+    identity.domain,
+    identity.hashHex,
+    identity.payloadJson,
+  ];
+  if (identity.metricRegistryVersion !== undefined || identity.engineVersion !== undefined) {
+    values.push(identity.metricRegistryVersion ?? identity.engineVersion!);
+  }
   await client.query(
     [
       `insert into investing.${table} (`,
@@ -396,18 +410,7 @@ async function persistIdentity(
       `) values ($1,$2,$3,$4,$5,$6,'TENANT_SCOPE','PURE_RESEARCH','SHA-256',$7,'SYNTRAKE_SHA256_V1',$8,$9::jsonb${extraValues})`,
       "on conflict do nothing",
     ].join(" "),
-    [
-      randomUUID(),
-      input.authorizedContext.tenantId,
-      input.authorizedContext.principalId,
-      input.authorizedContext.tenantMembershipId,
-      operation,
-      capability,
-      identity.domain,
-      identity.hashHex,
-      identity.payloadJson,
-      identity.metricRegistryVersion ?? identity.engineVersion,
-    ],
+    values,
   );
   return verifyExistingIdentity(client, table, input, identity);
 }
