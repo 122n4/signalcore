@@ -418,8 +418,12 @@ function executableFixture(changed = false) {
   return { aaa, bbb, researchIr, datasetSnapshot, runInput, runInputHash: hashRunInputV1(runInput), datasetSeries: [aaa.series, bbb.series], materials: [aaa.verified, bbb.verified] };
 }
 
-async function seedExecutableRunInput(runInputIdentityId = ids.executableRunInputIdentity, changed = false) {
+async function seedExecutableRunInput(runInputIdentityId = ids.executableRunInputIdentity, changed = false, deterministicSeed?: string) {
   const f = executableFixture(changed);
+  if (deterministicSeed) {
+    f.runInput = { ...f.runInput, deterministicSeed };
+    f.runInputHash = hashRunInputV1(f.runInput);
+  }
   for (const series of f.datasetSeries) {
     await client.query("insert into investing.dataset_series_scientific_identities (dataset_series_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SERIES:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, hashDatasetSeriesV1(series), JSON.stringify(series)]);
   }
@@ -732,7 +736,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const failedConflictRun = await client.query<{ count: string }>("select count(*) from investing.research_execution_run_events e join investing.research_execution_runs r on r.research_execution_run_id = e.research_execution_run_id where r.run_input_identity_id = $1 and e.run_status = 'FAILED' and e.failure_reason_code = 'CONFLICT'", [ids.conflictRunInputIdentity]);
     expect(failedConflictRun.rows[0]!.count).toBe("1");
 
-    const evidenceConflictExecutable = await seedExecutableRunInput(ids.evidenceConflictRunInputIdentity, true);
+    const evidenceConflictExecutable = await seedExecutableRunInput(ids.evidenceConflictRunInputIdentity, true, "PG17_EVIDENCE_CONFLICT_SEED");
     const evidenceConflictPure = executeHistoricalBacktestV1({
       runInput: evidenceConflictExecutable.runInput,
       runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", evidenceConflictExecutable.runInputHash as never),
