@@ -11,9 +11,9 @@ grant usage on schema extensions to investing_owner, investing_app;
 
 set local role investing_owner;
 
-create unique index if not exists research_results_execution_authority_key
+create unique index if not exists research_results_evidence_binding_key
   on investing.research_results_scientific_identities
-  (result_identity_id, tenant_id, principal_id, tenant_membership_id);
+  (result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id);
 
 create table investing.research_evidence_objects_scientific_identities (
   evidence_object_identity_id uuid primary key,
@@ -45,10 +45,10 @@ create table investing.research_evidence_objects_scientific_identities (
     foreign key (run_input_identity_id, tenant_id, principal_id, tenant_membership_id)
     references investing.run_inputs_scientific_identities
       (run_input_identity_id, tenant_id, principal_id, tenant_membership_id),
-  constraint research_evidence_objects_result_authority_fk
-    foreign key (result_identity_id, tenant_id, principal_id, tenant_membership_id)
+  constraint research_evidence_objects_result_run_input_authority_fk
+    foreign key (result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id)
     references investing.research_results_scientific_identities
-      (result_identity_id, tenant_id, principal_id, tenant_membership_id),
+      (result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id),
   constraint research_evidence_objects_scope_shape_check
     check (account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'),
   constraint research_evidence_objects_content_integrity_check
