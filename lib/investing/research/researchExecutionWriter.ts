@@ -40,6 +40,7 @@ import {
   type ResearchArtifactKindV1,
   type ResultHashPayloadV1,
 } from "./resultArtifacts";
+import { constructResearchExecutionEvidenceObjectV1 } from "./evidenceObject";
 
 export type ExecuteResearchRunInputV1 = Readonly<{
   authorizedContext: AuthorizedResearchExecutionContext;
@@ -249,11 +250,13 @@ async function finalizeSuccess(
       ].join(" "),
       [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, prepared.runInputIdentityId, trace.artifactId, valuation.artifactId, metrics.artifactId, benchmark?.artifactId ?? null, execution.resultPayload.engineId, execution.resultPayload.engineVersion, hashHex, JSON.stringify(payload)],
     );
-    const result = await one<{ result_identity_id: string; canonical_payload: unknown }>(client, [
-      "select result_identity_id, canonical_payload from investing.research_results_scientific_identities",
+    const result = await one<{ result_identity_id: string; run_input_identity_id: string; canonical_payload: unknown }>(client, [
+      "select result_identity_id, run_input_identity_id, canonical_payload from investing.research_results_scientific_identities",
       "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = 'SYNTRAKE:RESULT:V1' and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $2",
     ].join(" "), [context.tenantId, hashHex]);
     if (!result || !canonicalJsonEquals(result.canonical_payload as CanonicalJsonValue, payload)) throw new HandledExecutionAbort("CONFLICT");
+    if (result.run_input_identity_id !== prepared.runInputIdentityId) throw new HandledExecutionAbort("CONFLICT");
+    await persistEvidence(client, context, prepared, result.result_identity_id, execution.resultPayload, hashHex);
     await insertRunEvent(client, context, runId, 3, "SUCCEEDED", result.result_identity_id, null);
     return { ok: true as const, researchExecutionRunId: runId, resultHashHex: hashHex, resultIdentityId: result.result_identity_id };
   });
@@ -291,6 +294,81 @@ async function persistArtifact(client: InvestingAuthorityTransactionClient, cont
   ].join(" "), [context.tenantId, kind, descriptor.artifactSchemaVersion, descriptor.format, descriptor.contentSha256, descriptor.contentByteLength, descriptor.recordCount]);
   if (!row) throw new Error("ARTIFACT_CONFLICT");
   return { artifactId: row.artifact_id, descriptor };
+}
+
+async function persistEvidence(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchExecutionContext,
+  prepared: PreparedExecution,
+  resultIdentityId: string,
+  resultPayload: ResultHashPayloadV1,
+  resultHashHex: string,
+) {
+  const evidence = constructResearchExecutionEvidenceObjectV1({
+    expectedRunInput: prepared.runInputHash,
+    expectedResult: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESULT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: resultHashHex }),
+    runInputPayload: prepared.runInput,
+    resultPayload,
+    datasetSnapshotPayload: prepared.datasetSnapshot,
+    datasetSeriesPayloads: prepared.datasetSeries,
+  });
+  await client.query(
+    [
+      "insert into investing.research_evidence_objects_scientific_identities (evidence_identity_id, tenant_id, account_id, principal_id, tenant_membership_id,",
+      "run_input_identity_id, result_identity_id, descriptor_schema_version, descriptor_kind, descriptor_artifact_schema_version, descriptor_format,",
+      "content, content_sha256, content_byte_length, hash_algorithm, hash_domain, hash_version, hash_hex, operation, capability, operation_scope, source_context)",
+      "values ($1,$2,null,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::bigint,$14,$15,$16,$17,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH')",
+      "on conflict do nothing",
+    ].join(" "),
+    [
+      randomUUID(),
+      context.tenantId,
+      context.principalId,
+      context.tenantMembershipId,
+      prepared.runInputIdentityId,
+      resultIdentityId,
+      evidence.descriptor.schemaVersion,
+      evidence.descriptor.kind,
+      evidence.descriptor.artifactSchemaVersion,
+      evidence.descriptor.format,
+      evidence.contentBytes,
+      evidence.contentSha256,
+      evidence.descriptor.contentByteLength,
+      evidence.evidenceHash.hashAlgorithm,
+      evidence.evidenceHash.hashDomain,
+      evidence.evidenceHash.hashVersion,
+      evidence.evidenceHash.hashHex,
+    ],
+  );
+  const row = await one<{
+    result_identity_id: string;
+    run_input_identity_id: string;
+    descriptor_schema_version: string;
+    descriptor_kind: string;
+    descriptor_artifact_schema_version: string;
+    descriptor_format: string;
+    content: Buffer;
+    content_sha256: string;
+    content_byte_length: string;
+  }>(client, [
+    "select result_identity_id, run_input_identity_id, descriptor_schema_version, descriptor_kind, descriptor_artifact_schema_version, descriptor_format,",
+    "content, content_sha256, content_byte_length::text from investing.research_evidence_objects_scientific_identities",
+    "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = 'SYNTRAKE:EVIDENCE_OBJECT:V1' and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $2",
+  ].join(" "), [context.tenantId, evidence.evidenceHash.hashHex]);
+  if (
+    !row ||
+    row.result_identity_id !== resultIdentityId ||
+    row.run_input_identity_id !== prepared.runInputIdentityId ||
+    row.descriptor_schema_version !== evidence.descriptor.schemaVersion ||
+    row.descriptor_kind !== evidence.descriptor.kind ||
+    row.descriptor_artifact_schema_version !== evidence.descriptor.artifactSchemaVersion ||
+    row.descriptor_format !== evidence.descriptor.format ||
+    row.content_sha256 !== evidence.contentSha256 ||
+    row.content_byte_length !== evidence.descriptor.contentByteLength ||
+    !Buffer.from(row.content).equals(evidence.contentBytes)
+  ) {
+    throw new HandledExecutionAbort("CONFLICT");
+  }
 }
 
 async function insertRunEvent(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchExecutionContext, runId: string, sequence: 1 | 2 | 3, status: "REGISTERED" | "STARTED" | "SUCCEEDED" | "FAILED", resultIdentityId: string | null, failureCode: string | null) {

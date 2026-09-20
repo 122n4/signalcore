@@ -143,7 +143,8 @@ function createStore() {
     runs: [] as { id: string }[],
     events: [] as { runId: string; status: string; resultId: string | null; failure: string | null }[],
     artifacts: [] as { id: string; kind: string; descriptor: { artifactSchemaVersion: string; format: string; contentSha256: string; contentByteLength: string; recordCount: string }; bytes: Buffer }[],
-    results: [] as { id: string; hash: string; payload: unknown; trace: string; valuation: string; metrics: string; benchmark: string | null }[],
+    results: [] as { id: string; hash: string; payload: unknown; runInput: string; trace: string; valuation: string; metrics: string; benchmark: string | null }[],
+    evidences: [] as { id: string; hash: string; runInput: string; result: string; descriptor: { schemaVersion: string; kind: string; artifactSchemaVersion: string; format: string }; content: Buffer; contentSha256: string; contentByteLength: string }[],
   };
 }
 
@@ -196,12 +197,41 @@ class FakeClient implements InvestingAuthorityTransactionClient {
       return { rows: found ? [{ artifact_id: found.id, artifact_schema_version: found.descriptor.artifactSchemaVersion, format: found.descriptor.format, content_sha256: found.descriptor.contentSha256, content_byte_length: found.descriptor.contentByteLength, record_count: found.descriptor.recordCount } as Row] : [], rowCount: found ? 1 : 0 };
     }
     if (sql.startsWith("insert into investing.research_results_scientific_identities")) {
-      if (!this.store.results.some((r) => r.hash === values[11])) this.store.results.push({ id: values[0] as string, hash: values[11] as string, payload: JSON.parse(values[12] as string), trace: values[5] as string, valuation: values[6] as string, metrics: values[7] as string, benchmark: values[8] as string | null });
+      if (!this.store.results.some((r) => r.hash === values[11])) this.store.results.push({ id: values[0] as string, hash: values[11] as string, payload: JSON.parse(values[12] as string), runInput: values[4] as string, trace: values[5] as string, valuation: values[6] as string, metrics: values[7] as string, benchmark: values[8] as string | null });
       return { rows: [] as Row[], rowCount: 1 };
     }
     if (sql.includes("from investing.research_results_scientific_identities")) {
       const found = this.store.results.find((r) => r.hash === values[1]);
-      return { rows: found ? [{ result_identity_id: found.id, canonical_payload: found.payload } as Row] : [], rowCount: found ? 1 : 0 };
+      return { rows: found ? [{ result_identity_id: found.id, run_input_identity_id: found.runInput, canonical_payload: found.payload } as Row] : [], rowCount: found ? 1 : 0 };
+    }
+    if (sql.startsWith("insert into investing.research_evidence_objects_scientific_identities")) {
+      if (!this.store.evidences.some((e) => e.hash === values[16])) {
+        this.store.evidences.push({
+          id: values[0] as string,
+          hash: values[16] as string,
+          runInput: values[4] as string,
+          result: values[5] as string,
+          descriptor: { schemaVersion: values[6] as string, kind: values[7] as string, artifactSchemaVersion: values[8] as string, format: values[9] as string },
+          content: Buffer.from(values[10] as Buffer),
+          contentSha256: values[11] as string,
+          contentByteLength: values[12] as string,
+        });
+      }
+      return { rows: [] as Row[], rowCount: 1 };
+    }
+    if (sql.includes("from investing.research_evidence_objects_scientific_identities")) {
+      const found = this.store.evidences.find((e) => e.hash === values[1]);
+      return { rows: found ? [{
+        result_identity_id: found.result,
+        run_input_identity_id: found.runInput,
+        descriptor_schema_version: found.descriptor.schemaVersion,
+        descriptor_kind: found.descriptor.kind,
+        descriptor_artifact_schema_version: found.descriptor.artifactSchemaVersion,
+        descriptor_format: found.descriptor.format,
+        content: found.content,
+        content_sha256: found.contentSha256,
+        content_byte_length: found.contentByteLength,
+      } as Row] : [], rowCount: found ? 1 : 0 };
     }
     throw new Error(`Unexpected query: ${text}`);
   }
@@ -218,6 +248,7 @@ function structuredCloneStore(store: Store): Store {
     events: structuredClone(store.events),
     artifacts: store.artifacts.map((a) => ({ ...structuredClone(a), bytes: Buffer.from(a.bytes) })),
     results: structuredClone(store.results),
+    evidences: store.evidences.map((e) => ({ ...structuredClone(e), content: Buffer.from(e.content) })),
   };
 }
 
@@ -229,6 +260,7 @@ function copyStore(from: Store, to: Store) {
   to.events = from.events;
   to.artifacts = from.artifacts;
   to.results = from.results;
+  to.evidences = from.evidences;
 }
 
 function databaseFor(store: Store): InvestingAuthorityDatabase {
@@ -289,6 +321,7 @@ describe("I5 Research Execution writer", () => {
     expect(first.resultHashHex).toBe(second.resultHashHex);
     expect(first.resultIdentityId).toBe(second.resultIdentityId);
     expect(store.results).toHaveLength(1);
+    expect(store.evidences).toHaveLength(1);
     const succeeded = store.events.filter((event) => event.status === "SUCCEEDED");
     expect(succeeded).toHaveLength(2);
     expect(store.artifacts).toHaveLength(4);
@@ -300,12 +333,13 @@ describe("I5 Research Execution writer", () => {
     const expected = executeHistoricalBacktestV1({ runInput: store.f.runInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", store.f.runInputHash), researchIr: store.f.researchIr, datasetSeries: store.f.datasetSeries, executionConfig, metricRequestSet, materials: [store.f.aaa.verified, store.f.bbb.verified] });
     expect(expected.ok).toBe(true);
     if (!expected.ok) return;
-    store.results.push({ id: "conflicting-result", hash: hashResultV1(expected.resultPayload), payload: { schemaVersion: "RESULT_HASH_PAYLOAD_V1", corrupted: true }, trace: "x", valuation: "y", metrics: "z", benchmark: null });
+    store.results.push({ id: "conflicting-result", hash: hashResultV1(expected.resultPayload), payload: { schemaVersion: "RESULT_HASH_PAYLOAD_V1", corrupted: true }, runInput: ids.runInput, trace: "x", valuation: "y", metrics: "z", benchmark: null });
     const context = await authorizedContext(store);
     const result = await executeResearchRunV1({ authorizedContext: context, datasetMaterialProvider: provider(store) }, databaseFor(store));
     expect(result).toEqual({ ok: false, code: "CONFLICT" });
     expect(store.artifacts).toHaveLength(0);
     expect(store.results).toHaveLength(1);
+    expect(store.evidences).toHaveLength(0);
     expect(store.events.filter((event) => event.status === "SUCCEEDED")).toHaveLength(0);
     expect(store.events.filter((event) => event.status === "FAILED")).toHaveLength(1);
   });

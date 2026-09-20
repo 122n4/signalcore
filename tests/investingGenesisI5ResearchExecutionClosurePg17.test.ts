@@ -41,6 +41,7 @@ const maybeDescribe = connectionString ? describe : describe.skip;
 const repairMigration = "supabase/migrations/20260823000000_reconcile_zero_genesis_journal_residual.sql";
 const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const executionClosureMigration = "supabase/migrations/20260919090000_investing_i5_research_execution_closure.sql";
+const evidenceClosureMigration = "supabase/migrations/20260920090000_investing_i5_rl1_evidence_object_scientific_closure.sql";
 const migrations = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
   "supabase/migrations/20260825123000_investing_genesis_i2_authorized_context.sql",
@@ -57,6 +58,7 @@ const migrations = [
   "supabase/migrations/20260917183000_investing_i5_experiment_scientific_closure.sql",
   "supabase/migrations/20260918170000_investing_i5_dataset_run_scientific_closure.sql",
   executionClosureMigration,
+  evidenceClosureMigration,
 ] as const;
 
 const ids = {
@@ -467,6 +469,12 @@ describe("I5 Research Execution Closure PG17 static contract", () => {
     expect(sql).toContain("research_execution_run_events_sequence_status_check");
     expect(sql).toContain("extensions.digest(content, 'sha256')");
     expect(sql).toContain("research_execution_read_run_inputs");
+    const evidenceSql = readSql(evidenceClosureMigration);
+    expect(evidenceSql).toContain("research_evidence_objects_scientific_identities");
+    expect(evidenceSql).toContain("research_evidence_result_run_input_fk");
+    expect(evidenceSql).toContain("extensions.digest(content, 'sha256')");
+    expect(evidenceSql).toContain("before update or delete");
+    expect(evidenceSql).toContain("grant select, insert on investing.research_evidence_objects_scientific_identities to investing_app");
   });
 });
 
@@ -490,7 +498,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const version = await client.query<{ server_version: string }>("show server_version");
     expect(version.rows[0]!.server_version).toMatch(/^17\./);
 
-    const tables = ["research_ir_scientific_identities", "research_execution_runs", "research_execution_run_events", "research_result_artifacts", "research_results_scientific_identities"];
+    const tables = ["research_ir_scientific_identities", "research_execution_runs", "research_execution_run_events", "research_result_artifacts", "research_results_scientific_identities", "research_evidence_objects_scientific_identities"];
     const rls = await client.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
       "select relrowsecurity, relforcerowsecurity from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'investing' and c.relname = any($1::text[])",
       [tables],
@@ -638,6 +646,19 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
     expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
     expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
+    const evidenceReuse = await client.query<{ count: string; content_ok: boolean }>(
+      "select count(*)::text, bool_and(octet_length(content) = content_byte_length and upper(encode(extensions.digest(content, 'sha256'), 'hex')) = content_sha256) as content_ok from investing.research_evidence_objects_scientific_identities where result_identity_id = $1",
+      [firstExecution.resultIdentityId],
+    );
+    expect(evidenceReuse.rows[0]).toEqual({ count: "1", content_ok: true });
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await client.query("update investing.research_evidence_objects_scientific_identities set descriptor_kind = descriptor_kind where result_identity_id = $1", [firstExecution.resultIdentityId]);
+    }, /append-only|permission denied|row-level security/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await client.query("delete from investing.research_evidence_objects_scientific_identities where result_identity_id = $1", [firstExecution.resultIdentityId]);
+    }, /append-only|permission denied|row-level security/i);
     const reusedArtifactRows = await client.query<{ count: string }>(
       "select count(*) from investing.research_result_artifacts where artifact_id in (select execution_trace_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select valuation_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select metric_result_set_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select benchmark_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 and benchmark_series_artifact_id is not null)",
       [firstExecution.resultIdentityId],
