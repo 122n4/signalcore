@@ -95,6 +95,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Dataset & Run Scientific Closure (unnumbered) | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Execution Engine design freeze (unnumbered) | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`, `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md`, `I5_RESEARCH_METRIC_REGISTRY_V1.md` |
 | I5 Research Execution Closure (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-1 Evidence Object Scientific Closure (unnumbered) | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -159,8 +160,22 @@ freeze/master evidence still relies on its narrow classifications.
   append-only operational Run lifecycle for the narrow accepted
   PURE_RESEARCH/HISTORICAL_BACKTEST profile. It accepts
   `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT` for its exact Result owner payload
-  only; it does not claim Evidence, Paper, broker, Live, Capital Kernel, UI, an
-  A-number or production migration application.
+  only. Its former limitation that Evidence remains outside acceptance is now
+  superseded only by accepted RL-1 Evidence Object Scientific Closure; Paper,
+  broker, Live, Capital Kernel, UI, an A-number and production migration
+  application remain outside Research Execution Closure.
+- I5 RL-1 Evidence Object Scientific Closure:
+  `CURRENT_ACCEPTED / UNNUMBERED`. This accepted closure establishes
+  `SYNTRAKE:EVIDENCE_OBJECT:V1 = CONTENT_PREIMAGE_EXACT` for the owner-specific
+  `RESEARCH_EXECUTION_EVIDENCE_V1` descriptor/content boundary only. RL-1 binds
+  exact Result, RunInput, DatasetSnapshot, DatasetSeries, metric, config,
+  engine and artifact identities; creates deterministic exact Evidence content
+  bytes; persists append-only durable scientific Evidence; enforces exact
+  reuse/conflict behavior; finalizes atomically Evidence-before-SUCCEEDED;
+  enforces content SHA-256 and byte-length integrity; applies RLS and FORCE RLS;
+  fails closed across tenant/principal/membership/scope/source/account context;
+  executes through real `investing_app`; and is rehearsed on PostgreSQL 17.11.
+  Generic arbitrary Evidence hashing is not a public Research authority surface.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -248,7 +263,8 @@ not become Investing Genesis authority merely because they use similar words.
   fail-closed. At the time this slice was accepted, Run execution lifecycle,
   Result and Evidence were not established; Run execution lifecycle and Result
   are now narrowly superseded by the accepted I5 Research Execution Closure.
-  Evidence remains outside acceptance. Production Supabase has not received the
+  The former Evidence limitation is now superseded by accepted RL-1 Evidence
+  Object Scientific Closure. Production Supabase has not received the
   Dataset/Run closure migration.
 - I5 Research Execution Engine Design Freeze: current accepted, unnumbered.
   This acceptance freezes deterministic Research Lab execution, executable
@@ -276,8 +292,26 @@ not become Investing Genesis authority merely because they use similar words.
   Live, UI or USER_PORTFOLIO/account execution. Production Supabase migration
   application remains `NOT PERFORMED`.
 
+- I5 RL-1 Evidence Object Scientific Closure: current accepted, unnumbered.
+  This acceptance establishes the first durable scientific Evidence Object for
+  Research Execution using `SYNTRAKE:EVIDENCE_OBJECT:V1 =
+  CONTENT_PREIMAGE_EXACT` and owner-specific `RESEARCH_EXECUTION_EVIDENCE_V1`.
+  It binds exact Result, RunInput, DatasetSnapshot, DatasetSeries, metric,
+  config, engine and artifact identities; deterministic exact Evidence content
+  bytes; append-only durable Evidence persistence; exact reuse/conflict
+  behavior; atomic Evidence-before-SUCCEEDED finalization; content SHA-256 and
+  byte-length integrity; RLS and FORCE RLS; complete
+  tenant/principal/membership/scope/source/account fail-closed authority; real
+  `investing_app` execution; and PostgreSQL 17.11 rehearsal. Generic arbitrary
+  Evidence hashing is not a public Research authority surface. It does not
+  establish Passport completion, Evidence Ledger product surface, RL-2 or later
+  Research Lab closure, Paper, broker, Capital Kernel, Live, UI or
+  USER_PORTFOLIO/account execution. Production Supabase migration application
+  remains `NOT PERFORMED`.
+
 - I5 Research Lab Completion Program: current accepted, unnumbered. This
-  acceptance defines RL-1 through RL-11 as the finite backend completion bar,
+  acceptance defines RL-2 through RL-11 as the remaining finite backend
+  completion bar after accepted RL-1,
   preserves the immutable `ENGINE_V20260918` historical semantics, keeps
   Monte Carlo/scenario/stress/allocation/suitability in I6, Paper in I7,
   product API in I9 and product UI deferred. No RL implementation is accepted
@@ -308,7 +342,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-1_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -374,6 +408,51 @@ I5 Research Execution Closure acceptance evidence:
 
 `I5 RESEARCH EXECUTION CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
 
+I5 RL-1 Evidence Object Scientific Closure acceptance evidence:
+
+- Canonical predecessor:
+  `f723a1dfa75007799c296eeb4ead74f994557458`.
+- Final independently audited technical candidate:
+  `1f7ab6ec80b7de1c47e68958ddd309dbb53f1f8c`.
+- PR:
+  `#81`.
+- CI PR run:
+  `35518056377 - SUCCESS`.
+- CI run number:
+  `1012`.
+- Full suite:
+  `213 passed / 17 skipped files`.
+- Full suite tests:
+  `1165 passed / 36 skipped tests`.
+- Lint:
+  `PASS`.
+- TypeScript:
+  `PASS`.
+- Production build:
+  `PASS`.
+- Dependency audit:
+  `0 vulnerabilities`.
+- PG17 run:
+  `35518056379 - SUCCESS`.
+- PG17 job:
+  `106097238317 - SUCCESS`.
+- PostgreSQL exact version:
+  `17.11 (Debian 17.11-1.pgdg13+2)`.
+- Dedicated Research Execution + RL-1 PG17:
+  `2/2 PASS`.
+- Vercel:
+  `SUCCESS`.
+- Production Supabase mutation:
+  `NONE`.
+- Production migration application:
+  `NOT PERFORMED`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Independent auditor verdict:
+  `PASS`.
+
+`I5 RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
+
 ## I5 Runtime Presence And Trust State
 
 Implementation presence is not the same as formal trust recovery acceptance.
@@ -395,6 +474,14 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Dataset & Run Scientific Closure / unnumbered | YES | YES | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + PostgreSQL 17 functional rehearsal | CURRENT ACCEPTED OWNER CONTRACT - DATASET & RUN SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
 | Research Execution Engine design freeze / unnumbered | NO | YES | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md` + `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md` + `I5_RESEARCH_METRIC_REGISTRY_V1.md` + contract tests + CI | CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH EXECUTION ENGINE FREEZE - UNNUMBERED | CURRENT_ACCEPTED / DESIGN_FREEZE | NONE |
 | Research Execution Closure / unnumbered | YES | YES | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RESEARCH EXECUTION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RESEARCH_EXECUTION_CLOSURE | NONE |
+| RL-1 Evidence Object Scientific Closure / unnumbered | YES | YES | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + Evidence runtime + writer finalization + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE | NONE |
+
+RL-1 runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- state: `CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE`.
+- permanent A-number: `NONE`.
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with
@@ -684,6 +771,9 @@ Hash states now:
 
 `SYNTRAKE:RESULT:V1`
 = `OWNER_PAYLOAD_EXACT`
+
+`SYNTRAKE:EVIDENCE_OBJECT:V1`
+= `CONTENT_PREIMAGE_EXACT`
 
 `SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1`
 = `DECLARED_BUT_HASHING_DISABLED`

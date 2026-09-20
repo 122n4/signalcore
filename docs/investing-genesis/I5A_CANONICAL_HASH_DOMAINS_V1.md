@@ -82,10 +82,28 @@ domains remain disabled.
 
 ## Evidence Object Boundary
 
-`SYNTRAKE:EVIDENCE_OBJECT:V1` is content-preimage exact only for the accepted
-descriptor/content byte boundary. Storage integrity, provenance and record
-identity are separate from scientific content identity unless an owner contract
-binds them.
+`SYNTRAKE:EVIDENCE_OBJECT:V1` remains `CONTENT_PREIMAGE_EXACT`.
+
+It is current accepted through RL-1 Evidence Object Scientific Closure only for
+the exact owner-specific `RESEARCH_EXECUTION_EVIDENCE_V1` descriptor/content
+boundary:
+
+```text
+"SYNTRAKE:EVIDENCE_OBJECT:V1\n"
++ canonical_json(EVIDENCE_CONTENT_DESCRIPTOR_V1)
++ "\n"
++ exact_content_bytes
+```
+
+Accepted scientific Evidence binds the exact accepted scientific identities
+established by RL-1: Result, RunInput, DatasetSnapshot, DatasetSeries,
+MetricRequestSet, ExecutionConfig, engine identity/version and result artifact
+descriptors. Generic or arbitrary raw Evidence hashing is not a sanctioned
+public Research API or authority surface.
+
+Scientific Evidence identity remains separate from storage SHA-256/length
+integrity, operational UUID, tenant/principal/membership provenance, timestamps
+and Run UUID.
 
 ## Material Request Identity
 
@@ -114,6 +132,10 @@ Dataset & Run Scientific Closure owner contract.
 Execution Closure as `OWNER_PAYLOAD_EXACT` for the exact accepted Result owner
 payload. Arbitrary raw Result objects remain outside the public hashing
 boundary.
+
+`SYNTRAKE:EVIDENCE_OBJECT:V1` is current accepted through RL-1 only as
+`CONTENT_PREIMAGE_EXACT` for owner-specific `RESEARCH_EXECUTION_EVIDENCE_V1`.
+Arbitrary raw Evidence objects remain outside the public hashing boundary.
 
 No ResearchTemplate or account-context hashing domain is activated by this
 contract unless the runtime already admits it with an exact owner payload.

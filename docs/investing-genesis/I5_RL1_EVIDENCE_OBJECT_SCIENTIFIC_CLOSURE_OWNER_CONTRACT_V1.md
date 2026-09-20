@@ -1,6 +1,8 @@
 # I5 RL-1 Evidence Object Scientific Closure Owner Contract V1
 
-Status: IMPLEMENTED_CANDIDATE / NOT CURRENT_ACCEPTED / UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED
+
+Classification: CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE / UNNUMBERED
 
 ## Purpose
 
@@ -133,3 +135,48 @@ The table uses RLS and FORCE RLS. Runtime receives only `SELECT` and `INSERT`. P
 ## Scope
 
 RL-1 does not modify `ENGINE_V20260918` behavior and does not implement Evidence Ledger, Passport, OOS, walk-forward, Engine V2, Metric Registry V2, robustness/overfit, scientific promotion, Blind Truth, orchestration closure, product API, UI, Paper, broker, Capital Kernel, Live, user portfolio execution, Monte Carlo, scenario/stress, allocation, suitability, or Trading research changes.
+
+## Accepted Provenance
+
+- Canonical predecessor:
+  `f723a1dfa75007799c296eeb4ead74f994557458`.
+- Final independently audited technical candidate:
+  `1f7ab6ec80b7de1c47e68958ddd309dbb53f1f8c`.
+- PR:
+  `#81`.
+- CI PR run:
+  `35518056377 - SUCCESS`.
+- CI run number:
+  `1012`.
+- Full suite:
+  `213 passed / 17 skipped files`.
+- Full suite tests:
+  `1165 passed / 36 skipped tests`.
+- Lint:
+  `PASS`.
+- TypeScript:
+  `PASS`.
+- Production build:
+  `PASS`.
+- Dependency audit:
+  `0 vulnerabilities`.
+- PG17 run:
+  `35518056379 - SUCCESS`.
+- PG17 job:
+  `106097238317 - SUCCESS`.
+- PostgreSQL exact version:
+  `17.11 (Debian 17.11-1.pgdg13+2)`.
+- Dedicated Research Execution + RL-1 PG17:
+  `2/2 PASS`.
+- Vercel:
+  `SUCCESS`.
+- Production Supabase mutation:
+  `NONE`.
+- Production migration application:
+  `NOT PERFORMED`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Independent auditor verdict:
+  `PASS`.
+
+`I5 RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`

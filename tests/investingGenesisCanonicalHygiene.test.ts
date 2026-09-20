@@ -44,6 +44,7 @@ const requiredCurrentDocs = [
   "I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md",
+  "I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
@@ -127,7 +128,46 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-1_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
+  });
+
+  it("records accepted RL-1 Evidence Object Scientific Closure without public generic Evidence hashing", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md");
+    const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+    const row = tableRow(state, "RL-1 Evidence Object Scientific Closure / unnumbered");
+
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE / UNNUMBERED");
+    expect(contract).toContain("1f7ab6ec80b7de1c47e68958ddd309dbb53f1f8c");
+    expect(contract).toContain("35518056377 - SUCCESS");
+    expect(contract).toContain("35518056379 - SUCCESS");
+    expect(contract).toContain("17.11 (Debian 17.11-1.pgdg13+2)");
+    expect(contract).toContain("Production migration application:");
+    expect(contract).toContain("`NOT PERFORMED`");
+    expect(contract).toContain("Permanent A-number:");
+    expect(contract).toContain("`NOT ASSIGNED`");
+    expect(state).toContain("I5 RL-1 Evidence Object Scientific Closure acceptance evidence:");
+    expect(state).toContain("213 passed / 17 skipped files");
+    expect(state).toContain("1165 passed / 36 skipped tests");
+    expect(state).toContain("Dependency audit:");
+    expect(state).toContain("0 vulnerabilities");
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE");
+    expect(row).toContain("| NONE |");
+    expect(state).toContain("RL-1 runtime/progression state:");
+    expect(state).toContain("design: `YES`");
+    expect(state).toContain("implementation: `YES`");
+    expect(state).toContain("state: `CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE`");
+    expect(state).toContain("permanent A-number: `NONE`");
+    expect(hash).toContain("`SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT`");
+    expect(hash).toContain("current accepted through RL-1 Evidence Object Scientific Closure");
+    expect(hash).toContain("RESEARCH_EXECUTION_EVIDENCE_V1");
+    expect(hash).toContain("Generic or arbitrary raw Evidence hashing is not a sanctioned");
+    expect(hash).toContain("Arbitrary raw Evidence objects remain outside the public hashing boundary");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {
@@ -185,7 +225,9 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("DATASET & RUN SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED");
     expect(state).not.toContain("Run execution lifecycle = CURRENT_ACCEPTED");
     expect(state).not.toContain("Result = CURRENT_ACCEPTED");
-    expect(state).not.toContain("Evidence = CURRENT_ACCEPTED");
+    expect(state).toContain("I5 RL-1 Evidence Object Scientific Closure");
+    expect(state).toContain("SYNTRAKE:EVIDENCE_OBJECT:V1 = CONTENT_PREIMAGE_EXACT");
+    expect(state).not.toContain("Generic arbitrary Evidence hashing is a public Research authority surface");
     expect(state).not.toContain("Paper = CURRENT_ACCEPTED");
     expect(state).not.toContain("Trading = CURRENT_ACCEPTED");
     expect(state).not.toContain("Core = CURRENT_ACCEPTED");
