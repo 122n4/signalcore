@@ -145,7 +145,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("Production migration application:");
     expect(contract).toContain("NOT PERFORMED");
     expect(hash).toContain("`SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT`");
-    expect(hash).toContain("current accepted through the unnumbered RL-1 Evidence Object Scientific Closure");
+    expect(hash).toMatch(/current\s+accepted through the unnumbered RL-1 Evidence Object Scientific Closure/u);
     expect(hash).toContain("Generic/arbitrary raw Evidence hashing is not a sanctioned public Research");
     expect(state).toContain("I5 RL-1 Evidence Object Scientific Closure (unnumbered)");
     expect(state).toContain("I5 RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / UNNUMBERED");
