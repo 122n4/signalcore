@@ -480,7 +480,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       researchExperimentId: ids.experiment,
       candidate: scientificRunInputCandidateV1(),
     });
-    expect(createdRunInput.ok).toBe(true);
+    if (!createdRunInput.ok) throw new Error(`RunInput create failed: ${(createdRunInput as { code: string }).code}`);
     const creationResearchIrHash = scientificRunInputCandidateV1().runInput.researchIr.hashHex;
     await client.query("begin");
     await setExecutionContext({
