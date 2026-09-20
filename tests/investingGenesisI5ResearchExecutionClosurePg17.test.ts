@@ -596,9 +596,9 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       correlationId: "corr-pg17-exec-second",
       datasetMaterialProvider: provider,
     });
-    expect(firstExecution.ok).toBe(true);
-    expect(secondExecution.ok).toBe(true);
-    if (!firstExecution.ok || !secondExecution.ok) throw new Error("execution failed");
+    if (!firstExecution.ok || !secondExecution.ok) {
+      throw new Error(`execution failed: first=${JSON.stringify(firstExecution)} second=${JSON.stringify(secondExecution)}; ${lastRealWriterError ?? "no writer SQL error captured"}`);
+    }
     expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
     expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
     expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
