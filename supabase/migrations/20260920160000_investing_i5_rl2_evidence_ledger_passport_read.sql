@@ -27,6 +27,9 @@ create index if not exists research_experiments_rl2_passport_idx
 create index if not exists run_inputs_rl2_passport_idx
   on investing.run_inputs_scientific_identities (research_investigation_id, tenant_id, principal_id, tenant_membership_id, created_at, run_input_identity_id);
 
+create index if not exists research_specs_scientific_rl2_passport_idx
+  on investing.research_specs_scientific_identities (research_spec_revision_id, tenant_id, principal_id, tenant_membership_id, created_at, research_spec_identity_id);
+
 create index if not exists research_execution_runs_rl2_passport_idx
   on investing.research_execution_runs (research_investigation_id, tenant_id, principal_id, tenant_membership_id, created_at, research_execution_run_id);
 
@@ -50,6 +53,7 @@ grant select on table
   investing.research_material_revisions,
   investing.research_material_pointer_states,
   investing.research_spec_revisions,
+  investing.research_specs_scientific_identities,
   investing.research_experiments,
   investing.run_inputs_scientific_identities,
   investing.research_execution_runs,
@@ -302,6 +306,27 @@ create policy research_passport_run_inputs_select on investing.run_inputs_scient
     and account_id is null
   );
 
+create policy research_passport_research_specs_scientific_select on investing.research_specs_scientific_identities for select to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_PASSPORT_READ_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_READ'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and operation_scope = 'TENANT_SCOPE'
+    and source_context = 'PURE_RESEARCH'
+    and account_id is null
+    and exists (
+      select 1 from investing.research_spec_revisions sr
+      where sr.research_spec_revision_id = research_specs_scientific_identities.research_spec_revision_id
+        and sr.research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+    )
+  );
+
 create policy research_passport_execution_runs_select on investing.research_execution_runs for select to investing_app
   using (
     current_setting('syntrake.investing.operation', true) = 'RESEARCH_PASSPORT_READ_V1'
@@ -309,6 +334,7 @@ create policy research_passport_execution_runs_select on investing.research_exec
     and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
     and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
     and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
     and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
@@ -325,6 +351,7 @@ create policy research_passport_execution_events_select on investing.research_ex
     and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
     and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
     and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
@@ -342,6 +369,7 @@ create policy research_passport_artifacts_select on investing.research_result_ar
     and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
     and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
     and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
@@ -366,6 +394,7 @@ create policy research_passport_results_select on investing.research_results_sci
     and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
     and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
     and nullif(current_setting('syntrake.investing.account_id', true), '') is null
+    and nullif(current_setting('syntrake.investing.account_access_id', true), '') is null
     and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
     and principal_id::text = current_setting('syntrake.investing.principal_id', true)
     and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)

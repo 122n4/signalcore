@@ -25,6 +25,7 @@ Passport V1 is a deterministic read projection over accepted canonical records, 
 - `research_material_revisions`
 - `research_material_pointer_states`
 - `research_spec_revisions`
+- `research_specs_scientific_identities`
 - `research_experiments`
 - `run_inputs_scientific_identities`
 - `research_execution_runs`
@@ -64,7 +65,14 @@ Closed event vocabulary:
 - `RESULT_AVAILABLE`
 - `EVIDENCE_AVAILABLE`
 
-Each event includes event kind, source table, source record ID, Investigation ID, relevant parent IDs, scientific HashRefs where present, canonical event sequence where present, failure reason where present, and persisted occurrence time.
+Each event includes event kind, source table, source record ID, Investigation ID, relevant parent IDs, accepted scientific HashRefs where present, canonical event sequence where present, failure reason where present, and persisted occurrence time.
+
+Material revision ledger events may expose scientific HashRefs only for accepted material domains:
+
+- `DRAFT -> SYNTRAKE:RESEARCH_DRAFT:V1`
+- `HYPOTHESIS -> SYNTRAKE:HYPOTHESIS:V1`
+
+`RESEARCH_SPEC` revisions expose `SYNTRAKE:RESEARCH_SPEC:V1` only when an accepted row exists in `research_specs_scientific_identities`. The Passport distinguishes revision existence from scientific identity materialization with machine-readable `MATERIALIZED` and `NOT_MATERIALIZED` states.
 
 ## Deterministic Ordering
 
@@ -77,12 +85,17 @@ Passport construction fails closed when canonical lineage is impossible, includi
 - material predecessor outside the same root
 - duplicate material revision number per root/kind
 - Experiment parent missing from the same Investigation projection
+- ResearchSpec predecessor missing, cross-root, cyclic, or duplicate revision number
+- ResearchSpec source Draft/Hypothesis material binding missing or hash-mismatched
 - RunInput bound to missing Experiment or ResearchSpec revision
-- malformed Run lifecycle sequence
+- malformed Run lifecycle sequence; allowed visible histories are `[REGISTERED]`, `[REGISTERED, STARTED]`, `[REGISTERED, STARTED, SUCCEEDED]`, and `[REGISTERED, STARTED, FAILED]`
 - SUCCEEDED Run without Result
 - Result bound to another RunInput
+- Result artifact hidden or missing
 - Evidence bound to another Result or RunInput
 - SUCCEEDED Run without Evidence after RL-1
+
+The read transport proof is enforced: Passport construction fails closed unless `current_user` and `current_role` are both exactly `investing_app`.
 
 Typed internal failure codes distinguish unavailable future layers from corrupt accepted lineage.
 

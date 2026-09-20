@@ -21,6 +21,7 @@ const ids = {
   hypothesis1: "77777777-7777-4777-8777-777777777221",
   spec1: "88888888-8888-4888-8888-888888888221",
   spec2: "88888888-8888-4888-8888-888888888222",
+  specIdentity: "88888888-8888-4888-8888-888888888223",
   baseline: "99999999-9999-4999-8999-999999999221",
   variant1: "99999999-9999-4999-8999-999999999222",
   variant2: "99999999-9999-4999-8999-999999999223",
@@ -82,6 +83,25 @@ function baseStore() {
       spec(ids.spec1, 1, null, t(5)),
       spec(ids.spec2, 2, ids.spec1, t(6)),
     ],
+    specIdentityRows: [
+      {
+        research_spec_identity_id: ids.specIdentity,
+        research_spec_revision_id: ids.spec2,
+        hash_algorithm: "SHA-256",
+        hash_domain: "SYNTRAKE:RESEARCH_SPEC:V1",
+        hash_version: "SYNTRAKE_SHA256_V1",
+        hash_hex: h("A"),
+        canonical_payload: {
+          schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1",
+          sourceDraft: { hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESEARCH_DRAFT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h("3") },
+          hypothesisBinding: {
+            kind: "EXPLICIT_HYPOTHESIS",
+            hypothesis: { hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:HYPOTHESIS:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h("4") },
+          },
+        },
+        created_at: t(6),
+      },
+    ],
     experimentRows: [
       experiment(ids.baseline, "BASELINE", null, ids.spec1, h("A"), h("B"), h("C"), t(7)),
       experiment(ids.variant1, "VARIANT", ids.baseline, ids.spec2, h("D"), h("E"), h("F"), t(8)),
@@ -92,7 +112,7 @@ function baseStore() {
         run_input_identity_id: ids.runInput,
         research_experiment_id: ids.variant2,
         research_spec_revision_id: ids.spec2,
-        research_spec_hash_hex: h("S"),
+        research_spec_hash_hex: h("A"),
         research_ir_hash_hex: h("D"),
         experiment_hash_hex: h("E"),
         dataset_snapshot_hash_hex: h("7"),
@@ -197,7 +217,15 @@ function spec(id: string, revision: number, predecessor: string | null, createdA
     hypothesis_material_hash: h("4"),
     candidate_schema_version: "RESEARCH_SPEC_CANDIDATE_V1",
     candidate_status: "ACCEPTED",
-    canonical_candidate: { schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", revision },
+    canonical_candidate: {
+      schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1",
+      revision,
+      sourceDraft: { hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESEARCH_DRAFT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h("3") },
+      hypothesisBinding: {
+        kind: "EXPLICIT_HYPOTHESIS",
+        hypothesis: { hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:HYPOTHESIS:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h("4") },
+      },
+    },
     material_request_hash: h("1"),
     operation: "RESEARCH_SPEC_REVISION_CREATE_V1",
     created_at: createdAt,
@@ -284,6 +312,7 @@ class FakeClient implements InvestingAuthorityTransactionClient {
     if (sql.includes("from investing.research_investigations")) return this.rows<Row>([this.store.investigation as Row]);
     if (sql.includes("from investing.research_material_pointer_states")) return this.rows<Row>([this.store.pointer as Row]);
     if (sql.includes("from investing.research_material_revisions")) return this.rows<Row>(this.store.materialRows as Row[]);
+    if (sql.includes("from investing.research_specs_scientific_identities")) return this.rows<Row>(this.store.specIdentityRows as Row[]);
     if (sql.includes("from investing.research_spec_revisions")) return this.rows<Row>(this.store.specRows as Row[]);
     if (sql.includes("from investing.research_experiments")) return this.rows<Row>(this.store.experimentRows as Row[]);
     if (sql.includes("from investing.run_inputs_scientific_identities") && !sql.includes("join")) {
@@ -344,6 +373,12 @@ describe("I5 RL-2 Research Passport projection", () => {
       [ids.variant1, "VARIANT", ids.baseline],
       [ids.variant2, "VARIANT", ids.variant1],
     ]);
+    expect(first.passport.materialLineage.researchSpecRevisions[0]?.scientificIdentity.availability).toBe("NOT_MATERIALIZED");
+    expect(first.passport.materialLineage.researchSpecRevisions[1]?.scientificIdentity).toMatchObject({
+      availability: "MATERIALIZED",
+      researchSpecIdentityId: ids.specIdentity,
+      researchSpec: { hashDomain: "SYNTRAKE:RESEARCH_SPEC:V1" },
+    });
     expect(first.passport.executionRuns).toHaveLength(3);
     expect(first.passport.executionRuns.slice(0, 2).map((run) => run.resultIdentityId)).toEqual([ids.result, ids.result]);
     expect(first.passport.evidence).toHaveLength(1);
@@ -353,6 +388,21 @@ describe("I5 RL-2 Research Passport projection", () => {
     expect(first.passport.validation.availability).toBe("DEFERRED_RL3");
     expect(first.passport.scientificPromotion.availability).toBe("DEFERRED_RL8");
     expect(first.passport.blindTruth.availability).toBe("DEFERRED_RL9");
+    const acceptedDomains = new Set([
+      "SYNTRAKE:RESEARCH_DRAFT:V1",
+      "SYNTRAKE:HYPOTHESIS:V1",
+      "SYNTRAKE:RESEARCH_SPEC:V1",
+      "SYNTRAKE:RESEARCH_IR:V1",
+      "SYNTRAKE:EXPERIMENT:V1",
+      "SYNTRAKE:EXPERIMENT_PARAMETERS:V1",
+      "SYNTRAKE:RUN_INPUT:V1",
+      "SYNTRAKE:RESULT:V1",
+      "SYNTRAKE:EVIDENCE_OBJECT:V1",
+    ]);
+    for (const event of first.passport.ledger) {
+      for (const ref of event.scientificHashRefs) expect(acceptedDomains.has(ref.hashDomain)).toBe(true);
+    }
+    expect(JSON.stringify(first.passport.ledger)).not.toContain("SYNTRAKE:RESEARCH_MATERIAL:V1");
   });
 
   it("does not classify a failed execution as scientific rejection", async () => {
@@ -387,6 +437,126 @@ describe("I5 RL-2 Research Passport projection", () => {
       correlationId: "corr-rl2-missing-evidence",
     });
     expect(result).toMatchObject({ ok: false, code: "SUCCEEDED_RUN_EVIDENCE_MISSING" });
+  });
+
+  it("fails closed when ResearchSpec lineage is incomplete or mismatched", async () => {
+    const { store } = wire();
+    store.specRows[1] = { ...store.specRows[1]!, source_draft_material_hash: h("9") };
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-bad-spec",
+    });
+    expect(result).toMatchObject({ ok: false, code: "PASSPORT_SOURCE_INTEGRITY_FAILURE" });
+  });
+
+  it("fails closed on malformed lifecycle gaps and does not classify STARTED as scientific failure", async () => {
+    const { store } = wire();
+    store.eventRows = store.eventRows.filter((event) => event.research_execution_run_id !== ids.run3 || event.event_sequence !== 1);
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-bad-lifecycle",
+    });
+    expect(result).toMatchObject({ ok: false, code: "RUN_LIFECYCLE_SEQUENCE_INVALID" });
+
+    const startedStore = baseStore();
+    startedStore.runRows = [run(ids.run3, "2026-09-20 12:00:19+00")];
+    startedStore.eventRows = [
+      event("f3333333-3333-4333-8333-333333333331", ids.run3, 1, "REGISTERED", null, null, "2026-09-20 12:00:19+00"),
+      event("f3333333-3333-4333-8333-333333333332", ids.run3, 2, "STARTED", null, null, "2026-09-20 12:00:20+00"),
+    ];
+    startedStore.resultRows = [];
+    startedStore.artifactRows = [];
+    startedStore.evidenceRows = [];
+    wire(startedStore);
+    const started = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-started-run",
+    });
+    expect(started.ok).toBe(true);
+    expect(JSON.stringify(started).toLowerCase()).not.toContain("scientific failure");
+  });
+
+  it("fails closed when a Result artifact is hidden or missing", async () => {
+    const { store } = wire();
+    store.artifactRows = store.artifactRows.filter((artifact) => artifact.artifact_id !== ids.metrics);
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-missing-artifact",
+    });
+    expect(result).toMatchObject({ ok: false, code: "RESULT_ARTIFACT_BINDING_INVALID" });
+  });
+
+  it("supports a materialized NO_HYPOTHESIS ResearchSpec without emitting a null ledger parent", async () => {
+    const { store } = wire();
+    store.pointer = { ...store.pointer, active_hypothesis_revision_id: null };
+    store.specRows[1] = {
+      ...store.specRows[1]!,
+      hypothesis_revision_id: null,
+      hypothesis_material_hash: null,
+      canonical_candidate: {
+        schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1",
+        revision: 2,
+        sourceDraft: { hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESEARCH_DRAFT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h("3") },
+        hypothesisBinding: { kind: "NO_HYPOTHESIS" },
+      },
+    } as unknown as (typeof store.specRows)[number];
+    store.specIdentityRows[0] = {
+      ...store.specIdentityRows[0]!,
+      canonical_payload: {
+        schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1",
+        sourceDraft: { hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESEARCH_DRAFT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h("3") },
+        hypothesisBinding: { kind: "NO_HYPOTHESIS" },
+      },
+    } as unknown as (typeof store.specIdentityRows)[number];
+
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-no-hypothesis",
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok !== true) throw new Error("expected no-hypothesis passport read to succeed");
+    const spec = result.passport.materialLineage.researchSpecRevisions.find((row) => row.researchSpecRevisionId === ids.spec2);
+    expect(spec?.hypothesisRevisionId).toBeNull();
+    expect(spec?.hypothesisMaterialHash).toBeNull();
+    expect(spec?.scientificIdentity).toMatchObject({
+      availability: "MATERIALIZED",
+      researchSpec: { hashDomain: "SYNTRAKE:RESEARCH_SPEC:V1", hashHex: h("A") },
+    });
+    const specLedgerEvent = result.passport.ledger.find(
+      (event) => event.eventKind === "RESEARCH_SPEC_REVISION_CREATED" && event.sourceRecordId === ids.spec2,
+    );
+    expect(specLedgerEvent?.relevantParentIds).toMatchObject({ materialRootId: ids.specRoot, sourceDraftRevisionId: ids.draft2 });
+    expect(specLedgerEvent?.relevantParentIds).not.toHaveProperty("hypothesisRevisionId");
+  });
+
+  it.each([
+    ["wrong ResearchSpec hash", (store: ReturnType<typeof baseStore>) => { store.runInputRows[0] = { ...store.runInputRows[0]!, research_spec_hash_hex: h("B") }; }],
+    ["wrong Research IR hash", (store: ReturnType<typeof baseStore>) => { store.runInputRows[0] = { ...store.runInputRows[0]!, research_ir_hash_hex: h("C") }; }],
+    ["wrong Experiment hash", (store: ReturnType<typeof baseStore>) => { store.runInputRows[0] = { ...store.runInputRows[0]!, experiment_hash_hex: h("F") }; }],
+    ["missing materialized ResearchSpec identity", (store: ReturnType<typeof baseStore>) => { store.specIdentityRows = []; }],
+  ])("fails closed on RunInput scientific lineage drift: %s", async (_name, mutate) => {
+    const { store } = wire();
+    mutate(store);
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-runinput-drift",
+    });
+    expect(result).toMatchObject({ ok: false, code: "RUN_INPUT_LINEAGE_INVALID" });
+  });
+
+  it("fails closed when a ResearchSpec revision has duplicate scientific identities", async () => {
+    const { store } = wire();
+    store.specIdentityRows.push({
+      ...store.specIdentityRows[0]!,
+      research_spec_identity_id: "88888888-8888-4888-8888-888888888224",
+      hash_hex: h("B"),
+    });
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl2-duplicate-spec-identity",
+    });
+    expect(result).toMatchObject({ ok: false, code: "PASSPORT_SOURCE_INTEGRITY_FAILURE" });
   });
 
   it("opens the projection in one repeatable-read read-only transaction", async () => {

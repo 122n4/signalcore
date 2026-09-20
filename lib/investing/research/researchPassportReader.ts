@@ -35,6 +35,7 @@ export type ResearchPassportIntegrityFailureCodeV1 =
   | "RUN_LIFECYCLE_SEQUENCE_INVALID"
   | "SUCCEEDED_RUN_RESULT_MISSING"
   | "RESULT_RUN_INPUT_BINDING_INVALID"
+  | "RESULT_ARTIFACT_BINDING_INVALID"
   | "EVIDENCE_RESULT_BINDING_INVALID"
   | "SUCCEEDED_RUN_EVIDENCE_MISSING"
   | "DATABASE_ERROR";
@@ -171,12 +172,15 @@ export type ResearchSpecRevisionPassportRowV1 = Readonly<{
   predecessorRevisionId: string | null;
   sourceDraftRevisionId: string;
   sourceDraftMaterialHash: string;
-  hypothesisRevisionId: string;
-  hypothesisMaterialHash: string;
+  hypothesisRevisionId: string | null;
+  hypothesisMaterialHash: string | null;
   candidateSchemaVersion: string;
   candidateStatus: string;
   canonicalCandidate: JsonValue;
   materialRequestHash: string;
+  scientificIdentity:
+    | { availability: "MATERIALIZED"; researchSpecIdentityId: string; researchSpec: HashRefProjectionV1; canonicalPayload: JsonValue; createdAt: string }
+    | { availability: "NOT_MATERIALIZED" };
   creationOperation: string;
   createdAt: string;
 }>;
@@ -188,13 +192,24 @@ type SpecRevisionRow = {
   predecessor_revision_id: string | null;
   source_draft_revision_id: string;
   source_draft_material_hash: string;
-  hypothesis_revision_id: string;
-  hypothesis_material_hash: string;
+  hypothesis_revision_id: string | null;
+  hypothesis_material_hash: string | null;
   candidate_schema_version: string;
   candidate_status: string;
   canonical_candidate: JsonValue;
   material_request_hash: string;
   operation: string;
+  created_at: string;
+};
+
+type ResearchSpecIdentityRow = {
+  research_spec_identity_id: string;
+  research_spec_revision_id: string;
+  hash_algorithm: string;
+  hash_domain: string;
+  hash_version: string;
+  hash_hex: string;
+  canonical_payload: JsonValue;
   created_at: string;
 };
 
@@ -416,6 +431,10 @@ export async function readResearchPassportV1(
     const roleProof = await client.query<{ current_user: string; current_role: string }>(
       "select current_user, current_role",
     );
+    if (roleProof.rows[0]?.current_user !== "investing_app" || roleProof.rows[0]?.current_role !== "investing_app") {
+      await client.query("rollback");
+      return { ok: false, code: "PASSPORT_AUTHORITY_CONTEXT_INVALID" };
+    }
 
     const investigation = await one(
       await client.query<InvestigationRow>(
@@ -469,6 +488,19 @@ export async function readResearchPassportV1(
           "from investing.research_spec_revisions",
           "where research_investigation_id = $1 and tenant_id = $2 and principal_id = $3 and tenant_membership_id = $4",
           "order by material_root_id asc, revision_number asc, research_spec_revision_id asc",
+        ].join(" "),
+        [context.researchInvestigationId, context.tenantId, context.principalId, context.tenantMembershipId],
+      )
+    ).rows;
+    const specIdentityRows = (
+      await client.query<ResearchSpecIdentityRow>(
+        [
+          "select si.research_spec_identity_id, si.research_spec_revision_id, si.hash_algorithm, si.hash_domain,",
+          "si.hash_version, si.hash_hex, si.canonical_payload, si.created_at",
+          "from investing.research_specs_scientific_identities si",
+          "join investing.research_spec_revisions sr on sr.research_spec_revision_id = si.research_spec_revision_id",
+          "where sr.research_investigation_id = $1 and si.tenant_id = $2 and si.principal_id = $3 and si.tenant_membership_id = $4",
+          "order by si.created_at asc, si.research_spec_identity_id asc",
         ].join(" "),
         [context.researchInvestigationId, context.tenantId, context.principalId, context.tenantMembershipId],
       )
@@ -576,10 +608,12 @@ export async function readResearchPassportV1(
       materialRows,
       specRows,
       experimentRows,
+      specIdentityRows,
       runInputRows,
       runRows,
       eventRows,
       resultRows,
+      artifactRows,
       evidenceRows,
     });
     if (integrity) {
@@ -589,7 +623,8 @@ export async function readResearchPassportV1(
 
     const artifactsById = new Map(artifactRows.map((artifact) => [artifact.artifact_id, artifact]));
     const materialRevisions = materialRows.map(projectMaterialRevision);
-    const specRevisions = specRows.map(projectSpecRevision);
+    const specIdentitiesByRevision = uniqueSpecIdentitiesByRevision(specIdentityRows);
+    const specRevisions = specRows.map((row) => projectSpecRevision(row, specIdentitiesByRevision.get(row.research_spec_revision_id)));
     const experiments = experimentRows.map(projectExperiment);
     const runInputs = runInputRows.map(projectRunInput);
     const results = resultRows.map((row) => projectResult(row, artifactsById));
@@ -636,7 +671,7 @@ export async function readResearchPassportV1(
           idempotencyRecordId: investigation.idempotency_record_id,
           idempotencyKey: investigation.idempotency_key,
           correlationId: investigation.correlation_id,
-          createdAt: investigation.created_at,
+          createdAt: canonicalTimestamp(investigation.created_at),
         },
         currentPointers: pointers.rows[0]
           ? {
@@ -646,7 +681,7 @@ export async function readResearchPassportV1(
               activeExperimentId: pointers.rows[0].active_experiment_id,
               pointerVersion: pointers.rows[0].pointer_version,
               updatedByOperation: pointers.rows[0].updated_by_operation,
-              updatedAt: pointers.rows[0].updated_at,
+              updatedAt: canonicalTimestamp(pointers.rows[0].updated_at),
             }
           : null,
         materialLineage: { materialRevisions, researchSpecRevisions: specRevisions },
@@ -686,11 +721,13 @@ function matchesContextShape(row: InvestigationRow, context: AuthorizedResearchP
 function validateIntegrity(input: {
   materialRows: readonly MaterialRevisionRow[];
   specRows: readonly SpecRevisionRow[];
+  specIdentityRows: readonly ResearchSpecIdentityRow[];
   experimentRows: readonly ExperimentRow[];
   runInputRows: readonly RunInputRow[];
   runRows: readonly RunRow[];
   eventRows: readonly RunEventRow[];
   resultRows: readonly ResultRow[];
+  artifactRows: readonly ArtifactRow[];
   evidenceRows: readonly EvidenceRow[];
 }): ResearchPassportIntegrityFailureCodeV1 | null {
   const materialById = new Map(input.materialRows.map((row) => [row.material_revision_id, row]));
@@ -708,7 +745,56 @@ function validateIntegrity(input: {
     return "MATERIAL_PREDECESSOR_LINEAGE_INVALID";
   }
 
+  const draftOrHypothesisById = materialById;
   const specById = new Set(input.specRows.map((row) => row.research_spec_revision_id));
+  const specByIdMap = new Map(input.specRows.map((row) => [row.research_spec_revision_id, row]));
+  const specIdentitiesByRevision = groupBy(input.specIdentityRows, (row) => row.research_spec_revision_id);
+  const specRevisionKeys = new Set<string>();
+  for (const row of input.specRows) {
+    const key = `${row.material_root_id}:${Number(row.revision_number)}`;
+    if (specRevisionKeys.has(key)) return "MATERIAL_DUPLICATE_REVISION_NUMBER";
+    specRevisionKeys.add(key);
+    if (row.predecessor_revision_id) {
+      const predecessor = specByIdMap.get(row.predecessor_revision_id);
+      if (!predecessor || predecessor.material_root_id !== row.material_root_id) return "MATERIAL_PREDECESSOR_LINEAGE_INVALID";
+    }
+    const sourceDraft = draftOrHypothesisById.get(row.source_draft_revision_id);
+    if (!sourceDraft || sourceDraft.material_kind !== "DRAFT" || sourceDraft.material_hash !== row.source_draft_material_hash) {
+      return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+    }
+    if (row.hypothesis_revision_id) {
+      const hypothesis = draftOrHypothesisById.get(row.hypothesis_revision_id);
+      if (!hypothesis || hypothesis.material_kind !== "HYPOTHESIS" || hypothesis.material_hash !== row.hypothesis_material_hash) {
+        return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+      }
+      if ((row.canonical_candidate as { hypothesisBinding?: { kind?: string } })?.hypothesisBinding?.kind !== "EXPLICIT_HYPOTHESIS") {
+        return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+      }
+    } else {
+      if (row.hypothesis_material_hash !== null) return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+      if ((row.canonical_candidate as { hypothesisBinding?: { kind?: string } })?.hypothesisBinding?.kind !== "NO_HYPOTHESIS") {
+        return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+      }
+    }
+  }
+  if (hasSpecPredecessorCycle(input.specRows)) return "MATERIAL_PREDECESSOR_LINEAGE_INVALID";
+
+  for (const row of input.specIdentityRows) {
+    const spec = specByIdMap.get(row.research_spec_revision_id);
+    if (!spec) return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+    if (
+      row.hash_algorithm !== "SHA-256" ||
+      row.hash_domain !== "SYNTRAKE:RESEARCH_SPEC:V1" ||
+      row.hash_version !== "SYNTRAKE_SHA256_V1"
+    ) {
+      return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+    }
+    if (!researchSpecIdentityPayloadMatchesRevision(row, spec)) return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+  }
+  for (const [revisionId, identities] of specIdentitiesByRevision) {
+    if (!specById.has(revisionId) || identities.length > 1) return "PASSPORT_SOURCE_INTEGRITY_FAILURE";
+  }
+
   const experimentById = new Map(input.experimentRows.map((row) => [row.research_experiment_id, row]));
   for (const experiment of input.experimentRows) {
     if (!specById.has(experiment.research_spec_revision_id)) return "EXPERIMENT_PARENT_LINEAGE_INVALID";
@@ -718,13 +804,25 @@ function validateIntegrity(input: {
   }
 
   for (const runInput of input.runInputRows) {
-    if (!specById.has(runInput.research_spec_revision_id) || !experimentById.has(runInput.research_experiment_id)) {
+    const specIdentities = specIdentitiesByRevision.get(runInput.research_spec_revision_id) ?? [];
+    const experiment = experimentById.get(runInput.research_experiment_id);
+    if (!specById.has(runInput.research_spec_revision_id) || !experiment || specIdentities.length !== 1) {
+      return "RUN_INPUT_LINEAGE_INVALID";
+    }
+    const specIdentity = specIdentities[0]!;
+    if (
+      runInput.research_spec_hash_hex !== specIdentity.hash_hex ||
+      runInput.research_ir_hash_hex !== experiment.research_ir_hash_hex ||
+      experiment.experiment_hash_hex === null ||
+      runInput.experiment_hash_hex !== experiment.experiment_hash_hex
+    ) {
       return "RUN_INPUT_LINEAGE_INVALID";
     }
   }
 
   const runInputById = new Set(input.runInputRows.map((row) => row.run_input_identity_id));
   const resultById = new Map(input.resultRows.map((row) => [row.result_identity_id, row]));
+  const artifactById = new Set(input.artifactRows.map((row) => row.artifact_id));
   const evidenceByResultAndRunInput = new Set(input.evidenceRows.map((row) => `${row.result_identity_id}:${row.run_input_identity_id}`));
   const eventsByRun = groupBy(input.eventRows, (row) => row.research_execution_run_id);
   for (const run of input.runRows) {
@@ -732,11 +830,23 @@ function validateIntegrity(input: {
     const events = [...(eventsByRun.get(run.research_execution_run_id) ?? [])].sort(bySequenceThenId);
     if (events.length === 0) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
     const seen = new Set<number>();
-    for (const event of events) {
+    if (events.length > 3) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+    for (const [index, event] of events.entries()) {
       const sequence = Number(event.event_sequence);
-      if (!Number.isInteger(sequence) || seen.has(sequence)) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+      if (!Number.isInteger(sequence) || seen.has(sequence) || sequence !== index + 1) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
       seen.add(sequence);
-      if (event.run_status === "FAILED" && !event.failure_reason_code) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+      const expectedStatus = sequence === 1 ? "REGISTERED" : sequence === 2 ? "STARTED" : null;
+      if (expectedStatus && event.run_status !== expectedStatus) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+      if (sequence < 3 && (event.result_identity_id !== null || event.failure_reason_code !== null)) return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+      if (sequence === 3) {
+        if (event.run_status !== "SUCCEEDED" && event.run_status !== "FAILED") return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+        if (event.run_status === "SUCCEEDED" && (event.failure_reason_code !== null || event.result_identity_id === null)) {
+          return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+        }
+        if (event.run_status === "FAILED" && (event.result_identity_id !== null || event.failure_reason_code === null)) {
+          return "RUN_LIFECYCLE_SEQUENCE_INVALID";
+        }
+      }
     }
     const terminal = events.at(-1)!;
     if (terminal.run_status === "SUCCEEDED") {
@@ -752,6 +862,9 @@ function validateIntegrity(input: {
 
   for (const result of input.resultRows) {
     if (!runInputById.has(result.run_input_identity_id)) return "RESULT_RUN_INPUT_BINDING_INVALID";
+    for (const artifactId of [result.trace_artifact_id, result.valuation_artifact_id, result.metrics_artifact_id, result.benchmark_artifact_id]) {
+      if (artifactId && !artifactById.has(artifactId)) return "RESULT_ARTIFACT_BINDING_INVALID";
+    }
   }
   for (const evidence of input.evidenceRows) {
     const result = resultById.get(evidence.result_identity_id);
@@ -781,6 +894,61 @@ function hasPredecessorCycle(
   return false;
 }
 
+function hasSpecPredecessorCycle(rows: readonly SpecRevisionRow[]) {
+  const byId = new Map(rows.map((row) => [row.research_spec_revision_id, row]));
+  for (const row of rows) {
+    const seen = new Set<string>();
+    let cursor: string | null = row.predecessor_revision_id;
+    while (cursor) {
+      if (seen.has(cursor)) return true;
+      seen.add(cursor);
+      cursor = byId.get(cursor)?.predecessor_revision_id ?? null;
+    }
+  }
+  return false;
+}
+
+function uniqueSpecIdentitiesByRevision(rows: readonly ResearchSpecIdentityRow[]) {
+  const result = new Map<string, ResearchSpecIdentityRow>();
+  for (const row of rows) {
+    if (!result.has(row.research_spec_revision_id)) {
+      result.set(row.research_spec_revision_id, row);
+    }
+  }
+  return result;
+}
+
+function researchSpecIdentityPayloadMatchesRevision(identity: ResearchSpecIdentityRow, revision: SpecRevisionRow) {
+  const payload = identity.canonical_payload;
+  if (!isRecord(payload)) return false;
+  const sourceDraft = payload.sourceDraft;
+  if (!isHashPayload(sourceDraft, "SYNTRAKE:RESEARCH_DRAFT:V1", revision.source_draft_material_hash)) return false;
+  const hypothesisBinding = payload.hypothesisBinding;
+  if (!isRecord(hypothesisBinding) || typeof hypothesisBinding.kind !== "string") return false;
+  if (revision.hypothesis_revision_id === null) {
+    return revision.hypothesis_material_hash === null && hypothesisBinding.kind === "NO_HYPOTHESIS" && !("hypothesis" in hypothesisBinding);
+  }
+  return (
+    revision.hypothesis_material_hash !== null &&
+    hypothesisBinding.kind === "EXPLICIT_HYPOTHESIS" &&
+    isHashPayload(hypothesisBinding.hypothesis, "SYNTRAKE:HYPOTHESIS:V1", revision.hypothesis_material_hash)
+  );
+}
+
+function isHashPayload(value: unknown, hashDomain: string, hashHex: string) {
+  return (
+    isRecord(value) &&
+    value.hashAlgorithm === "SHA-256" &&
+    value.hashDomain === hashDomain &&
+    value.hashVersion === "SYNTRAKE_SHA256_V1" &&
+    value.hashHex === hashHex
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function projectMaterialRevision(row: MaterialRevisionRow): MaterialRevisionPassportRowV1 {
   return {
     materialRevisionId: row.material_revision_id,
@@ -793,11 +961,11 @@ function projectMaterialRevision(row: MaterialRevisionRow): MaterialRevisionPass
     materialRequestHash: row.material_request_hash,
     canonicalPayload: row.canonical_payload,
     creationOperation: row.operation,
-    createdAt: row.created_at,
+    createdAt: canonicalTimestamp(row.created_at),
   };
 }
 
-function projectSpecRevision(row: SpecRevisionRow): ResearchSpecRevisionPassportRowV1 {
+function projectSpecRevision(row: SpecRevisionRow, scientificIdentity: ResearchSpecIdentityRow | undefined): ResearchSpecRevisionPassportRowV1 {
   return {
     researchSpecRevisionId: row.research_spec_revision_id,
     materialRootId: row.material_root_id,
@@ -811,8 +979,22 @@ function projectSpecRevision(row: SpecRevisionRow): ResearchSpecRevisionPassport
     candidateStatus: row.candidate_status,
     canonicalCandidate: row.canonical_candidate,
     materialRequestHash: row.material_request_hash,
+    scientificIdentity: scientificIdentity
+      ? {
+          availability: "MATERIALIZED",
+          researchSpecIdentityId: scientificIdentity.research_spec_identity_id,
+          researchSpec: hashRef(
+            scientificIdentity.hash_algorithm,
+            scientificIdentity.hash_domain,
+            scientificIdentity.hash_version,
+            scientificIdentity.hash_hex,
+          ),
+          canonicalPayload: scientificIdentity.canonical_payload,
+          createdAt: canonicalTimestamp(scientificIdentity.created_at),
+        }
+      : { availability: "NOT_MATERIALIZED" },
     creationOperation: row.operation,
-    createdAt: row.created_at,
+    createdAt: canonicalTimestamp(row.created_at),
   };
 }
 
@@ -841,7 +1023,7 @@ function projectExperiment(row: ExperimentRow): ExperimentPassportRowV1 {
         : null,
     materialRequestHash: row.material_request_hash,
     creationOperation: row.operation,
-    createdAt: row.created_at,
+    createdAt: canonicalTimestamp(row.created_at),
   };
 }
 
@@ -860,7 +1042,7 @@ function projectRunInput(row: RunInputRow): RunInputPassportRowV1 {
     executionConfigHashHex: row.execution_config_hash_hex,
     engineVersion: row.engine_version,
     canonicalPayload: row.canonical_payload,
-    createdAt: row.created_at,
+    createdAt: canonicalTimestamp(row.created_at),
   };
 }
 
@@ -883,9 +1065,9 @@ function projectExecutionRuns(runRows: readonly RunRow[], eventRows: readonly Ru
         runStatus: event.run_status,
         resultIdentityId: event.result_identity_id,
         failureReasonCode: event.failure_reason_code,
-        createdAt: event.created_at,
+        createdAt: canonicalTimestamp(event.created_at),
       })),
-      createdAt: run.created_at,
+      createdAt: canonicalTimestamp(run.created_at),
     };
   });
 }
@@ -901,8 +1083,7 @@ function projectResult(row: ResultRow, artifactsById: Map<string, ArtifactRow>):
     engineId: row.engine_id,
     engineVersion: row.engine_version,
     artifacts: artifactIds
-      .map((artifactId) => artifactsById.get(artifactId))
-      .filter((artifact): artifact is ArtifactRow => artifact !== undefined)
+      .map((artifactId) => artifactsById.get(artifactId)!)
       .map((artifact) => ({
         artifactId: artifact.artifact_id,
         artifactKind: artifact.artifact_kind,
@@ -914,7 +1095,7 @@ function projectResult(row: ResultRow, artifactsById: Map<string, ArtifactRow>):
       }))
       .sort((a, b) => a.artifactKind.localeCompare(b.artifactKind) || a.artifactId.localeCompare(b.artifactId)),
     canonicalPayload: row.canonical_payload,
-    createdAt: row.created_at,
+    createdAt: canonicalTimestamp(row.created_at),
   };
 }
 
@@ -936,7 +1117,7 @@ function projectEvidence(row: EvidenceRow): EvidencePassportRowV1 {
       row.content_utf8 === null
         ? { availability: "CONTENT_REFERENCE", reason: "CONTENT_TOO_LARGE_FOR_PASSPORT_V1" }
         : { availability: "INLINE", utf8: row.content_utf8 },
-    createdAt: row.created_at,
+    createdAt: canonicalTimestamp(row.created_at),
   };
 }
 
@@ -960,10 +1141,16 @@ function buildLedger(input: {
       scientificHashRefs: [],
       eventSequence: null,
       reasonCode: null,
-      occurredAt: input.investigation.created_at,
+      occurredAt: canonicalTimestamp(input.investigation.created_at),
     },
   ];
   for (const row of input.materialRevisions) {
+    const materialHashRef =
+      row.kind === "DRAFT"
+        ? hashRef("SHA-256", "SYNTRAKE:RESEARCH_DRAFT:V1", "SYNTRAKE_SHA256_V1", row.materialHash)
+        : row.kind === "HYPOTHESIS"
+          ? hashRef("SHA-256", "SYNTRAKE:HYPOTHESIS:V1", "SYNTRAKE_SHA256_V1", row.materialHash)
+          : null;
     events.push({
       eventKind: "MATERIAL_REVISION_CREATED",
       sourceTable: "investing.research_material_revisions",
@@ -973,7 +1160,7 @@ function buildLedger(input: {
         materialRootId: row.materialRootId,
         ...(row.predecessorRevisionId ? { predecessorRevisionId: row.predecessorRevisionId } : {}),
       },
-      scientificHashRefs: [hashRef("SHA-256", "SYNTRAKE:RESEARCH_MATERIAL:V1", "SYNTRAKE_SHA256_V1", row.materialHash)],
+      scientificHashRefs: materialHashRef ? [materialHashRef] : [],
       eventSequence: row.revisionNumber,
       reasonCode: null,
       occurredAt: row.createdAt,
@@ -988,10 +1175,10 @@ function buildLedger(input: {
       relevantParentIds: {
         materialRootId: row.materialRootId,
         sourceDraftRevisionId: row.sourceDraftRevisionId,
-        hypothesisRevisionId: row.hypothesisRevisionId,
+        ...(row.hypothesisRevisionId ? { hypothesisRevisionId: row.hypothesisRevisionId } : {}),
         ...(row.predecessorRevisionId ? { predecessorRevisionId: row.predecessorRevisionId } : {}),
       },
-      scientificHashRefs: [],
+      scientificHashRefs: row.scientificIdentity.availability === "MATERIALIZED" ? [row.scientificIdentity.researchSpec] : [],
       eventSequence: row.revisionNumber,
       reasonCode: null,
       occurredAt: row.createdAt,
@@ -1099,11 +1286,15 @@ const phaseOrder: Record<ResearchEvidenceLedgerEventKindV1, number> = {
 
 function byLedgerOrder(a: ResearchEvidenceLedgerEventV1, b: ResearchEvidenceLedgerEventV1) {
   return (
-    a.occurredAt.localeCompare(b.occurredAt) ||
+    canonicalTimestamp(a.occurredAt).localeCompare(canonicalTimestamp(b.occurredAt)) ||
     phaseOrder[a.eventKind] - phaseOrder[b.eventKind] ||
     (a.eventSequence ?? -1) - (b.eventSequence ?? -1) ||
     a.sourceRecordId.localeCompare(b.sourceRecordId)
   );
+}
+
+function canonicalTimestamp(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 function runStatusToLedgerKind(status: "REGISTERED" | "STARTED" | "SUCCEEDED" | "FAILED"): ResearchEvidenceLedgerEventKindV1 {
