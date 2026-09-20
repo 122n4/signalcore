@@ -700,21 +700,52 @@ Historical/candidate branches do not become authority merely by existing.
 Current authority is derived from accepted Genesis lineage, the current-state
 map and protected canonical refs.
 
-This control-plane acceptance record supersedes active `REPOSITORY CONTROL PLANE = RED`,
-disconnected active `main`, empty rulesets and unprotected canonical refs. It
-does not supersede final A+B+C rehearsal, Trusted Genesis Baseline declaration,
-future Research Lab work, Run execution/Result/Evidence or any Investing/Trading/Paper
-feature requirement.
+This control-plane acceptance record superseded active `REPOSITORY CONTROL PLANE = RED`,
+disconnected active `main`, empty rulesets and unprotected canonical refs. At
+the time of that control-plane acceptance it did not by itself establish the
+final A+B+C rehearsal, Trusted Genesis Baseline, future Research Lab work,
+Run execution/Result/Evidence or any Investing/Trading/Paper feature authority.
 
-Final complete rehearsal across:
+The post-merge full rehearsal is now recorded in
+`TRUSTED_GENESIS_BASELINE_REHEARSAL_20260920.md` against merged `main`
+`a93dbb9e3c7c548efa8066cc680f64e0d2b05403`, with exact tree
+`e1bfdd8a67429ff33b4d5d425fba4b68ce688446`.
 
-- A. `EXECUTION REHEARSAL`
-- B. `CANONICAL INTEGRITY REHEARSAL`
-- C. `REPOSITORY CONTROL PLANE REHEARSAL`
+Rehearsal evidence currently records:
 
-has not yet been completed against the final candidate state.
+- A. `EXECUTION REHEARSAL = PASS`
+- B. `CANONICAL INTEGRITY REHEARSAL = PASS`
+- C. `REPOSITORY CONTROL PLANE REHEARSAL = PASS`
 
-`TRUSTED GENESIS BASELINE = NOT YET DECLARED`.
+This rehearsal evidence passed its own CI and independent audit and is now the
+current accepted global Genesis trust baseline. This declaration is a trust and
+lineage statement only; it does not broaden the accepted product boundaries
+listed above.
+
+Trusted Genesis Baseline acceptance evidence:
+
+- Final independently audited rehearsal candidate:
+  `e93aa20187d99ec00de9d31a822f1bf86b2f297a`.
+- PR:
+  `#77`.
+- Candidate push CI:
+  `35507509732 - SUCCESS`.
+- Candidate pull-request CI:
+  `35507511846 - SUCCESS`.
+- Candidate full suite:
+  `1159 passed / 36 skipped`.
+- Vercel preview deployment:
+  `dpl_4a3wJYV8h2GMkp2Gzk12g7x9vG34 - READY`.
+- Independent auditor verdict:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Production mutation:
+  `NONE`.
+- Production Supabase migration application:
+  `NOT PERFORMED`.
+
+`TRUSTED GENESIS BASELINE = CURRENT_ACCEPTED`.
 
 ## CI And Dependency Security
 
@@ -738,12 +769,13 @@ Classification:
 
 `DEPENDENCY SECURITY TRUST RECOVERY = CLOSED`.
 
-This dependency/security gate supersedes only
+This dependency/security gate superseded only
 `PRE-EXISTING SECURITY BASELINE - TRUST RECOVERY BLOCKER` for the known
-Next.js/sharp findings. It does not supersede repository control-plane RED,
-default branch `main`, disconnected Genesis/main histories, missing rulesets,
-missing branch protection, final A+B+C rehearsal or Trusted Genesis Baseline
-declaration.
+Next.js/sharp findings. At the time of that dependency/security acceptance it
+did not by itself supersede repository control-plane RED, the disconnected
+Genesis/main histories, missing rulesets/protection, the final A+B+C rehearsal or
+Trusted Genesis Baseline declaration. The control-plane limitations were closed
+separately, and the current full-rehearsal candidate is recorded above.
 
 ## Superseded Historical Design
 
