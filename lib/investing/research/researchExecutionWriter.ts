@@ -178,7 +178,7 @@ async function loadOrMaterializeResearchIr(client: InvestingAuthorityTransaction
     [randomUUID(), input.authorizedContext.tenantId, input.authorizedContext.principalId, input.authorizedContext.tenantMembershipId, ref.hashHex, JSON.stringify(payload)],
   );
   const verified = await loadIdentityPayload<ResearchIrV1>(client, "research_ir_scientific_identities", ref.hashHex);
-  if (!verified || JSON.stringify(canonicalResearchIrPayloadV1(verified)) !== JSON.stringify(payload)) return { ok: false as const, code: "CONFLICT" as const };
+  if (!verified || !canonicalJsonEquals(canonicalResearchIrPayloadV1(verified), payload)) return { ok: false as const, code: "CONFLICT" as const };
   return { ok: true as const, value: verified };
 }
 
@@ -253,7 +253,7 @@ async function finalizeSuccess(
       "select result_identity_id, canonical_payload from investing.research_results_scientific_identities",
       "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = 'SYNTRAKE:RESULT:V1' and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $2",
     ].join(" "), [context.tenantId, hashHex]);
-    if (!result || JSON.stringify(result.canonical_payload) !== JSON.stringify(payload)) throw new HandledExecutionAbort("CONFLICT");
+    if (!result || !canonicalJsonEquals(result.canonical_payload as CanonicalJsonValue, payload)) throw new HandledExecutionAbort("CONFLICT");
     await insertRunEvent(client, context, runId, 3, "SUCCEEDED", result.result_identity_id, null);
     return { ok: true as const, researchExecutionRunId: runId, resultHashHex: hashHex, resultIdentityId: result.result_identity_id };
   });
@@ -365,6 +365,10 @@ function artifactDescriptorsMatch(payload: ResultHashPayloadV1, rows: {
 
 function descriptorKey(descriptor: ResearchArtifactDescriptorV1) {
   return i5ResearchInternalCanonicalJsonBytesV1(descriptor as unknown as CanonicalJsonValue).toString("utf8");
+}
+
+function canonicalJsonEquals(left: CanonicalJsonValue, right: CanonicalJsonValue) {
+  return i5ResearchInternalCanonicalJsonBytesV1(left).equals(i5ResearchInternalCanonicalJsonBytesV1(right));
 }
 
 function isDatasetMaterialCode(value: string): value is Extract<ResearchExecutionFailureCodeV1, `DATASET_MATERIAL_${string}`> {
