@@ -84,6 +84,7 @@ const ids = {
 let pool: Pool;
 let client: PoolClient;
 let lastRealWriterError: string | null = null;
+const appRoleProofs: Array<{ current_user: string; current_role: string }> = [];
 
 function readSql(relativePath: string) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -278,6 +279,7 @@ async function setExecutionContext(overrides: Record<string, string> = {}) {
 
 function useRealPgAuthorityTransport() {
   lastRealWriterError = null;
+  appRoleProofs.length = 0;
   vi.mocked(resolveVerifiedClerkIdentity).mockResolvedValue({ ok: true, externalProvider: "CLERK", externalSubject: "pg17-execution" });
   vi.mocked(getInvestingAuthorityDatabase).mockReturnValue({
     connect: async () => {
@@ -286,6 +288,11 @@ function useRealPgAuthorityTransport() {
         query: async <Row = Record<string, unknown>>(text: string, values: readonly unknown[] = []) => {
           try {
             const result = await pgClient.query<Row>(text, values as unknown[]);
+            if (values.length === 0 && text.trim().toLowerCase() === "begin") {
+              await pgClient.query("set local role investing_app");
+              const proof = await pgClient.query<{ current_user: string; current_role: string }>("select current_user, current_role");
+              appRoleProofs.push(proof.rows[0]!);
+            }
             return { rows: result.rows, rowCount: result.rowCount };
           } catch (error) {
             const pgError = error as { message?: string; code?: string; constraint?: string; detail?: string };
@@ -312,6 +319,12 @@ function useRealPgAuthorityTransport() {
       };
     },
   });
+}
+
+function expectAppTransportUsedInvestingApp(startIndex: number) {
+  const proofs = appRoleProofs.slice(startIndex);
+  expect(proofs.length).toBeGreaterThan(0);
+  expect(proofs.every((proof) => proof.current_user === "investing_app" && proof.current_role === "investing_app")).toBe(true);
 }
 
 const ref = (hashDomain: Parameters<typeof hashRefV1>[0]["hashDomain"], hashHex: string) =>
@@ -491,6 +504,8 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     );
     expect(badGrants.rowCount).toBe(0);
 
+    const creationRoleProofStart = appRoleProofs.length;
+    const creationCandidate = scientificRunInputCandidateV1();
     const creationAuthority = await resolveAuthorizedResearchMaterialRevisionCreateContext({
       researchInvestigationId: ids.investigation,
       operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1",
@@ -501,10 +516,11 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const createdRunInput = await createScientificRunInputV1({
       authorizedContext: creationAuthority.context as never,
       researchExperimentId: ids.experiment,
-      candidate: scientificRunInputCandidateV1(),
+      candidate: creationCandidate,
     });
     if (!createdRunInput.ok) throw new Error(`RunInput create failed: ${(createdRunInput as { code: string }).code}; ${lastRealWriterError ?? "no writer SQL error captured"}`);
-    const creationResearchIrHash = scientificRunInputCandidateV1().runInput.researchIr.hashHex;
+    expectAppTransportUsedInvestingApp(creationRoleProofStart);
+    const creationResearchIrHash = creationCandidate.runInput.researchIr.hashHex;
     await client.query("begin");
     await setExecutionContext({
       operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1",
@@ -513,6 +529,22 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     });
     const creationRead = await client.query<{ hash_hex: string }>("select hash_hex from investing.research_ir_scientific_identities where hash_hex = $1", [creationResearchIrHash]);
     expect(creationRead.rows).toHaveLength(1);
+    const creationComponentCounts = [
+      await client.query<{ count: string }>("select count(*) from investing.dataset_series_scientific_identities where hash_hex = any($1::text[])", [creationCandidate.datasetSeries.map((series) => hashDatasetSeriesV1(series))]),
+      await client.query<{ count: string }>("select count(*) from investing.dataset_snapshots_scientific_identities where hash_hex = $1", [creationCandidate.runInput.datasetSnapshot.hashHex]),
+      await client.query<{ count: string }>("select count(*) from investing.metric_request_sets_scientific_identities where hash_hex = $1", [creationCandidate.runInput.metricRequestSet.hashHex]),
+      await client.query<{ count: string }>("select count(*) from investing.execution_configs_scientific_identities where hash_hex = $1", [creationCandidate.runInput.executionConfig.hashHex]),
+      await client.query<{ count: string }>("select count(*) from investing.research_specs_scientific_identities where hash_hex = $1", [creationCandidate.runInput.researchSpec.hashHex]),
+      await client.query<{ count: string }>("select count(*) from investing.run_inputs_scientific_identities where hash_hex = $1", [createdRunInput.runInputHashHex]),
+    ].map((result) => result.rows[0]!.count);
+    expect(creationComponentCounts).toEqual([
+      String(creationCandidate.datasetSeries.length),
+      "1",
+      "1",
+      "1",
+      "1",
+      "1",
+    ]);
     await client.query("commit");
     await client.query("begin");
     await setExecutionContext({ research_ir_hash_hex: creationResearchIrHash });
@@ -575,6 +607,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     ]);
     const provider = { loadSeriesContent: async (seriesRef: { hashHex: string }) => materialBytes.get(seriesRef.hashHex) ?? null };
     const beforeMissingRuns = await client.query<{ count: string }>("select count(*) from investing.research_execution_runs where run_input_identity_id = $1", [ids.executableRunInputIdentity]);
+    const missingRoleProofStart = appRoleProofs.length;
     const missing = await executeResearchRunCommandV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.executableRunInputIdentity,
@@ -582,8 +615,10 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       datasetMaterialProvider: { loadSeriesContent: async () => null },
     });
     expect(missing).toEqual({ ok: false, code: "DATASET_MATERIAL_NOT_FOUND" });
+    expectAppTransportUsedInvestingApp(missingRoleProofStart);
     const afterMissingRuns = await client.query<{ count: string }>("select count(*) from investing.research_execution_runs where run_input_identity_id = $1", [ids.executableRunInputIdentity]);
     expect(afterMissingRuns.rows[0]!.count).toBe(beforeMissingRuns.rows[0]!.count);
+    const executionRoleProofStart = appRoleProofs.length;
     const firstExecution = await executeResearchRunCommandV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.executableRunInputIdentity,
@@ -599,9 +634,15 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     if (!firstExecution.ok || !secondExecution.ok) {
       throw new Error(`execution failed: first=${JSON.stringify(firstExecution)} second=${JSON.stringify(secondExecution)}; ${lastRealWriterError ?? "no writer SQL error captured"}`);
     }
+    expectAppTransportUsedInvestingApp(executionRoleProofStart);
     expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
     expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
     expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
+    const reusedArtifactRows = await client.query<{ count: string }>(
+      "select count(*) from investing.research_result_artifacts where artifact_id in (select execution_trace_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select valuation_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select metric_result_set_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select benchmark_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 and benchmark_series_artifact_id is not null)",
+      [firstExecution.resultIdentityId],
+    );
+    expect(reusedArtifactRows.rows[0]!.count).toBe("4");
 
     const conflictExecutable = await seedExecutableRunInput(ids.conflictRunInputIdentity, true);
     const conflictPure = executeHistoricalBacktestV1({
@@ -628,6 +669,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       [hashDatasetSeriesV1(conflictExecutable.aaa.series), conflictExecutable.aaa.bytes],
       [hashDatasetSeriesV1(conflictExecutable.bbb.series), conflictExecutable.bbb.bytes],
     ]);
+    const conflictRoleProofStart = appRoleProofs.length;
     const conflictResult = await executeResearchRunCommandV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.conflictRunInputIdentity,
@@ -635,6 +677,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       datasetMaterialProvider: { loadSeriesContent: async (seriesRef) => conflictMaterialBytes.get(seriesRef.hashHex) ?? null },
     });
     expect(conflictResult).toEqual({ ok: false, code: "CONFLICT" });
+    expectAppTransportUsedInvestingApp(conflictRoleProofStart);
     const afterConflictArtifacts = await client.query<{ count: string }>("select count(*) from investing.research_result_artifacts");
     expect(afterConflictArtifacts.rows[0]!.count).toBe(beforeConflictArtifacts.rows[0]!.count);
     const failedConflictRun = await client.query<{ count: string }>("select count(*) from investing.research_execution_run_events e join investing.research_execution_runs r on r.research_execution_run_id = e.research_execution_run_id where r.run_input_identity_id = $1 and e.run_status = 'FAILED' and e.failure_reason_code = 'CONFLICT'", [ids.conflictRunInputIdentity]);
