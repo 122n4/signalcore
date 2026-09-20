@@ -717,10 +717,35 @@ Rehearsal evidence currently records:
 - B. `CANONICAL INTEGRITY REHEARSAL = PASS`
 - C. `REPOSITORY CONTROL PLANE REHEARSAL = PASS`
 
-This rehearsal evidence remains a candidate until its own CI and independent
-audit complete.
+This rehearsal evidence passed its own CI and independent audit and is now the
+current accepted global Genesis trust baseline. This declaration is a trust and
+lineage statement only; it does not broaden the accepted product boundaries
+listed above.
 
-`TRUSTED GENESIS BASELINE = REHEARSAL_CANDIDATE / NOT CURRENT_ACCEPTED`.
+Trusted Genesis Baseline acceptance evidence:
+
+- Final independently audited rehearsal candidate:
+  `e93aa20187d99ec00de9d31a822f1bf86b2f297a`.
+- PR:
+  `#77`.
+- Candidate push CI:
+  `35507509732 - SUCCESS`.
+- Candidate pull-request CI:
+  `35507511846 - SUCCESS`.
+- Candidate full suite:
+  `1159 passed / 36 skipped`.
+- Vercel preview deployment:
+  `dpl_4a3wJYV8h2GMkp2Gzk12g7x9vG34 - READY`.
+- Independent auditor verdict:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Production mutation:
+  `NONE`.
+- Production Supabase migration application:
+  `NOT PERFORMED`.
+
+`TRUSTED GENESIS BASELINE = CURRENT_ACCEPTED`.
 
 ## CI And Dependency Security
 
