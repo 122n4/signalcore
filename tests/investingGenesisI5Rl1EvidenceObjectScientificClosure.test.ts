@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   buildResearchExecutionEvidenceV1,
-  canonicalEvidenceContentDescriptorV1,
-  canonicalEvidenceObjectPreimageV1,
-  hashEvidenceObjectV1,
   hashDatasetSnapshotV1,
   hashRefV1,
   type ResultHashPayloadV1,
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
-import { hashRunInputV1 } from "../lib/investing/research/canonical";
+import {
+  canonicalEvidenceContentDescriptorV1,
+  canonicalEvidenceObjectPreimageV1,
+  hashEvidenceObjectV1,
+  hashRunInputV1,
+} from "../lib/investing/research/canonical";
 import { hashResultV1 } from "../lib/investing/research/resultArtifacts";
 import {
   i5A2TestOnlyEvidenceObjectHashV1,
