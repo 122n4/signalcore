@@ -82,10 +82,22 @@ domains remain disabled.
 
 ## Evidence Object Boundary
 
-`SYNTRAKE:EVIDENCE_OBJECT:V1` is content-preimage exact only for the accepted
-descriptor/content byte boundary. Storage integrity, provenance and record
-identity are separate from scientific content identity unless an owner contract
-binds them.
+`SYNTRAKE:EVIDENCE_OBJECT:V1` remains `CONTENT_PREIMAGE_EXACT` and is current
+accepted through the unnumbered RL-1 Evidence Object Scientific Closure for the
+exact `RESEARCH_EXECUTION_EVIDENCE_V1` descriptor/content owner surface.
+
+Its accepted scientific identity binds exact Result, RunInput, ResearchSpec,
+Research IR, Experiment, DatasetSnapshot/DatasetSeries, metric/config and Result
+artifact identities through the RL-1 owner contract. Operational Evidence UUID,
+tenant/principal/membership identity, timestamps and Run UUID are excluded from
+scientific content identity.
+
+Generic/arbitrary raw Evidence hashing is not a sanctioned public Research
+authority surface. The generic preimage/hash implementation remains internal;
+callers receive only owner-specific typed Evidence construction.
+
+Storage content SHA-256/length, provenance and record identity remain separate
+from the scientific content-preimage identity.
 
 ## Material Request Identity
 
