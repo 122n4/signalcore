@@ -33,6 +33,7 @@ import {
   type VerifiedDatasetSeriesMaterialV1,
 } from "./datasetMaterial";
 import { admitHistoricalBacktestV1, executeHistoricalBacktestV1, type ResearchExecutionFailureCodeV1 } from "./historicalExecutionEngine";
+import { buildResearchExecutionEvidenceV1, type ResearchExecutionEvidenceV1 } from "./evidenceObject";
 import {
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -48,7 +49,7 @@ export type ExecuteResearchRunInputV1 = Readonly<{
 }>;
 
 export type ExecuteResearchRunResultV1 =
-  | Readonly<{ ok: true; researchExecutionRunId: string; resultHashHex: string; resultIdentityId: string }>
+  | Readonly<{ ok: true; researchExecutionRunId: string; resultHashHex: string; resultIdentityId: string; evidenceHashHex: string; evidenceIdentityId: string }>
   | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 | "FORBIDDEN_OR_NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "UNAVAILABLE" | "OPERATIONAL_EXECUTION_FAILURE" }>;
 
 type PreparedExecution = Readonly<{
@@ -254,8 +255,29 @@ async function finalizeSuccess(
       "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = 'SYNTRAKE:RESULT:V1' and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $2",
     ].join(" "), [context.tenantId, hashHex]);
     if (!result || !canonicalJsonEquals(result.canonical_payload as CanonicalJsonValue, payload)) throw new HandledExecutionAbort("CONFLICT");
+    const evidence = buildResearchExecutionEvidenceV1({
+      runInput: prepared.runInput,
+      runInputHashHex: prepared.runInputHash.hashHex,
+      resultPayload: execution.resultPayload,
+      resultHashHex: hashHex,
+      datasetSnapshot: prepared.datasetSnapshot,
+    });
+    const persistedEvidence = await persistEvidenceObject(
+      client,
+      context,
+      prepared.runInputIdentityId,
+      result.result_identity_id,
+      evidence,
+    );
     await insertRunEvent(client, context, runId, 3, "SUCCEEDED", result.result_identity_id, null);
-    return { ok: true as const, researchExecutionRunId: runId, resultHashHex: hashHex, resultIdentityId: result.result_identity_id };
+    return {
+      ok: true as const,
+      researchExecutionRunId: runId,
+      resultHashHex: hashHex,
+      resultIdentityId: result.result_identity_id,
+      evidenceHashHex: evidence.hashHex,
+      evidenceIdentityId: persistedEvidence.evidenceObjectIdentityId,
+    };
   });
 }
 
@@ -291,6 +313,75 @@ async function persistArtifact(client: InvestingAuthorityTransactionClient, cont
   ].join(" "), [context.tenantId, kind, descriptor.artifactSchemaVersion, descriptor.format, descriptor.contentSha256, descriptor.contentByteLength, descriptor.recordCount]);
   if (!row) throw new Error("ARTIFACT_CONFLICT");
   return { artifactId: row.artifact_id, descriptor };
+}
+
+async function persistEvidenceObject(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchExecutionContext,
+  runInputIdentityId: string,
+  resultIdentityId: string,
+  evidence: ResearchExecutionEvidenceV1,
+) {
+  const evidenceObjectIdentityId = randomUUID();
+  await client.query(
+    [
+      "insert into investing.research_evidence_objects_scientific_identities (evidence_object_identity_id, tenant_id, account_id, principal_id, tenant_membership_id,",
+      "run_input_identity_id, result_identity_id, operation, capability, operation_scope, source_context, evidence_kind, artifact_schema_version, format,",
+      "content_sha256, content_byte_length, content, hash_algorithm, hash_domain, hash_version, hash_hex)",
+      "values ($1,$2,null,$3,$4,$5,$6,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$7,$8,$9,$10,$11,$12,'SHA-256','SYNTRAKE:EVIDENCE_OBJECT:V1','SYNTRAKE_SHA256_V1',$13)",
+      "on conflict do nothing",
+    ].join(" "),
+    [
+      evidenceObjectIdentityId,
+      context.tenantId,
+      context.principalId,
+      context.tenantMembershipId,
+      runInputIdentityId,
+      resultIdentityId,
+      evidence.descriptor.kind,
+      evidence.descriptor.artifactSchemaVersion,
+      evidence.descriptor.format,
+      evidence.contentSha256,
+      evidence.descriptor.contentByteLength,
+      evidence.contentBytes,
+      evidence.hashHex,
+    ],
+  );
+  const row = await one<{
+    evidence_object_identity_id: string;
+    run_input_identity_id: string;
+    result_identity_id: string;
+    evidence_kind: string;
+    artifact_schema_version: string;
+    format: string;
+    content_sha256: string;
+    content_byte_length: string;
+    content: Buffer;
+  }>(
+    client,
+    [
+      "select evidence_object_identity_id, run_input_identity_id, result_identity_id, evidence_kind, artifact_schema_version, format,",
+      "content_sha256, content_byte_length::text, content",
+      "from investing.research_evidence_objects_scientific_identities",
+      "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = 'SYNTRAKE:EVIDENCE_OBJECT:V1'",
+      "and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $2",
+    ].join(" "),
+    [context.tenantId, evidence.hashHex],
+  );
+  if (
+    !row ||
+    row.run_input_identity_id !== runInputIdentityId ||
+    row.result_identity_id !== resultIdentityId ||
+    row.evidence_kind !== evidence.descriptor.kind ||
+    row.artifact_schema_version !== evidence.descriptor.artifactSchemaVersion ||
+    row.format !== evidence.descriptor.format ||
+    row.content_sha256 !== evidence.contentSha256 ||
+    row.content_byte_length !== evidence.descriptor.contentByteLength ||
+    !Buffer.from(row.content).equals(evidence.contentBytes)
+  ) {
+    throw new HandledExecutionAbort("CONFLICT");
+  }
+  return { evidenceObjectIdentityId: row.evidence_object_identity_id };
 }
 
 async function insertRunEvent(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchExecutionContext, runId: string, sequence: 1 | 2 | 3, status: "REGISTERED" | "STARTED" | "SUCCEEDED" | "FAILED", resultIdentityId: string | null, failureCode: string | null) {
