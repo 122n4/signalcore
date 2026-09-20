@@ -41,6 +41,7 @@ const maybeDescribe = connectionString ? describe : describe.skip;
 const repairMigration = "supabase/migrations/20260823000000_reconcile_zero_genesis_journal_residual.sql";
 const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const executionClosureMigration = "supabase/migrations/20260919090000_investing_i5_research_execution_closure.sql";
+const evidenceClosureMigration = "supabase/migrations/20260920120000_investing_i5_rl1_evidence_object_closure.sql";
 const migrations = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
   "supabase/migrations/20260825123000_investing_genesis_i2_authorized_context.sql",
@@ -57,6 +58,7 @@ const migrations = [
   "supabase/migrations/20260917183000_investing_i5_experiment_scientific_closure.sql",
   "supabase/migrations/20260918170000_investing_i5_dataset_run_scientific_closure.sql",
   executionClosureMigration,
+  evidenceClosureMigration,
 ] as const;
 
 const ids = {
@@ -638,6 +640,40 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
     expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
     expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
+    expect(firstExecution.evidenceIdentityId).toBe(secondExecution.evidenceIdentityId);
+    expect(firstExecution.evidenceHashHex).toBe(secondExecution.evidenceHashHex);
+
+    const evidenceRows = await client.query<{
+      evidence_object_identity_id: string;
+      run_input_identity_id: string;
+      result_identity_id: string;
+      content_sha256: string;
+      content_byte_length: string;
+      actual_content_sha256: string;
+      actual_content_byte_length: string;
+    }>(
+      [
+        "select evidence_object_identity_id, run_input_identity_id, result_identity_id, content_sha256, content_byte_length::text,",
+        "upper(encode(extensions.digest(content, 'sha256'), 'hex')) as actual_content_sha256,",
+        "octet_length(content)::text as actual_content_byte_length",
+        "from investing.research_evidence_objects_scientific_identities",
+        "where evidence_object_identity_id = $1",
+      ].join(" "),
+      [firstExecution.evidenceIdentityId],
+    );
+    expect(evidenceRows.rows).toHaveLength(1);
+    expect(evidenceRows.rows[0]!.run_input_identity_id).toBe(ids.executableRunInputIdentity);
+    expect(evidenceRows.rows[0]!.result_identity_id).toBe(firstExecution.resultIdentityId);
+    expect(evidenceRows.rows[0]!.content_sha256).toBe(evidenceRows.rows[0]!.actual_content_sha256);
+    expect(evidenceRows.rows[0]!.content_byte_length).toBe(evidenceRows.rows[0]!.actual_content_byte_length);
+
+    await expect(
+      client.query(
+        "update investing.research_evidence_objects_scientific_identities set content = content where evidence_object_identity_id = $1",
+        [firstExecution.evidenceIdentityId],
+      ),
+    ).rejects.toThrow(/append-only/u);
+
     const reusedArtifactRows = await client.query<{ count: string }>(
       "select count(*) from investing.research_result_artifacts where artifact_id in (select execution_trace_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select valuation_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select metric_result_set_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select benchmark_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 and benchmark_series_artifact_id is not null)",
       [firstExecution.resultIdentityId],
