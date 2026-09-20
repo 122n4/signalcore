@@ -44,6 +44,7 @@ const requiredCurrentDocs = [
   "I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md",
+  "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
 const scannedRoots = ["AGENTS.md", "docs", "lib", "tests", "package.json", "tsconfig.json"] as const;
@@ -109,6 +110,24 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7");
     expect(state).not.toContain("R8");
     expect(state).not.toContain("R9");
+  });
+
+  it("locks the accepted finite Research Lab completion program without closing I5 early", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const program = read("docs/investing-genesis/I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md");
+
+    expect(program).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH LAB COMPLETION PROGRAM - UNNUMBERED");
+    expect(program).toContain("CURRENT_ACCEPTED / RESEARCH_LAB_COMPLETION_PROGRAM / UNNUMBERED");
+    expect(program).toContain("RL-1 - Evidence Object Scientific Closure");
+    expect(program).toContain("RL-11 - I5 Research Lab Full Rehearsal And Closure");
+    expect(program).toContain("I5 RESEARCH LAB = BACKEND_COMPLETE / PRODUCT_UI_DEFERRED");
+    expect(program).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(program).toContain("5c86dbf7094b33dc2612b613c791b899fa29f6c4");
+    expect(program).toContain("35508567814 - SUCCESS");
+    expect(state).toContain("I5 Research Lab completion program (unnumbered)");
+    expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(state).toContain("Research Lab is not yet backend-complete");
+    expect(state).not.toContain("I5 RESEARCH LAB = BACKEND_COMPLETE / PRODUCT_UI_DEFERRED`.");
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {
