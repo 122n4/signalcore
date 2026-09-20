@@ -83,6 +83,7 @@ const ids = {
 
 let pool: Pool;
 let client: PoolClient;
+let lastRealWriterError: string | null = null;
 
 function readSql(relativePath: string) {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -276,6 +277,7 @@ async function setExecutionContext(overrides: Record<string, string> = {}) {
 }
 
 function useRealPgAuthorityTransport() {
+  lastRealWriterError = null;
   vi.mocked(resolveVerifiedClerkIdentity).mockResolvedValue({ ok: true, externalProvider: "CLERK", externalSubject: "pg17-execution" });
   vi.mocked(getInvestingAuthorityDatabase).mockReturnValue({
     connect: async () => {
@@ -287,6 +289,14 @@ function useRealPgAuthorityTransport() {
             return { rows: result.rows, rowCount: result.rowCount };
           } catch (error) {
             const pgError = error as { message?: string; code?: string; constraint?: string; detail?: string };
+            lastRealWriterError = JSON.stringify({
+              code: pgError.code,
+              constraint: pgError.constraint,
+              detail: pgError.detail,
+              message: pgError.message,
+              text,
+              values,
+            });
             console.error("PG17 real writer query failed", {
               code: pgError.code,
               constraint: pgError.constraint,
@@ -493,7 +503,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       researchExperimentId: ids.experiment,
       candidate: scientificRunInputCandidateV1(),
     });
-    if (!createdRunInput.ok) throw new Error(`RunInput create failed: ${(createdRunInput as { code: string }).code}`);
+    if (!createdRunInput.ok) throw new Error(`RunInput create failed: ${(createdRunInput as { code: string }).code}; ${lastRealWriterError ?? "no writer SQL error captured"}`);
     const creationResearchIrHash = scientificRunInputCandidateV1().runInput.researchIr.hashHex;
     await client.query("begin");
     await setExecutionContext({
