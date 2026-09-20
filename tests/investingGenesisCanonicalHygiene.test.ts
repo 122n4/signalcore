@@ -235,7 +235,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Historical archive ref prohibits deletion and non-fast-forward updates");
     expect(state).toContain("Historical/candidate branches do not become authority merely by existing");
     expect(state).toContain("REPOSITORY CONTROL PLANE = GREEN / TRUST_RECOVERY_CLOSED");
-    expect(state).toContain("C. `REPOSITORY CONTROL PLANE REHEARSAL`");
+    expect(state).toContain("C. `REPOSITORY CONTROL PLANE REHEARSAL = PASS`");
     expect(state).toContain("TRUSTED GENESIS BASELINE = REHEARSAL_CANDIDATE / NOT CURRENT_ACCEPTED");
     expect(state).toContain("TRUSTED_GENESIS_BASELINE_REHEARSAL_20260920.md");
     expect(state).toContain("A. `EXECUTION REHEARSAL = PASS`");
