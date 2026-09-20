@@ -121,7 +121,7 @@ export function hashResearchExecutionEvidenceObjectV1(
   return sha256HexV1(researchExecutionEvidenceObjectPreimageV1(descriptor, contentBytes));
 }
 
-function researchExecutionEvidenceObjectPreimageV1(
+export function researchExecutionEvidenceObjectPreimageV1(
   descriptor: EvidenceContentDescriptorV1,
   contentBytes: Uint8Array,
 ): Buffer {

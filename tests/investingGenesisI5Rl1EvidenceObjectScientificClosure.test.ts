@@ -7,6 +7,7 @@ import {
 } from "../lib/investing/research";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import { i5A2TestOnlyEvidenceObjectHashV1, i5A2TestOnlyEvidenceObjectPreimageV1 } from "./support/investingI5A2TestOnlyVectors";
+import { researchExecutionEvidenceObjectPreimageV1 } from "../lib/investing/research/evidenceObject";
 import {
   datasetSeriesV1,
   datasetSnapshotV1,
@@ -85,6 +86,9 @@ describe("I5 RL-1 Evidence Object scientific closure", () => {
 
   it("matches the historical A2 Evidence preimage/hash vector for equivalent descriptor/content inputs", () => {
     const object = evidence();
+    expect(researchExecutionEvidenceObjectPreimageV1(object.descriptor, object.contentBytes).equals(
+      i5A2TestOnlyEvidenceObjectPreimageV1(object.descriptor, object.contentBytes),
+    )).toBe(true);
     expect(object.evidenceHash.hashHex).toBe(i5A2TestOnlyEvidenceObjectHashV1(object.descriptor, object.contentBytes));
     const a2Preimage = i5A2TestOnlyEvidenceObjectPreimageV1(object.descriptor, object.contentBytes);
     expect(a2Preimage.includes(Buffer.from("SYNTRAKE:EVIDENCE_OBJECT:V1\n", "utf8"))).toBe(true);

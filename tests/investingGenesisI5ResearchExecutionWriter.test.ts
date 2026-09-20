@@ -205,7 +205,7 @@ class FakeClient implements InvestingAuthorityTransactionClient {
       return { rows: found ? [{ result_identity_id: found.id, run_input_identity_id: found.runInput, canonical_payload: found.payload } as Row] : [], rowCount: found ? 1 : 0 };
     }
     if (sql.startsWith("insert into investing.research_evidence_objects_scientific_identities")) {
-      if (!this.store.evidences.some((e) => e.hash === values[16])) {
+      if (!this.store.evidences.some((e) => e.hash === values[16] || (e.runInput === values[4] && e.result === values[5]))) {
         this.store.evidences.push({
           id: values[0] as string,
           hash: values[16] as string,
@@ -342,5 +342,31 @@ describe("I5 Research Execution writer", () => {
     expect(store.evidences).toHaveLength(0);
     expect(store.events.filter((event) => event.status === "SUCCEEDED")).toHaveLength(0);
     expect(store.events.filter((event) => event.status === "FAILED")).toHaveLength(1);
+  });
+
+  it("rolls back success finalization when an existing Evidence row conflicts with a valid reusable Result", async () => {
+    const store = createStore();
+    const context = await authorizedContext(store);
+    const first = await executeResearchRunV1({ authorizedContext: context, datasetMaterialProvider: provider(store) }, databaseFor(store));
+    expect(first.ok).toBe(true);
+    expect(store.results).toHaveLength(1);
+    expect(store.evidences).toHaveLength(1);
+    const originalEvidence = store.evidences[0]!;
+    originalEvidence.content = Buffer.from("{\"schemaVersion\":\"RESEARCH_EXECUTION_EVIDENCE_V1\",\"corrupted\":\"fixture\"}", "utf8");
+    originalEvidence.contentSha256 = "F".repeat(64);
+    const beforeRuns = store.runs.length;
+    const beforeResults = store.results.length;
+    const beforeArtifacts = store.artifacts.length;
+    const beforeEvidence = store.evidences.length;
+
+    const second = await executeResearchRunV1({ authorizedContext: context, datasetMaterialProvider: provider(store) }, databaseFor(store));
+    expect(second).toEqual({ ok: false, code: "CONFLICT" });
+    expect(store.runs).toHaveLength(beforeRuns + 1);
+    expect(store.results).toHaveLength(beforeResults);
+    expect(store.artifacts).toHaveLength(beforeArtifacts);
+    expect(store.evidences).toHaveLength(beforeEvidence);
+    const secondRunId = store.runs.at(-1)!.id;
+    expect(store.events.filter((event) => event.runId === secondRunId && event.status === "SUCCEEDED")).toHaveLength(0);
+    expect(store.events.filter((event) => event.runId === secondRunId && event.status === "FAILED" && event.failure === "CONFLICT")).toHaveLength(1);
   });
 });
