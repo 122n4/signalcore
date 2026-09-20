@@ -37,6 +37,9 @@ const ids = {
   specRevision: "80000000-0000-4000-8000-000000000193",
   experiment: "91000000-0000-4000-8000-000000000071",
   runInputIdentity: "b7000000-0000-4000-8000-000000000191",
+  investigationIdempotency: "a1000000-0000-4000-8000-000000000191",
+  specIdempotency: "a2000000-0000-4000-8000-000000000191",
+  experimentIdempotency: "a3000000-0000-4000-8000-000000000191",
 };
 
 let pool: Pool;
@@ -117,11 +120,20 @@ async function seedRunInputAuthority() {
   await client.query("insert into investing.tenants (tenant_id) values ($1)", [ids.tenant]);
   await client.query("insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id, role, state) values ($1, $2, $3, 'OWNER', 'ACTIVE')", [ids.membership, ids.tenant, ids.principal]);
   await client.query(`
+    insert into investing.idempotency_records (
+      idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+      operation_scope, operation, principal_id, tenant_id, account_id, status, completed_at
+    ) values
+      ($1, 'idem-execution-0001', $4, 'corr-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', $7, $8, null, 'SUCCEEDED', now()),
+      ($2, 'idem-spec-execution-0001', $5, 'corr-spec-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_SPEC_REVISION_CREATE_V1', $7, $8, null, 'SUCCEEDED', now()),
+      ($3, 'idem-experiment-execution-0001', $6, 'corr-experiment-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $7, $8, null, 'SUCCEEDED', now())
+  `, [ids.investigationIdempotency, ids.specIdempotency, ids.experimentIdempotency, "A".repeat(64), "C".repeat(64), "D".repeat(64), ids.principal, ids.tenant]);
+  await client.query(`
     insert into investing.research_investigations (
       research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
       operation_scope, operation, capability, source_context, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
-    ) values ($1,$2,null,$3,'USER_PRINCIPAL','pg17-execution',$4,null,'TENANT_SCOPE','RESEARCH_INVESTIGATION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH',$5,gen_random_uuid(),'idem-execution-0001','corr-execution-0001')
-  `, [ids.investigation, ids.tenant, ids.principal, ids.membership, "A".repeat(64)]);
+    ) values ($1,$2,null,$3,'USER_PRINCIPAL','pg17-execution',$4,null,'TENANT_SCOPE','RESEARCH_INVESTIGATION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH',$5,$6,'idem-execution-0001','corr-execution-0001')
+  `, [ids.investigation, ids.tenant, ids.principal, ids.membership, "A".repeat(64), ids.investigationIdempotency]);
   await client.query(`
     insert into investing.research_spec_revisions (
       research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
@@ -130,8 +142,8 @@ async function seedRunInputAuthority() {
       canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
     ) values ($1, gen_random_uuid(), $2, $3, null, $4, 'USER_PRINCIPAL', 'pg17-execution', $5, null, 'TENANT_SCOPE', 'PURE_RESEARCH',
       'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null, null, $6, null, null, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
-      $7::jsonb, $8, gen_random_uuid(), 'idem-spec-execution-0001', 'corr-spec-execution-0001')
-  `, [ids.specRevision, ids.investigation, ids.tenant, ids.principal, ids.membership, "B".repeat(64), JSON.stringify({ schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", status: "CANDIDATE_ONLY" }), "C".repeat(64)]);
+      $7::jsonb, $8, $9, 'idem-spec-execution-0001', 'corr-spec-execution-0001')
+  `, [ids.specRevision, ids.investigation, ids.tenant, ids.principal, ids.membership, "B".repeat(64), JSON.stringify({ schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", status: "CANDIDATE_ONLY" }), "C".repeat(64), ids.specIdempotency]);
   await client.query(`
     insert into investing.research_experiments (
       research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
@@ -144,8 +156,8 @@ async function seedRunInputAuthority() {
       'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1','RESEARCH_MUTATE','BASELINE',null,$6,
       'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$7,
       'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$8,
-      null,null,null,null,$9,gen_random_uuid(),'idem-experiment-execution-0001','corr-experiment-execution-0001')
-  `, [ids.experiment, ids.investigation, ids.tenant, ids.principal, ids.membership, ids.specRevision, "1".repeat(64), "2".repeat(64), "D".repeat(64)]);
+      null,null,null,null,$9,$10,'idem-experiment-execution-0001','corr-experiment-execution-0001')
+  `, [ids.experiment, ids.investigation, ids.tenant, ids.principal, ids.membership, ids.specRevision, "1".repeat(64), "2".repeat(64), "D".repeat(64), ids.experimentIdempotency]);
   await client.query(`
     insert into investing.run_inputs_scientific_identities (
       run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
