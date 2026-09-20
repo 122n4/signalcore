@@ -3,6 +3,7 @@ import {
   buildResearchExecutionEvidenceV1,
   canonicalEvidenceContentDescriptorV1,
   hashEvidenceObjectV1,
+  hashDatasetSnapshotV1,
   hashRefV1,
   type ResultHashPayloadV1,
   type RunInputHashPayloadV1,
@@ -14,6 +15,14 @@ const ref = (domain: Parameters<typeof hashRefV1>[0]["hashDomain"], hex: string)
   hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: domain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hex });
 
 function fixture() {
+  const datasetSnapshot = {
+    schemaVersion: "DATASET_SNAPSHOT_HASH_PAYLOAD_V1" as const,
+    snapshotPolicy: "DATASET_SNAPSHOT_POLICY_V1" as const,
+    series: [
+      ref("SYNTRAKE:DATASET_SERIES:V1", "9".repeat(64)),
+      ref("SYNTRAKE:DATASET_SERIES:V1", "8".repeat(64)),
+    ],
+  };
   const runInput: RunInputHashPayloadV1 = {
     schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1",
     runType: "HISTORICAL_BACKTEST",
@@ -22,7 +31,7 @@ function fixture() {
     researchSpec: ref("SYNTRAKE:RESEARCH_SPEC:V1", "A".repeat(64)),
     researchIr: ref("SYNTRAKE:RESEARCH_IR:V1", "B".repeat(64)),
     experiment: ref("SYNTRAKE:EXPERIMENT:V1", "C".repeat(64)),
-    datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "D".repeat(64)),
+    datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(datasetSnapshot)),
     engineId: "HISTORICAL_EXECUTION_ADAPTER",
     engineVersion: "ENGINE_V20260918",
     metricRegistryVersion: "METRIC_REGISTRY_V20260918",
@@ -59,10 +68,7 @@ function fixture() {
     runInputHash,
     resultPayload,
     resultHash: hashResultV1(resultPayload),
-    datasetSeries: [
-      ref("SYNTRAKE:DATASET_SERIES:V1", "9".repeat(64)),
-      ref("SYNTRAKE:DATASET_SERIES:V1", "8".repeat(64)),
-    ],
+    datasetSnapshot,
   };
 }
 
@@ -74,14 +80,17 @@ describe("I5 RL-1 Evidence Object scientific identity", () => {
       runInputHashHex: f.runInputHash,
       resultPayload: f.resultPayload,
       resultHashHex: f.resultHash,
-      datasetSeries: f.datasetSeries,
+      datasetSnapshot: f.datasetSnapshot,
     });
     const second = buildResearchExecutionEvidenceV1({
       runInput: f.runInput,
       runInputHashHex: f.runInputHash,
       resultPayload: f.resultPayload,
       resultHashHex: f.resultHash,
-      datasetSeries: [...f.datasetSeries].reverse(),
+      datasetSnapshot: {
+        ...f.datasetSnapshot,
+        series: [...f.datasetSnapshot.series].reverse(),
+      },
     });
 
     expect(first.hashHex).toBe(second.hashHex);
@@ -106,7 +115,7 @@ describe("I5 RL-1 Evidence Object scientific identity", () => {
       runInputHashHex: f.runInputHash,
       resultPayload: f.resultPayload,
       resultHashHex: f.resultHash,
-      datasetSeries: f.datasetSeries,
+      datasetSnapshot: f.datasetSnapshot,
     });
     const text = evidence.contentBytes.toString("utf8");
     for (const forbidden of ["tenantId", "principalId", "membership", "correlationId", "researchExecutionRunId", "createdAt"]) {
@@ -121,7 +130,7 @@ describe("I5 RL-1 Evidence Object scientific identity", () => {
       runInputHashHex: "0".repeat(64),
       resultPayload: f.resultPayload,
       resultHashHex: f.resultHash,
-      datasetSeries: f.datasetSeries,
+      datasetSnapshot: f.datasetSnapshot,
     })).toThrow("EVIDENCE_RUN_INPUT_HASH_MISMATCH");
 
     expect(() => buildResearchExecutionEvidenceV1({
@@ -129,7 +138,7 @@ describe("I5 RL-1 Evidence Object scientific identity", () => {
       runInputHashHex: f.runInputHash,
       resultPayload: f.resultPayload,
       resultHashHex: "0".repeat(64),
-      datasetSeries: f.datasetSeries,
+      datasetSnapshot: f.datasetSnapshot,
     })).toThrow("EVIDENCE_RESULT_HASH_MISMATCH");
   });
 
