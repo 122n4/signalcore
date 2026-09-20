@@ -167,6 +167,13 @@ export {
 } from "./resultArtifacts";
 
 export {
+  constructResearchExecutionEvidenceObjectV1,
+  type ConstructResearchExecutionEvidenceObjectInputV1,
+  type ResearchExecutionEvidenceContentV1,
+  type ResearchExecutionEvidenceObjectV1,
+} from "./evidenceObject";
+
+export {
   executeHistoricalBacktestV1,
   type ResearchExecutionFailureCodeV1,
   type ResearchExecutionResultV1,

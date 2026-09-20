@@ -15,6 +15,7 @@ import {
   hashRefV1,
   hashResearchIrV1,
   hashResultV1,
+  canonicalResultHashPayloadV1,
   sha256HexV1,
   verifyDatasetSeriesMaterialV1,
   type DatasetSeriesHashPayloadV1,
@@ -41,6 +42,7 @@ const maybeDescribe = connectionString ? describe : describe.skip;
 const repairMigration = "supabase/migrations/20260823000000_reconcile_zero_genesis_journal_residual.sql";
 const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const executionClosureMigration = "supabase/migrations/20260919090000_investing_i5_research_execution_closure.sql";
+const evidenceClosureMigration = "supabase/migrations/20260920090000_investing_i5_rl1_evidence_object_scientific_closure.sql";
 const migrations = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
   "supabase/migrations/20260825123000_investing_genesis_i2_authorized_context.sql",
@@ -57,6 +59,7 @@ const migrations = [
   "supabase/migrations/20260917183000_investing_i5_experiment_scientific_closure.sql",
   "supabase/migrations/20260918170000_investing_i5_dataset_run_scientific_closure.sql",
   executionClosureMigration,
+  evidenceClosureMigration,
 ] as const;
 
 const ids = {
@@ -69,6 +72,7 @@ const ids = {
   runInputIdentity: "b7000000-0000-4000-8000-000000000191",
   executableRunInputIdentity: "b7000000-0000-4000-8000-000000000291",
   conflictRunInputIdentity: "b7000000-0000-4000-8000-000000000391",
+  evidenceConflictRunInputIdentity: "b7000000-0000-4000-8000-000000000491",
   draftRoot: "51000000-0000-4000-8000-000000000191",
   hypothesisRoot: "52000000-0000-4000-8000-000000000191",
   specRoot: "53000000-0000-4000-8000-000000000191",
@@ -414,8 +418,12 @@ function executableFixture(changed = false) {
   return { aaa, bbb, researchIr, datasetSnapshot, runInput, runInputHash: hashRunInputV1(runInput), datasetSeries: [aaa.series, bbb.series], materials: [aaa.verified, bbb.verified] };
 }
 
-async function seedExecutableRunInput(runInputIdentityId = ids.executableRunInputIdentity, changed = false) {
+async function seedExecutableRunInput(runInputIdentityId = ids.executableRunInputIdentity, changed = false, deterministicSeed?: string) {
   const f = executableFixture(changed);
+  if (deterministicSeed) {
+    f.runInput = { ...f.runInput, deterministicSeed };
+    f.runInputHash = hashRunInputV1(f.runInput);
+  }
   for (const series of f.datasetSeries) {
     await client.query("insert into investing.dataset_series_scientific_identities (dataset_series_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SERIES:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, hashDatasetSeriesV1(series), JSON.stringify(series)]);
   }
@@ -451,6 +459,17 @@ async function expectTransactionRejects(work: () => Promise<void>, pattern: RegE
   throw new Error("expected transaction to reject");
 }
 
+async function expectEvidenceCount(resultIdentityId: string, overrides: Record<string, string>, expected: string, label = "evidence visibility") {
+  await client.query("begin");
+  await setExecutionContext(overrides);
+  const visible = await client.query<{ count: string }>(
+    "select count(*)::text from investing.research_evidence_objects_scientific_identities where result_identity_id = $1",
+    [resultIdentityId],
+  );
+  await client.query("commit");
+  expect(visible.rows[0]!.count, label).toBe(expected);
+}
+
 async function insertExecutionRun(runId: string) {
   await client.query("insert into investing.research_execution_runs (research_execution_run_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, run_input_identity_id, operation, capability, operation_scope, source_context, engine_id, engine_version) values ($1,$2,null,$3,$4,$5,$6,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918')", [runId, ids.tenant, ids.principal, ids.membership, ids.investigation, ids.runInputIdentity]);
 }
@@ -467,6 +486,12 @@ describe("I5 Research Execution Closure PG17 static contract", () => {
     expect(sql).toContain("research_execution_run_events_sequence_status_check");
     expect(sql).toContain("extensions.digest(content, 'sha256')");
     expect(sql).toContain("research_execution_read_run_inputs");
+    const evidenceSql = readSql(evidenceClosureMigration);
+    expect(evidenceSql).toContain("research_evidence_objects_scientific_identities");
+    expect(evidenceSql).toContain("research_evidence_result_run_input_fk");
+    expect(evidenceSql).toContain("extensions.digest(content, 'sha256')");
+    expect(evidenceSql).toContain("before update or delete");
+    expect(evidenceSql).toContain("grant select, insert on investing.research_evidence_objects_scientific_identities to investing_app");
   });
 });
 
@@ -488,9 +513,10 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     useRealPgAuthorityTransport();
 
     const version = await client.query<{ server_version: string }>("show server_version");
+    console.info(`PG17 server_version=${version.rows[0]!.server_version}`);
     expect(version.rows[0]!.server_version).toMatch(/^17\./);
 
-    const tables = ["research_ir_scientific_identities", "research_execution_runs", "research_execution_run_events", "research_result_artifacts", "research_results_scientific_identities"];
+    const tables = ["research_ir_scientific_identities", "research_execution_runs", "research_execution_run_events", "research_result_artifacts", "research_results_scientific_identities", "research_evidence_objects_scientific_identities"];
     const rls = await client.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
       "select relrowsecurity, relforcerowsecurity from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'investing' and c.relname = any($1::text[])",
       [tables],
@@ -638,6 +664,33 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
     expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
     expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
+    const evidenceReuse = await client.query<{ count: string; content_ok: boolean }>(
+      "select count(*)::text, bool_and(octet_length(content) = content_byte_length and upper(encode(extensions.digest(content, 'sha256'), 'hex')) = content_sha256) as content_ok from investing.research_evidence_objects_scientific_identities where result_identity_id = $1",
+      [firstExecution.resultIdentityId],
+    );
+    expect(evidenceReuse.rows[0]).toEqual({ count: "1", content_ok: true });
+    await expectEvidenceCount(firstExecution.resultIdentityId, {}, "1");
+    for (const [label, overrides] of [
+      ["wrong operation", { operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1" }],
+      ["wrong capability", { capability: "RESEARCH_MUTATE" }],
+      ["account scope", { operation_scope: "ACCOUNT_SCOPE" }],
+      ["user portfolio", { source_context: "USER_PORTFOLIO" }],
+      ["non-empty account", { account_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }],
+      ["non-empty account access", { account_access_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }],
+      ["wrong tenant", { tenant_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc" }],
+      ["wrong principal", { principal_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd" }],
+      ["wrong membership", { tenant_membership_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }],
+    ] as const) {
+      await expectEvidenceCount(firstExecution.resultIdentityId, overrides, "0", label);
+    }
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await client.query("update investing.research_evidence_objects_scientific_identities set descriptor_kind = descriptor_kind where result_identity_id = $1", [firstExecution.resultIdentityId]);
+    }, /append-only|permission denied|row-level security/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await client.query("delete from investing.research_evidence_objects_scientific_identities where result_identity_id = $1", [firstExecution.resultIdentityId]);
+    }, /append-only|permission denied|row-level security/i);
     const reusedArtifactRows = await client.query<{ count: string }>(
       "select count(*) from investing.research_result_artifacts where artifact_id in (select execution_trace_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select valuation_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select metric_result_set_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 union select benchmark_series_artifact_id from investing.research_results_scientific_identities where result_identity_id = $1 and benchmark_series_artifact_id is not null)",
       [firstExecution.resultIdentityId],
@@ -682,6 +735,64 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     expect(afterConflictArtifacts.rows[0]!.count).toBe(beforeConflictArtifacts.rows[0]!.count);
     const failedConflictRun = await client.query<{ count: string }>("select count(*) from investing.research_execution_run_events e join investing.research_execution_runs r on r.research_execution_run_id = e.research_execution_run_id where r.run_input_identity_id = $1 and e.run_status = 'FAILED' and e.failure_reason_code = 'CONFLICT'", [ids.conflictRunInputIdentity]);
     expect(failedConflictRun.rows[0]!.count).toBe("1");
+
+    const evidenceConflictExecutable = await seedExecutableRunInput(ids.evidenceConflictRunInputIdentity, true, "PG17_EVIDENCE_CONFLICT_SEED");
+    const evidenceConflictPure = executeHistoricalBacktestV1({
+      runInput: evidenceConflictExecutable.runInput,
+      runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", evidenceConflictExecutable.runInputHash as never),
+      researchIr: evidenceConflictExecutable.researchIr,
+      datasetSeries: evidenceConflictExecutable.datasetSeries,
+      executionConfig: executableExecutionConfig,
+      metricRequestSet: executableMetricRequestSet,
+      materials: evidenceConflictExecutable.materials,
+    });
+    expect(evidenceConflictPure.ok).toBe(true);
+    if (!evidenceConflictPure.ok) throw new Error("evidence conflict pure execution failed");
+    const evidenceConflictHash = hashResultV1(evidenceConflictPure.resultPayload);
+    const evidenceConflictArtifactIds = ["eeeeeeee-1000-4000-8000-000000000191", "eeeeeeee-2000-4000-8000-000000000191", "eeeeeeee-3000-4000-8000-000000000191", "eeeeeeee-4000-4000-8000-000000000191"];
+    const evidenceConflictArtifacts = [
+      ["EXECUTION_TRACE", evidenceConflictPure.resultPayload.executionTrace, evidenceConflictPure.artifacts.executionTraceBytes],
+      ["VALUATION_SERIES", evidenceConflictPure.resultPayload.valuationSeries, evidenceConflictPure.artifacts.valuationSeriesBytes],
+      ["METRIC_RESULT_SET", evidenceConflictPure.resultPayload.metricResultSet, evidenceConflictPure.artifacts.metricResultSetBytes],
+      ["BENCHMARK_SERIES", evidenceConflictPure.resultPayload.benchmark, evidenceConflictPure.artifacts.benchmarkSeriesBytes],
+    ] as const;
+    const evidenceConflictResolvedArtifactIds: Array<string | null> = [];
+    for (const [index, entry] of evidenceConflictArtifacts.entries()) {
+      const [kind, artifactDescriptor, bytes] = entry;
+      if (!artifactDescriptor || !bytes) {
+        evidenceConflictResolvedArtifactIds[index] = null;
+        continue;
+      }
+      await client.query("insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content) values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,$7,$8,$9,$10,$11) on conflict do nothing", [evidenceConflictArtifactIds[index], ids.tenant, ids.principal, ids.membership, kind, artifactDescriptor.artifactSchemaVersion, artifactDescriptor.format, artifactDescriptor.contentSha256, artifactDescriptor.contentByteLength, artifactDescriptor.recordCount, bytes]);
+      const resolvedArtifact = await client.query<{ artifact_id: string }>("select artifact_id from investing.research_result_artifacts where artifact_kind = $1 and artifact_schema_version = $2 and format = $3 and content_sha256 = $4 and content_byte_length = $5 and record_count = $6 order by artifact_id limit 1", [kind, artifactDescriptor.artifactSchemaVersion, artifactDescriptor.format, artifactDescriptor.contentSha256, artifactDescriptor.contentByteLength, artifactDescriptor.recordCount]);
+      expect(resolvedArtifact.rows[0]?.artifact_id).toBeTruthy();
+      evidenceConflictResolvedArtifactIds[index] = resolvedArtifact.rows[0]!.artifact_id;
+    }
+    const evidenceConflictResultId = "eeeeeeee-5000-4000-8000-000000000191";
+    await client.query("insert into investing.research_results_scientific_identities (result_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id, execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, benchmark_series_artifact_id, operation, capability, operation_scope, source_context, engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,null,$3,$4,$5,$6,$7,$8,$9,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$10,$11::jsonb)", [evidenceConflictResultId, ids.tenant, ids.principal, ids.membership, ids.evidenceConflictRunInputIdentity, evidenceConflictResolvedArtifactIds[0], evidenceConflictResolvedArtifactIds[1], evidenceConflictResolvedArtifactIds[2], evidenceConflictResolvedArtifactIds[3] ?? null, evidenceConflictHash, JSON.stringify(canonicalResultHashPayloadV1(evidenceConflictPure.resultPayload))]);
+    const incompatibleEvidenceContent = Buffer.from("{\"schemaVersion\":\"RESEARCH_EXECUTION_EVIDENCE_V1\",\"conflict\":\"fixture\"}", "utf8");
+    await client.query("insert into investing.research_evidence_objects_scientific_identities (evidence_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id, result_identity_id, descriptor_schema_version, descriptor_kind, descriptor_artifact_schema_version, descriptor_format, content, content_sha256, content_byte_length, hash_algorithm, hash_domain, hash_version, hash_hex, operation, capability, operation_scope, source_context) values ('eeeeeeee-6000-4000-8000-000000000191',$1,null,$2,$3,$4,$5,'EVIDENCE_CONTENT_DESCRIPTOR_V1','RESEARCH_EXECUTION_EVIDENCE','RESEARCH_EXECUTION_EVIDENCE_V1','CANONICAL_JSON_UTF8_V1',$6,$7,$8,'SHA-256','SYNTRAKE:EVIDENCE_OBJECT:V1','SYNTRAKE_SHA256_V1',$9,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH')", [ids.tenant, ids.principal, ids.membership, ids.evidenceConflictRunInputIdentity, evidenceConflictResultId, incompatibleEvidenceContent, sha256HexV1(incompatibleEvidenceContent), incompatibleEvidenceContent.byteLength, "9".repeat(64)]);
+    const beforeEvidenceConflictArtifacts = await client.query<{ count: string }>("select count(*) from investing.research_result_artifacts");
+    const beforeEvidenceConflictResults = await client.query<{ count: string }>("select count(*) from investing.research_results_scientific_identities");
+    const beforeEvidenceConflictEvidence = await client.query<{ count: string }>("select count(*) from investing.research_evidence_objects_scientific_identities");
+    const evidenceConflictMaterialBytes = new Map<string, Buffer>([
+      [hashDatasetSeriesV1(evidenceConflictExecutable.aaa.series), evidenceConflictExecutable.aaa.bytes],
+      [hashDatasetSeriesV1(evidenceConflictExecutable.bbb.series), evidenceConflictExecutable.bbb.bytes],
+    ]);
+    const evidenceConflictRoleProofStart = appRoleProofs.length;
+    const evidenceConflictResult = await executeResearchRunCommandV1({
+      researchInvestigationId: ids.investigation,
+      runInputIdentityId: ids.evidenceConflictRunInputIdentity,
+      correlationId: "corr-pg17-evidence-conflict",
+      datasetMaterialProvider: { loadSeriesContent: async (seriesRef) => evidenceConflictMaterialBytes.get(seriesRef.hashHex) ?? null },
+    });
+    expect(evidenceConflictResult).toEqual({ ok: false, code: "CONFLICT" });
+    expectAppTransportUsedInvestingApp(evidenceConflictRoleProofStart);
+    expect((await client.query<{ count: string }>("select count(*) from investing.research_result_artifacts")).rows[0]!.count).toBe(beforeEvidenceConflictArtifacts.rows[0]!.count);
+    expect((await client.query<{ count: string }>("select count(*) from investing.research_results_scientific_identities")).rows[0]!.count).toBe(beforeEvidenceConflictResults.rows[0]!.count);
+    expect((await client.query<{ count: string }>("select count(*) from investing.research_evidence_objects_scientific_identities")).rows[0]!.count).toBe(beforeEvidenceConflictEvidence.rows[0]!.count);
+    const evidenceConflictTerminal = await client.query<{ succeeded: string; failed_conflict: string }>("select count(*) filter (where e.run_status = 'SUCCEEDED')::text as succeeded, count(*) filter (where e.run_status = 'FAILED' and e.failure_reason_code = 'CONFLICT')::text as failed_conflict from investing.research_execution_run_events e join investing.research_execution_runs r on r.research_execution_run_id = e.research_execution_run_id where r.run_input_identity_id = $1", [ids.evidenceConflictRunInputIdentity]);
+    expect(evidenceConflictTerminal.rows[0]).toEqual({ succeeded: "0", failed_conflict: "1" });
 
     await client.query("begin");
     await setExecutionContext();
