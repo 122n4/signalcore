@@ -10,6 +10,7 @@ const authorizedResearchDraftCreateContextRuntimeBrand = Symbol("AuthorizedResea
 const authorizedResearchMaterialRevisionCreateContextRuntimeBrand = Symbol(
   "AuthorizedResearchMaterialRevisionCreateContext",
 );
+const authorizedResearchExecutionContextRuntimeBrand = Symbol("AuthorizedResearchExecutionContext");
 const accountContextResolveOperation = "ACCOUNT_CONTEXT_RESOLVE";
 const accountAuthorityReadCapability = "ACCOUNT_AUTHORITY_READ";
 const researchInvestigationCreateOperation = "RESEARCH_INVESTIGATION_CREATE_V1";
@@ -20,7 +21,9 @@ const researchSpecRevisionCreateOperation = "RESEARCH_SPEC_REVISION_CREATE_V1";
 const researchExperimentBaselineCreateOperation = "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1";
 const researchExperimentVariantCreateOperation = "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1";
 const researchRunInputScientificCreateOperation = "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1";
+const researchExecutionRunOperation = "RESEARCH_EXECUTION_RUN_V1";
 const researchMutateCapability = "RESEARCH_MUTATE";
+const researchExecuteCapability = "RESEARCH_EXECUTE";
 const preAuthorityExternalSubjectHashDomain = "SYNTRAKE_INVESTING_I2B_EXTERNAL_SUBJECT_V1";
 const preAuthoritySelectorHashDomain = "SYNTRAKE_INVESTING_I2B_SELECTOR_V1";
 const researchPreAuthorityExternalSubjectHashDomain = "SYNTRAKE_INVESTING_I5_EXTERNAL_SUBJECT_V1";
@@ -40,6 +43,10 @@ type ResearchDraftCreateContextBrand = {
 
 type ResearchMaterialRevisionCreateContextBrand = {
   readonly __authorizedResearchMaterialRevisionCreateContext: "AuthorizedResearchMaterialRevisionCreateContext";
+};
+
+type ResearchExecutionContextBrand = {
+  readonly __authorizedResearchExecutionContext: "AuthorizedResearchExecutionContext";
 };
 
 export type InvestingActorKind = "USER_PRINCIPAL" | "SYSTEM_ACTOR";
@@ -160,6 +167,25 @@ export type AuthorizedResearchMaterialRevisionCreateContext = Readonly<
           accountAccessId: string;
         }
     )
+>;
+
+export type AuthorizedResearchExecutionContext = Readonly<
+  ResearchExecutionContextBrand & {
+    actorKind: "USER_PRINCIPAL";
+    actorId: string;
+    principalId: string;
+    tenantId: string;
+    tenantMembershipId: string;
+    correlationId: string;
+    operation: typeof researchExecutionRunOperation;
+    capability: typeof researchExecuteCapability;
+    operationScope: "TENANT_SCOPE";
+    sourceContext: "PURE_RESEARCH";
+    researchInvestigationId: string;
+    runInputIdentityId: string;
+    accountId?: never;
+    accountAccessId?: never;
+  }
 >;
 
 export type InvestingAuthoritySuccess = {
@@ -287,6 +313,12 @@ export type ResolveAuthorizedResearchMaterialRevisionCreateContextInput = {
   operation: ResearchMaterialRevisionCreateOperation;
 };
 
+export type ResolveAuthorizedResearchExecutionContextInput = {
+  researchInvestigationId: string;
+  runInputIdentityId: string;
+  correlationId: string;
+};
+
 type PrincipalRow = {
   principal_id: string;
   state: "ACTIVE" | "DISABLED";
@@ -332,6 +364,16 @@ type ResearchInvestigationAuthorityRow = {
   source_context: ResearchSourceContext;
 };
 
+type ResearchExecutionAuthorityRow = {
+  research_investigation_id: string;
+  run_input_identity_id: string;
+  tenant_id: string;
+  principal_id: string;
+  tenant_membership_id: string;
+  operation_scope: "TENANT_SCOPE";
+  source_context: "PURE_RESEARCH";
+};
+
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -365,6 +407,7 @@ const transactionContextKeys = [
   "syntrake.investing.operation",
   "syntrake.investing.capability",
   "syntrake.investing.operation_scope",
+  "syntrake.investing.source_context",
   "syntrake.investing.correlation_id",
   "syntrake.investing.research_investigation_id",
 ] as const;
@@ -490,6 +533,26 @@ export function isAuthorizedResearchMaterialRevisionCreateContext(
     context.sourceContext === "USER_PORTFOLIO" &&
     typeof context.accountId === "string" &&
     typeof context.accountAccessId === "string"
+  );
+}
+
+export function isAuthorizedResearchExecutionContext(
+  value: unknown,
+): value is AuthorizedResearchExecutionContext {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { [authorizedResearchExecutionContextRuntimeBrand]?: boolean })[
+      authorizedResearchExecutionContextRuntimeBrand
+    ] === true &&
+    (value as Partial<AuthorizedResearchExecutionContext>).operation === researchExecutionRunOperation &&
+    (value as Partial<AuthorizedResearchExecutionContext>).capability === researchExecuteCapability &&
+    (value as Partial<AuthorizedResearchExecutionContext>).operationScope === "TENANT_SCOPE" &&
+    (value as Partial<AuthorizedResearchExecutionContext>).sourceContext === "PURE_RESEARCH" &&
+    typeof (value as Partial<AuthorizedResearchExecutionContext>).researchInvestigationId === "string" &&
+    typeof (value as Partial<AuthorizedResearchExecutionContext>).runInputIdentityId === "string" &&
+    !("accountId" in (value as Partial<AuthorizedResearchExecutionContext>)) &&
+    !("accountAccessId" in (value as Partial<AuthorizedResearchExecutionContext>))
   );
 }
 
@@ -1243,6 +1306,129 @@ export async function resolveAuthorizedResearchMaterialRevisionCreateContext(
   return transaction.result as InvestingAuthorityResult | { ok: true; context: AuthorizedResearchMaterialRevisionCreateContext };
 }
 
+export async function resolveAuthorizedResearchExecutionContext(
+  input: ResolveAuthorizedResearchExecutionContextInput,
+): Promise<InvestingAuthorityResult | { ok: true; context: AuthorizedResearchExecutionContext }> {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Object.getPrototypeOf(input) !== Object.prototype ||
+    !uuidPattern.test(input.researchInvestigationId) ||
+    !uuidPattern.test(input.runInputIdentityId) ||
+    !isValidCorrelationId(input.correlationId)
+  ) {
+    return fail("VALIDATION_ERROR");
+  }
+  const forbiddenFieldFailure = rejectClientAuthorityFields(input as never);
+  if (forbiddenFieldFailure) return forbiddenFieldFailure;
+
+  const verifiedAuth = await resolveVerifiedClerkIdentity();
+  if (verifiedAuth.ok === false) return fail(verifiedAuth.code);
+
+  let database: InvestingAuthorityDatabase;
+  try {
+    database = getInvestingAuthorityDatabase();
+  } catch {
+    return fail("INTERNAL_ERROR");
+  }
+
+  let client: InvestingAuthorityTransactionClient | null = null;
+  let destroyClient = false;
+  try {
+    client = await database.connect();
+    await client.query("begin");
+    if (await hasStaleTransactionContext(client)) {
+      destroyClient = true;
+      await client.query("rollback");
+      return fail("INTERNAL_ERROR");
+    }
+    await setTransactionContext(client, {
+      actor_kind: "USER_PRINCIPAL",
+      actor_id: verifiedAuth.externalSubject,
+      external_provider: verifiedAuth.externalProvider,
+      external_subject: verifiedAuth.externalSubject,
+      operation: researchExecutionRunOperation,
+      capability: researchExecuteCapability,
+      operation_scope: "TENANT_SCOPE",
+      source_context: "PURE_RESEARCH",
+      research_investigation_id: input.researchInvestigationId,
+      correlation_id: input.correlationId,
+    });
+
+    const principal = await expectExactlyOne(
+      client.query<PrincipalRow>(
+        "select principal_id, state from investing.principals where external_provider = $1 and external_subject = $2",
+        [verifiedAuth.externalProvider, verifiedAuth.externalSubject],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (principal.ok === false || principal.row.state !== "ACTIVE") {
+      await client.query("rollback");
+      return principal.ok === false ? principal : fail("PRINCIPAL_DISABLED");
+    }
+    await setTransactionContext(client, { principal_id: principal.row.principal_id });
+
+    const execution = await expectExactlyOne(
+      client.query<ResearchExecutionAuthorityRow>(
+        [
+          "select ri.research_investigation_id, r.run_input_identity_id, r.tenant_id, r.principal_id, r.tenant_membership_id,",
+          "r.operation_scope, r.source_context",
+          "from investing.run_inputs_scientific_identities r",
+          "join investing.research_investigations ri on ri.research_investigation_id = r.research_investigation_id",
+          "join investing.tenant_memberships tm on tm.tenant_membership_id = r.tenant_membership_id",
+          "and tm.tenant_id = r.tenant_id and tm.principal_id = r.principal_id",
+          "join investing.tenants t on t.tenant_id = r.tenant_id",
+          "where r.run_input_identity_id = $1 and r.research_investigation_id = $2",
+          "and r.principal_id = $3 and r.account_id is null and ri.account_id is null",
+          "and r.operation_scope = 'TENANT_SCOPE' and r.source_context = 'PURE_RESEARCH'",
+          "and ri.operation_scope = 'TENANT_SCOPE' and ri.source_context = 'PURE_RESEARCH'",
+          "and tm.role = 'OWNER' and tm.state = 'ACTIVE'",
+          "and t.state = 'ACTIVE'",
+        ].join(" "),
+        [input.runInputIdentityId, input.researchInvestigationId, principal.row.principal_id],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (execution.ok === false) {
+      await client.query("rollback");
+      return execution;
+    }
+    await setTransactionContext(client, {
+      tenant_id: execution.row.tenant_id,
+      tenant_membership_id: execution.row.tenant_membership_id,
+    });
+    await client.query("commit");
+    return {
+      ok: true,
+      context: brandAuthorizedResearchExecutionContext({
+        actorKind: "USER_PRINCIPAL",
+        actorId: verifiedAuth.externalSubject,
+        principalId: principal.row.principal_id,
+        operationScope: "TENANT_SCOPE",
+        tenantId: execution.row.tenant_id,
+        tenantMembershipId: execution.row.tenant_membership_id,
+        correlationId: input.correlationId,
+        operation: researchExecutionRunOperation,
+        capability: researchExecuteCapability,
+        sourceContext: "PURE_RESEARCH",
+        researchInvestigationId: input.researchInvestigationId,
+        runInputIdentityId: input.runInputIdentityId,
+      }),
+    };
+  } catch {
+    if (client) {
+      try {
+        await client.query("rollback");
+      } catch {
+        destroyClient = true;
+      }
+    }
+    return fail("INTERNAL_ERROR");
+  } finally {
+    if (client) await client.release(destroyClient);
+  }
+}
+
 function rejectClientAuthorityFields(input: ResolveAuthorizedInvestingAccountContextInput) {
   for (const key of Object.keys(input)) {
     if (forbiddenClientAuthorityFields.has(key)) return fail("FORBIDDEN_OR_NOT_FOUND");
@@ -1713,7 +1899,8 @@ type AuthorityWorkSuccess = {
     | AuthorizedInvestingContext
     | AuthorizedResearchInvestigationCreateContext
     | AuthorizedResearchDraftCreateContext
-    | AuthorizedResearchMaterialRevisionCreateContext;
+    | AuthorizedResearchMaterialRevisionCreateContext
+    | AuthorizedResearchExecutionContext;
   preAuthorityAudit?: undefined;
   canonicalDenialAudit?: undefined;
   destroyClient?: boolean;
@@ -1837,6 +2024,16 @@ function brandAuthorizedResearchMaterialRevisionCreateContext<
     __authorizedResearchMaterialRevisionCreateContext: "AuthorizedResearchMaterialRevisionCreateContext",
     [authorizedResearchMaterialRevisionCreateContextRuntimeBrand]: true,
   }) as unknown as Context & ResearchMaterialRevisionCreateContextBrand;
+}
+
+function brandAuthorizedResearchExecutionContext<
+  Context extends Omit<AuthorizedResearchExecutionContext, keyof ResearchExecutionContextBrand>,
+>(context: Context): Context & ResearchExecutionContextBrand {
+  return Object.freeze({
+    ...context,
+    __authorizedResearchExecutionContext: "AuthorizedResearchExecutionContext",
+    [authorizedResearchExecutionContextRuntimeBrand]: true,
+  }) as unknown as Context & ResearchExecutionContextBrand;
 }
 
 function researchCanonicalDenial(

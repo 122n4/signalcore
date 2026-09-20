@@ -25,6 +25,7 @@ import {
 } from "./executionMaterials";
 import { hashExperimentV1 } from "./experiment";
 import { admitScientificRunInputV1, type ScientificRunInputCandidateV1 } from "./runInputScientific";
+import { canonicalResearchIrPayloadV1 } from "./index";
 import { canonicalResearchSpecCandidatePayloadV1, canonicalResearchSpecHashPayloadV1, hashResearchSpecV1 } from "./semantic";
 
 const operation = "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1";
@@ -74,6 +75,7 @@ type Prepared = {
     metricRequestSet: string;
     executionConfig: string;
     researchSpec: string;
+    researchIr: string;
     runInput: string;
   };
 };
@@ -179,6 +181,12 @@ export async function createScientificRunInputV1(
       if (executionConfig.ok === false) return executionConfig;
       const researchSpec = await persistResearchSpec(client, input, prepared, experiment.row.research_spec_revision_id);
       if (researchSpec.ok === false) return researchSpec;
+      const researchIr = await persistIdentity(client, "research_ir_scientific_identities", "research_ir_identity_id", input, {
+        domain: "SYNTRAKE:RESEARCH_IR:V1",
+        hashHex: prepared.hashes.researchIr,
+        payloadJson: prepared.payloadJson.researchIr,
+      });
+      if (researchIr.ok === false) return researchIr;
       const runInput = await persistRunInput(client, input, prepared, experiment.row.research_spec_revision_id);
       if (runInput.ok === false) return runInput;
       return {
@@ -216,6 +224,7 @@ function prepare(candidate: ScientificRunInputCandidateV1): Prepared | null {
         metricRequestSet: canonicalJson(canonicalMetricRequestSetHashPayloadV1(candidate.metricRequestSet)),
         executionConfig: canonicalJson(canonicalExecutionConfigHashPayloadV1(candidate.executionConfig)),
         researchSpec: canonicalJson(canonicalResearchSpecHashPayloadV1(candidate.researchSpec) as CanonicalJsonValue),
+        researchIr: canonicalJson(canonicalResearchIrPayloadV1(candidate.researchIr)),
         runInput: canonicalJson(canonicalRunInputHashPayloadV1(candidate.runInput)),
       },
       metricRegistryVersion: candidate.metricRequestSet.metricRegistryVersion,
@@ -379,6 +388,20 @@ async function persistIdentity(
 ) {
   const extraColumns = identity.metricRegistryVersion ? ", metric_registry_version" : identity.engineVersion ? ", engine_compatibility_version" : "";
   const extraValues = identity.metricRegistryVersion ? ", $10" : identity.engineVersion ? ", $10" : "";
+  const values = [
+    randomUUID(),
+    input.authorizedContext.tenantId,
+    input.authorizedContext.principalId,
+    input.authorizedContext.tenantMembershipId,
+    operation,
+    capability,
+    identity.domain,
+    identity.hashHex,
+    identity.payloadJson,
+  ];
+  if (identity.metricRegistryVersion !== undefined || identity.engineVersion !== undefined) {
+    values.push(identity.metricRegistryVersion ?? identity.engineVersion!);
+  }
   await client.query(
     [
       `insert into investing.${table} (`,
@@ -387,18 +410,7 @@ async function persistIdentity(
       `) values ($1,$2,$3,$4,$5,$6,'TENANT_SCOPE','PURE_RESEARCH','SHA-256',$7,'SYNTRAKE_SHA256_V1',$8,$9::jsonb${extraValues})`,
       "on conflict do nothing",
     ].join(" "),
-    [
-      randomUUID(),
-      input.authorizedContext.tenantId,
-      input.authorizedContext.principalId,
-      input.authorizedContext.tenantMembershipId,
-      operation,
-      capability,
-      identity.domain,
-      identity.hashHex,
-      identity.payloadJson,
-      identity.metricRegistryVersion ?? identity.engineVersion,
-    ],
+    values,
   );
   return verifyExistingIdentity(client, table, input, identity);
 }

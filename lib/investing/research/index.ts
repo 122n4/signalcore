@@ -114,6 +114,66 @@ export {
 } from "./researchIr";
 
 export {
+  parseExactDecimalV1,
+  reduceRationalV1,
+  compareRationalV1,
+  addRationalV1,
+  subtractRationalV1,
+  multiplyRationalV1,
+  divideRationalV1,
+  truncateRationalToScaleV1,
+  roundHalfEvenRationalToScaleV1,
+  renderCanonicalDecimalV1,
+  renderMoneyOutputV1,
+  renderQuantityOutputV1,
+  renderRatioOutputV1,
+  type ExactDecimalV1,
+  type ExactRationalV1,
+} from "./exactRational";
+
+export {
+  assertCivilDateV1,
+  compareCivilDateV1,
+  subtractCalendarMonthsV1,
+  isoWeekKeyV1,
+} from "./civilDate";
+
+export {
+  isXnysSessionV1,
+  previousXnysSessionV1,
+  latestXnysSessionOnOrBeforeV1,
+  rebalanceSessionsV1,
+  verifyXnysTradingCalendarArtifactV1,
+  xnysTradingCalendarArtifactSha256V1,
+  xnysTradingCalendarV1,
+} from "./calendars";
+
+export {
+  canonicalDatasetSeriesMaterialBytesV1,
+  verifyDatasetSeriesMaterialV1,
+  InMemoryResearchDatasetMaterialProviderV1,
+  type DatasetSeriesObservationV1,
+  type ResearchDatasetMaterialProviderV1,
+  type VerifiedDatasetSeriesMaterialV1,
+} from "./datasetMaterial";
+
+export {
+  canonicalResultBytesV1,
+  canonicalResultHashPayloadV1,
+  hashResultV1,
+  type ResultHashPayloadV1,
+  type ResearchArtifactDescriptorV1,
+  type ResearchArtifactKindV1,
+} from "./resultArtifacts";
+
+export {
+  executeHistoricalBacktestV1,
+  type ResearchExecutionFailureCodeV1,
+  type ResearchExecutionResultV1,
+  type ResearchExecutionSuccessV1,
+} from "./historicalExecutionEngine";
+
+export {
   admitExperimentBaselineV1,
   admitExperimentVariantV1,
   assertExperimentHashingEnabledV1,

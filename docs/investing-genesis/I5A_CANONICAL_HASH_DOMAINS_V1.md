@@ -58,7 +58,7 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:DATASET_SNAPSHOT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:ACCOUNT_RESEARCH_CONTEXT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:RUN_INPUT:V1` | `PREIMAGE_ENVELOPE_EXACT` |
-| `SYNTRAKE:RESULT:V1` | `DECLARED_BUT_HASHING_DISABLED` |
+| `SYNTRAKE:RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
@@ -110,5 +110,10 @@ Dataset & Run Scientific Closure owner contract.
 
 ## Explicit Exclusions
 
-No Result, ResearchTemplate or account-context hashing domain is activated by
-this contract unless the runtime already admits it with an exact owner payload.
+`SYNTRAKE:RESULT:V1` is current accepted through the unnumbered I5 Research
+Execution Closure as `OWNER_PAYLOAD_EXACT` for the exact accepted Result owner
+payload. Arbitrary raw Result objects remain outside the public hashing
+boundary.
+
+No ResearchTemplate or account-context hashing domain is activated by this
+contract unless the runtime already admits it with an exact owner payload.
