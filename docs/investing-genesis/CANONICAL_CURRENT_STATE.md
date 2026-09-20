@@ -308,6 +308,8 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
+`I5 RESEARCH LAB = IN_PROGRESS / RL-1_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
 - Canonical predecessor:
