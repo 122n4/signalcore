@@ -94,7 +94,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Experiment Scientific Closure (unnumbered) | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Dataset & Run Scientific Closure (unnumbered) | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Execution Engine design freeze (unnumbered) | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`, `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md`, `I5_RESEARCH_METRIC_REGISTRY_V1.md` |
-| I5 Research Execution Closure candidate (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 Research Execution Closure (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -152,10 +152,14 @@ freeze/master evidence still relies on its narrow classifications.
   the engine loop, create persistence, activate Result hashing or mutate
   production Supabase.
 - I5 Research Execution Closure:
-  `IMPLEMENTED_CANDIDATE / NOT CURRENT_ACCEPTED / UNNUMBERED`. This candidate
-  implements the PURE_RESEARCH/HISTORICAL_BACKTEST execution chain and activates
-  candidate `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT`; it does not claim
-  acceptance, assign an A-number or apply a production migration.
+  `CURRENT_ACCEPTED / UNNUMBERED`. This accepted closure establishes the first
+  functional accepted RunInput -> verified scientific materials -> deterministic
+  historical execution -> immutable artifacts -> metrics -> scientific Result ->
+  append-only operational Run lifecycle for the narrow accepted
+  PURE_RESEARCH/HISTORICAL_BACKTEST profile. It accepts
+  `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT` for its exact Result owner payload
+  only; it does not claim Evidence, Paper, broker, Live, Capital Kernel, UI, an
+  A-number or production migration application.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -234,14 +238,36 @@ not become Investing Genesis authority merely because they use similar words.
   durable append-only persistence for the six scientific identity surfaces.
   Authority is intentionally limited to `TENANT_SCOPE / PURE_RESEARCH /
   account_id = NULL`; AccountResearchContext and USER_PORTFOLIO remain
-  fail-closed. Run execution lifecycle, Result and Evidence are not established.
-  Production Supabase has not received the Dataset/Run closure migration.
+  fail-closed. At the time this slice was accepted, Run execution lifecycle,
+  Result and Evidence were not established; Run execution lifecycle and Result
+  are now narrowly superseded by the accepted I5 Research Execution Closure.
+  Evidence remains outside acceptance. Production Supabase has not received the
+  Dataset/Run closure migration.
 - I5 Research Execution Engine Design Freeze: current accepted, unnumbered.
   This acceptance freezes deterministic Research Lab execution, executable
-  field and metric semantics for PURE_RESEARCH/HISTORICAL_BACKTEST only. It
-  does not establish engine runtime implementation, Run execution lifecycle,
-  Result authority, Result hashing, Evidence, production persistence,
-  production Supabase mutation or an A-number.
+  field and metric semantics for PURE_RESEARCH/HISTORICAL_BACKTEST only. This
+  design freeze does not establish engine runtime implementation, Run execution
+  lifecycle, Result authority, Result hashing, Evidence, production persistence,
+  production Supabase mutation or an A-number by itself. Engine runtime
+  implementation, Run execution lifecycle and Result authority/hashing are now
+  narrowly realized by the accepted I5 Research Execution Closure; the frozen
+  semantics themselves remain accepted authority. Evidence, production
+  persistence/application and an A-number remain outside this design freeze.
+- I5 Research Execution Closure: current accepted, unnumbered. This acceptance
+  establishes dedicated `RESEARCH_EXECUTION_RUN_V1 / RESEARCH_EXECUTE`
+  authority; tenant-only PURE_RESEARCH execution; active tenant/owner membership
+  authority; verified DatasetSeries material bytes; deterministic historical
+  execution kernel; XNYS calendar authority; exact rational arithmetic;
+  execution trace; valuation series; accepted metrics; benchmark; immutable
+  artifacts; scientific Result identity; append-only Run lifecycle; atomic
+  success finalization; deterministic repeated-run Result reuse; and RLS/FORCE
+  RLS application execution as `investing_app`. It accepts
+  `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT` for the exact owner payload only.
+  It does not complete Evidence Object acceptance, Passport completion, Evidence
+  Ledger product surface, OOS/walk-forward, Monte Carlo, optimizer, Strategy
+  DNA, Strategy Autopsy, Blind Truth promotion, Paper, broker, Capital Kernel,
+  Live, UI or USER_PORTFOLIO/account execution. Production Supabase migration
+  application remains `NOT PERFORMED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -266,6 +292,47 @@ I5 Research Execution Engine Design Freeze acceptance evidence:
 
 `I5 RESEARCH EXECUTION ENGINE DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
 
+I5 Research Execution Closure acceptance evidence:
+
+- Canonical predecessor:
+  `79f4cecbf20d756087defccec3fcbdea8291e7de`.
+- Final independently audited technical candidate:
+  `2d0631bd22a21cb24d0cc299e3308db1fdfff14f`.
+- PR:
+  `#76`.
+- CI:
+  `35504890518 - SUCCESS`.
+- PG17:
+  `35504890428 - SUCCESS`.
+- PostgreSQL:
+  `17.11`.
+- Full CI test suite:
+  `1158 passed / 36 skipped`.
+- Dedicated Research Execution Closure PG17:
+  `PASS`.
+- Application database role proof:
+  `current_user = investing_app`; `current_role = investing_app`.
+- RunInput scientific writer under FORCE RLS:
+  `PASS`.
+- Research execution service/writer under FORCE RLS:
+  `PASS`.
+- Two operational Runs / one scientific Result identity:
+  `PASS`.
+- Late application-level finalization rollback:
+  `PASS`.
+- Vercel:
+  `SUCCESS`.
+- Independent auditor verdict:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Production Supabase mutation:
+  `NONE`.
+- Production migration application:
+  `NOT PERFORMED`.
+
+`I5 RESEARCH EXECUTION CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
+
 ## I5 Runtime Presence And Trust State
 
 Implementation presence is not the same as formal trust recovery acceptance.
@@ -286,6 +353,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Experiment Scientific Closure / unnumbered | YES | YES | `I5_EXPERIMENT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + migration + static tests + PostgreSQL 17 scientific closure rehearsal | CURRENT ACCEPTED OWNER CONTRACT - EXPERIMENT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
 | Dataset & Run Scientific Closure / unnumbered | YES | YES | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + PostgreSQL 17 functional rehearsal | CURRENT ACCEPTED OWNER CONTRACT - DATASET & RUN SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE | NONE |
 | Research Execution Engine design freeze / unnumbered | NO | YES | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md` + `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md` + `I5_RESEARCH_METRIC_REGISTRY_V1.md` + contract tests + CI | CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH EXECUTION ENGINE FREEZE - UNNUMBERED | CURRENT_ACCEPTED / DESIGN_FREEZE | NONE |
+| Research Execution Closure / unnumbered | YES | YES | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RESEARCH EXECUTION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RESEARCH_EXECUTION_CLOSURE | NONE |
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence
 owner-contract presence. Its header says candidate owner contract with

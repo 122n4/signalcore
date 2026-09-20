@@ -1,13 +1,20 @@
 # I5 Research Execution Closure Owner Contract V1
 
-Status: `CANDIDATE OWNER CONTRACT - NOT CURRENT_ACCEPTED - UNNUMBERED`
+Status: `CURRENT ACCEPTED OWNER CONTRACT - RESEARCH EXECUTION CLOSURE - UNNUMBERED`
 
-This candidate closes the first functional execution chain from accepted
+This accepted closure establishes the first functional execution chain from accepted
 RunInput to verified scientific materials, deterministic historical research
 kernel, immutable artifacts, metrics, Result identity and append-only durable
 persistence. It inherits authority from the accepted I5 Research Execution
 Engine Design Freeze and does not redesign accepted Dataset, RunInput,
 Research IR, field or metric contracts.
+
+It supersedes the Design Freeze limitation that engine runtime, Run execution
+lifecycle and Result authority/hashing were not yet established, without
+superseding the frozen execution semantics themselves. It also supersedes the
+Dataset & Run Scientific Closure limitation that Run execution lifecycle and
+Result were not established, without altering Dataset/Run scientific identity
+contracts. Evidence remains outside acceptance.
 
 Runtime architecture preserves the hard boundary:
 
@@ -24,7 +31,7 @@ The pure kernel receives only verified payloads and material bytes. It does not
 read databases, files, networks, environment variables, wall clock, random UUIDs
 or mutable globals.
 
-Candidate scope is intentionally narrow: `HISTORICAL_BACKTEST`,
+Accepted scope is intentionally narrow: `HISTORICAL_BACKTEST`,
 `PURE_RESEARCH`, `TENANT_SCOPE`, no account context, engine
 `HISTORICAL_EXECUTION_ADAPTER / ENGINE_V20260918`, and the accepted V1 policy
 set. Unsupported profiles fail closed.
@@ -60,10 +67,14 @@ series, metric result set and optional benchmark series. Result hashing uses
 `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT` and binds only the owner payload and
 artifact descriptors.
 
-Durable persistence is candidate-only and additive. New execution tables use
+Accepted Result state: `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT` for the exact
+accepted Result owner payload only. Arbitrary raw Result objects are not
+sanctioned public hash authority.
+
+Durable persistence is accepted for this closure and additive. New execution tables use
 RLS/FORCE RLS, append-only rows, membership tuple binding, transition
 constraints and artifact SHA/content checks. Production migration application
-is not performed by this candidate.
+is not performed by this Git acceptance.
 
 Reproducibility law: the same admitted RunInput, exact DatasetSeries bytes,
 engine/version and policies produce byte-identical trace, valuation, metrics,
@@ -73,3 +84,42 @@ operational Runs.
 Out of scope remains Evidence Object acceptance, Passport completion, Evidence
 Ledger product surface, OOS/walk-forward, Monte Carlo, optimizer, Strategy DNA,
 Strategy Autopsy, Blind Truth promotion, broker/capital/live execution and UI.
+
+## Accepted Provenance
+
+- Canonical predecessor:
+  `79f4cecbf20d756087defccec3fcbdea8291e7de`.
+- Final independently audited technical candidate:
+  `2d0631bd22a21cb24d0cc299e3308db1fdfff14f`.
+- PR:
+  `#76`.
+- CI:
+  `35504890518 - SUCCESS`.
+- PG17:
+  `35504890428 - SUCCESS`.
+- PostgreSQL:
+  `17.11`.
+- Full CI test suite:
+  `1158 passed / 36 skipped`.
+- Dedicated Research Execution Closure PG17:
+  `PASS`.
+- Application database role proof:
+  `current_user = investing_app`; `current_role = investing_app`.
+- RunInput scientific writer under FORCE RLS:
+  `PASS`.
+- Research execution service/writer under FORCE RLS:
+  `PASS`.
+- Two operational Runs / one scientific Result identity:
+  `PASS`.
+- Late application-level finalization rollback:
+  `PASS`.
+- Vercel:
+  `SUCCESS`.
+- Independent auditor verdict:
+  `PASS`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Production Supabase mutation:
+  `NONE`.
+- Production migration application:
+  `NOT PERFORMED`.
