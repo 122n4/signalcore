@@ -329,9 +329,11 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     expect(reused.rows[0]!.count).toBe("1");
 
     const rollbackArtifact = "cccccccc-1000-4000-8000-000000000191";
+    const rollbackBytes = Buffer.from("{\"rollback\":\"probe\"}\n", "utf8");
+    const rollbackTrace = descriptor("RESEARCH_EXECUTION_TRACE_V1", rollbackBytes);
     await client.query("begin");
     await setExecutionContext();
-    await client.query("insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content) values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','EXECUTION_TRACE','RESEARCH_EXECUTION_TRACE_V1','CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',$5,$6,1,$7)", [rollbackArtifact, ids.tenant, ids.principal, ids.membership, trace.contentSha256, artifactBytes.length, artifactBytes]);
+    await client.query("insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content) values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','EXECUTION_TRACE','RESEARCH_EXECUTION_TRACE_V1','CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',$5,$6,1,$7)", [rollbackArtifact, ids.tenant, ids.principal, ids.membership, rollbackTrace.contentSha256, rollbackBytes.length, rollbackBytes]);
     await expect(client.query("insert into investing.research_execution_run_events (research_execution_run_event_id, research_execution_run_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, event_sequence, run_status) values (gen_random_uuid(),$1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',99,'STARTED')", [runB, ids.tenant, ids.principal, ids.membership])).rejects.toThrow(/violates|event_sequence/i);
     await client.query("rollback");
     const absent = await client.query<{ count: string }>("select count(*) from investing.research_result_artifacts where artifact_id = $1", [rollbackArtifact]);
