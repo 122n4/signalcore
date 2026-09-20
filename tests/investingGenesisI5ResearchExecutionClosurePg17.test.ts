@@ -331,17 +331,17 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     }
 
     await client.query("begin");
-    await setExecutionContext();
+    await setExecutionContext({ research_ir_hash_hex: "8".repeat(64) });
     const researchIrPayload = JSON.stringify({ schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1", irVersion: "RESEARCH_IR_V1" });
     await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)", [ids.tenant, ids.principal, ids.membership, "8".repeat(64), researchIrPayload]);
     await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, "8".repeat(64), researchIrPayload]);
     await client.query("commit");
     await expectTransactionRejects(async () => {
-      await setExecutionContext();
+      await setExecutionContext({ research_ir_hash_hex: "8".repeat(64) });
       await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)", [ids.tenant, ids.principal, ids.membership, "8".repeat(64), JSON.stringify({ schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1", changed: true })]);
     }, /duplicate key|unique/i);
     await expectTransactionRejects(async () => {
-      await setExecutionContext();
+      await setExecutionContext({ research_ir_hash_hex: "9".repeat(64) });
       await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)", [ids.tenant, ids.principal, ids.membership, "9".repeat(64), researchIrPayload]);
     }, /check|row-level security|violates/i);
 
