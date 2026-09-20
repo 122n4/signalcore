@@ -95,6 +95,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Dataset & Run Scientific Closure (unnumbered) | `I5_DATASET_RUN_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Execution Engine design freeze (unnumbered) | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`, `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md`, `I5_RESEARCH_METRIC_REGISTRY_V1.md` |
 | I5 Research Execution Closure (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
 freeze/master evidence still relies on its narrow classifications.
@@ -160,6 +161,12 @@ freeze/master evidence still relies on its narrow classifications.
   `SYNTRAKE:RESULT:V1 = OWNER_PAYLOAD_EXACT` for its exact Result owner payload
   only; it does not claim Evidence, Paper, broker, Live, Capital Kernel, UI, an
   A-number or production migration application.
+- I5 Research Lab Completion Program:
+  `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
+  finite RL-1 through RL-11 backend completion sequence and the final target
+  `I5 RESEARCH LAB = BACKEND_COMPLETE / PRODUCT_UI_DEFERRED`. It is planning
+  authority only: it does not itself implement Evidence, validation, Engine V2,
+  Passport, promotion, Blind Truth or orchestration, and it does not close I5.
 
 Trading research modules under `lib/trading/research` are Trading-owned and do
 not become Investing Genesis authority merely because they use similar words.
@@ -268,6 +275,38 @@ not become Investing Genesis authority merely because they use similar words.
   DNA, Strategy Autopsy, Blind Truth promotion, Paper, broker, Capital Kernel,
   Live, UI or USER_PORTFOLIO/account execution. Production Supabase migration
   application remains `NOT PERFORMED`.
+
+- I5 Research Lab Completion Program: current accepted, unnumbered. This
+  acceptance defines RL-1 through RL-11 as the finite backend completion bar,
+  preserves the immutable `ENGINE_V20260918` historical semantics, keeps
+  Monte Carlo/scenario/stress/allocation/suitability in I6, Paper in I7,
+  product API in I9 and product UI deferred. No RL implementation is accepted
+  by the program itself and the Research Lab is not yet backend-complete.
+
+I5 Research Lab Completion Program acceptance evidence:
+
+- Canonical predecessor:
+  `d2d744c8b463b968169a8954bfee42cf93ec1184`.
+- Independently audited design candidate:
+  `5c86dbf7094b33dc2612b613c791b899fa29f6c4`.
+- Accepted merge/main anchor:
+  `8400d7675788a60ee3399ee5908452b1e6f5e91e`.
+- PR:
+  `#78`.
+- CI:
+  `35508567814 - SUCCESS`.
+- Vercel:
+  `SUCCESS`.
+- Runtime changes:
+  `NONE`.
+- Migration changes:
+  `NONE`.
+- Production mutation:
+  `NONE`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+
+`I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
