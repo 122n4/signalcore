@@ -1,8 +1,8 @@
 # I5 RL-1 Evidence Object Scientific Closure Owner Contract V1
 
-Status: `IMPLEMENTED_CANDIDATE / NOT CURRENT_ACCEPTED / UNNUMBERED`
+Status: `CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED`
 
-Classification: `CANDIDATE / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE / UNNUMBERED`
+Classification: `CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE / UNNUMBERED`
 
 Canonical predecessor:
 
@@ -18,7 +18,7 @@ Permanent A-number:
 
 Production Supabase mutation:
 
-`NOT AUTHORIZED / NOT PERFORMED`
+`NONE / NOT PERFORMED`
 
 ## Purpose
 
@@ -235,22 +235,70 @@ Still outside RL-1:
 - Paper, broker, Capital Kernel and Live;
 - production migration application.
 
-## Acceptance Requirements
+## Accepted Provenance
 
-RL-1 remains a candidate until independent evidence proves:
+Canonical predecessor:
 
-- canonical Evidence preimage/hash implementation;
-- deterministic content bytes;
-- operational IDs excluded from scientific content;
-- exact Result/RunInput/dataset/metric/artifact bindings;
-- same scientific execution => same Evidence identity;
-- conflicting Evidence => rollback / fail closed;
-- raw content digest/length DB checks;
-- append-only behavior;
-- FORCE RLS;
-- real `investing_app` application role;
-- cross-tenant and wrong-principal isolation;
-- PostgreSQL 17 migration/replay;
-- existing Research Execution and Dataset/Run rehearsals remain green;
-- full tests, lint, TypeScript, build, dependency audit and Vercel pass;
-- no production Supabase mutation.
+`f723a1dfa75007799c296eeb4ead74f994557458`
+
+Final independently audited technical candidate:
+
+`c47baa4e0d95b5f94b2e18d60bb2f69b3b9d229d`
+
+PR:
+
+`#80`
+
+CI:
+
+`35509460004 - SUCCESS`
+
+Full CI suite:
+
+- test files: `213 passed / 17 skipped`;
+- tests: `1165 passed / 36 skipped`;
+- lint: `PASS`;
+- TypeScript: `PASS`;
+- production build: `PASS`;
+- production dependency audit: `0 vulnerabilities`.
+
+PostgreSQL 17 rehearsal:
+
+`35509460002 - SUCCESS`
+
+PostgreSQL:
+
+`17.11`
+
+Dedicated Research Execution + RL-1 PG17:
+
+`2/2 PASS`
+
+Accepted evidence:
+
+- historical A2 Evidence content-preimage bytes/hash compatibility: `PASS`;
+- generic Evidence hashing remains internal and is not exported through the public Research barrel: `PASS`;
+- exact Result / RunInput / DatasetSnapshot / DatasetSeries / metric / artifact binding: `PASS`;
+- Result-to-RunInput composite database binding: `PASS`;
+- repeated scientifically identical execution reuses Evidence identity/hash: `PASS`;
+- Evidence conflict participates in atomic success-finalization rollback: `PASS`;
+- content SHA-256 and byte-length database integrity checks: `PASS`;
+- append-only UPDATE/DELETE rejection: `PASS`;
+- RLS + FORCE RLS: `PASS`;
+- minimal `investing_app` SELECT/INSERT authority: `PASS`;
+- Vercel: `SUCCESS`;
+- independent auditor verdict: `PASS`.
+
+Permanent A-number:
+
+`NOT ASSIGNED`
+
+Production Supabase mutation:
+
+`NONE`
+
+Production migration application:
+
+`NOT PERFORMED`
+
+`I5 RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`
