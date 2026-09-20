@@ -37,6 +37,13 @@ const ids = {
   specRevision: "80000000-0000-4000-8000-000000000193",
   experiment: "91000000-0000-4000-8000-000000000071",
   runInputIdentity: "b7000000-0000-4000-8000-000000000191",
+  draftRoot: "51000000-0000-4000-8000-000000000191",
+  hypothesisRoot: "52000000-0000-4000-8000-000000000191",
+  specRoot: "53000000-0000-4000-8000-000000000191",
+  draftRevision: "54000000-0000-4000-8000-000000000191",
+  hypothesisRevision: "55000000-0000-4000-8000-000000000191",
+  draftIdempotency: "a4000000-0000-4000-8000-000000000191",
+  hypothesisIdempotency: "a5000000-0000-4000-8000-000000000191",
   investigationIdempotency: "a1000000-0000-4000-8000-000000000191",
   specIdempotency: "a2000000-0000-4000-8000-000000000191",
   experimentIdempotency: "a3000000-0000-4000-8000-000000000191",
@@ -124,10 +131,15 @@ async function seedRunInputAuthority() {
       idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
       operation_scope, operation, principal_id, tenant_id, account_id, status, completed_at
     ) values
-      ($1, 'idem-execution-0001', $4, 'corr-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', $7, $8, null, 'SUCCEEDED', now()),
-      ($2, 'idem-spec-execution-0001', $5, 'corr-spec-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_SPEC_REVISION_CREATE_V1', $7, $8, null, 'SUCCEEDED', now()),
-      ($3, 'idem-experiment-execution-0001', $6, 'corr-experiment-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $7, $8, null, 'SUCCEEDED', now())
-  `, [ids.investigationIdempotency, ids.specIdempotency, ids.experimentIdempotency, "A".repeat(64), "C".repeat(64), "D".repeat(64), ids.principal, ids.tenant]);
+      ($1, 'idem-execution-0001', $6, 'corr-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', $11, $12, null, 'SUCCEEDED', now()),
+      ($2, 'idem-spec-execution-0001', $7, 'corr-spec-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_SPEC_REVISION_CREATE_V1', $11, $12, null, 'SUCCEEDED', now()),
+      ($3, 'idem-experiment-execution-0001', $8, 'corr-experiment-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $11, $12, null, 'SUCCEEDED', now()),
+      ($4, 'idem-draft-execution-0001', $9, 'corr-draft-execution-0001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', $11, $12, null, 'SUCCEEDED', now()),
+      ($5, 'idem-hypothesis-exec-001', $10, 'corr-hypothesis-exec-001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', $11, $12, null, 'SUCCEEDED', now())
+  `, [
+    ids.investigationIdempotency, ids.specIdempotency, ids.experimentIdempotency, ids.draftIdempotency, ids.hypothesisIdempotency,
+    "A".repeat(64), "C".repeat(64), "D".repeat(64), "B".repeat(64), "E".repeat(64), ids.principal, ids.tenant,
+  ]);
   await client.query(`
     insert into investing.research_investigations (
       research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
@@ -135,15 +147,40 @@ async function seedRunInputAuthority() {
     ) values ($1,$2,null,$3,'USER_PRINCIPAL','pg17-execution',$4,null,'TENANT_SCOPE','RESEARCH_INVESTIGATION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH',$5,$6,'idem-execution-0001','corr-execution-0001')
   `, [ids.investigation, ids.tenant, ids.principal, ids.membership, "A".repeat(64), ids.investigationIdempotency]);
   await client.query(`
+    insert into investing.research_material_roots (
+      material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
+    ) values
+      ($1, $4, $5, null, $6, 'USER_PRINCIPAL', 'pg17-execution', $7, null, 'TENANT_SCOPE', 'PURE_RESEARCH', 'DRAFT', 'RESEARCH_DRAFT_REVISION_CREATE_V1'),
+      ($2, $4, $5, null, $6, 'USER_PRINCIPAL', 'pg17-execution', $7, null, 'TENANT_SCOPE', 'PURE_RESEARCH', 'HYPOTHESIS', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
+      ($3, $4, $5, null, $6, 'USER_PRINCIPAL', 'pg17-execution', $7, null, 'TENANT_SCOPE', 'PURE_RESEARCH', 'RESEARCH_SPEC', 'RESEARCH_SPEC_REVISION_CREATE_V1')
+  `, [ids.draftRoot, ids.hypothesisRoot, ids.specRoot, ids.investigation, ids.tenant, ids.principal, ids.membership]);
+  await client.query(`
+    insert into investing.research_material_revisions (
+      material_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context, material_kind, revision_number,
+      predecessor_revision_id, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values
+      ($1, $2, $5, $6, null, $7, 'USER_PRINCIPAL', 'pg17-execution', $8, null, 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'DRAFT', 1, null, 'RESEARCH_DRAFT_HASH_PAYLOAD_V1', '{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb, $9, $9, $11, 'idem-draft-execution-0001', 'corr-draft-execution-0001'),
+      ($3, $4, $5, $6, null, $7, 'USER_PRINCIPAL', 'pg17-execution', $8, null, 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'HYPOTHESIS', 1, null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $10, $10, $12, 'idem-hypothesis-exec-001', 'corr-hypothesis-exec-001')
+  `, [
+    ids.draftRevision, ids.draftRoot, ids.hypothesisRevision, ids.hypothesisRoot, ids.investigation, ids.tenant, ids.principal, ids.membership,
+    "B".repeat(64), "E".repeat(64), ids.draftIdempotency, ids.hypothesisIdempotency,
+  ]);
+  await client.query(`
     insert into investing.research_spec_revisions (
       research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
       tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
       source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
       canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
-    ) values ($1, gen_random_uuid(), $2, $3, null, $4, 'USER_PRINCIPAL', 'pg17-execution', $5, null, 'TENANT_SCOPE', 'PURE_RESEARCH',
-      'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null, null, $6, null, null, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
-      $7::jsonb, $8, $9, 'idem-spec-execution-0001', 'corr-spec-execution-0001')
-  `, [ids.specRevision, ids.investigation, ids.tenant, ids.principal, ids.membership, "B".repeat(64), JSON.stringify({ schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", status: "CANDIDATE_ONLY" }), "C".repeat(64), ids.specIdempotency]);
+    ) values ($1, $2, $3, $4, null, $5, 'USER_PRINCIPAL', 'pg17-execution', $6, null, 'TENANT_SCOPE', 'PURE_RESEARCH',
+      'RESEARCH_SPEC_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 1, null, $7, $8, $9, $10, 'RESEARCH_SPEC_CANDIDATE_V1', 'CANDIDATE_ONLY',
+      $11::jsonb, $12, $13, 'idem-spec-execution-0001', 'corr-spec-execution-0001')
+  `, [
+    ids.specRevision, ids.specRoot, ids.investigation, ids.tenant, ids.principal, ids.membership,
+    ids.draftRevision, "B".repeat(64), ids.hypothesisRevision, "E".repeat(64),
+    JSON.stringify({ schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", status: "CANDIDATE_ONLY" }), "C".repeat(64), ids.specIdempotency,
+  ]);
   await client.query(`
     insert into investing.research_experiments (
       research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
