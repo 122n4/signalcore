@@ -248,6 +248,28 @@ function descriptor(schema: string, bytes: Buffer) {
   };
 }
 
+async function expectTransactionRejects(work: () => Promise<void>, pattern: RegExp) {
+  await client.query("begin");
+  try {
+    await work();
+  } catch (error) {
+    await client.query("rollback");
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(pattern);
+    return;
+  }
+  await client.query("rollback");
+  throw new Error("expected transaction to reject");
+}
+
+async function insertExecutionRun(runId: string) {
+  await client.query("insert into investing.research_execution_runs (research_execution_run_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, run_input_identity_id, operation, capability, operation_scope, source_context, engine_id, engine_version) values ($1,$2,null,$3,$4,$5,$6,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918')", [runId, ids.tenant, ids.principal, ids.membership, ids.investigation, ids.runInputIdentity]);
+}
+
+async function insertExecutionEvent(runId: string, sequence: number, status: string, resultId: string | null = null, failureCode: string | null = null) {
+  await client.query("insert into investing.research_execution_run_events (research_execution_run_event_id, research_execution_run_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, event_sequence, run_status, result_identity_id, failure_reason_code) values (gen_random_uuid(),$1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,$7,$8)", [runId, ids.tenant, ids.principal, ids.membership, sequence, status, resultId, failureCode]);
+}
+
 describe("I5 Research Execution Closure PG17 static contract", () => {
   it("keeps supplemental SQL evidence for execution closure surfaces", () => {
     const sql = readSql(executionClosureMigration);
@@ -292,6 +314,37 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     );
     expect(badGrants.rowCount).toBe(0);
 
+    for (const [index, overrides] of [
+      { operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1" },
+      { capability: "RESEARCH_MUTATE" },
+      { operation_scope: "ACCOUNT_SCOPE" },
+      { source_context: "USER_PORTFOLIO" },
+      { account_id: "99999999-9999-4999-8999-999999999999" },
+      { tenant_id: "99999999-9999-4999-8999-999999999991" },
+      { principal_id: "99999999-9999-4999-8999-999999999992" },
+      { tenant_membership_id: "99999999-9999-4999-8999-999999999993" },
+    ].entries()) {
+      await expectTransactionRejects(async () => {
+        await setExecutionContext(overrides);
+        await insertExecutionRun(`dddddddd-${String(index).padStart(4, "0")}-4000-8000-000000000191`);
+      }, /row-level security|invalid input syntax|violates/i);
+    }
+
+    await client.query("begin");
+    await setExecutionContext();
+    const researchIrPayload = JSON.stringify({ schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1", irVersion: "RESEARCH_IR_V1" });
+    await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)", [ids.tenant, ids.principal, ids.membership, "8".repeat(64), researchIrPayload]);
+    await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, "8".repeat(64), researchIrPayload]);
+    await client.query("commit");
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)", [ids.tenant, ids.principal, ids.membership, "8".repeat(64), JSON.stringify({ schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1", changed: true })]);
+    }, /duplicate key|unique/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)", [ids.tenant, ids.principal, ids.membership, "9".repeat(64), researchIrPayload]);
+    }, /check|row-level security|violates/i);
+
     const artifactBytes = Buffer.from("{\"x\":\"y\"}\n", "utf8");
     const trace = descriptor("RESEARCH_EXECUTION_TRACE_V1", artifactBytes);
     const valuation = descriptor("RESEARCH_VALUATION_SERIES_V1", artifactBytes);
@@ -315,6 +368,53 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     await client.query("insert into investing.research_results_scientific_identities (result_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id, execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, benchmark_series_artifact_id, operation, capability, operation_scope, source_context, engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,null,$3,$4,$5,$6,$7,$8,null,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$9,$10::jsonb)", [resultId, ids.tenant, ids.principal, ids.membership, ids.runInputIdentity, artifactIds[0], artifactIds[1], artifactIds[2], "E".repeat(64), JSON.stringify({ schemaVersion: "RESULT_HASH_PAYLOAD_V1", executionTrace: trace, valuationSeries: valuation, metricResultSet: metrics, benchmark: null })]);
     await client.query("insert into investing.research_execution_run_events (research_execution_run_event_id, research_execution_run_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, event_sequence, run_status, result_identity_id) values (gen_random_uuid(),$1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',3,'SUCCEEDED',$5)", [runA, ids.tenant, ids.principal, ids.membership, resultId]);
     await client.query("commit");
+
+    await client.query("begin");
+    await setExecutionContext();
+    const runFailed = "bbbbbbbb-1000-4000-8000-000000000191";
+    await insertExecutionRun(runFailed);
+    await insertExecutionEvent(runFailed, 1, "REGISTERED");
+    await insertExecutionEvent(runFailed, 2, "STARTED");
+    await insertExecutionEvent(runFailed, 3, "FAILED", null, "MISSING_REQUIRED_EXECUTION_PRICE");
+    await client.query("commit");
+
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      const runDirectTerminal = "bbbbbbbb-2000-4000-8000-000000000191";
+      await insertExecutionRun(runDirectTerminal);
+      await insertExecutionEvent(runDirectTerminal, 1, "REGISTERED");
+      await insertExecutionEvent(runDirectTerminal, 3, "SUCCEEDED", resultId);
+    }, /missing previous|invalid research execution/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      const runNoRegistered = "bbbbbbbb-3000-4000-8000-000000000191";
+      await insertExecutionRun(runNoRegistered);
+      await insertExecutionEvent(runNoRegistered, 2, "STARTED");
+    }, /missing previous/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await insertExecutionEvent(runA, 2, "STARTED");
+    }, /duplicate key|unique/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      await insertExecutionEvent(runA, 3, "SUCCEEDED", resultId);
+    }, /duplicate key|unique/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      const runFailedWithResult = "bbbbbbbb-4000-4000-8000-000000000191";
+      await insertExecutionRun(runFailedWithResult);
+      await insertExecutionEvent(runFailedWithResult, 1, "REGISTERED");
+      await insertExecutionEvent(runFailedWithResult, 2, "STARTED");
+      await insertExecutionEvent(runFailedWithResult, 3, "FAILED", resultId, "MISSING_REQUIRED_EXECUTION_PRICE");
+    }, /terminal_payload|check/i);
+    await expectTransactionRejects(async () => {
+      await setExecutionContext();
+      const runSucceededWithoutResult = "bbbbbbbb-5000-4000-8000-000000000191";
+      await insertExecutionRun(runSucceededWithoutResult);
+      await insertExecutionEvent(runSucceededWithoutResult, 1, "REGISTERED");
+      await insertExecutionEvent(runSucceededWithoutResult, 2, "STARTED");
+      await insertExecutionEvent(runSucceededWithoutResult, 3, "SUCCEEDED");
+    }, /terminal_payload|check/i);
 
     const runB = "bbbbbbbb-0000-4000-8000-000000000191";
     await client.query("begin");

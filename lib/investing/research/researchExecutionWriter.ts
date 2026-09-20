@@ -32,7 +32,7 @@ import {
   verifyDatasetSeriesMaterialV1,
   type VerifiedDatasetSeriesMaterialV1,
 } from "./datasetMaterial";
-import { executeHistoricalBacktestV1, type ResearchExecutionFailureCodeV1 } from "./historicalExecutionEngine";
+import { admitHistoricalBacktestV1, executeHistoricalBacktestV1, type ResearchExecutionFailureCodeV1 } from "./historicalExecutionEngine";
 import {
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -49,7 +49,7 @@ export type ExecuteResearchRunInputV1 = Readonly<{
 
 export type ExecuteResearchRunResultV1 =
   | Readonly<{ ok: true; researchExecutionRunId: string; resultHashHex: string; resultIdentityId: string }>
-  | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 | "FORBIDDEN_OR_NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "UNAVAILABLE" }>;
+  | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 | "FORBIDDEN_OR_NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "UNAVAILABLE" | "OPERATIONAL_EXECUTION_FAILURE" }>;
 
 type PreparedExecution = Readonly<{
   runInputIdentityId: string;
@@ -76,14 +76,22 @@ export async function executeResearchRunV1(
   try {
     const prepared = await prepareExecution(input, database);
     if (prepared.ok === false) return prepared;
+
+    const materials = await loadAndVerifyMaterials(prepared.value, input.datasetMaterialProvider);
+    if (materials.ok === false) return { ok: false, code: materials.code };
+    const admission = admitHistoricalBacktestV1({
+      runInput: prepared.value.runInput,
+      runInputHash: prepared.value.runInputHash,
+      researchIr: prepared.value.researchIr,
+      datasetSeries: prepared.value.datasetSeries,
+      executionConfig: prepared.value.executionConfig,
+      metricRequestSet: prepared.value.metricRequestSet,
+    });
+    if (admission.ok === false) return admission;
+
     const registered = await registerStartedRun(input.authorizedContext, prepared.value, database);
     runId = registered.researchExecutionRunId;
 
-    const materials = await loadAndVerifyMaterials(prepared.value, input.datasetMaterialProvider);
-    if (materials.ok === false) {
-      await finalizeFailure(input.authorizedContext, runId, materials.code, database);
-      return { ok: false, code: materials.code };
-    }
     const engine = executeHistoricalBacktestV1({
       runInput: prepared.value.runInput,
       runInputHash: prepared.value.runInputHash,
@@ -99,9 +107,10 @@ export async function executeResearchRunV1(
     }
     const success = await finalizeSuccess(input.authorizedContext, runId, prepared.value, engine, database);
     return success;
-  } catch {
-    if (runId) await finalizeFailure(input.authorizedContext, runId, "NUMERIC_INVARIANT_VIOLATION", database).catch(() => undefined);
-    return { ok: false, code: "UNAVAILABLE" };
+  } catch (error) {
+    const code = error instanceof HandledExecutionAbort ? error.code : "UNAVAILABLE";
+    if (runId) await finalizeFailure(input.authorizedContext, runId, code === "UNAVAILABLE" ? "OPERATIONAL_EXECUTION_FAILURE" : code, database).catch(() => undefined);
+    return { ok: false, code };
   }
 }
 
@@ -227,7 +236,7 @@ async function finalizeSuccess(
     const benchmark = execution.resultPayload.benchmark && execution.artifacts.benchmarkSeriesBytes
       ? await persistArtifact(client, context, "BENCHMARK_SERIES", execution.resultPayload.benchmark, execution.artifacts.benchmarkSeriesBytes)
       : null;
-    if (!artifactDescriptorsMatch(execution.resultPayload, { trace, valuation, metrics, benchmark })) return { ok: false as const, code: "CONFLICT" as const };
+    if (!artifactDescriptorsMatch(execution.resultPayload, { trace, valuation, metrics, benchmark })) throw new HandledExecutionAbort("CONFLICT");
     const payload = canonicalResultHashPayloadV1(execution.resultPayload);
     const hashHex = hashResultV1(execution.resultPayload);
     await client.query(
@@ -244,18 +253,24 @@ async function finalizeSuccess(
       "select result_identity_id, canonical_payload from investing.research_results_scientific_identities",
       "where tenant_id = $1 and hash_algorithm = 'SHA-256' and hash_domain = 'SYNTRAKE:RESULT:V1' and hash_version = 'SYNTRAKE_SHA256_V1' and hash_hex = $2",
     ].join(" "), [context.tenantId, hashHex]);
-    if (!result || JSON.stringify(result.canonical_payload) !== JSON.stringify(payload)) return { ok: false as const, code: "CONFLICT" as const };
+    if (!result || JSON.stringify(result.canonical_payload) !== JSON.stringify(payload)) throw new HandledExecutionAbort("CONFLICT");
     await insertRunEvent(client, context, runId, 3, "SUCCEEDED", result.result_identity_id, null);
     return { ok: true as const, researchExecutionRunId: runId, resultHashHex: hashHex, resultIdentityId: result.result_identity_id };
   });
 }
 
-async function finalizeFailure(context: AuthorizedResearchExecutionContext, runId: string, code: ResearchExecutionFailureCodeV1, database: InvestingAuthorityDatabase) {
+async function finalizeFailure(context: AuthorizedResearchExecutionContext, runId: string, code: ResearchExecutionFailureCodeV1 | "CONFLICT" | "OPERATIONAL_EXECUTION_FAILURE", database: InvestingAuthorityDatabase) {
   await withTransaction(database, async (client) => {
     await setExecutionContext(client, context);
     await insertRunEvent(client, context, runId, 3, "FAILED", null, code);
     return { ok: true as const };
   });
+}
+
+class HandledExecutionAbort extends Error {
+  constructor(readonly code: "CONFLICT") {
+    super(code);
+  }
 }
 
 async function persistArtifact(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchExecutionContext, kind: ResearchArtifactKindV1, descriptor: ResearchArtifactDescriptorV1, bytes: Buffer) {

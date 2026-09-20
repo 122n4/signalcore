@@ -191,7 +191,20 @@ export function executeHistoricalBacktestV1(input: EngineInput): ResearchExecuti
   }
 }
 
-function validateProfile(input: EngineInput) {
+export function admitHistoricalBacktestV1(input: Omit<EngineInput, "materials">): Readonly<{ ok: true } | { ok: false; code: ResearchExecutionFailureCodeV1 }> {
+  try {
+    validateProfile(input);
+    const sessions = xnysSessionsInRangeV1(input.researchIr.testPeriod.startDate, input.researchIr.testPeriod.endDate);
+    if (sessions.length < 1) return { ok: false, code: "NO_ELIGIBLE_SESSIONS" };
+    validateExecutableIr(input.researchIr);
+    return { ok: true };
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "NUMERIC_INVARIANT_VIOLATION";
+    return isFailureCode(code) ? { ok: false, code } : { ok: false, code: "NUMERIC_INVARIANT_VIOLATION" };
+  }
+}
+
+function validateProfile(input: Omit<EngineInput, "materials">) {
   if (input.runInput.runType !== "HISTORICAL_BACKTEST" || input.runInput.researchEnvironment !== "HISTORICAL_BACKTEST" || input.runInput.researchSourceContext !== "PURE_RESEARCH" || input.runInput.accountResearchContext) {
     throw new Error("UNSUPPORTED_RUN_PROFILE");
   }
