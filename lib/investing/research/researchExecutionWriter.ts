@@ -260,7 +260,7 @@ async function finalizeSuccess(
       runInputHashHex: prepared.runInputHash.hashHex,
       resultPayload: execution.resultPayload,
       resultHashHex: hashHex,
-      datasetSeries: prepared.datasetSnapshot.series,
+      datasetSnapshot: prepared.datasetSnapshot,
     });
     const persistedEvidence = await persistEvidenceObject(
       client,
