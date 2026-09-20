@@ -1,8 +1,38 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { sha256HexV1 } from "../lib/investing/research";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
+import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
+import {
+  canonicalDatasetSeriesMaterialBytesV1,
+  executeHistoricalBacktestV1,
+  hashDatasetSeriesV1,
+  hashDatasetSnapshotV1,
+  hashExecutionConfigV1,
+  hashExperimentV1,
+  hashMetricRequestSetV1,
+  hashRefV1,
+  hashResearchIrV1,
+  hashResultV1,
+  sha256HexV1,
+  verifyDatasetSeriesMaterialV1,
+  type DatasetSeriesHashPayloadV1,
+  type ExecutionConfigHashPayloadV1,
+  type MetricRequestSetHashPayloadV1,
+  type ResearchIrV1,
+  type RunInputHashPayloadV1,
+} from "../lib/investing/research";
+import { resolveAuthorizedResearchMaterialRevisionCreateContext } from "../lib/investing/authority/context";
+import { createScientificRunInputV1 } from "../lib/investing/research/runInputScientificWriter";
+import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
+import { hashRunInputV1 } from "../lib/investing/research/canonical";
+import { scientificRunInputCandidateV1 } from "./support/investingI5DatasetRunScientificFixtures";
+import { canonicalResearchSpecCandidatePayloadV1 } from "../lib/investing/research/semantic";
+
+vi.mock("server-only", () => ({}));
+vi.mock("../lib/investing/authority/clerk", () => ({ resolveVerifiedClerkIdentity: vi.fn() }));
+vi.mock("../lib/investing/authority/transport", () => ({ getInvestingAuthorityDatabase: vi.fn() }));
 
 const repoRoot = path.resolve(__dirname, "..");
 const connectionString = process.env.PG17_RECONCILIATION_URL ?? "";
@@ -34,9 +64,11 @@ const ids = {
   tenant: "20000000-0000-4000-8000-000000000191",
   membership: "30000000-0000-4000-8000-000000000191",
   investigation: "60000000-0000-4000-8000-000000000191",
-  specRevision: "80000000-0000-4000-8000-000000000193",
+  specRevision: "91000000-0000-4000-8000-000000000071",
   experiment: "91000000-0000-4000-8000-000000000071",
   runInputIdentity: "b7000000-0000-4000-8000-000000000191",
+  executableRunInputIdentity: "b7000000-0000-4000-8000-000000000291",
+  conflictRunInputIdentity: "b7000000-0000-4000-8000-000000000391",
   draftRoot: "51000000-0000-4000-8000-000000000191",
   hypothesisRoot: "52000000-0000-4000-8000-000000000191",
   specRoot: "53000000-0000-4000-8000-000000000191",
@@ -123,6 +155,9 @@ async function applyCanonicalChain() {
 }
 
 async function seedRunInputAuthority() {
+  const candidate = scientificRunInputCandidateV1();
+  const researchIrHash = hashResearchIrV1(candidate.researchIr);
+  const experimentHash = hashExperimentV1(candidate.experiment);
   await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', 'pg17-execution')", [ids.principal]);
   await client.query("insert into investing.tenants (tenant_id) values ($1)", [ids.tenant]);
   await client.query("insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id, role, state) values ($1, $2, $3, 'OWNER', 'ACTIVE')", [ids.membership, ids.tenant, ids.principal]);
@@ -179,7 +214,7 @@ async function seedRunInputAuthority() {
   `, [
     ids.specRevision, ids.specRoot, ids.investigation, ids.tenant, ids.principal, ids.membership,
     ids.draftRevision, "B".repeat(64), ids.hypothesisRevision, "E".repeat(64),
-    JSON.stringify({ schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", status: "CANDIDATE_ONLY" }), "C".repeat(64), ids.specIdempotency,
+    JSON.stringify(canonicalResearchSpecCandidatePayloadV1(candidate.researchSpec)), "C".repeat(64), ids.specIdempotency,
   ]);
   await client.query(`
     insert into investing.research_experiments (
@@ -194,7 +229,7 @@ async function seedRunInputAuthority() {
       'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$7,
       'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$8,
       null,null,null,null,$9,$10,'idem-experiment-execution-0001','corr-experiment-execution-0001')
-  `, [ids.experiment, ids.investigation, ids.tenant, ids.principal, ids.membership, ids.specRevision, "1".repeat(64), "2".repeat(64), "D".repeat(64), ids.experimentIdempotency]);
+  `, [ids.experiment, ids.investigation, ids.tenant, ids.principal, ids.membership, ids.specRevision, researchIrHash, experimentHash, "D".repeat(64), ids.experimentIdempotency]);
   await client.query(`
     insert into investing.run_inputs_scientific_identities (
       run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
@@ -236,6 +271,122 @@ async function setExecutionContext(overrides: Record<string, string> = {}) {
     ...overrides,
   };
   for (const [key, value] of Object.entries(values)) await client.query("select set_config($1, $2, true)", [`syntrake.investing.${key}`, value]);
+}
+
+function useRealPgAuthorityTransport() {
+  vi.mocked(resolveVerifiedClerkIdentity).mockResolvedValue({ ok: true, externalProvider: "CLERK", externalSubject: "pg17-execution" });
+  vi.mocked(getInvestingAuthorityDatabase).mockReturnValue({
+    connect: async () => {
+      const pgClient = await pool.connect();
+      return {
+        query: async <Row = Record<string, unknown>>(text: string, values: readonly unknown[] = []) => {
+          const result = await pgClient.query<Row>(text, values as unknown[]);
+          return { rows: result.rows, rowCount: result.rowCount };
+        },
+        release: (destroy?: boolean) => pgClient.release(destroy),
+      };
+    },
+  });
+}
+
+const ref = (hashDomain: Parameters<typeof hashRefV1>[0]["hashDomain"], hashHex: string) =>
+  hashRefV1({ hashAlgorithm: "SHA-256", hashDomain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex });
+
+const executableExecutionConfig: ExecutionConfigHashPayloadV1 = {
+  schemaVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1",
+  engineCompatibilityVersion: "ENGINE_V20260918",
+  missingDataPolicy: "MISSING_DATA_EXCLUDE_V1",
+  fxPolicy: "FX_USD_IDENTITY_V1",
+  costsPolicy: "COSTS_ZERO_RESEARCH_V1",
+  slippagePolicy: "SLIPPAGE_ZERO_RESEARCH_V1",
+  fillPolicy: "CLOSE_TO_CLOSE_V1",
+  corporateActionPolicy: "ADJUSTED_PRICE_PROVIDER_V1",
+  calendarSessionPolicy: "XNYS_CLOSE_SESSION_V1",
+  valuationPolicy: "USD_CLOSE_MARK_V1",
+};
+
+const executableMetricRequestSet: MetricRequestSetHashPayloadV1 = {
+  schemaVersion: "METRIC_REQUEST_SET_HASH_PAYLOAD_V1",
+  metricRegistryVersion: "METRIC_REGISTRY_V20260918",
+  requests: [
+    { metricId: "TOTAL_RETURN", metricVersion: "METRIC_V1" },
+    { metricId: "MAX_DRAWDOWN", metricVersion: "METRIC_V1" },
+  ],
+};
+
+function executableMaterial(instrumentId: string, values: readonly [string, string][]) {
+  const bytes = canonicalDatasetSeriesMaterialBytesV1(values.map(([date, value]) => ({ date, value })));
+  const series: DatasetSeriesHashPayloadV1 = {
+    schemaVersion: "DATASET_SERIES_HASH_PAYLOAD_V1",
+    providerDatasetId: "PG17_EXECUTION_FIXTURE",
+    providerDatasetVersion: "V20260920",
+    instrumentId,
+    fieldId: "ADJUSTED_CLOSE",
+    fieldVersion: "PRICE_FIELD_V1",
+    frequency: "DAILY",
+    timezone: "America/New_York",
+    calendar: "XNYS_TRADING_CALENDAR_V1",
+    currency: "USD",
+    coverageStart: values[0]![0],
+    coverageEnd: values.at(-1)![0],
+    observationCount: String(values.length),
+    contentSha256: sha256HexV1(bytes),
+  };
+  return { series, bytes, verified: verifyDatasetSeriesMaterialV1(series, bytes) };
+}
+
+function executableFixture(changed = false) {
+  const aaa = executableMaterial("US:AAA", [["2025-01-06", "100"], ["2025-01-07", changed ? "103" : "102"], ["2025-01-08", "104"], ["2025-01-10", "106"]]);
+  const bbb = executableMaterial("US:BBB", [["2025-01-06", "100"], ["2025-01-07", "100"], ["2025-01-08", "100"], ["2025-01-10", "100"]]);
+  const researchIr: ResearchIrV1 = {
+    schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1",
+    irVersion: "RESEARCH_IR_V1",
+    universe: { type: "EXPLICIT_INSTRUMENTS", instrumentIds: ["US:BBB", "US:AAA"] },
+    pipeline: [
+      { type: "FILTER", predicate: { type: "COMPARE", left: { type: "DATA_FIELD_REF", fieldId: "ADJUSTED_CLOSE", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" }, operator: "GT", right: { type: "DECIMAL", value: "0", unit: "VALUATION_CURRENCY_PER_INSTRUMENT" } } },
+      { type: "WEIGHT", method: "EQUAL" },
+      { type: "REBALANCE", schedule: "DAILY" },
+    ],
+    benchmark: { type: "BENCHMARK", benchmark: "INSTRUMENT", instrumentId: "US:BBB" },
+    testPeriod: { startDate: "2025-01-06", endDate: "2025-01-10" },
+    valuationCurrency: "USD",
+    startingCapital: { amount: "1000", currency: "USD", origin: "SIMULATED" },
+  };
+  const datasetSnapshot = {
+    schemaVersion: "DATASET_SNAPSHOT_HASH_PAYLOAD_V1" as const,
+    snapshotPolicy: "DATASET_SNAPSHOT_POLICY_V1" as const,
+    series: [ref("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(aaa.series)), ref("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(bbb.series))],
+  };
+  const runInput: RunInputHashPayloadV1 = {
+    schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1",
+    runType: "HISTORICAL_BACKTEST",
+    researchEnvironment: "HISTORICAL_BACKTEST",
+    researchSourceContext: "PURE_RESEARCH",
+    researchSpec: ref("SYNTRAKE:RESEARCH_SPEC:V1", "A".repeat(64)),
+    researchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(researchIr)),
+    experiment: ref("SYNTRAKE:EXPERIMENT:V1", "B".repeat(64)),
+    datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(datasetSnapshot)),
+    engineId: "HISTORICAL_EXECUTION_ADAPTER",
+    engineVersion: "ENGINE_V20260918",
+    metricRegistryVersion: "METRIC_REGISTRY_V20260918",
+    metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(executableMetricRequestSet)),
+    executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(executableExecutionConfig)),
+    materialPolicies: [],
+  };
+  return { aaa, bbb, researchIr, datasetSnapshot, runInput, runInputHash: hashRunInputV1(runInput), datasetSeries: [aaa.series, bbb.series], materials: [aaa.verified, bbb.verified] };
+}
+
+async function seedExecutableRunInput(runInputIdentityId = ids.executableRunInputIdentity, changed = false) {
+  const f = executableFixture(changed);
+  for (const series of f.datasetSeries) {
+    await client.query("insert into investing.dataset_series_scientific_identities (dataset_series_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SERIES:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, hashDatasetSeriesV1(series), JSON.stringify(series)]);
+  }
+  await client.query("insert into investing.dataset_snapshots_scientific_identities (dataset_snapshot_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SNAPSHOT:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, f.runInput.datasetSnapshot.hashHex, JSON.stringify(f.datasetSnapshot)]);
+  await client.query("insert into investing.metric_request_sets_scientific_identities (metric_request_set_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload, metric_registry_version) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:METRIC_REQUEST_SET:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb,$6) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, f.runInput.metricRequestSet.hashHex, JSON.stringify(executableMetricRequestSet), executableMetricRequestSet.metricRegistryVersion]);
+  await client.query("insert into investing.execution_configs_scientific_identities (execution_config_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload, engine_compatibility_version) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:EXECUTION_CONFIG:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb,$6) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, f.runInput.executionConfig.hashHex, JSON.stringify(executableExecutionConfig), executableExecutionConfig.engineCompatibilityVersion]);
+  await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenant, ids.principal, ids.membership, f.runInput.researchIr.hashHex, JSON.stringify(f.researchIr)]);
+  await client.query("insert into investing.run_inputs_scientific_identities (run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id, operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex, metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,null,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11,$12,$13,$14,$15,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$16,$17::jsonb)", [runInputIdentityId, ids.tenant, ids.principal, ids.membership, ids.investigation, ids.experiment, ids.specRevision, f.runInput.researchSpec.hashHex, f.runInput.researchIr.hashHex, f.runInput.experiment.hashHex, f.runInput.datasetSnapshot.hashHex, f.runInput.metricRegistryVersion, f.runInput.metricRequestSet.hashHex, f.runInput.engineVersion, f.runInput.executionConfig.hashHex, f.runInputHash, JSON.stringify(f.runInput)]);
+  return f;
 }
 
 function descriptor(schema: string, bytes: Buffer) {
@@ -296,6 +447,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     await resetDisposableDatabase();
     await applyCanonicalChain();
     await seedRunInputAuthority();
+    useRealPgAuthorityTransport();
 
     const version = await client.query<{ server_version: string }>("show server_version");
     expect(version.rows[0]!.server_version).toMatch(/^17\./);
@@ -313,6 +465,45 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       [tables],
     );
     expect(badGrants.rowCount).toBe(0);
+
+    const creationAuthority = await resolveAuthorizedResearchMaterialRevisionCreateContext({
+      researchInvestigationId: ids.investigation,
+      operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1",
+      correlationId: "corr-pg17-runinput-create",
+    });
+    expect(creationAuthority.ok).toBe(true);
+    if (!creationAuthority.ok) throw new Error("creation authority failed");
+    const createdRunInput = await createScientificRunInputV1({
+      authorizedContext: creationAuthority.context as never,
+      researchExperimentId: ids.experiment,
+      candidate: scientificRunInputCandidateV1(),
+    });
+    expect(createdRunInput.ok).toBe(true);
+    const creationResearchIrHash = scientificRunInputCandidateV1().runInput.researchIr.hashHex;
+    await client.query("begin");
+    await setExecutionContext({
+      operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1",
+      capability: "RESEARCH_MUTATE",
+      research_ir_hash_hex: creationResearchIrHash,
+    });
+    const creationRead = await client.query<{ hash_hex: string }>("select hash_hex from investing.research_ir_scientific_identities where hash_hex = $1", [creationResearchIrHash]);
+    expect(creationRead.rows).toHaveLength(1);
+    await client.query("commit");
+    await client.query("begin");
+    await setExecutionContext({ research_ir_hash_hex: creationResearchIrHash });
+    const executionRead = await client.query<{ hash_hex: string }>("select hash_hex from investing.research_ir_scientific_identities where hash_hex = $1", [creationResearchIrHash]);
+    expect(executionRead.rows).toHaveLength(1);
+    await client.query("commit");
+    await expectTransactionRejects(async () => {
+      await setExecutionContext({
+        operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1",
+        capability: "RESEARCH_MUTATE",
+        research_ir_hash_hex: creationResearchIrHash,
+        tenant_id: "99999999-9999-4999-8999-999999999991",
+      });
+      const hidden = await client.query("select hash_hex from investing.research_ir_scientific_identities where hash_hex = $1", [creationResearchIrHash]);
+      expect(hidden.rows).toHaveLength(1);
+    }, /expected|row-level security|violates/i);
 
     for (const [index, overrides] of [
       { operation: "RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1" },
@@ -351,6 +542,78 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const metrics = descriptor("METRIC_RESULT_SET_V1", artifactBytes);
     const artifactIds = ["aaaaaaaa-1000-4000-8000-000000000191", "aaaaaaaa-2000-4000-8000-000000000191", "aaaaaaaa-3000-4000-8000-000000000191"];
     const runA = "aaaaaaaa-0000-4000-8000-000000000191";
+
+    const executable = await seedExecutableRunInput();
+    const materialBytes = new Map<string, Buffer>([
+      [hashDatasetSeriesV1(executable.aaa.series), executable.aaa.bytes],
+      [hashDatasetSeriesV1(executable.bbb.series), executable.bbb.bytes],
+    ]);
+    const provider = { loadSeriesContent: async (seriesRef: { hashHex: string }) => materialBytes.get(seriesRef.hashHex) ?? null };
+    const beforeMissingRuns = await client.query<{ count: string }>("select count(*) from investing.research_execution_runs where run_input_identity_id = $1", [ids.executableRunInputIdentity]);
+    const missing = await executeResearchRunCommandV1({
+      researchInvestigationId: ids.investigation,
+      runInputIdentityId: ids.executableRunInputIdentity,
+      correlationId: "corr-pg17-exec-missing",
+      datasetMaterialProvider: { loadSeriesContent: async () => null },
+    });
+    expect(missing).toEqual({ ok: false, code: "DATASET_MATERIAL_NOT_FOUND" });
+    const afterMissingRuns = await client.query<{ count: string }>("select count(*) from investing.research_execution_runs where run_input_identity_id = $1", [ids.executableRunInputIdentity]);
+    expect(afterMissingRuns.rows[0]!.count).toBe(beforeMissingRuns.rows[0]!.count);
+    const firstExecution = await executeResearchRunCommandV1({
+      researchInvestigationId: ids.investigation,
+      runInputIdentityId: ids.executableRunInputIdentity,
+      correlationId: "corr-pg17-exec-first",
+      datasetMaterialProvider: provider,
+    });
+    const secondExecution = await executeResearchRunCommandV1({
+      researchInvestigationId: ids.investigation,
+      runInputIdentityId: ids.executableRunInputIdentity,
+      correlationId: "corr-pg17-exec-second",
+      datasetMaterialProvider: provider,
+    });
+    expect(firstExecution.ok).toBe(true);
+    expect(secondExecution.ok).toBe(true);
+    if (!firstExecution.ok || !secondExecution.ok) throw new Error("execution failed");
+    expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
+    expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
+    expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
+
+    const conflictExecutable = await seedExecutableRunInput(ids.conflictRunInputIdentity, true);
+    const conflictPure = executeHistoricalBacktestV1({
+      runInput: conflictExecutable.runInput,
+      runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", conflictExecutable.runInputHash as never),
+      researchIr: conflictExecutable.researchIr,
+      datasetSeries: conflictExecutable.datasetSeries,
+      executionConfig: executableExecutionConfig,
+      metricRequestSet: executableMetricRequestSet,
+      materials: conflictExecutable.materials,
+    });
+    expect(conflictPure.ok).toBe(true);
+    if (!conflictPure.ok) throw new Error("conflict pure execution failed");
+    const conflictHash = hashResultV1(conflictPure.resultPayload);
+    const conflictBytes = Buffer.from("{\"conflict\":\"seed\"}\n", "utf8");
+    const conflictDescriptor = descriptor("RESEARCH_EXECUTION_TRACE_V1", conflictBytes);
+    const conflictArtifactIds = ["dddddddd-1000-4000-8000-000000000191", "dddddddd-2000-4000-8000-000000000191", "dddddddd-3000-4000-8000-000000000191"];
+    for (const [index, kind] of ["EXECUTION_TRACE", "VALUATION_SERIES", "METRIC_RESULT_SET"].entries()) {
+      await client.query("insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content) values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,$7,$8,$9,$10,$11)", [conflictArtifactIds[index], ids.tenant, ids.principal, ids.membership, kind, conflictDescriptor.artifactSchemaVersion, conflictDescriptor.format, conflictDescriptor.contentSha256, conflictDescriptor.contentByteLength, conflictDescriptor.recordCount, conflictBytes]);
+    }
+    await client.query("insert into investing.research_results_scientific_identities (result_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id, execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, benchmark_series_artifact_id, operation, capability, operation_scope, source_context, engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ('dddddddd-4000-4000-8000-000000000191',$1,null,$2,$3,$4,$5,$6,$7,null,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$8,$9::jsonb)", [ids.tenant, ids.principal, ids.membership, ids.conflictRunInputIdentity, conflictArtifactIds[0], conflictArtifactIds[1], conflictArtifactIds[2], conflictHash, JSON.stringify({ schemaVersion: "RESULT_HASH_PAYLOAD_V1", corrupted: true })]);
+    const beforeConflictArtifacts = await client.query<{ count: string }>("select count(*) from investing.research_result_artifacts");
+    const conflictMaterialBytes = new Map<string, Buffer>([
+      [hashDatasetSeriesV1(conflictExecutable.aaa.series), conflictExecutable.aaa.bytes],
+      [hashDatasetSeriesV1(conflictExecutable.bbb.series), conflictExecutable.bbb.bytes],
+    ]);
+    const conflictResult = await executeResearchRunCommandV1({
+      researchInvestigationId: ids.investigation,
+      runInputIdentityId: ids.conflictRunInputIdentity,
+      correlationId: "corr-pg17-exec-conflict",
+      datasetMaterialProvider: { loadSeriesContent: async (seriesRef) => conflictMaterialBytes.get(seriesRef.hashHex) ?? null },
+    });
+    expect(conflictResult).toEqual({ ok: false, code: "CONFLICT" });
+    const afterConflictArtifacts = await client.query<{ count: string }>("select count(*) from investing.research_result_artifacts");
+    expect(afterConflictArtifacts.rows[0]!.count).toBe(beforeConflictArtifacts.rows[0]!.count);
+    const failedConflictRun = await client.query<{ count: string }>("select count(*) from investing.research_execution_run_events e join investing.research_execution_runs r on r.research_execution_run_id = e.research_execution_run_id where r.run_input_identity_id = $1 and e.run_status = 'FAILED' and e.failure_reason_code = 'CONFLICT'", [ids.conflictRunInputIdentity]);
+    expect(failedConflictRun.rows[0]!.count).toBe("1");
 
     await client.query("begin");
     await setExecutionContext();
