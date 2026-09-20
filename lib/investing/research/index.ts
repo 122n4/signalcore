@@ -3,6 +3,8 @@ export {
   assertHashRefDomainV1,
   canonicalDateV1,
   canonicalDecimalV1,
+  canonicalEvidenceContentDescriptorV1,
+  canonicalEvidenceObjectPreimageV1,
   canonicalHashDomainV1,
   canonicalIntegerV1,
   canonicalOpaqueStringV1,
@@ -14,6 +16,7 @@ export {
   canonicalTokenV1,
   canonicalUuidV1,
   hashDomainStateV1,
+  hashEvidenceObjectV1,
   hashRefV1,
   immutableBehaviorTokenV1,
   sha256HexV1,
@@ -218,3 +221,11 @@ export {
   type ResearchMaterialRequestHashV1,
   type ResearchMaterialIdentityV1,
 } from "./materialRequest";
+
+
+export {
+  buildResearchExecutionEvidenceV1,
+  canonicalResearchExecutionEvidenceContentV1,
+  type ResearchExecutionEvidenceContentV1,
+  type ResearchExecutionEvidenceV1,
+} from "./evidenceObject";
