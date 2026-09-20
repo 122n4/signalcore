@@ -1,8 +1,8 @@
 # I5 Research Lab Completion Program V1
 
-Status: `CANDIDATE DESIGN CONTRACT - NOT CURRENT_ACCEPTED - UNNUMBERED`
+Status: `CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH LAB COMPLETION PROGRAM - UNNUMBERED`
 
-Classification: `CANDIDATE / RESEARCH_LAB_COMPLETION_PROGRAM / UNNUMBERED`
+Classification: `CURRENT_ACCEPTED / RESEARCH_LAB_COMPLETION_PROGRAM / UNNUMBERED`
 
 Canonical predecessor:
 
@@ -14,7 +14,7 @@ Permanent A-number:
 
 Production Supabase mutation:
 
-`NOT AUTHORIZED`
+`NONE / NOT PERFORMED`
 
 ## 1. Purpose
 
@@ -501,17 +501,49 @@ RL-1 Evidence Object
 A later slice may refine sequencing only if it proves no authority inversion or
 dependency cycle and receives separate owner acceptance.
 
-## 9. Candidate Acceptance Requirements
+## 9. Accepted Provenance
 
-This completion-program contract may be promoted only if independent audit
-confirms:
+Canonical predecessor:
 
-- it starts from canonical `main`
-  `d2d744c8b463b968169a8954bfee42cf93ec1184`;
-- it does not modify runtime, migration or production state;
-- it does not modify existing accepted V1 scientific semantics;
-- it respects I5/I6/I7/I9 boundaries;
-- it preserves `CORE != LAB`, `LAB != PAPER`, `INVESTING != TRADING`;
-- it introduces no permanent A-number;
-- CI and Vercel are green;
-- the PR remains unmerged until independent acceptance.
+`d2d744c8b463b968169a8954bfee42cf93ec1184`
+
+Independently audited design candidate:
+
+`5c86dbf7094b33dc2612b613c791b899fa29f6c4`
+
+Accepted merge/main anchor:
+
+`8400d7675788a60ee3399ee5908452b1e6f5e91e`
+
+PR:
+
+`#78`
+
+CI:
+
+`35508567814 - SUCCESS`
+
+Vercel:
+
+`SUCCESS`
+
+Acceptance facts:
+
+- design/documentation only;
+- runtime changes: `NONE`;
+- migration changes: `NONE`;
+- production mutation: `NONE`;
+- accepted V1 scientific semantics changed: `NO`;
+- I5/I6/I7/I9 boundaries preserved;
+- `CORE != LAB`, `LAB != PAPER`, `INVESTING != TRADING` preserved;
+- permanent A-number: `NOT ASSIGNED`.
+
+Independent acceptance verdict:
+
+`PASS`
+
+This acceptance makes the finite RL-1 through RL-11 completion program current
+authority. It does not make any RL closure current accepted and does not declare
+the Research Lab backend complete.
+
+`I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`
