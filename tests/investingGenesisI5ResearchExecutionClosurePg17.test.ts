@@ -492,7 +492,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const version = await client.query<{ server_version: string }>("show server_version");
     expect(version.rows[0]!.server_version).toMatch(/^17\./);
 
-    const tables = ["research_ir_scientific_identities", "research_execution_runs", "research_execution_run_events", "research_result_artifacts", "research_results_scientific_identities"];
+    const tables = ["research_ir_scientific_identities", "research_execution_runs", "research_execution_run_events", "research_result_artifacts", "research_results_scientific_identities", "research_evidence_objects_scientific_identities"];
     const rls = await client.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(
       "select relrowsecurity, relforcerowsecurity from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace where n.nspname = 'investing' and c.relname = any($1::text[])",
       [tables],
