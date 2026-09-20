@@ -12,6 +12,7 @@ import {
   type RunInputHashPayloadV1,
 } from "./canonical";
 import { hashRunInputV1 } from "./canonical";
+import { hashDatasetSnapshotV1, type DatasetSnapshotHashPayloadV1 } from "./executionMaterials";
 import {
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -54,7 +55,7 @@ export function buildResearchExecutionEvidenceV1(input: {
   runInputHashHex: string;
   resultPayload: ResultHashPayloadV1;
   resultHashHex: string;
-  datasetSeries: readonly HashRefV1[];
+  datasetSnapshot: DatasetSnapshotHashPayloadV1;
 }): ResearchExecutionEvidenceV1 {
   canonicalRunInputHashPayloadV1(input.runInput);
   const actualRunInputHash = hashRunInputV1(input.runInput);
@@ -69,6 +70,10 @@ export function buildResearchExecutionEvidenceV1(input: {
   if (resultRunInput.hashHex !== actualRunInputHash) throw new Error("EVIDENCE_RESULT_RUN_INPUT_MISMATCH");
   if (input.resultPayload.engineId !== input.runInput.engineId || input.resultPayload.engineVersion !== input.runInput.engineVersion) {
     throw new Error("EVIDENCE_ENGINE_BINDING_MISMATCH");
+  }
+  const actualDatasetSnapshotHash = hashDatasetSnapshotV1(input.datasetSnapshot);
+  if (actualDatasetSnapshotHash !== input.runInput.datasetSnapshot.hashHex) {
+    throw new Error("EVIDENCE_DATASET_SNAPSHOT_HASH_MISMATCH");
   }
 
   const content = canonicalResearchExecutionEvidenceContentV1({
@@ -89,7 +94,7 @@ export function buildResearchExecutionEvidenceV1(input: {
     researchIr: input.runInput.researchIr,
     experiment: input.runInput.experiment,
     datasetSnapshot: input.runInput.datasetSnapshot,
-    datasetSeries: input.datasetSeries,
+    datasetSeries: input.datasetSnapshot.series,
     metricRegistryVersion: input.runInput.metricRegistryVersion,
     metricRequestSet: input.runInput.metricRequestSet,
     executionConfig: input.runInput.executionConfig,
