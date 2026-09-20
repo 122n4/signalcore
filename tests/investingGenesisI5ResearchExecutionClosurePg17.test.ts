@@ -158,6 +158,8 @@ async function seedRunInputAuthority() {
   const candidate = scientificRunInputCandidateV1();
   const researchIrHash = hashResearchIrV1(candidate.researchIr);
   const experimentHash = hashExperimentV1(candidate.experiment);
+  const sourceDraftHash = candidate.researchSpec.sourceDraft.ref.hashHex;
+  const hypothesisHash = candidate.researchSpec.hypothesisBinding.kind === "EXPLICIT_HYPOTHESIS" ? candidate.researchSpec.hypothesisBinding.hypothesis.ref.hashHex : null;
   await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', 'pg17-execution')", [ids.principal]);
   await client.query("insert into investing.tenants (tenant_id) values ($1)", [ids.tenant]);
   await client.query("insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id, role, state) values ($1, $2, $3, 'OWNER', 'ACTIVE')", [ids.membership, ids.tenant, ids.principal]);
@@ -173,7 +175,7 @@ async function seedRunInputAuthority() {
       ($5, 'idem-hypothesis-exec-001', $10, 'corr-hypothesis-exec-001', 'USER_PRINCIPAL', 'pg17-execution', 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', $11, $12, null, 'SUCCEEDED', now())
   `, [
     ids.investigationIdempotency, ids.specIdempotency, ids.experimentIdempotency, ids.draftIdempotency, ids.hypothesisIdempotency,
-    "A".repeat(64), "C".repeat(64), "D".repeat(64), "B".repeat(64), "E".repeat(64), ids.principal, ids.tenant,
+    "A".repeat(64), "C".repeat(64), "D".repeat(64), sourceDraftHash, hypothesisHash ?? "E".repeat(64), ids.principal, ids.tenant,
   ]);
   await client.query(`
     insert into investing.research_investigations (
@@ -200,7 +202,7 @@ async function seedRunInputAuthority() {
       ($3, $4, $5, $6, null, $7, 'USER_PRINCIPAL', 'pg17-execution', $8, null, 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', 'HYPOTHESIS', 1, null, 'HYPOTHESIS_HASH_PAYLOAD_V1', '{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb, $10, $10, $12, 'idem-hypothesis-exec-001', 'corr-hypothesis-exec-001')
   `, [
     ids.draftRevision, ids.draftRoot, ids.hypothesisRevision, ids.hypothesisRoot, ids.investigation, ids.tenant, ids.principal, ids.membership,
-    "B".repeat(64), "E".repeat(64), ids.draftIdempotency, ids.hypothesisIdempotency,
+    sourceDraftHash, hypothesisHash ?? "E".repeat(64), ids.draftIdempotency, ids.hypothesisIdempotency,
   ]);
   await client.query(`
     insert into investing.research_spec_revisions (
@@ -213,7 +215,7 @@ async function seedRunInputAuthority() {
       $11::jsonb, $12, $13, 'idem-spec-execution-0001', 'corr-spec-execution-0001')
   `, [
     ids.specRevision, ids.specRoot, ids.investigation, ids.tenant, ids.principal, ids.membership,
-    ids.draftRevision, "B".repeat(64), ids.hypothesisRevision, "E".repeat(64),
+    ids.draftRevision, sourceDraftHash, ids.hypothesisRevision, hypothesisHash,
     JSON.stringify(canonicalResearchSpecCandidatePayloadV1(candidate.researchSpec)), "C".repeat(64), ids.specIdempotency,
   ]);
   await client.query(`
