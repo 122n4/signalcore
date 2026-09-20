@@ -28,6 +28,11 @@ export type ResearchExecutionFailureCodeV1 =
   | "UNSUPPORTED_IR_PROFILE"
   | "CALENDAR_OUT_OF_RANGE"
   | "NO_ELIGIBLE_SESSIONS"
+  | "DATASET_MATERIAL_NOT_FOUND"
+  | "DATASET_MATERIAL_HASH_MISMATCH"
+  | "DATASET_MATERIAL_SCHEMA_INVALID"
+  | "DATASET_MATERIAL_COUNT_MISMATCH"
+  | "DATASET_MATERIAL_COVERAGE_MISMATCH"
   | "MISSING_REQUIRED_EXECUTION_PRICE"
   | "MISSING_REQUIRED_VALUATION_PRICE"
   | "MISSING_REQUIRED_BENCHMARK_PRICE"
@@ -60,6 +65,7 @@ type EngineInput = Readonly<{
 
 type Position = { quantity: ExactRationalV1 };
 type Intent = Readonly<{ sequence: string; evaluationSequence: string; signalSession: string; executionSession: string; weights: ReadonlyMap<string, ExactRationalV1> }>;
+type FieldRuntimeValue = Readonly<{ kind: "RATIONAL"; value: ExactRationalV1 }> | Readonly<{ kind: "DATE"; value: string }>;
 
 const zero = integerToRationalV1(0n);
 const one = integerToRationalV1(1n);
@@ -295,7 +301,7 @@ function evaluatePipeline(pipeline: readonly ResearchOperationV1[], universe: re
     if (operation.type === "REBALANCE") break;
     if (operation.type === "FILTER") eligible = eligible.filter((instrumentId) => evalBool(operation.predicate, instrumentId, prices, volumes, session, observations) === true);
     if (operation.type === "RANK") {
-      eligible = eligible.map((instrumentId) => ({ instrumentId, value: fieldValue(operation.field, instrumentId, prices, volumes, session, observations) }))
+      eligible = eligible.map((instrumentId) => ({ instrumentId, value: rationalFieldValue(operation.field, instrumentId, prices, volumes, session, observations) }))
         .filter((entry) => entry.value || operation.missingPolicy === "LAST")
         .sort((left, right) => {
           if (!left.value && !right.value) return compareBytes(left.instrumentId, right.instrumentId);
@@ -349,11 +355,21 @@ function evalBool(expr: BooleanExpressionV1, instrumentId: string, prices: Map<s
   const left = fieldValue(expr.left, instrumentId, prices, volumes, session, observations);
   const right = "fieldId" in expr.right ? fieldValue(expr.right, instrumentId, prices, volumes, session, observations) : literalValue(expr.right);
   if (!left || !right) return null;
-  const cmp = compareRationalV1(left, right);
+  if (left.kind !== right.kind) return null;
+  const cmp = left.kind === "DATE" && right.kind === "DATE"
+    ? (left.value === right.value ? 0 : left.value < right.value ? -1 : 1)
+    : left.kind === "RATIONAL" && right.kind === "RATIONAL"
+      ? compareRationalV1(left.value, right.value)
+      : 0;
   return expr.operator === "EQ" ? cmp === 0 : expr.operator === "NEQ" ? cmp !== 0 : expr.operator === "GT" ? cmp > 0 : expr.operator === "GTE" ? cmp >= 0 : expr.operator === "LT" ? cmp < 0 : cmp <= 0;
 }
 
-function fieldValue(field: DataFieldRefV1, instrumentId: string, prices: Map<string, Map<string, ExactRationalV1>>, volumes: Map<string, Map<string, ExactRationalV1>>, session: string, observations: CanonicalJsonValue[]): ExactRationalV1 | null {
+function rationalFieldValue(field: DataFieldRefV1, instrumentId: string, prices: Map<string, Map<string, ExactRationalV1>>, volumes: Map<string, Map<string, ExactRationalV1>>, session: string, observations: CanonicalJsonValue[]): ExactRationalV1 | null {
+  const value = fieldValue(field, instrumentId, prices, volumes, session, observations);
+  return value?.kind === "RATIONAL" ? value.value : null;
+}
+
+function fieldValue(field: DataFieldRefV1, instrumentId: string, prices: Map<string, Map<string, ExactRationalV1>>, volumes: Map<string, Map<string, ExactRationalV1>>, session: string, observations: CanonicalJsonValue[]): FieldRuntimeValue | null {
   let value: ExactRationalV1 | null = null;
   if (field.fieldId === "ADJUSTED_CLOSE") value = prices.get(instrumentId)?.get(session) ?? null;
   if (field.fieldId === "VOLUME") value = volumes.get(instrumentId)?.get(session) ?? null;
@@ -369,12 +385,17 @@ function fieldValue(field: DataFieldRefV1, instrumentId: string, prices: Map<str
     const anchorPrice = anchor ? prices.get(instrumentId)?.get(anchor) : null;
     value = currentPrice && anchorPrice ? subtractRationalV1(divideRationalV1(currentPrice, anchorPrice), one) : null;
   }
+  if (field.fieldId === "OBSERVATION_DATE") {
+    observations.push({ instrumentId, fieldId: field.fieldId, value: session });
+    return { kind: "DATE", value: session };
+  }
   if (value) observations.push({ instrumentId, fieldId: field.fieldId, value: renderRatioOutputV1(value) });
-  return value;
+  return value ? { kind: "RATIONAL", value } : null;
 }
 
-function literalValue(literal: Exclude<BooleanExpressionV1 extends infer T ? T : never, never> extends never ? never : { type: string; value?: unknown }): ExactRationalV1 | null {
-  if (literal.type === "DECIMAL" || literal.type === "INTEGER") return decimalStringToRationalV1(String(literal.value));
+function literalValue(literal: Exclude<BooleanExpressionV1 extends infer T ? T : never, never> extends never ? never : { type: string; value?: unknown }): FieldRuntimeValue | null {
+  if (literal.type === "DECIMAL" || literal.type === "INTEGER") return { kind: "RATIONAL", value: decimalStringToRationalV1(String(literal.value)) };
+  if (literal.type === "DATE") return { kind: "DATE", value: String(literal.value) };
   return null;
 }
 
@@ -389,6 +410,7 @@ function compareBytes(left: string, right: string) {
 function isFailureCode(value: string): value is ResearchExecutionFailureCodeV1 {
   return [
     "UNSUPPORTED_RUN_PROFILE", "UNSUPPORTED_ENGINE", "UNSUPPORTED_EXECUTION_CONFIG", "UNSUPPORTED_IR_PROFILE", "CALENDAR_OUT_OF_RANGE",
+    "DATASET_MATERIAL_NOT_FOUND", "DATASET_MATERIAL_HASH_MISMATCH", "DATASET_MATERIAL_SCHEMA_INVALID", "DATASET_MATERIAL_COUNT_MISMATCH", "DATASET_MATERIAL_COVERAGE_MISMATCH",
     "NO_ELIGIBLE_SESSIONS", "MISSING_REQUIRED_EXECUTION_PRICE", "MISSING_REQUIRED_VALUATION_PRICE", "MISSING_REQUIRED_BENCHMARK_PRICE",
     "NUMERIC_INVARIANT_VIOLATION", "ACCOUNTING_INVARIANT_VIOLATION", "RESULT_ARTIFACT_LIMIT_EXCEEDED",
   ].includes(value);

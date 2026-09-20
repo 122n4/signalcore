@@ -35,6 +35,10 @@ create table if not exists investing.research_ir_scientific_identities (
   hash_hex text not null check (hash_hex ~ '^[0-9A-F]{64}$'),
   canonical_payload jsonb not null check (canonical_payload->>'schemaVersion' = 'RESEARCH_IR_HASH_PAYLOAD_V1'),
   created_at timestamptz not null default transaction_timestamp(),
+  constraint research_ir_operation_capability_pair_check check (
+    (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1' and capability = 'RESEARCH_MUTATE')
+    or (operation = 'RESEARCH_EXECUTION_RUN_V1' and capability = 'RESEARCH_EXECUTE')
+  ),
   constraint research_ir_authority_tuple_fk foreign key (tenant_membership_id, tenant_id, principal_id)
     references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint research_ir_scope_shape_check check (account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH')
@@ -42,6 +46,9 @@ create table if not exists investing.research_ir_scientific_identities (
 
 create unique index if not exists research_ir_scientific_identity_key
   on investing.research_ir_scientific_identities (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex);
+
+create unique index if not exists run_inputs_execution_authority_key
+  on investing.run_inputs_scientific_identities (run_input_identity_id, tenant_id, principal_id, tenant_membership_id);
 
 create table investing.research_execution_runs (
   research_execution_run_id uuid primary key,
@@ -60,8 +67,13 @@ create table investing.research_execution_runs (
   created_at timestamptz not null default transaction_timestamp(),
   constraint research_execution_runs_authority_tuple_fk foreign key (tenant_membership_id, tenant_id, principal_id)
     references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
+  constraint research_execution_runs_run_input_authority_fk foreign key (run_input_identity_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.run_inputs_scientific_identities (run_input_identity_id, tenant_id, principal_id, tenant_membership_id),
   constraint research_execution_runs_scope_shape_check check (account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH')
 );
+
+create unique index research_execution_runs_authority_key
+  on investing.research_execution_runs (research_execution_run_id, tenant_id, principal_id, tenant_membership_id);
 
 create table investing.research_result_artifacts (
   artifact_id uuid primary key,
@@ -93,6 +105,9 @@ create table investing.research_result_artifacts (
 create unique index research_result_artifacts_identity_key
   on investing.research_result_artifacts (tenant_id, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count);
 
+create unique index research_result_artifacts_authority_key
+  on investing.research_result_artifacts (artifact_id, tenant_id, principal_id, tenant_membership_id);
+
 create table investing.research_results_scientific_identities (
   result_identity_id uuid primary key,
   tenant_id uuid not null references investing.tenants (tenant_id),
@@ -118,6 +133,16 @@ create table investing.research_results_scientific_identities (
   created_at timestamptz not null default transaction_timestamp(),
   constraint research_results_authority_tuple_fk foreign key (tenant_membership_id, tenant_id, principal_id)
     references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
+  constraint research_results_run_input_authority_fk foreign key (run_input_identity_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.run_inputs_scientific_identities (run_input_identity_id, tenant_id, principal_id, tenant_membership_id),
+  constraint research_results_trace_artifact_authority_fk foreign key (execution_trace_artifact_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.research_result_artifacts (artifact_id, tenant_id, principal_id, tenant_membership_id),
+  constraint research_results_valuation_artifact_authority_fk foreign key (valuation_series_artifact_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.research_result_artifacts (artifact_id, tenant_id, principal_id, tenant_membership_id),
+  constraint research_results_metric_artifact_authority_fk foreign key (metric_result_set_artifact_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.research_result_artifacts (artifact_id, tenant_id, principal_id, tenant_membership_id),
+  constraint research_results_benchmark_artifact_authority_fk foreign key (benchmark_series_artifact_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.research_result_artifacts (artifact_id, tenant_id, principal_id, tenant_membership_id),
   constraint research_results_scope_shape_check check (account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH')
 );
 
@@ -143,6 +168,8 @@ create table investing.research_execution_run_events (
   constraint research_execution_run_events_authority_tuple_fk foreign key (tenant_membership_id, tenant_id, principal_id)
     references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   constraint research_execution_run_events_scope_shape_check check (account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'),
+  constraint research_execution_run_events_run_authority_fk foreign key (research_execution_run_id, tenant_id, principal_id, tenant_membership_id)
+    references investing.research_execution_runs (research_execution_run_id, tenant_id, principal_id, tenant_membership_id),
   constraint research_execution_run_events_terminal_payload_check check (
     (run_status = 'SUCCEEDED' and result_identity_id is not null and failure_reason_code is null)
     or (run_status = 'FAILED' and result_identity_id is null and failure_reason_code is not null)
@@ -206,7 +233,22 @@ grant select, insert on investing.research_results_scientific_identities to inve
 create policy research_execution_research_ir_select on investing.research_ir_scientific_identities for select to investing_app
   using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
 create policy research_execution_research_ir_insert on investing.research_ir_scientific_identities for insert to investing_app
-  with check (current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and nullif(current_setting('syntrake.investing.account_id', true), '') is null and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and hash_hex = current_setting('syntrake.investing.research_ir_hash_hex', true));
+  with check (operation = current_setting('syntrake.investing.operation', true) and capability = current_setting('syntrake.investing.capability', true) and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and nullif(current_setting('syntrake.investing.account_id', true), '') is null and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and hash_hex = current_setting('syntrake.investing.research_ir_hash_hex', true));
+
+create policy research_execution_read_run_inputs on investing.run_inputs_scientific_identities for select to investing_app
+  using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXECUTION_RUN_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE' and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null);
+
+create policy research_execution_read_dataset_series on investing.dataset_series_scientific_identities for select to investing_app
+  using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXECUTION_RUN_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE' and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null);
+
+create policy research_execution_read_dataset_snapshots on investing.dataset_snapshots_scientific_identities for select to investing_app
+  using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXECUTION_RUN_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE' and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null);
+
+create policy research_execution_read_metric_request_sets on investing.metric_request_sets_scientific_identities for select to investing_app
+  using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXECUTION_RUN_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE' and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null);
+
+create policy research_execution_read_execution_configs on investing.execution_configs_scientific_identities for select to investing_app
+  using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXECUTION_RUN_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE' and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null);
 
 create policy research_execution_runs_select on investing.research_execution_runs for select to investing_app
   using (operation = current_setting('syntrake.investing.operation', true) and capability = current_setting('syntrake.investing.capability', true) and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and account_id is null and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');

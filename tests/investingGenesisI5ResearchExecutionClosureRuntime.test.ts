@@ -37,6 +37,7 @@ import {
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
+import { canonicalResultHashPayloadV1 } from "../lib/investing/research/resultArtifacts";
 import { decimalStringToRationalV1, integerToRationalV1 } from "../lib/investing/research/exactRational";
 
 const ref = (hashDomain: Parameters<typeof hashRefV1>[0]["hashDomain"], hashHex: string) =>
@@ -213,12 +214,95 @@ describe("I5 Research Execution Closure runtime", () => {
     expect(trace.filter((row) => row.type === "FILL").map((row) => row.executionSession)).toContain("2025-01-07");
     expect(trace[0]).toMatchObject({ type: "EVALUATION", sessionDate: "2025-01-06", evaluationSequence: "0" });
     expect(trace[1]).toMatchObject({ type: "TARGET_INTENT", signalSession: "2025-01-06", requiredExecutionSession: "2025-01-07" });
+    const evaluations = new Set(trace.filter((row) => row.type === "EVALUATION").map((row) => row.evaluationSequence));
+    const intents = new Set(trace.filter((row) => row.type === "TARGET_INTENT").map((row) => row.sequence));
+    for (const row of trace.filter((entry) => entry.type === "TARGET_INTENT")) expect(evaluations.has(row.originatingEvaluationSequence)).toBe(true);
+    for (const row of trace.filter((entry) => entry.type === "FILL")) expect(intents.has(row.originatingTargetIntent)).toBe(true);
+    const firstFill = trace.find((row) => row.type === "FILL");
+    expect(firstFill.cashBefore).toBe("1000");
+    expect(firstFill.cashAfter).toBe("500.00000044");
     const valuations = first.artifacts.valuationSeriesBytes.toString("utf8").trim().split("\n").map((line) => JSON.parse(line));
     expect(valuations[0]).toMatchObject({ sessionDate: "2025-01-06", cash: "1000", marketValue: "0", nav: "1000" });
     expect(valuations.at(-1)!.nav).toBe("1019.51357464");
     expect(first.artifacts.metricResultSetBytes.toString("utf8")).toContain("TOTAL_RETURN");
     expect(first.artifacts.benchmarkSeriesBytes?.toString("utf8")).toContain("\"value\":\"1000\"");
     expect(hashResultV1(first.resultPayload)).toBe("C69E7EFBF62897F0AF3BADEAD6D44208868C353EE0D2074783364E05CFEE5815");
+    expect(() => canonicalResultHashPayloadV1({ ...first.resultPayload, endingNav: "not-money" } as never)).toThrow("RESULT_MONEY_INVALID");
+  });
+
+  it("implements virtual OBSERVATION_DATE and point-in-time derived missingness", () => {
+    const base = fixture();
+    const observationDateIr: ResearchIrV1 = {
+      ...base.researchIr,
+      pipeline: [
+        {
+          type: "FILTER",
+          predicate: {
+            type: "COMPARE",
+            left: { type: "DATA_FIELD_REF", fieldId: "OBSERVATION_DATE", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" },
+            operator: "GTE",
+            right: { type: "DATE", value: "2025-01-07" },
+          },
+        },
+        { type: "WEIGHT", method: "EQUAL" },
+        { type: "REBALANCE", schedule: "DAILY" },
+      ],
+    };
+    const runInput = { ...base.runInput, researchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(observationDateIr)) };
+    const result = executeHistoricalBacktestV1({ ...base, researchIr: observationDateIr, runInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", hashRunInputV1(runInput)) });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const trace = result.artifacts.executionTraceBytes.toString("utf8");
+    const observationDateTrace = trace.trim().split("\n").map((line) => JSON.parse(line));
+    expect(observationDateTrace.find((row) => row.type === "EVALUATION" && row.sessionDate === "2025-01-06").eligibleInstrumentSet).toEqual([]);
+    expect(observationDateTrace.find((row) => row.type === "EVALUATION" && row.sessionDate === "2025-01-07").eligibleInstrumentSet).toEqual(["US:AAA", "US:BBB"]);
+
+    const totalReturnIr: ResearchIrV1 = {
+      ...base.researchIr,
+      pipeline: [
+        {
+          type: "FILTER",
+          predicate: {
+            type: "COMPARE",
+            left: { type: "DATA_FIELD_REF", fieldId: "TOTAL_RETURN", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" },
+            operator: "GT",
+            right: { type: "DECIMAL", value: "0", unit: "RATIO" },
+          },
+        },
+        { type: "WEIGHT", method: "EQUAL" },
+        { type: "REBALANCE", schedule: "DAILY" },
+      ],
+    };
+    const totalReturnRunInput = { ...base.runInput, researchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(totalReturnIr)) };
+    const totalReturn = executeHistoricalBacktestV1({ ...base, researchIr: totalReturnIr, runInput: totalReturnRunInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", hashRunInputV1(totalReturnRunInput)) });
+    expect(totalReturn.ok).toBe(true);
+    if (!totalReturn.ok) return;
+    const totalTrace = totalReturn.artifacts.executionTraceBytes.toString("utf8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(totalTrace.find((row) => row.type === "EVALUATION" && row.sessionDate === "2025-01-06").eligibleInstrumentSet).toEqual([]);
+    expect(totalTrace.find((row) => row.type === "EVALUATION" && row.sessionDate === "2025-01-10").eligibleInstrumentSet).toEqual(["US:AAA"]);
+
+    const momentumIr: ResearchIrV1 = {
+      ...base.researchIr,
+      pipeline: [
+        {
+          type: "FILTER",
+          predicate: {
+            type: "COMPARE",
+            left: { type: "DATA_FIELD_REF", fieldId: "MOMENTUM_12M", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" },
+            operator: "GT",
+            right: { type: "DECIMAL", value: "0", unit: "RATIO" },
+          },
+        },
+        { type: "WEIGHT", method: "EQUAL" },
+        { type: "REBALANCE", schedule: "DAILY" },
+      ],
+    };
+    const momentumRunInput = { ...base.runInput, researchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(momentumIr)) };
+    const momentum = executeHistoricalBacktestV1({ ...base, researchIr: momentumIr, runInput: momentumRunInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", hashRunInputV1(momentumRunInput)) });
+    expect(momentum.ok).toBe(true);
+    if (!momentum.ok) return;
+    const momentumTrace = momentum.artifacts.executionTraceBytes.toString("utf8");
+    expect(momentumTrace).toContain("\"eligibleInstrumentSet\":[]");
   });
 
   it("changes Result identity when real material observations and upstream identities change", () => {
