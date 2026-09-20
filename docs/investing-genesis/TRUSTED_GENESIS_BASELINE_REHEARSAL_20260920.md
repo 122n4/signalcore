@@ -1,6 +1,6 @@
 # Trusted Genesis Baseline Full Rehearsal - 2026-09-20
 
-Status: `CANDIDATE REHEARSAL EVIDENCE - TRUSTED GENESIS BASELINE - NOT CURRENT_ACCEPTED`
+Status: `CURRENT ACCEPTED REHEARSAL EVIDENCE - TRUSTED GENESIS BASELINE`
 
 ## Purpose
 
@@ -14,9 +14,10 @@ It is an evidence slice only. It does not introduce runtime behavior, migrations
 new scientific domains, product features, production Supabase mutation or a
 permanent A-number.
 
-Until this rehearsal evidence is independently audited and promoted, the Trusted
-Genesis Baseline remains a rehearsal candidate rather than current accepted
-authority.
+This rehearsal evidence has passed its own CI and independent audit. It is the
+current accepted evidence record for the Trusted Genesis Baseline. Acceptance
+does not broaden any product or scientific authority beyond the boundaries
+recorded below.
 
 ## Baseline Identity
 
@@ -244,7 +245,7 @@ Classification:
 
 `C. REPOSITORY CONTROL PLANE REHEARSAL = PASS`
 
-## Rehearsal Candidate Verdict
+## Accepted Rehearsal Verdict
 
 All three rehearsal dimensions are supported by concrete evidence:
 
@@ -254,16 +255,56 @@ All three rehearsal dimensions are supported by concrete evidence:
 
 `C = PASS`
 
-Candidate classification:
+Accepted classification:
 
-`TRUSTED GENESIS BASELINE = REHEARSAL_CANDIDATE / NOT CURRENT_ACCEPTED`
+`TRUSTED GENESIS BASELINE = CURRENT_ACCEPTED`
 
-Promotion requires:
+## Accepted Provenance
 
-1. this evidence slice and canonical-hygiene changes to pass CI;
-2. no runtime, migration or production mutation in this slice;
-3. independent audit of the resulting candidate SHA;
-4. a narrow acceptance-only promotion before merge.
+Final independently audited rehearsal candidate:
+
+`e93aa20187d99ec00de9d31a822f1bf86b2f297a`
+
+PR:
+
+`#77`
+
+Candidate push CI:
+
+`35507509732 - SUCCESS`
+
+Candidate pull-request CI:
+
+`35507511846 - SUCCESS`
+
+Candidate full suite:
+
+- test files: `212 passed / 17 skipped`
+- tests: `1159 passed / 36 skipped`
+- lint: `PASS`
+- TypeScript: `PASS`
+- production build: `PASS`
+- dependency audit: `PASS`
+
+Vercel preview deployment:
+
+`dpl_4a3wJYV8h2GMkp2Gzk12g7x9vG34 - READY`
+
+Independent auditor verdict:
+
+`PASS`
+
+Permanent A-number:
+
+`NOT ASSIGNED`
+
+Production mutation:
+
+`NONE`
+
+Production Supabase migration application:
+
+`NOT PERFORMED`
 
 ## Boundaries
 
