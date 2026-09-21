@@ -401,7 +401,7 @@ describe("Investing Genesis I5-A4 Research Spec persistence", () => {
     const repairedA3Policy = "tenant_memberships_i5_a3_material_revision_account_read";
 
     expect(gitBlobSha(runtimeLock)).toBe("f7706d6ac8c78fab5eca651ef7b477d915f5cb9f");
-    expect(gitBlobSha(a3)).toBe("907a6df7da30da13f13e42a37a5af6c433d51c94");
+    expect(gitBlobSha(a3)).toBe("b8293ca77dd3ae7d2214998c9d620262431d99e6");
     expect(a3).toContain(repairedA3Policy);
     expect(a3).not.toContain(oldA3Policy);
     expect(a4).toContain("repaired research_drafts.updated_at lock contract missing or altered");

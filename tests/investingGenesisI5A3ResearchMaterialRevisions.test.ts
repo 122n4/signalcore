@@ -276,7 +276,7 @@ describe("Investing I5-A3 Research material revisions", () => {
     expect(finalVocabulary).toContain("'research_draft_revision_create_v1'");
     expect(finalVocabulary).toContain("'research_hypothesis_revision_create_v1'");
     expect((finalVocabulary.match(/'research_[a-z0-9_]+_v1'|'initial_[a-z0-9_]+/g) ?? []).length).toBeGreaterThanOrEqual(6);
-    expect(sql).toContain("v_operation_token_count <> 6");
+    expect(sql).toContain("v_operation_token_count <> 9");
   });
 
   it("uses A3-specific RLS policies for authority, idempotency, roots, revisions, and CAS pointer state", () => {

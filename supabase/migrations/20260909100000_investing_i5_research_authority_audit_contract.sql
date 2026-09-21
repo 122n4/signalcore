@@ -80,15 +80,28 @@ begin
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'investing'
     and c.relname = 'audit_events'
-    and pol.polname in (
-      'audit_events_i2b_authority_denial_insert',
-      'audit_events_i2c_bootstrap_insert'
+    and (
+      (
+        pol.polname in (
+          'audit_events_i2b_authority_denial_insert',
+          'audit_events_i2c_bootstrap_insert',
+          'audit_events_i3c_buy_null_revision_insert',
+          'audit_events_i3c_fill_success_insert',
+          'audit_events_i4c_plan_conflict_insert',
+          'audit_events_i4c_plan_denial_insert',
+          'audit_events_i4c_plan_success_insert'
+        )
+        and pol.polcmd = 'a'
+      )
+      or (
+        pol.polname = 'audit_events_i4c_plan_guard_read'
+        and pol.polcmd = 'r'
+      )
     )
-    and pol.polcmd = 'a'
     and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
 
-  if v_bad_count <> 2 then
-    raise exception 'I5 Research authority audit prestate violation: expected exact I2 audit insert policies';
+  if v_bad_count <> 8 then
+    raise exception 'I5 Research authority audit prestate violation: expected exact I2/I3/I4 audit insert policies';
   end if;
 
   select count(*)
@@ -107,11 +120,24 @@ begin
       )
       or (
         c.relname = 'audit_events'
-        and pol.polname in (
-          'audit_events_i2b_authority_denial_insert',
-          'audit_events_i2c_bootstrap_insert'
+        and (
+          (
+            pol.polname in (
+              'audit_events_i2b_authority_denial_insert',
+              'audit_events_i2c_bootstrap_insert',
+              'audit_events_i3c_buy_null_revision_insert',
+              'audit_events_i3c_fill_success_insert',
+              'audit_events_i4c_plan_conflict_insert',
+              'audit_events_i4c_plan_denial_insert',
+              'audit_events_i4c_plan_success_insert'
+            )
+            and pol.polcmd = 'a'
+          )
+          or (
+            pol.polname = 'audit_events_i4c_plan_guard_read'
+            and pol.polcmd = 'r'
+          )
         )
-        and pol.polcmd = 'a'
         and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]
       )
     );
@@ -750,6 +776,12 @@ begin
         and pol.polname in (
           'audit_events_i2b_authority_denial_insert',
           'audit_events_i2c_bootstrap_insert',
+          'audit_events_i3c_buy_null_revision_insert',
+          'audit_events_i3c_fill_success_insert',
+          'audit_events_i4c_plan_conflict_insert',
+          'audit_events_i4c_plan_denial_insert',
+          'audit_events_i4c_plan_guard_read',
+          'audit_events_i4c_plan_success_insert',
           'audit_events_i5_research_investigation_create_denial_insert'
         )
       )
@@ -782,16 +814,29 @@ begin
   join pg_catalog.pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'investing'
     and c.relname = 'audit_events'
-    and pol.polname in (
-      'audit_events_i2b_authority_denial_insert',
-      'audit_events_i2c_bootstrap_insert',
-      'audit_events_i5_research_investigation_create_denial_insert'
+    and (
+      (
+        pol.polname in (
+          'audit_events_i2b_authority_denial_insert',
+          'audit_events_i2c_bootstrap_insert',
+          'audit_events_i3c_buy_null_revision_insert',
+          'audit_events_i3c_fill_success_insert',
+          'audit_events_i4c_plan_conflict_insert',
+          'audit_events_i4c_plan_denial_insert',
+          'audit_events_i4c_plan_success_insert',
+          'audit_events_i5_research_investigation_create_denial_insert'
+        )
+        and pol.polcmd = 'a'
+      )
+      or (
+        pol.polname = 'audit_events_i4c_plan_guard_read'
+        and pol.polcmd = 'r'
+      )
     )
-    and pol.polcmd = 'a'
     and pol.polpermissive
     and pol.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')];
 
-  if v_bad_count <> 3 then
+  if v_bad_count <> 9 then
     raise exception 'I5 Research authority audit postcondition violation: expected exact canonical audit policies';
   end if;
 
@@ -803,12 +848,14 @@ begin
   where n.nspname = 'investing'
     and c.relname in ('pre_authority_audit_events', 'audit_events')
     and (
-      pol.polcmd <> 'a'
+      (c.relname = 'pre_authority_audit_events' and pol.polcmd <> 'a')
+      or (c.relname = 'audit_events' and pol.polname <> 'audit_events_i4c_plan_guard_read' and pol.polcmd <> 'a')
+      or (c.relname = 'audit_events' and pol.polname = 'audit_events_i4c_plan_guard_read' and pol.polcmd <> 'r')
       or pol.polroles <> array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]
     );
 
   if v_bad_count <> 0 then
-    raise exception 'I5 Research authority audit postcondition violation: audit policies must be INSERT-only and investing_app-only';
+    raise exception 'I5 Research authority audit postcondition violation: audit policies must keep exact command and investing_app-only roles';
   end if;
 
   select count(*)

@@ -15,6 +15,15 @@ begin
     and con.conname = 'idempotency_records_operation_check';
 
   if v_operation_constraint is null
+    or v_operation_constraint !~ 'INITIAL_PERSONAL_BOOTSTRAP'
+    or v_operation_constraint !~ 'INITIAL_PAPER_CASH_FUNDING'
+    or v_operation_constraint !~ 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    or v_operation_constraint !~ 'PLAN_INITIALIZE_V1'
+    or v_operation_constraint !~ 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1'
+    or v_operation_constraint !~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_DRAFT_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
     or v_operation_constraint !~ 'RESEARCH_SPEC_REVISION_CREATE_V1'
     or v_operation_constraint ~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1' then
     raise exception 'I5 Experiment prestate violation: unexpected idempotency operation vocabulary: %', v_operation_constraint;
@@ -44,6 +53,9 @@ alter table investing.idempotency_records
   check (operation in (
     'INITIAL_PERSONAL_BOOTSTRAP',
     'INITIAL_PAPER_CASH_FUNDING',
+    'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1',
+    'PLAN_INITIALIZE_V1',
+    'PLAN_CREATE_AND_ACTIVATE_REVISION_V1',
     'RESEARCH_INVESTIGATION_CREATE_V1',
     'RESEARCH_DRAFT_CREATE_V1',
     'RESEARCH_DRAFT_REVISION_CREATE_V1',
@@ -964,7 +976,18 @@ begin
     and c.relname = 'idempotency_records'
     and con.conname = 'idempotency_records_operation_check';
 
-  if v_operation_constraint !~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1' then
+  if v_operation_constraint is null
+    or v_operation_constraint !~ 'INITIAL_PERSONAL_BOOTSTRAP'
+    or v_operation_constraint !~ 'INITIAL_PAPER_CASH_FUNDING'
+    or v_operation_constraint !~ 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    or v_operation_constraint !~ 'PLAN_INITIALIZE_V1'
+    or v_operation_constraint !~ 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1'
+    or v_operation_constraint !~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_DRAFT_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_SPEC_REVISION_CREATE_V1'
+    or v_operation_constraint !~ 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1' then
     raise exception 'I5 Experiment postcondition violation: idempotency operation missing';
   end if;
 

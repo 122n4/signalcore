@@ -737,7 +737,7 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(sql).toContain("v_operation_constraint !~ 'initial_personal_bootstrap'");
     expect(sql).toContain("v_operation_constraint !~ 'initial_paper_cash_funding'");
     expect(sql).toContain("v_operation_constraint ~ 'research_investigation_create_v1'");
-    expect(sql).toContain("v_operation_token_count <> 2");
+    expect(sql).toContain("v_operation_token_count <> 5");
     for (const policy of [
       "pre_authority_audit_events_i2b_i5_insert",
       "audit_events_i5_research_investigation_create_denial_insert",
@@ -825,11 +825,11 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
     expect(canonicalPrestatePolicyCount(alteredRole)).toBe(7);
   });
 
-  it("models idempotency operation prestate as exact and fails with a third unexpected token", () => {
-    const canonicalConstraint = "CHECK (operation IN ('INITIAL_PERSONAL_BOOTSTRAP', 'INITIAL_PAPER_CASH_FUNDING'))";
-    const driftedConstraint = "CHECK (operation IN ('INITIAL_PERSONAL_BOOTSTRAP', 'INITIAL_PAPER_CASH_FUNDING', 'SOMETHING_ELSE'))";
+  it("models cumulative idempotency operation prestate as exact and fails with an unexpected extra token", () => {
+    const canonicalConstraint = "CHECK (operation IN ('INITIAL_PERSONAL_BOOTSTRAP', 'INITIAL_PAPER_CASH_FUNDING', 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1', 'PLAN_INITIALIZE_V1', 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1'))";
+    const driftedConstraint = "CHECK (operation IN ('INITIAL_PERSONAL_BOOTSTRAP', 'INITIAL_PAPER_CASH_FUNDING', 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1', 'PLAN_INITIALIZE_V1', 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1', 'SOMETHING_ELSE'))";
 
-    expect(operationTokenCount(canonicalConstraint)).toBe(2);
-    expect(operationTokenCount(driftedConstraint)).toBe(3);
+    expect(operationTokenCount(canonicalConstraint)).toBe(5);
+    expect(operationTokenCount(driftedConstraint)).toBe(6);
   });
 });

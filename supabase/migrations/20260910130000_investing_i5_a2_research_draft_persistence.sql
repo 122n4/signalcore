@@ -63,6 +63,9 @@ begin
     or v_operation_constraint is null
     or v_operation_constraint !~ 'INITIAL_PERSONAL_BOOTSTRAP'
     or v_operation_constraint !~ 'INITIAL_PAPER_CASH_FUNDING'
+    or v_operation_constraint !~ 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    or v_operation_constraint !~ 'PLAN_INITIALIZE_V1'
+    or v_operation_constraint !~ 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1'
     or v_operation_constraint !~ 'RESEARCH_INVESTIGATION_CREATE_V1'
     or v_operation_constraint ~ 'RESEARCH_DRAFT_CREATE_V1' then
     raise exception 'I5-A2 prestate violation: unexpected idempotency operation vocabulary: %', v_operation_constraint;
@@ -72,7 +75,7 @@ begin
   into v_operation_token_count
   from pg_catalog.regexp_matches(v_operation_constraint, '''([A-Z0-9_]+)''', 'g');
 
-  if v_operation_token_count <> 3 then
+  if v_operation_token_count <> 6 then
     raise exception 'I5-A2 prestate violation: idempotency operation vocabulary not exact: %', v_operation_constraint;
   end if;
 
@@ -155,6 +158,9 @@ alter table investing.idempotency_records
   check (operation in (
     'INITIAL_PERSONAL_BOOTSTRAP',
     'INITIAL_PAPER_CASH_FUNDING',
+    'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1',
+    'PLAN_INITIALIZE_V1',
+    'PLAN_CREATE_AND_ACTIVATE_REVISION_V1',
     'RESEARCH_INVESTIGATION_CREATE_V1',
     'RESEARCH_DRAFT_CREATE_V1'
   ));
@@ -879,6 +885,9 @@ begin
   if v_operation_constraint is null
     or v_operation_constraint !~ 'INITIAL_PERSONAL_BOOTSTRAP'
     or v_operation_constraint !~ 'INITIAL_PAPER_CASH_FUNDING'
+    or v_operation_constraint !~ 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    or v_operation_constraint !~ 'PLAN_INITIALIZE_V1'
+    or v_operation_constraint !~ 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1'
     or v_operation_constraint !~ 'RESEARCH_INVESTIGATION_CREATE_V1'
     or v_operation_constraint !~ 'RESEARCH_DRAFT_CREATE_V1' then
     raise exception 'I5-A2 postcondition violation: idempotency operation vocabulary mismatch: %', v_operation_constraint;
@@ -888,7 +897,7 @@ begin
   into v_operation_token_count
   from pg_catalog.regexp_matches(v_operation_constraint, '''([A-Z0-9_]+)''', 'g');
 
-  if v_operation_token_count <> 4 then
+  if v_operation_token_count <> 7 then
     raise exception 'I5-A2 postcondition violation: idempotency operation vocabulary not exact: %', v_operation_constraint;
   end if;
 

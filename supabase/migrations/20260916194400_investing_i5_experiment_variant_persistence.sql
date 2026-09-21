@@ -33,6 +33,9 @@ alter table investing.idempotency_records
   check (operation in (
     'INITIAL_PERSONAL_BOOTSTRAP',
     'INITIAL_PAPER_CASH_FUNDING',
+    'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1',
+    'PLAN_INITIALIZE_V1',
+    'PLAN_CREATE_AND_ACTIVATE_REVISION_V1',
     'RESEARCH_INVESTIGATION_CREATE_V1',
     'RESEARCH_DRAFT_CREATE_V1',
     'RESEARCH_DRAFT_REVISION_CREATE_V1',
@@ -673,7 +676,13 @@ begin
   where n.nspname = 'investing'
     and c.relname = 'idempotency_records'
     and con.conname = 'idempotency_records_operation_check'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'INITIAL_PERSONAL_BOOTSTRAP'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'INITIAL_PAPER_CASH_FUNDING'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'PLAN_INITIALIZE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'PLAN_CREATE_AND_ACTIVATE_REVISION_V1'
     and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_DRAFT_CREATE_V1'
     and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_DRAFT_REVISION_CREATE_V1'
     and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'
     and pg_catalog.pg_get_constraintdef(con.oid, true) ~ 'RESEARCH_SPEC_REVISION_CREATE_V1'

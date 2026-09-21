@@ -652,8 +652,8 @@ describe("Investing Genesis I5-A2 ResearchDraft persistence", () => {
     expect(sql).toContain("c.relrowsecurity");
     expect(sql).toContain("c.relforcerowsecurity");
     expect(sql).toContain("if v_relation_count <> 9 then");
-    expect(sql).toContain("v_operation_token_count <> 3");
-    expect(sql).toContain("v_operation_token_count <> 4");
+    expect(sql).toContain("v_operation_token_count <> 6");
+    expect(sql).toContain("v_operation_token_count <> 7");
     expect(sql).toContain("create table investing.research_drafts");
     expect(sql).toContain("constraint research_drafts_one_per_investigation_key unique (research_investigation_id)");
     expect(sql).toContain("constraint research_drafts_parent_identity_fk foreign key");
