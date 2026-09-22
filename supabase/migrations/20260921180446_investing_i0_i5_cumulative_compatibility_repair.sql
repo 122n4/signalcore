@@ -2137,9 +2137,24 @@ grant select, insert on table investing.i3_lot_consumption_allocations to invest
 grant select, insert on table investing.i3_accounting_revision_seals to investing_app;
 
 -- ---------------------------------------------------------------------------
--- Lock-only authority policies. I2-B SELECT policies remain the read surface;
--- these UPDATE policies exist only for row locking under I3_ACCOUNTING_WRITE.
+-- I3 authority policies. Historical I5 made the I2-B selectors operation
+-- specific to ACCOUNT_CONTEXT_RESOLVE; I3 accounting therefore needs its own
+-- narrow, acyclic SELECT surface plus lock-only UPDATE policies for
+-- SELECT ... FOR UPDATE revalidation under I3_ACCOUNTING_WRITE.
 -- ---------------------------------------------------------------------------
+
+create policy principals_i3c_accounting_read
+  on investing.principals
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and external_provider = current_setting('syntrake.investing.external_provider', true)
+    and external_subject = current_setting('syntrake.investing.external_subject', true)
+    and state = 'ACTIVE'
+  );
 
 create policy principals_i3c_accounting_lock
   on investing.principals
@@ -2155,6 +2170,17 @@ create policy principals_i3c_accounting_lock
   )
   with check (false);
 
+create policy tenants_i3c_accounting_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and state = 'ACTIVE'
+  );
+
 create policy tenants_i3c_accounting_lock
   on investing.tenants
   for update
@@ -2166,6 +2192,20 @@ create policy tenants_i3c_accounting_lock
     and state = 'ACTIVE'
   )
   with check (false);
+
+create policy tenant_memberships_i3c_accounting_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
 
 create policy tenant_memberships_i3c_accounting_lock
   on investing.tenant_memberships
@@ -2182,6 +2222,21 @@ create policy tenant_memberships_i3c_accounting_lock
   )
   with check (false);
 
+create policy accounts_i3c_accounting_read
+  on investing.accounts
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and initial_principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and initial_tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and account_origin = 'INITIAL_PERSONAL_BOOTSTRAP'
+    and state = 'ACTIVE'
+  );
+
 create policy accounts_i3c_accounting_lock
   on investing.accounts
   for update
@@ -2195,6 +2250,22 @@ create policy accounts_i3c_accounting_lock
     and state = 'ACTIVE'
   )
   with check (false);
+
+create policy account_access_i3c_accounting_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1'
+    and current_setting('syntrake.investing.capability', true) = 'I3_ACCOUNTING_WRITE'
+    and account_access_id = nullif(current_setting('syntrake.investing.account_access_id', true), '')::uuid
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
 
 create policy account_access_i3c_accounting_lock
   on investing.account_access

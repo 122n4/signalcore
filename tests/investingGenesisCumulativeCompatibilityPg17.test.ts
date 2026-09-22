@@ -671,6 +671,95 @@ type ReplayVisibilityCounts = {
   tenants: number;
 };
 
+type I3AuthorityVisibilityCounts = {
+  principals: number;
+  tenants: number;
+  tenant_memberships: number;
+  accounts: number;
+  account_access: number;
+};
+
+async function measureI3AuthorityVisibility(
+  context: AuthorizedInvestingContext,
+): Promise<I3AuthorityVisibilityCounts> {
+  const setGuc = async (name: string, value: string) => {
+    await adminClient.query("select set_config($1, $2, true)", [name, value]);
+  };
+
+  await adminClient.query("begin");
+  try {
+    await adminClient.query("set local role investing_app");
+    await setGuc("syntrake.investing.actor_kind", "USER_PRINCIPAL");
+    await setGuc("syntrake.investing.actor_id", context.actorId);
+    await setGuc("syntrake.investing.external_provider", "CLERK");
+    await setGuc("syntrake.investing.external_subject", context.actorId);
+    await setGuc("syntrake.investing.principal_id", context.principalId);
+    await setGuc("syntrake.investing.tenant_id", context.tenantId);
+    await setGuc("syntrake.investing.account_id", context.accountId);
+    await setGuc("syntrake.investing.tenant_membership_id", context.tenantMembershipId);
+    await setGuc("syntrake.investing.account_access_id", context.accountAccessId);
+    await setGuc("syntrake.investing.operation", "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1");
+    await setGuc("syntrake.investing.capability", "I3_ACCOUNTING_WRITE");
+
+    const principals = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.principals
+       where principal_id = $1
+         and external_provider = 'CLERK'
+         and external_subject = $2
+         and state = 'ACTIVE'`,
+      [context.principalId, context.actorId],
+    );
+    const tenants = await adminClient.query<{ count: string }>(
+      "select count(*)::text as count from investing.tenants where tenant_id = $1 and state = 'ACTIVE'",
+      [context.tenantId],
+    );
+    const memberships = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.tenant_memberships
+       where tenant_membership_id = $1
+         and tenant_id = $2
+         and principal_id = $3
+         and role = 'OWNER'
+         and state = 'ACTIVE'`,
+      [context.tenantMembershipId, context.tenantId, context.principalId],
+    );
+    const accounts = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.accounts
+       where account_id = $1
+         and tenant_id = $2
+         and initial_principal_id = $3
+         and initial_tenant_membership_id = $4
+         and account_origin = 'INITIAL_PERSONAL_BOOTSTRAP'
+         and state = 'ACTIVE'`,
+      [context.accountId, context.tenantId, context.principalId, context.tenantMembershipId],
+    );
+    const access = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.account_access
+       where account_access_id = $1
+         and account_id = $2
+         and tenant_id = $3
+         and tenant_membership_id = $4
+         and principal_id = $5
+         and role = 'OWNER'
+         and state = 'ACTIVE'`,
+      [context.accountAccessId, context.accountId, context.tenantId, context.tenantMembershipId, context.principalId],
+    );
+
+    return {
+      principals: Number(principals.rows[0]!.count),
+      tenants: Number(tenants.rows[0]!.count),
+      tenant_memberships: Number(memberships.rows[0]!.count),
+      accounts: Number(accounts.rows[0]!.count),
+      account_access: Number(access.rows[0]!.count),
+    };
+  } finally {
+    await adminClient.query("rollback");
+  }
+}
+
 async function measureBootstrapReplayVisibility(
   input: {
     actorId: string;
@@ -1094,6 +1183,14 @@ afterAll(async () => {
       SYNTRAKE_I3_REHEARSAL_PROJECT_REF: demoProjectRef,
       VERCEL_ENV: "test",
     };
+    const i3AuthorityVisibility = await measureI3AuthorityVisibility(authority.context);
+    expect(i3AuthorityVisibility).toEqual({
+      principals: 1,
+      tenants: 1,
+      tenant_memberships: 1,
+      accounts: 1,
+      account_access: 1,
+    });
     const buyInput = {
       authorizedContext: authority.context,
       idempotencyKey: "idem-i0-i4-buy-00000001",
