@@ -77,6 +77,7 @@ type PolicySnapshot = Readonly<{
 
 type SecurityDefinerContract = Readonly<{
   proname: string;
+  identityArguments: "";
   owner: "investing_owner";
   language: "plpgsql";
   returnType: "trigger";
@@ -84,6 +85,7 @@ type SecurityDefinerContract = Readonly<{
   triggerName: string;
   triggerRelation: string;
   tgtype: 7 | 27;
+  triggerEnabled: "O";
   publicExecute: false;
   anonExecute: false;
   authenticatedExecute: false;
@@ -94,6 +96,7 @@ type SecurityDefinerContract = Readonly<{
 
 type SecurityDefinerSnapshot = Readonly<{
   proname: string;
+  identityArguments: string;
   owner: string;
   language: string;
   returnType: string;
@@ -101,6 +104,7 @@ type SecurityDefinerSnapshot = Readonly<{
   triggerName: string | null;
   triggerRelation: string | null;
   tgtype: number | null;
+  triggerEnabled: string | null;
   publicExecute: boolean;
   anonExecute: boolean;
   authenticatedExecute: boolean;
@@ -124,6 +128,7 @@ const finalAuditPolicyContracts: readonly PolicyContract[] = [
 const securityDefinerContracts: readonly SecurityDefinerContract[] = [
   {
     proname: "enforce_research_execution_run_event_transition",
+    identityArguments: "",
     owner: "investing_owner",
     language: "plpgsql",
     returnType: "trigger",
@@ -131,6 +136,7 @@ const securityDefinerContracts: readonly SecurityDefinerContract[] = [
     triggerName: "research_execution_run_events_transition_trigger",
     triggerRelation: "research_execution_run_events",
     tgtype: 7,
+    triggerEnabled: "O",
     publicExecute: false,
     anonExecute: false,
     authenticatedExecute: false,
@@ -140,6 +146,7 @@ const securityDefinerContracts: readonly SecurityDefinerContract[] = [
   },
   {
     proname: "reject_research_evidence_update_delete",
+    identityArguments: "",
     owner: "investing_owner",
     language: "plpgsql",
     returnType: "trigger",
@@ -147,6 +154,7 @@ const securityDefinerContracts: readonly SecurityDefinerContract[] = [
     triggerName: "research_evidence_append_only_trigger",
     triggerRelation: "research_evidence_objects_scientific_identities",
     tgtype: 27,
+    triggerEnabled: "O",
     publicExecute: false,
     anonExecute: false,
     authenticatedExecute: false,
@@ -199,7 +207,7 @@ function validVocabulary(actual: readonly string[]) {
 function validSecurityDefiners(actual: readonly SecurityDefinerSnapshot[], expected: readonly SecurityDefinerContract[]) {
   if (actual.length !== expected.length) return false;
   return expected.every((contract) => {
-    const fn = actual.find((entry) => entry.proname === contract.proname);
+    const fn = actual.find((entry) => entry.proname === contract.proname && entry.identityArguments === contract.identityArguments);
     if (!fn) return false;
     return (
       fn.owner === contract.owner &&
@@ -210,6 +218,7 @@ function validSecurityDefiners(actual: readonly SecurityDefinerSnapshot[], expec
       fn.triggerName === contract.triggerName &&
       fn.triggerRelation === contract.triggerRelation &&
       fn.tgtype === contract.tgtype &&
+      fn.triggerEnabled === contract.triggerEnabled &&
       fn.publicExecute === contract.publicExecute &&
       fn.anonExecute === contract.anonExecute &&
       fn.authenticatedExecute === contract.authenticatedExecute &&
@@ -234,6 +243,7 @@ function canonicalPolicySnapshots(): PolicySnapshot[] {
 function canonicalSecurityDefinerSnapshots(): SecurityDefinerSnapshot[] {
   return securityDefinerContracts.map((contract) => ({
     proname: contract.proname,
+    identityArguments: contract.identityArguments,
     owner: contract.owner,
     language: contract.language,
     returnType: contract.returnType,
@@ -241,6 +251,7 @@ function canonicalSecurityDefinerSnapshots(): SecurityDefinerSnapshot[] {
     triggerName: contract.triggerName,
     triggerRelation: contract.triggerRelation,
     tgtype: contract.tgtype,
+    triggerEnabled: contract.triggerEnabled,
     publicExecute: contract.publicExecute,
     anonExecute: contract.anonExecute,
     authenticatedExecute: contract.authenticatedExecute,
@@ -387,11 +398,24 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
       ...canonicalFunctions,
       { ...canonicalFunctions[0]!, proname: "unexpected_runtime_rpc_surface" },
     ], securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners([
+      ...canonicalFunctions,
+      { ...canonicalFunctions[0]!, proname: "unexpected_runtime_rpc_surface", triggerName: null, triggerRelation: null, tgtype: null, triggerEnabled: null },
+    ], securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners([
+      ...canonicalFunctions,
+      { ...canonicalFunctions[0]!, identityArguments: "text" },
+    ], securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.slice(1), securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, owner: "postgres" } : fn), securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, searchPath: ["search_path=public"] } : fn), securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, triggerName: null } : fn), securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, triggerRelation: "audit_events" } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, triggerEnabled: "D" } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners([
+      ...canonicalFunctions,
+      { ...canonicalFunctions[0]!, triggerName: "duplicate_transition_trigger" },
+    ], securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, returnType: "uuid", triggerName: null, triggerRelation: null, tgtype: null } : fn), securityDefinerContracts)).toBe(false);
     expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, publicExecute: true } : fn), securityDefinerContracts)).toBe(false);
   });

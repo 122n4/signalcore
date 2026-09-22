@@ -111,10 +111,10 @@ begin
     raise exception 'I0-I5 compatibility repair prestate violation: historical I5 relation owner/RLS/FORCE drifted: %', v_missing_relations;
   end if;
 
-  with expected_security_definers(proname, trigger_name, relation_name, trigger_type, body_marker) as (
+  with expected_security_definers(proname, identity_arguments, trigger_name, relation_name, trigger_type, body_marker) as (
     values
-      ('enforce_research_execution_run_event_transition', 'research_execution_run_events_transition_trigger', 'research_execution_run_events', 7::int2, 'missing previous research execution run event'),
-      ('reject_research_evidence_update_delete', 'research_evidence_append_only_trigger', 'research_evidence_objects_scientific_identities', 27::int2, 'research evidence objects are append-only')
+      ('enforce_research_execution_run_event_transition', '', 'research_execution_run_events_transition_trigger', 'research_execution_run_events', 7::int2, 'missing previous research execution run event'),
+      ('reject_research_evidence_update_delete', '', 'research_evidence_append_only_trigger', 'research_evidence_objects_scientific_identities', 27::int2, 'research evidence objects are append-only')
   ),
   actual as (
     select
@@ -145,7 +145,7 @@ begin
     select e.proname
     from expected_security_definers e
     left join actual a on a.proname = e.proname
-      and a.identity_arguments = ''
+      and a.identity_arguments = e.identity_arguments
       and a.owner_name = 'investing_owner'
       and a.language_name = 'plpgsql'
       and not a.proretset
@@ -158,26 +158,23 @@ begin
       and a.tgenabled = 'O'
       and a.function_def like '%' || e.body_marker || '%'
     where a.oid is null
+  ),
+  summary as (
+    select
+      (select count(distinct oid) from actual) as actual_count,
+      (select count(*) from actual) as binding_count,
+      (select count(*) from mismatches) as mismatch_count
   )
-  select count(*) into v_bad_count
-  from mismatches;
-
-  if v_bad_count <> 0 then
-    raise exception 'I0-I5 compatibility repair prestate violation: expected historical SECURITY DEFINER trigger-function contract drifted';
-  end if;
-
-  select count(*) into v_bad_count
-  from pg_catalog.pg_proc p
-  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'investing'
-    and p.prosecdef
-    and p.proname not in (
-      'enforce_research_execution_run_event_transition',
-      'reject_research_evidence_update_delete'
-    );
+  select case when actual_count <> 2 or binding_count <> 2 then 1 else 0 end, mismatch_count
+    into v_bad_count, v_acl_bad_count
+  from summary;
 
   if v_bad_count <> 0 then
     raise exception 'I0-I5 compatibility repair prestate violation: unexpected SECURITY DEFINER routine found in investing';
+  end if;
+
+  if v_acl_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: expected historical SECURITY DEFINER trigger-function contract drifted';
   end if;
 
   select count(*) into v_acl_bad_count
@@ -6356,10 +6353,10 @@ begin
     raise exception 'I0-I5 compatibility repair postcondition violation: final idempotency vocabulary drifted: %', v_operation_tokens;
   end if;
 
-  with expected_security_definers(proname, trigger_name, relation_name, trigger_type, body_marker) as (
+  with expected_security_definers(proname, identity_arguments, trigger_name, relation_name, trigger_type, body_marker) as (
     values
-      ('enforce_research_execution_run_event_transition', 'research_execution_run_events_transition_trigger', 'research_execution_run_events', 7::int2, 'missing previous research execution run event'),
-      ('reject_research_evidence_update_delete', 'research_evidence_append_only_trigger', 'research_evidence_objects_scientific_identities', 27::int2, 'research evidence objects are append-only')
+      ('enforce_research_execution_run_event_transition', '', 'research_execution_run_events_transition_trigger', 'research_execution_run_events', 7::int2, 'missing previous research execution run event'),
+      ('reject_research_evidence_update_delete', '', 'research_evidence_append_only_trigger', 'research_evidence_objects_scientific_identities', 27::int2, 'research evidence objects are append-only')
   ),
   actual as (
     select
@@ -6390,7 +6387,7 @@ begin
     select e.proname
     from expected_security_definers e
     left join actual a on a.proname = e.proname
-      and a.identity_arguments = ''
+      and a.identity_arguments = e.identity_arguments
       and a.owner_name = 'investing_owner'
       and a.language_name = 'plpgsql'
       and not a.proretset
@@ -6403,26 +6400,23 @@ begin
       and a.tgenabled = 'O'
       and a.function_def like '%' || e.body_marker || '%'
     where a.oid is null
+  ),
+  summary as (
+    select
+      (select count(distinct oid) from actual) as actual_count,
+      (select count(*) from actual) as binding_count,
+      (select count(*) from mismatches) as mismatch_count
   )
-  select count(*) into v_bad_count
-  from mismatches;
-
-  if v_bad_count <> 0 then
-    raise exception 'I0-I5 compatibility repair postcondition violation: expected historical SECURITY DEFINER trigger-function contract drifted';
-  end if;
-
-  select count(*) into v_bad_count
-  from pg_catalog.pg_proc p
-  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'investing'
-    and p.prosecdef
-    and p.proname not in (
-      'enforce_research_execution_run_event_transition',
-      'reject_research_evidence_update_delete'
-    );
+  select case when actual_count <> 2 or binding_count <> 2 then 1 else 0 end, mismatch_count
+    into v_bad_count, v_acl_bad_count
+  from summary;
 
   if v_bad_count <> 0 then
     raise exception 'I0-I5 compatibility repair postcondition violation: unexpected SECURITY DEFINER routine found in investing';
+  end if;
+
+  if v_acl_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: expected historical SECURITY DEFINER trigger-function contract drifted';
   end if;
 
   select count(*) into v_bad_count
