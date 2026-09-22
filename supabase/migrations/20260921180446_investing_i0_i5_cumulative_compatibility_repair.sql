@@ -6334,6 +6334,7 @@ declare
     'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
   ];
   v_bad_count integer;
+  v_acl_bad_count integer;
   v_policy_mismatches text[];
 begin
   select coalesce(array_agg(token order by token), array[]::text[])
