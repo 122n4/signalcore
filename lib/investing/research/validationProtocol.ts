@@ -2,6 +2,7 @@ import {
   assertHashRefDomainV1,
   canonicalDateV1,
   canonicalIntegerV1,
+  type HashDomainV1,
   hashRefV1,
   i5ResearchInternalCanonicalJsonBytesV1,
   immutableBehaviorTokenV1,
@@ -13,9 +14,9 @@ import {
 import { isXnysSessionV1, nextXnysSessionV1, xnysSessionsInRangeV1 } from "./calendars";
 import {
   canonicalDatasetSeriesHashPayloadV1,
-  hashDatasetSnapshotV1,
-  hashExecutionConfigV1,
-  hashMetricRequestSetV1,
+  canonicalDatasetSnapshotHashPayloadV1,
+  canonicalExecutionConfigHashPayloadV1,
+  canonicalMetricRequestSetHashPayloadV1,
   type DatasetSeriesHashPayloadV1,
   type DatasetSnapshotHashPayloadV1,
   type ExecutionConfigHashPayloadV1,
@@ -29,10 +30,9 @@ import {
 import { canonicalResearchIrPayloadV1, type ResearchIrV1 } from "./researchIr";
 import {
   canonicalExperimentHashPayloadV1,
-  hashExperimentV1,
   type ExperimentCandidateV1,
+  type ExperimentHashPayloadV1,
 } from "./experiment";
-import { hashResearchIrV1 } from "./researchIr";
 import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";
 
 export type ValidationModeV1 =
@@ -129,6 +129,11 @@ type CanonicalValidationProtocolPayloadV1 = Readonly<{
   validationMode: ValidationModeV1;
   folds: readonly CanonicalValidationFoldV1[];
 }> & CanonicalJsonValue;
+type CanonicalResearchIrPayloadV1 = ResearchIrV1;
+type CanonicalDatasetSeriesPayloadV1 = DatasetSeriesHashPayloadV1;
+type CanonicalDatasetSnapshotPayloadV1 = DatasetSnapshotHashPayloadV1;
+type CanonicalMetricRequestSetPayloadV1 = MetricRequestSetHashPayloadV1;
+type CanonicalExecutionConfigPayloadV1 = ExecutionConfigHashPayloadV1;
 
 const acceptedEngineIdV1 = "HISTORICAL_EXECUTION_ADAPTER";
 const acceptedEngineVersionV1 = "ENGINE_V20260918";
@@ -179,7 +184,7 @@ export function canonicalValidationProtocolBytesV1(input: ValidationProtocolHash
 }
 
 export function hashValidationProtocolV1(input: ValidationProtocolHashPayloadV1): CanonicalSha256HexV1 {
-  return hashCanonicalValidationProtocolPayloadV1(canonicalValidationProtocolHashPayloadV1(input));
+  return hashCanonicalOwnerPayloadV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", canonicalValidationProtocolHashPayloadV1(input));
 }
 
 export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1): AdmittedValidationProtocolV1 {
@@ -190,46 +195,50 @@ export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1):
     throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
   }
 
-  const experiment = ref("SYNTRAKE:EXPERIMENT:V1", hashExperimentV1(input.subjectExperimentCandidate));
+  const experimentPayload = canonicalExperimentHashPayloadV1(input.subjectExperimentCandidate) as ExperimentHashPayloadV1 & CanonicalJsonValue;
+  const experiment = ref("SYNTRAKE:EXPERIMENT:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:EXPERIMENT:V1", experimentPayload));
   assertSameRef(protocol.subjectExperiment, experiment, "ValidationProtocol Experiment");
-  const experimentPayload = canonicalExperimentHashPayloadV1(input.subjectExperimentCandidate);
   assertSameRef(experimentPayload.researchIr, protocol.subjectResearchIr, "ValidationProtocol Experiment Research IR");
 
-  const researchIr = ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(input.subjectResearchIrPayload));
+  const researchIrPayload = canonicalResearchIrPayloadV1(input.subjectResearchIrPayload) as CanonicalResearchIrPayloadV1;
+  const researchIr = ref("SYNTRAKE:RESEARCH_IR:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:RESEARCH_IR:V1", researchIrPayload));
   assertSameRef(protocol.subjectResearchIr, researchIr, "ValidationProtocol Research IR");
 
-  const datasetSnapshot = ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(input.sourceDatasetSnapshotPayload));
+  const datasetSnapshotPayload = canonicalDatasetSnapshotHashPayloadV1(input.sourceDatasetSnapshotPayload) as CanonicalDatasetSnapshotPayloadV1;
+  const datasetSnapshot = ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:DATASET_SNAPSHOT:V1", datasetSnapshotPayload as CanonicalJsonValue));
   assertSameRef(protocol.sourceDatasetSnapshot, datasetSnapshot, "ValidationProtocol DatasetSnapshot");
 
-  const metricRequestSet = ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(input.metricRequestSetPayload));
+  const metricRequestSetPayload = canonicalMetricRequestSetHashPayloadV1(input.metricRequestSetPayload) as CanonicalMetricRequestSetPayloadV1;
+  const metricRequestSet = ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:METRIC_REQUEST_SET:V1", metricRequestSetPayload as CanonicalJsonValue));
   assertSameRef(protocol.metricRequestSet, metricRequestSet, "ValidationProtocol MetricRequestSet");
-  if (input.metricRequestSetPayload.metricRegistryVersion !== protocol.metricRegistryVersion) {
+  if (metricRequestSetPayload.metricRegistryVersion !== protocol.metricRegistryVersion) {
     throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_MISMATCH");
   }
 
-  const executionConfig = ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(input.executionConfigPayload));
+  const executionConfigPayload = canonicalExecutionConfigHashPayloadV1(input.executionConfigPayload) as CanonicalExecutionConfigPayloadV1;
+  const executionConfig = ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:EXECUTION_CONFIG:V1", executionConfigPayload as CanonicalJsonValue));
   assertSameRef(protocol.executionConfig, executionConfig, "ValidationProtocol ExecutionConfig");
-  if (input.executionConfigPayload.engineCompatibilityVersion !== protocol.engineVersion) {
+  if (executionConfigPayload.engineCompatibilityVersion !== protocol.engineVersion) {
     throw new Error("VALIDATION_ENGINE_VERSION_MISMATCH");
   }
-  assertExecutionConfigBoundToValidationProtocolV1(protocol, input.executionConfigPayload);
+  assertCanonicalExecutionConfigBoundToValidationProtocolV1(protocol, executionConfigPayload);
   const frozenProtocol = deepFreezeCanonicalJsonV1(protocol);
 
   return Object.freeze({
     protocol: frozenProtocol,
-    validationProtocol: Object.freeze(ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashCanonicalValidationProtocolPayloadV1(frozenProtocol))),
+    validationProtocol: Object.freeze(ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", frozenProtocol))),
   });
 }
 
-function hashCanonicalValidationProtocolPayloadV1(payload: CanonicalJsonValue): CanonicalSha256HexV1 {
-  return sha256HexV1(ownerStructuredHashPreimageV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", payload));
+function hashCanonicalOwnerPayloadV1(domain: HashDomainV1, payload: CanonicalJsonValue): CanonicalSha256HexV1 {
+  return sha256HexV1(ownerStructuredHashPreimageV1(domain, payload));
 }
 
 export function deriveValidationPhaseResearchIrV1(subjectResearchIr: ResearchIrV1, phaseWindow: ValidationWindowV1): ResearchIrV1 {
-  canonicalResearchIrPayloadV1(subjectResearchIr);
+  const canonicalSubject = canonicalResearchIrPayloadV1(subjectResearchIr) as CanonicalResearchIrPayloadV1;
   const window = canonicalWindowV1(phaseWindow);
-  const derived = { ...subjectResearchIr, testPeriod: { startDate: window.startDate, endDate: window.endDate } };
-  assertOnlyResearchIrTestPeriodChangedV1(subjectResearchIr, derived);
+  const derived = { ...canonicalSubject, testPeriod: { startDate: window.startDate, endDate: window.endDate } } as ResearchIrV1;
+  assertOnlyResearchIrTestPeriodChangedV1(canonicalSubject, derived);
   return derived;
 }
 
@@ -248,18 +257,18 @@ export function sliceValidationDatasetSeriesPrefixV1(
   sourceBytes: Buffer,
   phaseEndDate: string,
 ): DatasetSeriesPrefixSliceV1 {
-  canonicalDatasetSeriesHashPayloadV1(sourceSeries);
-  const verified = verifyDatasetSeriesMaterialV1(sourceSeries, sourceBytes);
+  const canonicalSource = canonicalDatasetSeriesHashPayloadV1(sourceSeries) as CanonicalDatasetSeriesPayloadV1;
+  const verified = verifyDatasetSeriesMaterialV1(canonicalSource, sourceBytes);
   const endDate = canonicalDateV1(phaseEndDate);
   if (!isXnysSessionV1(endDate)) throw new Error("VALIDATION_PHASE_END_NOT_XNYS_SESSION");
-  if (endDate > sourceSeries.coverageEnd) throw new Error("VALIDATION_PHASE_END_OUTSIDE_SOURCE_COVERAGE");
+  if (endDate > canonicalSource.coverageEnd) throw new Error("VALIDATION_PHASE_END_OUTSIDE_SOURCE_COVERAGE");
   const observations = verified.observations.filter((observation) => observation.date <= endDate);
   if (observations.length === 0) throw new Error("VALIDATION_PREFIX_EMPTY");
   if (observations.some((observation) => observation.date > endDate)) throw new Error("VALIDATION_PREFIX_LOOKAHEAD");
   if (observations.at(-1)!.date !== endDate) throw new Error("VALIDATION_PHASE_END_MATERIAL_MISSING");
   const bytes = canonicalDatasetSeriesMaterialBytesV1(observations);
   const series: DatasetSeriesHashPayloadV1 = {
-    ...sourceSeries,
+    ...canonicalSource,
     coverageEnd: observations.at(-1)!.date,
     observationCount: String(observations.length),
     contentSha256: sha256HexV1(bytes),
@@ -272,12 +281,19 @@ export function assertExecutionConfigBoundToValidationProtocolV1(
   protocol: ValidationProtocolHashPayloadV1,
   executionConfig: ExecutionConfigHashPayloadV1,
 ): void {
+  const canonicalProtocol = canonicalValidationProtocolHashPayloadV1(protocol) as CanonicalValidationProtocolPayloadV1;
+  const canonicalExecutionConfig = canonicalExecutionConfigHashPayloadV1(executionConfig) as CanonicalExecutionConfigPayloadV1;
+  assertCanonicalExecutionConfigBoundToValidationProtocolV1(canonicalProtocol, canonicalExecutionConfig);
+}
+
+function assertCanonicalExecutionConfigBoundToValidationProtocolV1(
+  protocol: CanonicalValidationProtocolPayloadV1,
+  executionConfig: CanonicalExecutionConfigPayloadV1,
+): void {
   if (executionConfig.missingDataPolicy === undefined || protocol.missingDataSemantics !== "INHERIT_EXECUTION_CONFIG_EXACT_V1") {
     throw new Error("VALIDATION_MISSING_DATA_POLICY_UNBOUND");
   }
-  const executionConfigRef = hashRefV1(protocol.executionConfig);
-  assertHashRefDomainV1(executionConfigRef, "SYNTRAKE:EXECUTION_CONFIG:V1");
-  if (executionConfigRef.hashHex !== hashExecutionConfigV1(executionConfig)) {
+  if (protocol.executionConfig.hashHex !== hashCanonicalOwnerPayloadV1("SYNTRAKE:EXECUTION_CONFIG:V1", executionConfig as CanonicalJsonValue)) {
     throw new Error("VALIDATION_EXECUTION_CONFIG_HASH_MISMATCH");
   }
 }

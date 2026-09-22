@@ -257,6 +257,98 @@ describe("I5 RL-3A Validation Protocol owner contract", () => {
     expect(hashHexReads).toBe(2);
   });
 
+  it("uses one canonical Experiment proof snapshot for both hash and Research IR lineage", () => {
+    let researchIrReads = 0;
+    const statefulResearchIr = {
+      hashAlgorithm: "SHA-256",
+      hashDomain: "SYNTRAKE:RESEARCH_IR:V1",
+      hashVersion: "SYNTRAKE_SHA256_V1",
+    };
+    Object.defineProperty(statefulResearchIr, "hashHex", {
+      enumerable: true,
+      get() {
+        researchIrReads += 1;
+        return researchIrReads <= 2 ? subjectResearchIr.hashHex : "B".repeat(64);
+      },
+    });
+    const statefulExperiment = {
+      ...experiment,
+      researchIr: statefulResearchIr as unknown as typeof experiment.researchIr,
+    };
+
+    const admitted = admitValidationProtocolV1(validationCandidate({ subjectExperimentCandidate: statefulExperiment }));
+    expect(admitted.validationProtocol.hashHex).toBe(goldenVectors[0]!.expectedHash);
+    expect(researchIrReads).toBe(2);
+  });
+
+  it("uses one canonical MetricRequestSet proof snapshot for hash and registry compatibility", () => {
+    let registryReads = 0;
+    const statefulMetricRequestSet = { ...metricRequestSetV1 };
+    Object.defineProperty(statefulMetricRequestSet, "metricRegistryVersion", {
+      enumerable: true,
+      get() {
+        registryReads += 1;
+        return registryReads <= 2 ? "METRIC_REGISTRY_V20260918" : "METRIC_REGISTRY_V20260918_PATCH1";
+      },
+    });
+
+    const admitted = admitValidationProtocolV1(validationCandidate({ metricRequestSetPayload: statefulMetricRequestSet }));
+    expect(admitted.validationProtocol.hashHex).toBe(goldenVectors[0]!.expectedHash);
+    expect(registryReads).toBe(2);
+  });
+
+  it("uses one canonical ExecutionConfig proof snapshot for hash and engine compatibility", () => {
+    let engineReads = 0;
+    const statefulExecutionConfig = { ...executionConfigV1 };
+    Object.defineProperty(statefulExecutionConfig, "engineCompatibilityVersion", {
+      enumerable: true,
+      get() {
+        engineReads += 1;
+        return engineReads <= 2 ? "ENGINE_V20260918" : "ENGINE_V20260918_PATCH1";
+      },
+    });
+
+    const admitted = admitValidationProtocolV1(validationCandidate({ executionConfigPayload: statefulExecutionConfig }));
+    expect(admitted.validationProtocol.hashHex).toBe(goldenVectors[0]!.expectedHash);
+    expect(engineReads).toBe(2);
+  });
+
+  it("derives phase Research IR from the canonical snapshot instead of rereading raw input", () => {
+    let currencyReads = 0;
+    const statefulResearchIr = { ...i5ExperimentBaseResearchIrV1 };
+    Object.defineProperty(statefulResearchIr, "valuationCurrency", {
+      enumerable: true,
+      get() {
+        currencyReads += 1;
+        return currencyReads <= 2 ? "USD" : "EUR";
+      },
+    });
+
+    const derived = deriveValidationPhaseResearchIrV1(statefulResearchIr, { startDate: "2020-02-05", endDate: "2020-02-06" });
+    expect(derived.valuationCurrency).toBe("USD");
+    expect(derived.testPeriod).toEqual({ startDate: "2020-02-05", endDate: "2020-02-06" });
+    expect(currencyReads).toBe(2);
+  });
+
+  it("slices DatasetSeries material from the canonical source snapshot instead of rereading raw input", () => {
+    const source = materialSeries();
+    let coverageEndReads = 0;
+    const statefulSeries = { ...source.series };
+    Object.defineProperty(statefulSeries, "coverageEnd", {
+      enumerable: true,
+      get() {
+        coverageEndReads += 1;
+        return coverageEndReads <= 2 ? "2020-02-10" : "2020-02-06";
+      },
+    });
+
+    const sliced = sliceValidationDatasetSeriesPrefixV1(statefulSeries, source.bytes, "2020-02-06");
+    expect(sliced.series.coverageStart).toBe(source.series.coverageStart);
+    expect(sliced.series.coverageEnd).toBe("2020-02-06");
+    expect(sliced.observations.at(-1)?.date).toBe("2020-02-06");
+    expect(coverageEndReads).toBe(2);
+  });
+
   it("rejects admission when the Experiment proof or Experiment to Research IR lineage does not match", () => {
     const alternateResearchIr = {
       ...i5ExperimentBaseResearchIrV1,
