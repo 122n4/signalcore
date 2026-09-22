@@ -1390,7 +1390,7 @@ afterAll(async () => {
     });
     expect(draftContext.ok).toBe(true);
     if (draftContext.ok !== true) throw new Error(`I5 draft authority after repair failed: ${JSON.stringify(draftContext)}`);
-    const draftCreate = await createResearchDraftV1({
+    const draftCreateInput = {
       authorizedContext: draftContext.context as AuthorizedResearchDraftCreateContext,
       draft: {
         schemaVersion: "RESEARCH_DRAFT_HASH_PAYLOAD_V1",
@@ -1400,10 +1400,17 @@ afterAll(async () => {
       },
       idempotencyKey: "idem-cumulative-i5-draft-01",
       correlationId: "corr-cumulative-i5-draft-01",
-    });
+    } as const;
+    const draftCreate = await createResearchDraftV1(draftCreateInput);
     expect(draftCreate.ok).toBe(true);
     if (draftCreate.ok !== true) throw new Error(`I5 draft create after repair failed: ${JSON.stringify(draftCreate)}`);
     expect(draftCreate.replayed).toBe(false);
+
+    const draftReplay = await createResearchDraftV1(draftCreateInput);
+    expect(draftReplay.ok).toBe(true);
+    if (draftReplay.ok !== true) throw new Error(`I5 draft replay after repair failed: ${JSON.stringify(draftReplay)}`);
+    expect(draftReplay.replayed).toBe(true);
+    expect(draftReplay.researchDraftId).toBe(draftCreate.researchDraftId);
 
     const executableRunInput = await seedExecutableRunInputForCumulative(adminClient, {
       tenantId: bootstrap.tenantId,
