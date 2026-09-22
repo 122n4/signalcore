@@ -112,6 +112,23 @@ const windowKeys = new Set(["startDate", "endDate"]);
 const validationModes = new Set(["CHRONOLOGICAL_HOLDOUT", "IS_OOS_SPLIT", "ROLLING_WALK_FORWARD", "EXPANDING_WALK_FORWARD"]);
 
 type CanonicalValidationFoldV1 = ValidationFoldV1 & CanonicalJsonValue;
+type CanonicalValidationProtocolPayloadV1 = Readonly<{
+  schemaVersion: "VALIDATION_PROTOCOL_HASH_PAYLOAD_V1";
+  methodology: "VALIDATION_METHODOLOGY_V1";
+  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1";
+  missingDataSemantics: "INHERIT_EXECUTION_CONFIG_EXACT_V1";
+  sourceMaterialPolicy: "PREFIX_TO_PHASE_END_NO_FUTURE_DATA_V1";
+  subjectExperiment: HashRefV1;
+  subjectResearchIr: HashRefV1;
+  sourceDatasetSnapshot: HashRefV1;
+  engineId: string;
+  engineVersion: string;
+  metricRegistryVersion: string;
+  metricRequestSet: HashRefV1;
+  executionConfig: HashRefV1;
+  validationMode: ValidationModeV1;
+  folds: readonly CanonicalValidationFoldV1[];
+}> & CanonicalJsonValue;
 
 const acceptedEngineIdV1 = "HISTORICAL_EXECUTION_ADAPTER";
 const acceptedEngineVersionV1 = "ENGINE_V20260918";
@@ -166,36 +183,36 @@ export function hashValidationProtocolV1(input: ValidationProtocolHashPayloadV1)
 }
 
 export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1): AdmittedValidationProtocolV1 {
-  const protocol = canonicalValidationProtocolHashPayloadV1(input.protocol);
-  if (input.protocol.engineId !== acceptedEngineIdV1) throw new Error("VALIDATION_ENGINE_ID_UNSUPPORTED");
-  if (input.protocol.engineVersion !== acceptedEngineVersionV1) throw new Error("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
-  if (input.protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1) {
+  const protocol = canonicalValidationProtocolHashPayloadV1(input.protocol) as CanonicalValidationProtocolPayloadV1;
+  if (protocol.engineId !== acceptedEngineIdV1) throw new Error("VALIDATION_ENGINE_ID_UNSUPPORTED");
+  if (protocol.engineVersion !== acceptedEngineVersionV1) throw new Error("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
+  if (protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1) {
     throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
   }
 
   const experiment = ref("SYNTRAKE:EXPERIMENT:V1", hashExperimentV1(input.subjectExperimentCandidate));
-  assertSameRef(input.protocol.subjectExperiment, experiment, "ValidationProtocol Experiment");
+  assertSameRef(protocol.subjectExperiment, experiment, "ValidationProtocol Experiment");
   const experimentPayload = canonicalExperimentHashPayloadV1(input.subjectExperimentCandidate);
-  assertSameRef(experimentPayload.researchIr, input.protocol.subjectResearchIr, "ValidationProtocol Experiment Research IR");
+  assertSameRef(experimentPayload.researchIr, protocol.subjectResearchIr, "ValidationProtocol Experiment Research IR");
 
   const researchIr = ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(input.subjectResearchIrPayload));
-  assertSameRef(input.protocol.subjectResearchIr, researchIr, "ValidationProtocol Research IR");
+  assertSameRef(protocol.subjectResearchIr, researchIr, "ValidationProtocol Research IR");
 
   const datasetSnapshot = ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(input.sourceDatasetSnapshotPayload));
-  assertSameRef(input.protocol.sourceDatasetSnapshot, datasetSnapshot, "ValidationProtocol DatasetSnapshot");
+  assertSameRef(protocol.sourceDatasetSnapshot, datasetSnapshot, "ValidationProtocol DatasetSnapshot");
 
   const metricRequestSet = ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(input.metricRequestSetPayload));
-  assertSameRef(input.protocol.metricRequestSet, metricRequestSet, "ValidationProtocol MetricRequestSet");
-  if (input.metricRequestSetPayload.metricRegistryVersion !== input.protocol.metricRegistryVersion) {
+  assertSameRef(protocol.metricRequestSet, metricRequestSet, "ValidationProtocol MetricRequestSet");
+  if (input.metricRequestSetPayload.metricRegistryVersion !== protocol.metricRegistryVersion) {
     throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_MISMATCH");
   }
 
   const executionConfig = ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(input.executionConfigPayload));
-  assertSameRef(input.protocol.executionConfig, executionConfig, "ValidationProtocol ExecutionConfig");
-  if (input.executionConfigPayload.engineCompatibilityVersion !== input.protocol.engineVersion) {
+  assertSameRef(protocol.executionConfig, executionConfig, "ValidationProtocol ExecutionConfig");
+  if (input.executionConfigPayload.engineCompatibilityVersion !== protocol.engineVersion) {
     throw new Error("VALIDATION_ENGINE_VERSION_MISMATCH");
   }
-  assertExecutionConfigBoundToValidationProtocolV1(input.protocol, input.executionConfigPayload);
+  assertExecutionConfigBoundToValidationProtocolV1(protocol, input.executionConfigPayload);
   const frozenProtocol = deepFreezeCanonicalJsonV1(protocol);
 
   return Object.freeze({

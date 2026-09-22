@@ -232,6 +232,31 @@ describe("I5 RL-3A Validation Protocol owner contract", () => {
     }))).toThrow("VALIDATION_CANONICAL_STRING_KEY_REQUIRED");
   });
 
+  it("does not reread nested protocol HashRefs after canonical admission payload construction", () => {
+    let hashHexReads = 0;
+    const experimentProofHash = hashExperimentV1(experiment);
+    const statefulSubjectExperiment = {
+      hashAlgorithm: "SHA-256",
+      hashDomain: "SYNTRAKE:EXPERIMENT:V1",
+      hashVersion: "SYNTRAKE_SHA256_V1",
+    };
+    Object.defineProperty(statefulSubjectExperiment, "hashHex", {
+      enumerable: true,
+      get() {
+        hashHexReads += 1;
+        return hashHexReads <= 2 ? "A".repeat(64) : experimentProofHash;
+      },
+    });
+
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: {
+        ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds),
+        subjectExperiment: statefulSubjectExperiment as unknown as ValidationProtocolHashPayloadV1["subjectExperiment"],
+      },
+    }))).toThrow("ValidationProtocol Experiment HashRef mismatch");
+    expect(hashHexReads).toBe(2);
+  });
+
   it("rejects admission when the Experiment proof or Experiment to Research IR lineage does not match", () => {
     const alternateResearchIr = {
       ...i5ExperimentBaseResearchIrV1,
