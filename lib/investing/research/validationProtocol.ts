@@ -196,9 +196,10 @@ export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1):
     throw new Error("VALIDATION_ENGINE_VERSION_MISMATCH");
   }
   assertExecutionConfigBoundToValidationProtocolV1(input.protocol, input.executionConfigPayload);
+  const frozenProtocol = deepFreezeCanonicalJsonV1(protocol);
 
   return Object.freeze({
-    protocol,
+    protocol: frozenProtocol,
     validationProtocol: Object.freeze(ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashValidationProtocolV1(input.protocol))),
   });
 }
@@ -370,6 +371,17 @@ function assertSameRef(actualInput: HashRefV1, expectedInput: HashRefV1, name: s
   ) {
     throw new Error(`${name} HashRef mismatch`);
   }
+}
+
+function deepFreezeCanonicalJsonV1<T extends CanonicalJsonValue>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    for (const item of value) deepFreezeCanonicalJsonV1(item);
+    return Object.freeze(value) as T;
+  }
+  if (Object.getPrototypeOf(value) !== Object.prototype) throw new Error("expected canonical JSON plain object");
+  for (const child of Object.values(value)) deepFreezeCanonicalJsonV1(child);
+  return Object.freeze(value) as T;
 }
 
 function withoutKey(value: CanonicalJsonValue, keyToDrop: string): CanonicalJsonValue {

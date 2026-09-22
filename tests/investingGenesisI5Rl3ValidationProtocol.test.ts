@@ -180,7 +180,27 @@ describe("I5 RL-3A Validation Protocol owner contract", () => {
       hashHex: goldenVectors[0]!.expectedHash,
     });
     expect(Object.isFrozen(admitted)).toBe(true);
+    expect(Object.isFrozen(admitted.protocol)).toBe(true);
     expect(Object.isFrozen(admitted.validationProtocol)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as Record<string, unknown>).subjectExperiment)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as Record<string, unknown>).subjectResearchIr)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as Record<string, unknown>).sourceDatasetSnapshot)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as Record<string, unknown>).metricRequestSet)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as Record<string, unknown>).executionConfig)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as Record<string, unknown>).folds)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as { folds: readonly unknown[] }).folds[0])).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as { folds: readonly { trainingWindow: unknown }[] }).folds[0]!.trainingWindow)).toBe(true);
+    expect(Object.isFrozen((admitted.protocol as { folds: readonly { evaluationWindow: unknown }[] }).folds[0]!.evaluationWindow)).toBe(true);
+    expect(() => {
+      (admitted.protocol as { engineVersion: string }).engineVersion = "MUTATED";
+    }).toThrow();
+    expect(() => {
+      (admitted.protocol as { subjectExperiment: { hashHex: string } }).subjectExperiment.hashHex = "F".repeat(64);
+    }).toThrow();
+    expect(() => {
+      (admitted.protocol as { folds: { trainingWindow: { startDate: string } }[] }).folds[0]!.trainingWindow.startDate = "2020-01-01";
+    }).toThrow();
+    expect(admitted.validationProtocol.hashHex).toBe(goldenVectors[0]!.expectedHash);
   });
 
   it("rejects admission when the Experiment proof or Experiment to Research IR lineage does not match", () => {
