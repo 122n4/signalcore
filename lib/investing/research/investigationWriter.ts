@@ -323,7 +323,7 @@ async function findExistingIdempotency(
       "from investing.idempotency_records",
       "where actor_kind = 'USER_PRINCIPAL' and actor_id = $1 and principal_id = $2",
       `and tenant_id = $3 and operation_scope = '${context.operationScope}' and operation = $4 and ${accountPredicate}`,
-      `and idempotency_key = $${context.operationScope === "TENANT_SCOPE" ? 5 : 6} for update`,
+      `and idempotency_key = $${context.operationScope === "TENANT_SCOPE" ? 5 : 6}`,
     ].join(" "),
     values,
   );
@@ -499,9 +499,9 @@ async function setTransactionContext(
   await setTransactionConfig(client, "external_subject", context.actorId);
   await setTransactionConfig(client, "principal_id", context.principalId);
   await setTransactionConfig(client, "tenant_id", context.tenantId);
-  if ("accountId" in context) await setTransactionConfig(client, "account_id", context.accountId);
+  await setTransactionConfig(client, "account_id", "accountId" in context ? context.accountId : "");
   await setTransactionConfig(client, "tenant_membership_id", context.tenantMembershipId);
-  if ("accountAccessId" in context) await setTransactionConfig(client, "account_access_id", context.accountAccessId);
+  await setTransactionConfig(client, "account_access_id", "accountAccessId" in context ? context.accountAccessId : "");
   await setTransactionConfig(client, "operation", operation);
   await setTransactionConfig(client, "capability", capability);
   await setTransactionConfig(client, "operation_scope", context.operationScope);

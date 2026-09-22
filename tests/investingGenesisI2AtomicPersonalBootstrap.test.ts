@@ -520,7 +520,10 @@ describe("Investing Genesis I2-C atomic personal bootstrap", () => {
 
   it.each([
     ["invalid canonical_result_reference shape", { not: "canonical" }],
-    ["canonical_result_reference persisted tuple mismatch", { ...canonicalReference, accountId: "77777777-7777-4777-8777-777777777777" }],
+    ["canonical_result_reference wrong tenant id", { ...canonicalReference, tenantId: "77777777-7777-4777-8777-777777777777" }],
+    ["canonical_result_reference wrong membership id", { ...canonicalReference, tenantMembershipId: "88888888-8888-4888-8888-888888888888" }],
+    ["canonical_result_reference wrong account id", { ...canonicalReference, accountId: "99999999-9999-4999-8999-999999999999" }],
+    ["canonical_result_reference wrong account_access id", { ...canonicalReference, accountAccessId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }],
   ] as const)("attempts canonical audit after non-throwing %s with a durable Principal", async (_name, reference) => {
     const authorityClient = new FakeAuthorityClient(
       {
@@ -616,6 +619,16 @@ describe("Investing Genesis I2-C atomic personal bootstrap", () => {
     expect(authorityClient.queries.some((query) => normalizeSql(query.text).startsWith("insert into investing.audit_events"))).toBe(
       true,
     );
+    const replayContextWrites = authorityClient.queries.filter((query) =>
+      normalizeSql(query.text).startsWith("select set_config("),
+    );
+    expect(replayContextWrites).toContainEqual({
+      text: "select set_config($1, $2, true)",
+      values: ["syntrake.investing.candidate_tenant_id", tenantId],
+    });
+    expect(replayContextWrites.map((query) => query.values[0])).not.toContain("syntrake.investing.candidate_tenant_membership_id");
+    expect(replayContextWrites.map((query) => query.values[0])).not.toContain("syntrake.investing.candidate_account_id");
+    expect(replayContextWrites.map((query) => query.values[0])).not.toContain("syntrake.investing.candidate_account_access_id");
     const replayAudit = authorityClient.queries.find((query) =>
       normalizeSql(query.text).startsWith("insert into investing.audit_events"),
     );
