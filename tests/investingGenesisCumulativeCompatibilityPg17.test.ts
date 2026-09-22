@@ -952,14 +952,52 @@ afterAll(async () => {
         values: [bootstrap.tenantId, bootstrap.principalId],
       },
     ]);
-    await expectInvestingAppCount("inactive principal is invisible to investing_app authority selector", [
-      ...researchTenantGucs,
-    ], {
-      text: "select count(*)::text as count from investing.principals where principal_id=$1",
-      values: [bootstrap.principalId],
-    }, 0, [
-      { text: "update investing.principals set state='DISABLED', disabled_at=transaction_timestamp() where principal_id=$1", values: [bootstrap.principalId] },
-    ]);
+    await adminClient.query(
+      "update investing.principals set state='DISABLED', disabled_at=transaction_timestamp() where principal_id=$1",
+      [bootstrap.principalId],
+    );
+    try {
+      await adminClient.query("begin");
+      try {
+        for (const statement of researchTenantGucs) {
+          await adminClient.query(statement.text, [...statement.values]);
+        }
+        await adminClient.query("set local role investing_app");
+        const disabledPrincipalVisibility = await adminClient.query<{ principal_id: string; state: string }>(
+          "select principal_id::text, state from investing.principals where principal_id=$1",
+          [bootstrap.principalId],
+        );
+        expect(disabledPrincipalVisibility.rows).toEqual([{ principal_id: bootstrap.principalId, state: "DISABLED" }]);
+      } finally {
+        await adminClient.query("rollback");
+      }
+
+      const principalDisabledDenial = await resolveAuthorizedResearchInvestigationCreateContext({
+        sourceContext: "PURE_RESEARCH",
+        tenantId: bootstrap.tenantId,
+        correlationId: "corr-cumulative-i5-principal-disabled-negative",
+      });
+      expect(principalDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
+      const preAuthorityAudit = await adminClient.query<{
+        resolution_stage: string;
+        reason_code: string;
+        outcome: string;
+      }>(
+        `select resolution_stage, reason_code, outcome
+         from investing.pre_authority_audit_events
+         where correlation_id='corr-cumulative-i5-principal-disabled-negative'`,
+      );
+      expect(preAuthorityAudit.rows).toEqual([{
+        resolution_stage: "PRINCIPAL_STATE",
+        reason_code: "PRINCIPAL_DISABLED",
+        outcome: "DENIED",
+      }]);
+    } finally {
+      await adminClient.query(
+        "update investing.principals set state='ACTIVE', disabled_at=null where principal_id=$1",
+        [bootstrap.principalId],
+      );
+    }
     await expectInvestingAppCount("inactive tenant is invisible to investing_app authority selector", [
       ...researchTenantGucs,
     ], {
@@ -975,14 +1013,23 @@ afterAll(async () => {
       text: "select count(*)::text as count from investing.tenant_memberships where tenant_membership_id=$1",
       values: [bootstrap.tenantMembershipId],
     }, 0);
-    await expectInvestingAppCount("inactive membership is invisible to investing_app authority selector", [
-      ...researchTenantGucs,
-    ], {
-      text: "select count(*)::text as count from investing.tenant_memberships where tenant_membership_id=$1",
-      values: [bootstrap.tenantMembershipId],
-    }, 0, [
-      { text: "update investing.tenant_memberships set state='REVOKED', revoked_at=transaction_timestamp() where tenant_membership_id=$1", values: [bootstrap.tenantMembershipId] },
-    ]);
+    await adminClient.query(
+      "update investing.tenant_memberships set state='REVOKED', revoked_at=transaction_timestamp() where tenant_membership_id=$1",
+      [bootstrap.tenantMembershipId],
+    );
+    try {
+      const inactiveMembershipDenial = await resolveAuthorizedResearchInvestigationCreateContext({
+        sourceContext: "PURE_RESEARCH",
+        tenantId: bootstrap.tenantId,
+        correlationId: "corr-cumulative-i5-membership-inactive-negative",
+      });
+      expect(inactiveMembershipDenial).toEqual({ ok: false, code: "MEMBERSHIP_INACTIVE" });
+    } finally {
+      await adminClient.query(
+        "update investing.tenant_memberships set state='ACTIVE', revoked_at=null where tenant_membership_id=$1",
+        [bootstrap.tenantMembershipId],
+      );
+    }
     await expectInvestingAppCount("account tuple mismatch is invisible to investing_app account selector", [
       setGuc("syntrake.investing.operation", "RESEARCH_INVESTIGATION_CREATE_V1"),
       setGuc("syntrake.investing.capability", "RESEARCH_MUTATE"),
