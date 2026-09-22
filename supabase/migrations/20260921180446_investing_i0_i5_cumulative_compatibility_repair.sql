@@ -19,6 +19,7 @@ declare
     'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
   ];
   v_bad_count integer;
+  v_acl_bad_count integer;
   v_missing_relations text[];
 begin
   if current_user <> 'postgres' then
@@ -109,14 +110,97 @@ begin
     raise exception 'I0-I5 compatibility repair prestate violation: historical I5 relation owner/RLS/FORCE drifted: %', v_missing_relations;
   end if;
 
+  with expected_security_definers(proname, trigger_name, relation_name, trigger_type, body_marker) as (
+    values
+      ('enforce_research_execution_run_event_transition', 'research_execution_run_events_transition_trigger', 'research_execution_run_events', 7::int2, 'missing previous research execution run event'),
+      ('reject_research_evidence_update_delete', 'research_evidence_append_only_trigger', 'research_evidence_objects_scientific_identities', 27::int2, 'research evidence objects are append-only')
+  ),
+  actual as (
+    select
+      p.oid,
+      p.proname,
+      pg_catalog.pg_get_function_identity_arguments(p.oid) as identity_arguments,
+      owner_role.rolname as owner_name,
+      l.lanname as language_name,
+      p.proretset,
+      p.prorettype::regtype::text as return_type,
+      p.prosecdef,
+      p.proconfig,
+      t.tgname,
+      c.relname as trigger_relation,
+      t.tgtype,
+      t.tgenabled,
+      pg_catalog.pg_get_functiondef(p.oid) as function_def
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    join pg_catalog.pg_roles owner_role on owner_role.oid = p.proowner
+    join pg_catalog.pg_language l on l.oid = p.prolang
+    left join pg_catalog.pg_trigger t on t.tgfoid = p.oid and not t.tgisinternal
+    left join pg_catalog.pg_class c on c.oid = t.tgrelid
+    where n.nspname = 'investing'
+      and p.prosecdef
+  ),
+  mismatches as (
+    select e.proname
+    from expected_security_definers e
+    left join actual a on a.proname = e.proname
+      and a.identity_arguments = ''
+      and a.owner_name = 'investing_owner'
+      and a.language_name = 'plpgsql'
+      and not a.proretset
+      and a.return_type = 'trigger'
+      and a.prosecdef
+      and a.proconfig = array['search_path=investing, pg_temp']
+      and a.tgname = e.trigger_name
+      and a.trigger_relation = e.relation_name
+      and a.tgtype = e.trigger_type
+      and a.tgenabled = 'O'
+      and a.function_def like '%' || e.body_marker || '%'
+    where a.oid is null
+  )
+  select count(*) into v_bad_count
+  from mismatches;
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: expected historical SECURITY DEFINER trigger-function contract drifted';
+  end if;
+
   select count(*) into v_bad_count
   from pg_catalog.pg_proc p
   join pg_catalog.pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'investing'
-    and p.prosecdef;
+    and p.prosecdef
+    and p.proname not in (
+      'enforce_research_execution_run_event_transition',
+      'reject_research_evidence_update_delete'
+    );
 
   if v_bad_count <> 0 then
-    raise exception 'I0-I5 compatibility repair prestate violation: SECURITY DEFINER routine found in investing';
+    raise exception 'I0-I5 compatibility repair prestate violation: unexpected SECURITY DEFINER routine found in investing';
+  end if;
+
+  select count(*) into v_acl_bad_count
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  cross join lateral (
+    values
+      ('public'::text, pg_catalog.has_function_privilege('public', p.oid, 'EXECUTE')),
+      ('anon'::text, pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')),
+      ('authenticated'::text, pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')),
+      ('service_role'::text, pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')),
+      ('investing_app'::text, pg_catalog.has_function_privilege('investing_app', p.oid, 'EXECUTE'))
+  ) as exposure(role_name, can_execute)
+  where n.nspname = 'investing'
+    and p.prosecdef
+    and p.proname in (
+      'enforce_research_execution_run_event_transition',
+      'reject_research_evidence_update_delete'
+    )
+    and exposure.can_execute;
+
+  if v_acl_bad_count > 0 then
+    revoke execute on function investing.enforce_research_execution_run_event_transition() from public, anon, authenticated, service_role, investing_app;
+    revoke execute on function investing.reject_research_evidence_update_delete() from public, anon, authenticated, service_role, investing_app;
   end if;
 
   select count(*) into v_bad_count
@@ -5951,14 +6035,96 @@ begin
     raise exception 'I0-I5 compatibility repair postcondition violation: final idempotency vocabulary drifted: %', v_operation_tokens;
   end if;
 
+  with expected_security_definers(proname, trigger_name, relation_name, trigger_type, body_marker) as (
+    values
+      ('enforce_research_execution_run_event_transition', 'research_execution_run_events_transition_trigger', 'research_execution_run_events', 7::int2, 'missing previous research execution run event'),
+      ('reject_research_evidence_update_delete', 'research_evidence_append_only_trigger', 'research_evidence_objects_scientific_identities', 27::int2, 'research evidence objects are append-only')
+  ),
+  actual as (
+    select
+      p.oid,
+      p.proname,
+      pg_catalog.pg_get_function_identity_arguments(p.oid) as identity_arguments,
+      owner_role.rolname as owner_name,
+      l.lanname as language_name,
+      p.proretset,
+      p.prorettype::regtype::text as return_type,
+      p.prosecdef,
+      p.proconfig,
+      t.tgname,
+      c.relname as trigger_relation,
+      t.tgtype,
+      t.tgenabled,
+      pg_catalog.pg_get_functiondef(p.oid) as function_def
+    from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    join pg_catalog.pg_roles owner_role on owner_role.oid = p.proowner
+    join pg_catalog.pg_language l on l.oid = p.prolang
+    left join pg_catalog.pg_trigger t on t.tgfoid = p.oid and not t.tgisinternal
+    left join pg_catalog.pg_class c on c.oid = t.tgrelid
+    where n.nspname = 'investing'
+      and p.prosecdef
+  ),
+  mismatches as (
+    select e.proname
+    from expected_security_definers e
+    left join actual a on a.proname = e.proname
+      and a.identity_arguments = ''
+      and a.owner_name = 'investing_owner'
+      and a.language_name = 'plpgsql'
+      and not a.proretset
+      and a.return_type = 'trigger'
+      and a.prosecdef
+      and a.proconfig = array['search_path=investing, pg_temp']
+      and a.tgname = e.trigger_name
+      and a.trigger_relation = e.relation_name
+      and a.tgtype = e.trigger_type
+      and a.tgenabled = 'O'
+      and a.function_def like '%' || e.body_marker || '%'
+    where a.oid is null
+  )
+  select count(*) into v_bad_count
+  from mismatches;
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: expected historical SECURITY DEFINER trigger-function contract drifted';
+  end if;
+
   select count(*) into v_bad_count
   from pg_catalog.pg_proc p
   join pg_catalog.pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'investing'
-    and p.prosecdef;
+    and p.prosecdef
+    and p.proname not in (
+      'enforce_research_execution_run_event_transition',
+      'reject_research_evidence_update_delete'
+    );
 
   if v_bad_count <> 0 then
-    raise exception 'I0-I5 compatibility repair postcondition violation: SECURITY DEFINER routine found in investing';
+    raise exception 'I0-I5 compatibility repair postcondition violation: unexpected SECURITY DEFINER routine found in investing';
+  end if;
+
+  select count(*) into v_bad_count
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  cross join lateral (
+    values
+      ('public'::text, pg_catalog.has_function_privilege('public', p.oid, 'EXECUTE')),
+      ('anon'::text, pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE')),
+      ('authenticated'::text, pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE')),
+      ('service_role'::text, pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE')),
+      ('investing_app'::text, pg_catalog.has_function_privilege('investing_app', p.oid, 'EXECUTE'))
+  ) as exposure(role_name, can_execute)
+  where n.nspname = 'investing'
+    and p.prosecdef
+    and p.proname in (
+      'enforce_research_execution_run_event_transition',
+      'reject_research_evidence_update_delete'
+    )
+    and exposure.can_execute;
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: SECURITY DEFINER trigger-function EXECUTE exposure found';
   end if;
 
   select count(*) into v_bad_count

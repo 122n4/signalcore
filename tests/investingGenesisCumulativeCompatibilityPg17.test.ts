@@ -108,6 +108,31 @@ const expectedFinalAuditPolicies = [
   { tablename: "audit_events", policyname: "audit_events_i5_research_investigation_create_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["RESEARCH_INVESTIGATION_CREATE_V1", "RESEARCH_MUTATE", "AUTHORITY_ACCESS_DENIED", "operation_scope", "source_context"] },
 ] as const;
 
+const expectedSecurityDefinerFunctions = [
+  {
+    proname: "enforce_research_execution_run_event_transition",
+    owner: "investing_owner",
+    language: "plpgsql",
+    returnType: "trigger",
+    searchPath: ["search_path=investing, pg_temp"],
+    triggerName: "research_execution_run_events_transition_trigger",
+    triggerRelation: "research_execution_run_events",
+    tgtype: 7,
+    bodyMarker: "missing previous research execution run event",
+  },
+  {
+    proname: "reject_research_evidence_update_delete",
+    owner: "investing_owner",
+    language: "plpgsql",
+    returnType: "trigger",
+    searchPath: ["search_path=investing, pg_temp"],
+    triggerName: "research_evidence_append_only_trigger",
+    triggerRelation: "research_evidence_objects_scientific_identities",
+    tgtype: 27,
+    bodyMarker: "research evidence objects are append-only",
+  },
+] as const;
+
 const allNotSuppliedContent: PlanContentV1 = Object.freeze({
   planning_currency_preference: Object.freeze({ state: "NOT_SUPPLIED", type: "TOKEN" }),
   goal_description: Object.freeze({ state: "NOT_SUPPLIED", type: "TEXT" }),
@@ -853,14 +878,121 @@ afterAll(async () => {
     expect(Number(allInvestingTables.rows[0]!.count)).toBeGreaterThan(0);
     expect(allInvestingTables.rows[0]!.protected_count).toBe(allInvestingTables.rows[0]!.count);
 
-    const securityDefiners = await adminClient.query<{ count: string }>(`
-      select count(*)::text as count
+    let invalidTransitionRejected = false;
+    await adminClient.query("begin");
+    try {
+      await adminClient.query(
+        `insert into investing.research_execution_run_events
+          (research_execution_run_event_id, research_execution_run_id, tenant_id, account_id, principal_id,
+           tenant_membership_id, operation, capability, operation_scope, source_context, event_sequence, run_status)
+         values
+          (gen_random_uuid(), gen_random_uuid(), $1, null, $2, $3,
+           'RESEARCH_EXECUTION_RUN_V1', 'RESEARCH_EXECUTE', 'TENANT_SCOPE', 'PURE_RESEARCH', 2, 'STARTED')`,
+        [bootstrap.tenantId, bootstrap.principalId, bootstrap.tenantMembershipId],
+      );
+    } catch (error) {
+      invalidTransitionRejected = /missing previous research execution run event|invalid research execution/i.test(String((error as Error).message));
+    } finally {
+      await adminClient.query("rollback");
+    }
+    expect(invalidTransitionRejected).toBe(true);
+
+    const evidenceRow = await adminClient.query<{ evidence_identity_id: string }>(
+      "select evidence_identity_id::text from investing.research_evidence_objects_scientific_identities limit 1",
+    );
+    if (evidenceRow.rows[0]) {
+      let evidenceUpdateRejected = false;
+      await adminClient.query("begin");
+      try {
+        await adminClient.query(
+          "update investing.research_evidence_objects_scientific_identities set descriptor_kind = descriptor_kind where evidence_identity_id=$1",
+          [evidenceRow.rows[0].evidence_identity_id],
+        );
+      } catch (error) {
+        evidenceUpdateRejected = /research evidence objects are append-only/i.test(String((error as Error).message));
+      } finally {
+        await adminClient.query("rollback");
+      }
+      expect(evidenceUpdateRejected).toBe(true);
+
+      let evidenceDeleteRejected = false;
+      await adminClient.query("begin");
+      try {
+        await adminClient.query(
+          "delete from investing.research_evidence_objects_scientific_identities where evidence_identity_id=$1",
+          [evidenceRow.rows[0].evidence_identity_id],
+        );
+      } catch (error) {
+        evidenceDeleteRejected = /research evidence objects are append-only/i.test(String((error as Error).message));
+      } finally {
+        await adminClient.query("rollback");
+      }
+      expect(evidenceDeleteRejected).toBe(true);
+    }
+
+    const securityDefiners = await adminClient.query<{
+      proname: string;
+      owner_name: string;
+      language_name: string;
+      return_type: string;
+      proconfig: string[] | null;
+      trigger_name: string;
+      trigger_relation: string;
+      tgtype: number;
+      public_execute: boolean;
+      anon_execute: boolean;
+      authenticated_execute: boolean;
+      service_role_execute: boolean;
+      investing_app_execute: boolean;
+      function_def: string;
+    }>(`
+      select
+        p.proname,
+        owner_role.rolname as owner_name,
+        l.lanname as language_name,
+        p.prorettype::regtype::text as return_type,
+        p.proconfig,
+        t.tgname as trigger_name,
+        c.relname as trigger_relation,
+        t.tgtype::int as tgtype,
+        pg_catalog.has_function_privilege('public', p.oid, 'EXECUTE') as public_execute,
+        pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
+        pg_catalog.has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_execute,
+        pg_catalog.has_function_privilege('service_role', p.oid, 'EXECUTE') as service_role_execute,
+        pg_catalog.has_function_privilege('investing_app', p.oid, 'EXECUTE') as investing_app_execute,
+        pg_catalog.pg_get_functiondef(p.oid) as function_def
       from pg_catalog.pg_proc p
       join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+      join pg_catalog.pg_roles owner_role on owner_role.oid = p.proowner
+      join pg_catalog.pg_language l on l.oid = p.prolang
+      join pg_catalog.pg_trigger t on t.tgfoid = p.oid and not t.tgisinternal
+      join pg_catalog.pg_class c on c.oid = t.tgrelid
       where n.nspname = 'investing'
         and p.prosecdef
+      order by p.proname
     `);
-    expect(securityDefiners.rows[0]!.count).toBe("0");
+    expect(securityDefiners.rows.map((row) => row.proname)).toEqual(
+      expectedSecurityDefinerFunctions.map((fn) => fn.proname).sort(),
+    );
+    for (const expected of expectedSecurityDefinerFunctions) {
+      const actual = securityDefiners.rows.find((row) => row.proname === expected.proname);
+      expect(actual, expected.proname).toBeDefined();
+      expect(actual).toMatchObject({
+        owner_name: expected.owner,
+        language_name: expected.language,
+        return_type: expected.returnType,
+        proconfig: expected.searchPath,
+        trigger_name: expected.triggerName,
+        trigger_relation: expected.triggerRelation,
+        tgtype: expected.tgtype,
+        public_execute: false,
+        anon_execute: false,
+        authenticated_execute: false,
+        service_role_execute: false,
+        investing_app_execute: false,
+      });
+      expect(actual!.function_def).toContain(expected.bodyMarker);
+    }
 
     const sharedRoleGrants = await adminClient.query<{ count: string }>(`
       select count(*)::text as count

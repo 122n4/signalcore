@@ -59,6 +59,40 @@ type PolicySnapshot = Readonly<{
   withCheck: string | null;
 }>;
 
+type SecurityDefinerContract = Readonly<{
+  proname: string;
+  owner: "investing_owner";
+  language: "plpgsql";
+  returnType: "trigger";
+  searchPath: readonly ["search_path=investing, pg_temp"];
+  triggerName: string;
+  triggerRelation: string;
+  tgtype: 7 | 27;
+  publicExecute: false;
+  anonExecute: false;
+  authenticatedExecute: false;
+  serviceRoleExecute: false;
+  investingAppExecute: false;
+  bodyMarker: string;
+}>;
+
+type SecurityDefinerSnapshot = Readonly<{
+  proname: string;
+  owner: string;
+  language: string;
+  returnType: string;
+  searchPath: readonly string[] | null;
+  triggerName: string | null;
+  triggerRelation: string | null;
+  tgtype: number | null;
+  publicExecute: boolean;
+  anonExecute: boolean;
+  authenticatedExecute: boolean;
+  serviceRoleExecute: boolean;
+  investingAppExecute: boolean;
+  body: string;
+}>;
+
 const finalAuditPolicyContracts: readonly PolicyContract[] = [
   { policyname: "audit_events_i2b_authority_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "ACCOUNT_CONTEXT_RESOLVE", "ACCOUNT_AUTHORITY_READ"] },
   { policyname: "audit_events_i2c_bootstrap_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_BOOTSTRAP", "INITIAL_PERSONAL_BOOTSTRAP", "DOMAIN_SCOPE"] },
@@ -69,6 +103,41 @@ const finalAuditPolicyContracts: readonly PolicyContract[] = [
   { policyname: "audit_events_i4c_plan_guard_read", permissive: "PERMISSIVE", cmd: "SELECT", roles: ["investing_app"], qualMarkers: ["PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "PLAN_WRITE"], checkMarkers: [] },
   { policyname: "audit_events_i4c_plan_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_INITIALIZATION_SUCCEEDED", "PLAN_REVISION_ACTIVATED", "PLAN_REVISION"] },
   { policyname: "audit_events_i5_research_investigation_create_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["RESEARCH_INVESTIGATION_CREATE_V1", "RESEARCH_MUTATE", "AUTHORITY_ACCESS_DENIED"] },
+] as const;
+
+const securityDefinerContracts: readonly SecurityDefinerContract[] = [
+  {
+    proname: "enforce_research_execution_run_event_transition",
+    owner: "investing_owner",
+    language: "plpgsql",
+    returnType: "trigger",
+    searchPath: ["search_path=investing, pg_temp"],
+    triggerName: "research_execution_run_events_transition_trigger",
+    triggerRelation: "research_execution_run_events",
+    tgtype: 7,
+    publicExecute: false,
+    anonExecute: false,
+    authenticatedExecute: false,
+    serviceRoleExecute: false,
+    investingAppExecute: false,
+    bodyMarker: "missing previous research execution run event",
+  },
+  {
+    proname: "reject_research_evidence_update_delete",
+    owner: "investing_owner",
+    language: "plpgsql",
+    returnType: "trigger",
+    searchPath: ["search_path=investing, pg_temp"],
+    triggerName: "research_evidence_append_only_trigger",
+    triggerRelation: "research_evidence_objects_scientific_identities",
+    tgtype: 27,
+    publicExecute: false,
+    anonExecute: false,
+    authenticatedExecute: false,
+    serviceRoleExecute: false,
+    investingAppExecute: false,
+    bodyMarker: "research evidence objects are append-only",
+  },
 ] as const;
 
 const finalOperationVocabulary = [
@@ -111,6 +180,30 @@ function validVocabulary(actual: readonly string[]) {
   );
 }
 
+function validSecurityDefiners(actual: readonly SecurityDefinerSnapshot[], expected: readonly SecurityDefinerContract[]) {
+  if (actual.length !== expected.length) return false;
+  return expected.every((contract) => {
+    const fn = actual.find((entry) => entry.proname === contract.proname);
+    if (!fn) return false;
+    return (
+      fn.owner === contract.owner &&
+      fn.language === contract.language &&
+      fn.returnType === contract.returnType &&
+      fn.searchPath?.length === 1 &&
+      fn.searchPath[0] === contract.searchPath[0] &&
+      fn.triggerName === contract.triggerName &&
+      fn.triggerRelation === contract.triggerRelation &&
+      fn.tgtype === contract.tgtype &&
+      fn.publicExecute === contract.publicExecute &&
+      fn.anonExecute === contract.anonExecute &&
+      fn.authenticatedExecute === contract.authenticatedExecute &&
+      fn.serviceRoleExecute === contract.serviceRoleExecute &&
+      fn.investingAppExecute === contract.investingAppExecute &&
+      fn.body.includes(contract.bodyMarker)
+    );
+  });
+}
+
 function canonicalPolicySnapshots(): PolicySnapshot[] {
   return finalAuditPolicyContracts.map((contract) => ({
     policyname: contract.policyname,
@@ -119,6 +212,25 @@ function canonicalPolicySnapshots(): PolicySnapshot[] {
     roles: contract.roles,
     qual: contract.cmd === "SELECT" ? contract.qualMarkers.join(" ") : null,
     withCheck: contract.cmd === "INSERT" ? contract.checkMarkers.join(" ") : null,
+  }));
+}
+
+function canonicalSecurityDefinerSnapshots(): SecurityDefinerSnapshot[] {
+  return securityDefinerContracts.map((contract) => ({
+    proname: contract.proname,
+    owner: contract.owner,
+    language: contract.language,
+    returnType: contract.returnType,
+    searchPath: contract.searchPath,
+    triggerName: contract.triggerName,
+    triggerRelation: contract.triggerRelation,
+    tgtype: contract.tgtype,
+    publicExecute: contract.publicExecute,
+    anonExecute: contract.anonExecute,
+    authenticatedExecute: contract.authenticatedExecute,
+    serviceRoleExecute: contract.serviceRoleExecute,
+    investingAppExecute: contract.investingAppExecute,
+    body: contract.bodyMarker,
   }));
 }
 
@@ -150,6 +262,8 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
     expect(sql).toContain("exact historical i5 audit policy semantics drifted");
     expect(sql).toContain("unexpected historical audit_events policy present");
     expect(sql).toContain("historical i5 relation owner/rls/force drifted");
+    expect(sql).toContain("expected historical security definer trigger-function contract drifted");
+    expect(sql).toContain("unexpected security definer routine found in investing");
     expect(sql).toContain("i3/i4 relations already exist");
     expect(sql).toContain("final idempotency vocabulary drifted");
 
@@ -178,7 +292,9 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
   it("preserves least-privilege guardrails in the repair artifact", () => {
     const sql = normalize(fs.readFileSync(repairMigration, "utf8"));
 
-    expect(sql).toContain("security definer routine found in investing");
+    expect(sql).toContain("revoke execute on function investing.enforce_research_execution_run_event_transition()");
+    expect(sql).toContain("revoke execute on function investing.reject_research_evidence_update_delete()");
+    expect(sql).toContain("security definer trigger-function execute exposure found");
     expect(sql).toContain("investing table without rls/force rls");
     expect(sql).toContain("shared role has direct investing table authority");
     expect(sql).not.toMatch(/language\s+\w+\s+security\s+definer/);
@@ -198,5 +314,22 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
     expect(validPolicies(canonicalPolicies.map((policy, index) => index === 0 ? { ...policy, permissive: "RESTRICTIVE" } : policy), finalAuditPolicyContracts)).toBe(false);
     expect(validPolicies(canonicalPolicies.map((policy, index) => index === 0 ? { ...policy, withCheck: "AUTHORITY_ACCESS_DENIED" } : policy), finalAuditPolicyContracts)).toBe(false);
     expect(validVocabulary([...finalOperationVocabulary, "UNKNOWN_OPERATION_V1"])).toBe(false);
+  });
+
+  it("models exact SECURITY DEFINER allowlist guards against audited negative drift cases", () => {
+    const canonicalFunctions = canonicalSecurityDefinerSnapshots();
+    expect(validSecurityDefiners(canonicalFunctions, securityDefinerContracts)).toBe(true);
+
+    expect(validSecurityDefiners([
+      ...canonicalFunctions,
+      { ...canonicalFunctions[0]!, proname: "unexpected_runtime_rpc_surface" },
+    ], securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.slice(1), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, owner: "postgres" } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, searchPath: ["search_path=public"] } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, triggerName: null } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, triggerRelation: "audit_events" } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, returnType: "uuid", triggerName: null, triggerRelation: null, tgtype: null } : fn), securityDefinerContracts)).toBe(false);
+    expect(validSecurityDefiners(canonicalFunctions.map((fn, index) => index === 0 ? { ...fn, publicExecute: true } : fn), securityDefinerContracts)).toBe(false);
   });
 });
