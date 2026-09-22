@@ -41,6 +41,87 @@ function normalize(sql: string) {
   return sql.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+type PolicyContract = Readonly<{
+  policyname: string;
+  permissive: "PERMISSIVE";
+  cmd: "INSERT" | "SELECT";
+  roles: readonly ["investing_app"];
+  qualMarkers: readonly string[];
+  checkMarkers: readonly string[];
+}>;
+
+type PolicySnapshot = Readonly<{
+  policyname: string;
+  permissive: "PERMISSIVE" | "RESTRICTIVE";
+  cmd: "INSERT" | "SELECT" | "UPDATE";
+  roles: readonly string[];
+  qual: string | null;
+  withCheck: string | null;
+}>;
+
+const finalAuditPolicyContracts: readonly PolicyContract[] = [
+  { policyname: "audit_events_i2b_authority_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "ACCOUNT_CONTEXT_RESOLVE", "ACCOUNT_AUTHORITY_READ"] },
+  { policyname: "audit_events_i2c_bootstrap_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_BOOTSTRAP", "INITIAL_PERSONAL_BOOTSTRAP", "DOMAIN_SCOPE"] },
+  { policyname: "audit_events_i3c_buy_null_revision_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "I3_INTERNAL_PAPER_BUY_V1", "accounting_revision_id"] },
+  { policyname: "audit_events_i3c_fill_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "ledger_transaction_id", "material_request_hash"] },
+  { policyname: "audit_events_i4c_plan_conflict_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_MUTATION_CONFLICT", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1"] },
+  { policyname: "audit_events_i4c_plan_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "PLAN_WRITE", "operation_scope"] },
+  { policyname: "audit_events_i4c_plan_guard_read", permissive: "PERMISSIVE", cmd: "SELECT", roles: ["investing_app"], qualMarkers: ["PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "PLAN_WRITE"], checkMarkers: [] },
+  { policyname: "audit_events_i4c_plan_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_INITIALIZATION_SUCCEEDED", "PLAN_REVISION_ACTIVATED", "PLAN_REVISION"] },
+  { policyname: "audit_events_i5_research_investigation_create_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["RESEARCH_INVESTIGATION_CREATE_V1", "RESEARCH_MUTATE", "AUTHORITY_ACCESS_DENIED"] },
+] as const;
+
+const finalOperationVocabulary = [
+  "INITIAL_PERSONAL_BOOTSTRAP",
+  "INITIAL_PAPER_CASH_FUNDING",
+  "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1",
+  "PLAN_INITIALIZE_V1",
+  "PLAN_CREATE_AND_ACTIVATE_REVISION_V1",
+  "RESEARCH_INVESTIGATION_CREATE_V1",
+  "RESEARCH_DRAFT_CREATE_V1",
+  "RESEARCH_DRAFT_REVISION_CREATE_V1",
+  "RESEARCH_HYPOTHESIS_REVISION_CREATE_V1",
+  "RESEARCH_SPEC_REVISION_CREATE_V1",
+  "RESEARCH_EXPERIMENT_BASELINE_CREATE_V1",
+  "RESEARCH_EXPERIMENT_VARIANT_CREATE_V1",
+] as const;
+
+function validPolicies(actual: readonly PolicySnapshot[], expected: readonly PolicyContract[]) {
+  if (actual.length !== expected.length) return false;
+  return expected.every((contract) => {
+    const policy = actual.find((entry) => entry.policyname === contract.policyname);
+    if (!policy) return false;
+    if (policy.permissive !== contract.permissive || policy.cmd !== contract.cmd) return false;
+    if (policy.roles.length !== 1 || policy.roles[0] !== contract.roles[0]) return false;
+    if (contract.cmd === "INSERT" && policy.qual !== null) return false;
+    if (contract.cmd === "SELECT" && policy.withCheck !== null) return false;
+    const qual = policy.qual ?? "";
+    const withCheck = policy.withCheck ?? "";
+    return (
+      contract.qualMarkers.every((marker) => qual.includes(marker)) &&
+      contract.checkMarkers.every((marker) => withCheck.includes(marker))
+    );
+  });
+}
+
+function validVocabulary(actual: readonly string[]) {
+  return (
+    actual.length === finalOperationVocabulary.length &&
+    [...actual].sort().join("\0") === [...finalOperationVocabulary].sort().join("\0")
+  );
+}
+
+function canonicalPolicySnapshots(): PolicySnapshot[] {
+  return finalAuditPolicyContracts.map((contract) => ({
+    policyname: contract.policyname,
+    permissive: contract.permissive,
+    cmd: contract.cmd,
+    roles: contract.roles,
+    qual: contract.cmd === "SELECT" ? contract.qualMarkers.join(" ") : null,
+    withCheck: contract.cmd === "INSERT" ? contract.checkMarkers.join(" ") : null,
+  }));
+}
+
 describe("Investing Genesis cumulative compatibility forward repair", () => {
   it("keeps every accepted I5 migration blob immutable against the accepted predecessor", () => {
     for (const [relativePath, expectedBlobSha] of immutableHistoricalI5Blobs) {
@@ -66,6 +147,9 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
 
     expect(sql).toContain("historical i5 idempotency vocabulary drifted");
     expect(sql).toContain("expected exact historical i5 audit policy count");
+    expect(sql).toContain("exact historical i5 audit policy semantics drifted");
+    expect(sql).toContain("unexpected historical audit_events policy present");
+    expect(sql).toContain("historical i5 relation owner/rls/force drifted");
     expect(sql).toContain("i3/i4 relations already exist");
     expect(sql).toContain("final idempotency vocabulary drifted");
 
@@ -100,5 +184,19 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
     expect(sql).not.toMatch(/language\s+\w+\s+security\s+definer/);
     expect(sql).not.toMatch(/security\s+definer\s+set\s+search_path/);
     expect(sql).not.toContain("supabase_migrations");
+  });
+
+  it("models exact policy and vocabulary guards against audited negative drift cases", () => {
+    const canonicalPolicies = canonicalPolicySnapshots();
+    expect(validPolicies(canonicalPolicies, finalAuditPolicyContracts)).toBe(true);
+    expect(validVocabulary([...finalOperationVocabulary])).toBe(true);
+
+    expect(validPolicies([...canonicalPolicies, canonicalPolicies[0]!], finalAuditPolicyContracts)).toBe(false);
+    expect(validPolicies(canonicalPolicies.slice(1), finalAuditPolicyContracts)).toBe(false);
+    expect(validPolicies(canonicalPolicies.map((policy, index) => index === 0 ? { ...policy, cmd: "SELECT" } : policy), finalAuditPolicyContracts)).toBe(false);
+    expect(validPolicies(canonicalPolicies.map((policy, index) => index === 0 ? { ...policy, roles: ["service_role"] } : policy), finalAuditPolicyContracts)).toBe(false);
+    expect(validPolicies(canonicalPolicies.map((policy, index) => index === 0 ? { ...policy, permissive: "RESTRICTIVE" } : policy), finalAuditPolicyContracts)).toBe(false);
+    expect(validPolicies(canonicalPolicies.map((policy, index) => index === 0 ? { ...policy, withCheck: "AUTHORITY_ACCESS_DENIED" } : policy), finalAuditPolicyContracts)).toBe(false);
+    expect(validVocabulary([...finalOperationVocabulary, "UNKNOWN_OPERATION_V1"])).toBe(false);
   });
 });

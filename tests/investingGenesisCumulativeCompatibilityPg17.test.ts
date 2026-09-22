@@ -22,11 +22,14 @@ import { bootstrapInitialPersonalInvestingAccount } from "../lib/investing/autho
 import {
   isAuthorizedInvestingContext,
   resolveAuthorizedInvestingAccountContext,
+  resolveAuthorizedResearchInvestigationCreateContext,
   type AuthorizedInvestingContext,
+  type AuthorizedResearchInvestigationCreateContext,
   type InvestingAuthorityDatabase,
   type InvestingAuthorityTransactionClient,
 } from "../lib/investing/authority/context";
 import { accountSyntheticI3Fill } from "../lib/investing/accounting/syntheticFill";
+import { createResearchInvestigationV1 } from "../lib/investing/research/investigationWriter";
 import {
   createAndActivateInvestingPlanRevisionForAccountV1,
   initializeInvestingPlanForAccountV1,
@@ -94,15 +97,15 @@ const expectedFinalIdempotencyOperations = [
 ] as const;
 
 const expectedFinalAuditPolicies = [
-  { tablename: "audit_events", policyname: "audit_events_i2b_authority_denial_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i2c_bootstrap_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i3c_buy_null_revision_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i3c_fill_success_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i4c_plan_conflict_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i4c_plan_denial_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i4c_plan_guard_read", cmd: "SELECT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i4c_plan_success_insert", cmd: "INSERT", roles: ["investing_app"] },
-  { tablename: "audit_events", policyname: "audit_events_i5_research_investigation_create_denial_insert", cmd: "INSERT", roles: ["investing_app"] },
+  { tablename: "audit_events", policyname: "audit_events_i2b_authority_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "ACCOUNT_CONTEXT_RESOLVE", "ACCOUNT_AUTHORITY_READ", "operation_scope", "reason_code"] },
+  { tablename: "audit_events", policyname: "audit_events_i2c_bootstrap_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_BOOTSTRAP_SUCCEEDED", "AUTHORITY_BOOTSTRAP_FAILED", "AUTHORITY_BOOTSTRAP", "INITIAL_PERSONAL_BOOTSTRAP", "DOMAIN_SCOPE"] },
+  { tablename: "audit_events", policyname: "audit_events_i3c_buy_null_revision_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "I3_FILL", "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1", "I3_INTERNAL_PAPER_BUY_V1", "accounting_revision_id"] },
+  { tablename: "audit_events", policyname: "audit_events_i3c_fill_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "I3_FILL", "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1", "ledger_transaction_id", "material_request_hash"] },
+  { tablename: "audit_events", policyname: "audit_events_i4c_plan_conflict_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_MUTATION_CONFLICT", "IDEMPOTENCY_RECORD", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "reason_code"] },
+  { tablename: "audit_events", policyname: "audit_events_i4c_plan_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "operation_scope", "PLAN_WRITE"] },
+  { tablename: "audit_events", policyname: "audit_events_i4c_plan_guard_read", permissive: "PERMISSIVE", cmd: "SELECT", roles: ["investing_app"], qualMarkers: ["PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "PLAN_WRITE", "principal_id", "account_id"], checkMarkers: [] },
+  { tablename: "audit_events", policyname: "audit_events_i4c_plan_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_INITIALIZATION_SUCCEEDED", "PLAN_REVISION_ACTIVATED", "PLAN_REVISION", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1"] },
+  { tablename: "audit_events", policyname: "audit_events_i5_research_investigation_create_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["RESEARCH_INVESTIGATION_CREATE_V1", "RESEARCH_MUTATE", "AUTHORITY_ACCESS_DENIED", "operation_scope", "source_context"] },
 ] as const;
 
 const allNotSuppliedContent: PlanContentV1 = Object.freeze({
@@ -635,6 +638,57 @@ afterAll(async () => {
     `, [bootstrap.accountId]);
     expect(storedPlanTruth.rows[0]).toEqual({ revision_count: "2", all_not_supplied: true });
 
+    currentSubject = primarySubject;
+    const researchContext = await resolveAuthorizedResearchInvestigationCreateContext({
+      sourceContext: "PURE_RESEARCH",
+      tenantId: bootstrap.tenantId,
+      correlationId: "corr-cumulative-i5-research-context",
+    });
+    expect(researchContext.ok).toBe(true);
+    if (researchContext.ok !== true) throw new Error("I5 research authority after repair failed");
+    const researchAuthorizedContext =
+      researchContext.context as AuthorizedResearchInvestigationCreateContext;
+
+    const researchCreateInput = {
+      authorizedContext: researchAuthorizedContext,
+      idempotencyKey: "idem-cumulative-i5-investigation-01",
+      correlationId: "corr-cumulative-i5-investigation-01",
+    };
+    const investigation = await createResearchInvestigationV1(researchCreateInput);
+    expect(investigation.ok).toBe(true);
+    if (investigation.ok !== true) throw new Error("I5 investigation create after repair failed");
+    expect(investigation.replayed).toBe(false);
+
+    const investigationRow = await adminClient.query<{
+      tenant_id: string;
+      account_id: string | null;
+      principal_id: string;
+      operation: string;
+      capability: string;
+      source_context: string;
+      material_request_hash: string;
+      idempotency_record_id: string;
+    }>(
+      `select tenant_id::text, account_id::text, principal_id::text, operation, capability, source_context,
+              material_request_hash, idempotency_record_id::text
+       from investing.research_investigations
+       where research_investigation_id=$1`,
+      [investigation.investigationId],
+    );
+    expect(investigationRow.rows).toEqual([{
+      tenant_id: bootstrap.tenantId,
+      account_id: null,
+      principal_id: bootstrap.principalId,
+      operation: "RESEARCH_INVESTIGATION_CREATE_V1",
+      capability: "RESEARCH_MUTATE",
+      source_context: "PURE_RESEARCH",
+      material_request_hash: investigation.materialRequestHash,
+      idempotency_record_id: investigation.idempotencyRecordId,
+    }]);
+
+    const investigationReplay = await createResearchInvestigationV1(researchCreateInput);
+    expect(investigationReplay).toEqual({ ...investigation, replayed: true });
+
     currentSubject = secondarySubject;
     const secondaryBootstrap = await bootstrapInitialPersonalInvestingAccount({
       idempotencyKey: "idem-i0-i4-bootstrap-0002",
@@ -685,6 +739,13 @@ afterAll(async () => {
     });
     expect(writerDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
 
+    const researchDisabledDenial = await resolveAuthorizedResearchInvestigationCreateContext({
+      sourceContext: "PURE_RESEARCH",
+      tenantId: bootstrap.tenantId,
+      correlationId: "corr-cumulative-i5-disabled-denial",
+    });
+    expect(researchDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
+
     const denialAudit = await adminClient.query<{ count: string }>(
       `select count(*)::text as count from investing.audit_events
        where action='AUTHORITY_ACCESS_DENIED' and reason_code='PRINCIPAL_DISABLED' and account_id=$1`,
@@ -703,6 +764,18 @@ afterAll(async () => {
       await adminClient.query("rollback");
     }
     expect(serviceRoleDenied).toBe(true);
+
+    let serviceRoleResearchDenied = false;
+    await adminClient.query("begin");
+    try {
+      await adminClient.query("set local role service_role");
+      await adminClient.query("select research_investigation_id from investing.research_investigations limit 1");
+    } catch (error) {
+      serviceRoleResearchDenied = (error as { code?: string }).code === "42501";
+    } finally {
+      await adminClient.query("rollback");
+    }
+    expect(serviceRoleResearchDenied).toBe(true);
 
     const rls = await adminClient.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(`
       select c.relname, c.relrowsecurity, c.relforcerowsecurity
@@ -738,16 +811,36 @@ afterAll(async () => {
     const auditPolicies = await adminClient.query<{
       tablename: string;
       policyname: string;
+      permissive: string;
       cmd: string;
       roles: string[];
+      qual: string | null;
+      with_check: string | null;
     }>(`
-      select tablename, policyname, cmd, roles::text[] as roles
+      select tablename, policyname, permissive, cmd, roles::text[] as roles, qual, with_check
       from pg_catalog.pg_policies
       where schemaname = 'investing'
         and tablename = 'audit_events'
       order by tablename, policyname
     `);
-    expect(auditPolicies.rows).toEqual([...expectedFinalAuditPolicies].sort((a, b) => a.policyname.localeCompare(b.policyname)));
+    expect(auditPolicies.rows).toHaveLength(expectedFinalAuditPolicies.length);
+    for (const expected of expectedFinalAuditPolicies) {
+      const actual = auditPolicies.rows.find((policy) => policy.policyname === expected.policyname);
+      expect(actual, expected.policyname).toBeDefined();
+      expect(actual).toMatchObject({
+        tablename: expected.tablename,
+        policyname: expected.policyname,
+        permissive: expected.permissive,
+        cmd: expected.cmd,
+        roles: expected.roles,
+      });
+      expect(actual!.qual === null).toBe(expected.cmd === "INSERT");
+      expect(actual!.with_check === null).toBe(expected.cmd === "SELECT");
+      const qual = actual!.qual ?? "";
+      const withCheck = actual!.with_check ?? "";
+      for (const marker of expected.qualMarkers) expect(qual).toContain(marker);
+      for (const marker of expected.checkMarkers) expect(withCheck).toContain(marker);
+    }
 
     const allInvestingTables = await adminClient.query<{ count: string; protected_count: string }>(`
       select count(*)::text as count,

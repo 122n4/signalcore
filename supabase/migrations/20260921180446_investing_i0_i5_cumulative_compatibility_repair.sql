@@ -19,6 +19,7 @@ declare
     'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
   ];
   v_bad_count integer;
+  v_missing_relations text[];
 begin
   if current_user <> 'postgres' then
     raise exception 'I0-I5 compatibility repair prestate violation: migration executor must be postgres';
@@ -57,13 +58,153 @@ begin
     raise exception 'I0-I5 compatibility repair prestate violation: I3/I4 relations already exist';
   end if;
 
+  select array_agg(required.relname order by required.relname)
+    into v_missing_relations
+  from (
+    values
+      ('principals'),
+      ('tenants'),
+      ('tenant_memberships'),
+      ('accounts'),
+      ('account_access'),
+      ('idempotency_records'),
+      ('audit_events'),
+      ('ledger_accounts'),
+      ('ledger_transactions'),
+      ('ledger_postings'),
+      ('ledger_transaction_seals'),
+      ('research_investigations'),
+      ('research_drafts'),
+      ('research_material_roots'),
+      ('research_material_revisions'),
+      ('research_material_pointer_states'),
+      ('research_spec_revisions'),
+      ('research_experiments'),
+      ('dataset_series_scientific_identities'),
+      ('dataset_snapshots_scientific_identities'),
+      ('metric_request_sets_scientific_identities'),
+      ('execution_configs_scientific_identities'),
+      ('research_specs_scientific_identities'),
+      ('run_inputs_scientific_identities'),
+      ('research_execution_runs'),
+      ('research_result_artifacts'),
+      ('research_results_scientific_identities'),
+      ('research_execution_run_events'),
+      ('research_evidence_objects_scientific_identities')
+  ) as required(relname)
+  where not exists (
+    select 1
+    from pg_catalog.pg_class c
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    join pg_catalog.pg_roles r on r.oid = c.relowner
+    where n.nspname = 'investing'
+      and c.relname = required.relname
+      and c.relkind in ('r', 'p')
+      and r.rolname = 'investing_owner'
+      and c.relrowsecurity
+      and c.relforcerowsecurity
+  );
+
+  if v_missing_relations is not null then
+    raise exception 'I0-I5 compatibility repair prestate violation: historical I5 relation owner/RLS/FORCE drifted: %', v_missing_relations;
+  end if;
+
   select count(*) into v_bad_count
-  from pg_catalog.pg_policies
-  where schemaname = 'investing'
-    and tablename = 'audit_events';
+  from pg_catalog.pg_proc p
+  join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'investing'
+    and p.prosecdef;
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: SECURITY DEFINER routine found in investing';
+  end if;
+
+  select count(*) into v_bad_count
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and lower(grantee) in ('anon', 'authenticated', 'service_role', 'public');
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: shared role has direct Investing table authority';
+  end if;
+
+  select count(*) into v_bad_count
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid = p.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'audit_events';
 
   if v_bad_count <> 3 then
     raise exception 'I0-I5 compatibility repair prestate violation: expected exact historical I5 audit policy count, found %', v_bad_count;
+  end if;
+
+  select count(*) into v_bad_count
+  from (
+    values
+      ('audit_events_i2b_authority_denial_insert', 'a', array[
+        'authority_access_denied',
+        'account_context_resolve',
+        'account_authority_read',
+        'operation_scope',
+        'reason_code'
+      ]::text[]),
+      ('audit_events_i2c_bootstrap_insert', 'a', array[
+        'authority_bootstrap_succeeded',
+        'authority_bootstrap_failed',
+        'authority_bootstrap',
+        'initial_personal_bootstrap',
+        'domain_scope'
+      ]::text[]),
+      ('audit_events_i5_research_investigation_create_denial_insert', 'a', array[
+        'research_investigation_create_v1',
+        'research_mutate',
+        'authority_access_denied',
+        'operation_scope',
+        'source_context'
+      ]::text[])
+  ) as expected(policy_name, policy_cmd, required_markers)
+  where not exists (
+    select 1
+    from pg_catalog.pg_policy p
+    join pg_catalog.pg_class c on c.oid = p.polrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    cross join lateral (
+      select lower(coalesce(pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid), '')) as with_check_expr
+    ) expr
+    where n.nspname = 'investing'
+      and c.relname = 'audit_events'
+      and p.polname = expected.policy_name
+      and p.polcmd = expected.policy_cmd
+      and p.polpermissive
+      and p.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]::oid[]
+      and p.polqual is null
+      and p.polwithcheck is not null
+      and not exists (
+        select 1
+        from unnest(expected.required_markers) marker
+        where expr.with_check_expr not like '%' || marker || '%'
+      )
+  );
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: exact historical I5 audit policy semantics drifted';
+  end if;
+
+  select count(*) into v_bad_count
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid = p.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'audit_events'
+    and p.polname not in (
+      'audit_events_i2b_authority_denial_insert',
+      'audit_events_i2c_bootstrap_insert',
+      'audit_events_i5_research_investigation_create_denial_insert'
+    );
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: unexpected historical audit_events policy present';
   end if;
 end $$;
 
@@ -5838,6 +5979,87 @@ begin
 
   if v_bad_count <> 0 then
     raise exception 'I0-I5 compatibility repair postcondition violation: shared role has direct Investing table authority';
+  end if;
+
+  select count(*) into v_bad_count
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid = p.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'audit_events';
+
+  if v_bad_count <> 9 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: expected exact final audit_events policy count, found %', v_bad_count;
+  end if;
+
+  select count(*) into v_bad_count
+  from (
+    values
+      ('audit_events_i2b_authority_denial_insert', 'a', array[]::text[], array['authority_access_denied','account_context_resolve','account_authority_read','operation_scope','reason_code']::text[]),
+      ('audit_events_i2c_bootstrap_insert', 'a', array[]::text[], array['authority_bootstrap_succeeded','authority_bootstrap_failed','authority_bootstrap','initial_personal_bootstrap','domain_scope']::text[]),
+      ('audit_events_i3c_buy_null_revision_insert', 'a', array[]::text[], array['i3_fill_accounting_succeeded','i3_fill','i3_internal_paper_fill_accounting_v1','i3_internal_paper_buy_v1','accounting_revision_id']::text[]),
+      ('audit_events_i3c_fill_success_insert', 'a', array[]::text[], array['i3_fill_accounting_succeeded','i3_fill','i3_internal_paper_fill_accounting_v1','ledger_transaction_id','material_request_hash']::text[]),
+      ('audit_events_i4c_plan_conflict_insert', 'a', array[]::text[], array['plan_mutation_conflict','idempotency_record','plan_initialize_v1','plan_create_and_activate_revision_v1','reason_code']::text[]),
+      ('audit_events_i4c_plan_denial_insert', 'a', array[]::text[], array['authority_access_denied','plan_initialize_v1','plan_create_and_activate_revision_v1','operation_scope','plan_write']::text[]),
+      ('audit_events_i4c_plan_guard_read', 'r', array['plan_initialize_v1','plan_create_and_activate_revision_v1','plan_write','principal_id','account_id']::text[], array[]::text[]),
+      ('audit_events_i4c_plan_success_insert', 'a', array[]::text[], array['plan_initialization_succeeded','plan_revision_activated','plan_revision','plan_initialize_v1','plan_create_and_activate_revision_v1']::text[]),
+      ('audit_events_i5_research_investigation_create_denial_insert', 'a', array[]::text[], array['research_investigation_create_v1','research_mutate','authority_access_denied','operation_scope','source_context']::text[])
+  ) as expected(policy_name, policy_cmd, qual_markers, check_markers)
+  where not exists (
+    select 1
+    from pg_catalog.pg_policy p
+    join pg_catalog.pg_class c on c.oid = p.polrelid
+    join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    cross join lateral (
+      select lower(coalesce(pg_catalog.pg_get_expr(p.polqual, p.polrelid), '')) as qual_expr,
+             lower(coalesce(pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid), '')) as with_check_expr
+    ) expr
+    where n.nspname = 'investing'
+      and c.relname = 'audit_events'
+      and p.polname = expected.policy_name
+      and p.polcmd = expected.policy_cmd
+      and p.polpermissive
+      and p.polroles = array[(select oid from pg_catalog.pg_roles where rolname = 'investing_app')]::oid[]
+      and (
+        (expected.policy_cmd = 'r' and p.polqual is not null and p.polwithcheck is null)
+        or (expected.policy_cmd = 'a' and p.polqual is null and p.polwithcheck is not null)
+      )
+      and not exists (
+        select 1
+        from unnest(expected.qual_markers) marker
+        where expr.qual_expr not like '%' || marker || '%'
+      )
+      and not exists (
+        select 1
+        from unnest(expected.check_markers) marker
+        where expr.with_check_expr not like '%' || marker || '%'
+      )
+  );
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: exact final audit_events policy semantics drifted';
+  end if;
+
+  select count(*) into v_bad_count
+  from pg_catalog.pg_policy p
+  join pg_catalog.pg_class c on c.oid = p.polrelid
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname = 'audit_events'
+    and p.polname not in (
+      'audit_events_i2b_authority_denial_insert',
+      'audit_events_i2c_bootstrap_insert',
+      'audit_events_i3c_buy_null_revision_insert',
+      'audit_events_i3c_fill_success_insert',
+      'audit_events_i4c_plan_conflict_insert',
+      'audit_events_i4c_plan_denial_insert',
+      'audit_events_i4c_plan_guard_read',
+      'audit_events_i4c_plan_success_insert',
+      'audit_events_i5_research_investigation_create_denial_insert'
+    );
+
+  if v_bad_count <> 0 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: unexpected final audit_events policy present';
   end if;
 end $$;
 
