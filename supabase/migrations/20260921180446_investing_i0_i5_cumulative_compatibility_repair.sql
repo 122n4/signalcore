@@ -295,14 +295,20 @@ begin
 end $$;
 
 -- Forward-only RLS recursion repair for the accepted historical I5 state.
--- Historical I5 adds tenants SELECT policies that legitimately inspect
--- tenant_memberships for research authority. The original I2-C bootstrap
--- tenant_memberships INSERT policy also inspected tenants, producing a
--- tenant_memberships -> tenants -> tenant_memberships policy cycle during a
--- fresh runtime bootstrap after I5. Preserve the bootstrap authority contract
--- using only the candidate row and principal identity; tenant existence is
--- still enforced by the tenant_memberships FK and first-create tenant state is
--- enforced by tenants_i2c_bootstrap_insert immediately before this insert.
+-- The authority graph over principals, tenants, tenant_memberships, accounts,
+-- and account_access must stay acyclic under RLS evaluation. Historical I5
+-- SELECT policies were locally correct but introduced cross-table selector
+-- edges such as tenants -> tenant_memberships and account_access -> accounts /
+-- tenant_memberships. Those edges combine with I2-C bootstrap INSERT checks
+-- (tenant_memberships -> tenants, accounts -> tenant_memberships) into runtime
+-- policy cycles on a fresh bootstrap after I5.
+--
+-- Preserve authority by restoring the original I2-C tenant ACTIVE check and by
+-- decomposing I5 authority table selectors into direct tuple predicates only.
+-- Runtime resolvers still query principals, tenants, memberships, accounts and
+-- account_access separately, require ACTIVE/OWNER state, and verify tuple
+-- consistency before any writer is reached; this migration removes only the
+-- recursive policy-edge topology.
 set local role investing_owner;
 
 drop policy if exists tenant_memberships_i2c_bootstrap_insert
@@ -322,12 +328,215 @@ create policy tenant_memberships_i2c_bootstrap_insert
     and state = 'ACTIVE'
     and exists (
       select 1
-      from investing.principals p
-      where p.principal_id = tenant_memberships.principal_id
+      from investing.tenants t
+      join investing.principals p
+        on p.principal_id = tenant_memberships.principal_id
+      where t.tenant_id = tenant_memberships.tenant_id
         and p.external_provider = current_setting('syntrake.investing.external_provider', true)
         and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and t.state = 'ACTIVE'
         and p.state = 'ACTIVE'
     )
+  );
+
+drop policy if exists tenants_i5_research_authority_read on investing.tenants;
+create policy tenants_i5_research_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and state = 'ACTIVE'
+    and coalesce(current_setting('syntrake.investing.principal_id', true), '') <> ''
+  );
+
+drop policy if exists tenants_i5_research_account_authority_read on investing.tenants;
+create policy tenants_i5_research_account_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and state = 'ACTIVE'
+    and coalesce(current_setting('syntrake.investing.principal_id', true), '') <> ''
+  );
+
+drop policy if exists tenant_memberships_i5_research_account_authority_read on investing.tenant_memberships;
+create policy tenant_memberships_i5_research_account_authority_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists account_access_i5_research_account_authority_read on investing.account_access;
+create policy account_access_i5_research_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_INVESTIGATION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists tenants_i5_research_draft_authority_read on investing.tenants;
+create policy tenants_i5_research_draft_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') = ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and state = 'ACTIVE'
+    and current_setting('syntrake.investing.tenant_membership_id', true) <> ''
+    and current_setting('syntrake.investing.principal_id', true) <> ''
+  );
+
+drop policy if exists tenants_i5_research_draft_account_authority_read on investing.tenants;
+create policy tenants_i5_research_draft_account_authority_read
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and state = 'ACTIVE'
+    and current_setting('syntrake.investing.tenant_membership_id', true) <> ''
+    and current_setting('syntrake.investing.account_access_id', true) <> ''
+    and current_setting('syntrake.investing.principal_id', true) <> ''
+  );
+
+drop policy if exists tenant_memberships_i5_research_draft_account_authority_read on investing.tenant_memberships;
+create policy tenant_memberships_i5_research_draft_account_authority_read
+  on investing.tenant_memberships
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists account_access_i5_research_draft_account_authority_read on investing.account_access;
+create policy account_access_i5_research_draft_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_DRAFT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and coalesce(current_setting('syntrake.investing.account_id', true), '') <> ''
+    and account_access_id = nullif(current_setting('syntrake.investing.account_access_id', true), '')::uuid
+    and account_id = nullif(current_setting('syntrake.investing.account_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.tenant_id', true), '')::uuid
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.tenant_membership_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists account_access_i5_a4_spec_revision_account_authority_read on investing.account_access;
+create policy account_access_i5_a4_spec_revision_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_SPEC_REVISION_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+    and account_id::text = current_setting('syntrake.investing.account_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists account_access_i5_exp_account_authority_read on investing.account_access;
+create policy account_access_i5_exp_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+    and account_id::text = current_setting('syntrake.investing.account_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists account_access_i5_variant_account_authority_read on investing.account_access;
+create policy account_access_i5_variant_account_authority_read
+  on investing.account_access
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'ACCOUNT_SCOPE'
+    and account_access_id::text = current_setting('syntrake.investing.account_access_id', true)
+    and account_id::text = current_setting('syntrake.investing.account_id', true)
+    and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+    and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+    and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+  );
+
+drop policy if exists research_execution_tenant_selector_select on investing.tenants;
+create policy research_execution_tenant_selector_select
+  on investing.tenants
+  for select
+  to investing_app
+  using (
+    current_setting('syntrake.investing.operation', true) = 'RESEARCH_EXECUTION_RUN_V1'
+    and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+    and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+    and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+    and state = 'ACTIVE'
+    and current_setting('syntrake.investing.principal_id', true) <> ''
   );
 
 reset role;

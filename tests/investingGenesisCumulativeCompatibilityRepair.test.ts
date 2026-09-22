@@ -52,6 +52,11 @@ function policySlice(sql: string, policyName: string) {
   return normalized.slice(start, end);
 }
 
+function authorityTableReferences(policySql: string) {
+  return [...policySql.matchAll(/\b(?:from|join)\s+investing\.(principals|tenants|tenant_memberships|accounts|account_access)\b/g)]
+    .map((match) => match[1]!);
+}
+
 type PolicyContract = Readonly<{
   policyname: string;
   permissive: "PERMISSIVE";
@@ -314,12 +319,14 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
     expect(sql).not.toContain("supabase_migrations");
   });
 
-  it("repairs the historical I5 bootstrap RLS recursion without broadening bootstrap authority", () => {
+  it("repairs the historical I5 authority-table RLS cycles without weakening bootstrap authority", () => {
     const raw = fs.readFileSync(repairMigration, "utf8");
     const sql = normalize(raw);
     const repairedPolicy = policySlice(raw, "tenant_memberships_i2c_bootstrap_insert");
 
-    expect(sql).toContain("tenant_memberships -> tenants -> tenant_memberships policy cycle");
+    expect(sql).toContain("authority graph over principals, tenants, tenant_memberships, accounts");
+    expect(sql).toContain("tenant_memberships -> tenants");
+    expect(sql).toContain("accounts -> tenant_memberships");
     expect(sql).toContain("drop policy if exists tenant_memberships_i2c_bootstrap_insert");
     expect(repairedPolicy).toContain("for insert to investing_app");
     expect(repairedPolicy).toContain("initial_personal_bootstrap");
@@ -329,10 +336,33 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
     expect(repairedPolicy).toContain("principal_id");
     expect(repairedPolicy).toContain("role = 'owner'");
     expect(repairedPolicy).toContain("state = 'active'");
-    expect(repairedPolicy).toContain("from investing.principals");
-    expect(repairedPolicy).not.toContain("from investing.tenants");
-    expect(repairedPolicy).not.toContain("join investing.tenants");
+    expect(repairedPolicy).toContain("from investing.tenants");
+    expect(repairedPolicy).toContain("t.state = 'active'");
+    expect(repairedPolicy).toContain("join investing.principals");
     expect(repairedPolicy).not.toContain("security definer");
+
+    const acyclicSelectorPolicies = [
+      "tenants_i5_research_authority_read",
+      "tenants_i5_research_account_authority_read",
+      "tenant_memberships_i5_research_account_authority_read",
+      "account_access_i5_research_account_authority_read",
+      "tenants_i5_research_draft_authority_read",
+      "tenants_i5_research_draft_account_authority_read",
+      "tenant_memberships_i5_research_draft_account_authority_read",
+      "account_access_i5_research_draft_account_authority_read",
+      "account_access_i5_a4_spec_revision_account_authority_read",
+      "account_access_i5_exp_account_authority_read",
+      "account_access_i5_variant_account_authority_read",
+      "research_execution_tenant_selector_select",
+    ];
+
+    for (const policyName of acyclicSelectorPolicies) {
+      expect(sql).toContain(`drop policy if exists ${policyName}`);
+      const policy = policySlice(raw, policyName);
+      expect(authorityTableReferences(policy), policyName).toEqual([]);
+      expect(policy).toContain("to investing_app");
+      expect(policy).not.toContain("security definer");
+    }
   });
 
   it("models exact policy and vocabulary guards against audited negative drift cases", () => {

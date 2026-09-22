@@ -273,6 +273,7 @@ function safeBootstrapFailure(result: unknown) {
 let adminPool: Pool;
 let adminClient: PoolClient;
 let currentSubject = primarySubject;
+let lastAuthorityDbError: { code: string; message: string } | null = null;
 
 function gitBlobSha(value: Buffer | string) {
   const bytes = Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
@@ -318,8 +319,17 @@ function createAuthorityDatabase(): InvestingAuthorityDatabase {
       await client.query("set role investing_app");
       const adapter: InvestingAuthorityTransactionClient = {
         query: async <Row = Record<string, unknown>>(text: string, values: readonly unknown[] = []) => {
-          const result = await client.query<Row>(text, [...values]);
-          return { rows: result.rows, rowCount: result.rowCount };
+          try {
+            const result = await client.query<Row>(text, [...values]);
+            return { rows: result.rows, rowCount: result.rowCount };
+          } catch (error) {
+            const pgError = error as { code?: unknown; message?: unknown };
+            lastAuthorityDbError = {
+              code: typeof pgError.code === "string" ? pgError.code : "UNKNOWN",
+              message: typeof pgError.message === "string" ? pgError.message : String(error),
+            };
+            throw error;
+          }
         },
         release: async (destroy = false) => {
           try {
@@ -607,6 +617,53 @@ async function financialSnapshot() {
   return result.rows[0]!.snapshot;
 }
 
+async function expectInvestingAppStatementDenied(
+  label: string,
+  statements: readonly { text: string; values?: readonly unknown[] }[],
+  setupStatements: readonly { text: string; values?: readonly unknown[] }[] = [],
+) {
+  let denied = false;
+  await adminClient.query("begin");
+  try {
+    for (const statement of setupStatements) {
+      await adminClient.query(statement.text, [...(statement.values ?? [])]);
+    }
+    await adminClient.query("set local role investing_app");
+    for (const statement of statements) {
+      await adminClient.query(statement.text, [...(statement.values ?? [])]);
+    }
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    denied = code === "42501" || code === "23514" || code === "23503";
+  } finally {
+    await adminClient.query("rollback");
+  }
+  expect(denied, label).toBe(true);
+}
+
+async function expectInvestingAppCount(
+  label: string,
+  setupStatements: readonly { text: string; values?: readonly unknown[] }[],
+  countStatement: { text: string; values?: readonly unknown[] },
+  expectedCount: number,
+  adminSetupStatements: readonly { text: string; values?: readonly unknown[] }[] = [],
+) {
+  await adminClient.query("begin");
+  try {
+    for (const statement of adminSetupStatements) {
+      await adminClient.query(statement.text, [...(statement.values ?? [])]);
+    }
+    for (const statement of setupStatements) {
+      await adminClient.query(statement.text, [...(statement.values ?? [])]);
+    }
+    await adminClient.query("set local role investing_app");
+    const result = await adminClient.query<{ count: string }>(countStatement.text, [...(countStatement.values ?? [])]);
+    expect(Number(result.rows[0]!.count), label).toBe(expectedCount);
+  } finally {
+    await adminClient.query("rollback");
+  }
+}
+
 beforeAll(async () => {
   if (!connectionString) return;
 
@@ -681,6 +738,7 @@ afterAll(async () => {
     }
 
     currentSubject = "user_pg17_cumulative_state_a";
+    lastAuthorityDbError = null;
     const stateABootstrap = await bootstrapInitialPersonalInvestingAccount({
       idempotencyKey: "idem-cumulative-state-a-bootstrap",
       correlationId: "corr-cumulative-state-a-bootstrap",
@@ -691,6 +749,10 @@ afterAll(async () => {
     expect(safeBootstrapFailure(stateABootstrap)).toMatchObject({
       stage: "INITIAL_PERSONAL_BOOTSTRAP",
     });
+    expect(lastAuthorityDbError).toMatchObject({
+      code: "42P17",
+    });
+    expect(lastAuthorityDbError?.message.toLowerCase()).toContain("infinite recursion");
 
     await applySql(compatibilityRepairMigration);
 
@@ -712,6 +774,106 @@ afterAll(async () => {
       baseCurrency: "EUR",
     });
     expect(bootstrapReplay).toEqual({ ...bootstrap, replayed: true });
+
+    const setGuc = (name: string, value: string) => ({
+      text: "select set_config($1, $2, true)",
+      values: [name, value],
+    });
+    const researchTenantGucs = [
+      setGuc("syntrake.investing.operation", "RESEARCH_INVESTIGATION_CREATE_V1"),
+      setGuc("syntrake.investing.capability", "RESEARCH_MUTATE"),
+      setGuc("syntrake.investing.operation_scope", "TENANT_SCOPE"),
+      setGuc("syntrake.investing.tenant_id", bootstrap.tenantId),
+      setGuc("syntrake.investing.principal_id", bootstrap.principalId),
+      setGuc("syntrake.investing.account_id", ""),
+      setGuc("syntrake.investing.external_provider", "CLERK"),
+      setGuc("syntrake.investing.external_subject", primarySubject),
+      setGuc("syntrake.investing.actor_id", primarySubject),
+    ];
+    await expectInvestingAppStatementDenied("wrong candidate tenant id is rejected by I2-C membership WITH CHECK", [
+      setGuc("syntrake.investing.operation", "INITIAL_PERSONAL_BOOTSTRAP"),
+      setGuc("syntrake.investing.capability", "AUTHORITY_BOOTSTRAP"),
+      setGuc("syntrake.investing.candidate_tenant_membership_id", randomUUID()),
+      setGuc("syntrake.investing.candidate_tenant_id", randomUUID()),
+      setGuc("syntrake.investing.principal_id", bootstrap.principalId),
+      setGuc("syntrake.investing.external_provider", "CLERK"),
+      setGuc("syntrake.investing.external_subject", primarySubject),
+      {
+        text: `insert into investing.tenant_memberships
+          (tenant_membership_id, tenant_id, principal_id, role, state)
+          values (nullif(current_setting('syntrake.investing.candidate_tenant_membership_id', true), '')::uuid,$1,$2,'OWNER','ACTIVE')`,
+        values: [bootstrap.tenantId, bootstrap.principalId],
+      },
+    ]);
+    await expectInvestingAppStatementDenied("non-OWNER membership role is rejected by DB contract", [
+      setGuc("syntrake.investing.operation", "INITIAL_PERSONAL_BOOTSTRAP"),
+      setGuc("syntrake.investing.capability", "AUTHORITY_BOOTSTRAP"),
+      setGuc("syntrake.investing.candidate_tenant_membership_id", randomUUID()),
+      setGuc("syntrake.investing.candidate_tenant_id", bootstrap.tenantId),
+      setGuc("syntrake.investing.principal_id", bootstrap.principalId),
+      setGuc("syntrake.investing.external_provider", "CLERK"),
+      setGuc("syntrake.investing.external_subject", primarySubject),
+      {
+        text: `insert into investing.tenant_memberships
+          (tenant_membership_id, tenant_id, principal_id, role, state)
+          values (nullif(current_setting('syntrake.investing.candidate_tenant_membership_id', true), '')::uuid,$1,$2,'VIEWER','ACTIVE')`,
+        values: [bootstrap.tenantId, bootstrap.principalId],
+      },
+    ]);
+    await expectInvestingAppCount("inactive principal is invisible to investing_app authority selector", [
+      ...researchTenantGucs,
+    ], {
+      text: "select count(*)::text as count from investing.principals where principal_id=$1",
+      values: [bootstrap.principalId],
+    }, 0, [
+      { text: "update investing.principals set state='DISABLED', disabled_at=transaction_timestamp() where principal_id=$1", values: [bootstrap.principalId] },
+    ]);
+    await expectInvestingAppCount("inactive tenant is invisible to investing_app authority selector", [
+      ...researchTenantGucs,
+    ], {
+      text: "select count(*)::text as count from investing.tenants where tenant_id=$1",
+      values: [bootstrap.tenantId],
+    }, 0, [
+      { text: "update investing.tenants set state='SUSPENDED' where tenant_id=$1", values: [bootstrap.tenantId] },
+    ]);
+    await expectInvestingAppCount("wrong principal cannot see OWNER membership", [
+      ...researchTenantGucs.filter((statement) => statement.values?.[0] !== "syntrake.investing.principal_id"),
+      setGuc("syntrake.investing.principal_id", randomUUID()),
+    ], {
+      text: "select count(*)::text as count from investing.tenant_memberships where tenant_membership_id=$1",
+      values: [bootstrap.tenantMembershipId],
+    }, 0);
+    await expectInvestingAppCount("inactive membership is invisible to investing_app authority selector", [
+      ...researchTenantGucs,
+    ], {
+      text: "select count(*)::text as count from investing.tenant_memberships where tenant_membership_id=$1",
+      values: [bootstrap.tenantMembershipId],
+    }, 0, [
+      { text: "update investing.tenant_memberships set state='REVOKED', revoked_at=transaction_timestamp() where tenant_membership_id=$1", values: [bootstrap.tenantMembershipId] },
+    ]);
+    await expectInvestingAppCount("account tuple mismatch is invisible to investing_app account selector", [
+      setGuc("syntrake.investing.operation", "RESEARCH_INVESTIGATION_CREATE_V1"),
+      setGuc("syntrake.investing.capability", "RESEARCH_MUTATE"),
+      setGuc("syntrake.investing.operation_scope", "ACCOUNT_SCOPE"),
+      setGuc("syntrake.investing.account_id", bootstrap.accountId),
+      setGuc("syntrake.investing.principal_id", randomUUID()),
+    ], {
+      text: "select count(*)::text as count from investing.accounts where account_id=$1",
+      values: [bootstrap.accountId],
+    }, 0);
+    await expectInvestingAppCount("account_access tuple mismatch is invisible to investing_app access selector", [
+      setGuc("syntrake.investing.operation", "RESEARCH_DRAFT_CREATE_V1"),
+      setGuc("syntrake.investing.capability", "RESEARCH_MUTATE"),
+      setGuc("syntrake.investing.operation_scope", "ACCOUNT_SCOPE"),
+      setGuc("syntrake.investing.account_id", bootstrap.accountId),
+      setGuc("syntrake.investing.tenant_id", bootstrap.tenantId),
+      setGuc("syntrake.investing.tenant_membership_id", bootstrap.tenantMembershipId),
+      setGuc("syntrake.investing.account_access_id", randomUUID()),
+      setGuc("syntrake.investing.principal_id", bootstrap.principalId),
+    ], {
+      text: "select count(*)::text as count from investing.account_access where account_access_id=$1",
+      values: [bootstrap.accountAccessId],
+    }, 0);
 
     const authorityBeforeI3 = await resolveAuthorizedInvestingAccountContext({
       accountId: bootstrap.accountId,
