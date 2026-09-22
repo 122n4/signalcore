@@ -99,7 +99,7 @@ const finalAuditPolicyContracts: readonly PolicyContract[] = [
   { policyname: "audit_events_i3c_buy_null_revision_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "I3_INTERNAL_PAPER_BUY_V1", "accounting_revision_id"] },
   { policyname: "audit_events_i3c_fill_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "ledger_transaction_id", "material_request_hash"] },
   { policyname: "audit_events_i4c_plan_conflict_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_MUTATION_CONFLICT", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1"] },
-  { policyname: "audit_events_i4c_plan_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "PLAN_WRITE", "operation_scope"] },
+  { policyname: "audit_events_i4c_plan_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "ACCOUNT_SCOPE", "PRINCIPAL_DISABLED", "TENANT_INACTIVE", "MEMBERSHIP_INACTIVE", "ACCESS_INACTIVE", "ACCOUNT_INACTIVE", "AUTHORITY_TUPLE_MISMATCH"] },
   { policyname: "audit_events_i4c_plan_guard_read", permissive: "PERMISSIVE", cmd: "SELECT", roles: ["investing_app"], qualMarkers: ["PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "PLAN_WRITE"], checkMarkers: [] },
   { policyname: "audit_events_i4c_plan_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_INITIALIZATION_SUCCEEDED", "PLAN_REVISION_ACTIVATED", "PLAN_REVISION"] },
   { policyname: "audit_events_i5_research_investigation_create_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["RESEARCH_INVESTIGATION_CREATE_V1", "RESEARCH_MUTATE", "AUTHORITY_ACCESS_DENIED"] },
@@ -259,7 +259,8 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
 
     expect(sql).toContain("historical i5 idempotency vocabulary drifted");
     expect(sql).toContain("expected exact historical i5 audit policy count");
-    expect(sql).toContain("exact historical i5 audit policy semantics drifted");
+    expect(sql).toContain("prestate violation: audit policy semantics drifted");
+    expect(sql).toContain("postcondition violation: audit policy semantics drifted");
     expect(sql).toContain("unexpected historical audit_events policy present");
     expect(sql).toContain("historical i5 relation owner/rls/force drifted");
     expect(sql).toContain("expected historical security definer trigger-function contract drifted");

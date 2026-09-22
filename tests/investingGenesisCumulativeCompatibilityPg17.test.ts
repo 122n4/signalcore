@@ -31,6 +31,24 @@ import {
 import { accountSyntheticI3Fill } from "../lib/investing/accounting/syntheticFill";
 import { createResearchInvestigationV1 } from "../lib/investing/research/investigationWriter";
 import {
+  canonicalDatasetSeriesMaterialBytesV1,
+  hashDatasetSeriesV1,
+  hashDatasetSnapshotV1,
+  hashExecutionConfigV1,
+  hashMetricRequestSetV1,
+  hashRefV1,
+  hashResearchIrV1,
+  sha256HexV1,
+  verifyDatasetSeriesMaterialV1,
+  type DatasetSeriesHashPayloadV1,
+  type ExecutionConfigHashPayloadV1,
+  type MetricRequestSetHashPayloadV1,
+  type ResearchIrV1,
+  type RunInputHashPayloadV1,
+} from "../lib/investing/research";
+import { hashRunInputV1 } from "../lib/investing/research/canonical";
+import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
+import {
   createAndActivateInvestingPlanRevisionForAccountV1,
   initializeInvestingPlanForAccountV1,
 } from "../lib/investing/plan/service";
@@ -102,7 +120,7 @@ const expectedFinalAuditPolicies = [
   { tablename: "audit_events", policyname: "audit_events_i3c_buy_null_revision_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "I3_FILL", "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1", "I3_INTERNAL_PAPER_BUY_V1", "accounting_revision_id"] },
   { tablename: "audit_events", policyname: "audit_events_i3c_fill_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["I3_FILL_ACCOUNTING_SUCCEEDED", "I3_FILL", "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1", "ledger_transaction_id", "material_request_hash"] },
   { tablename: "audit_events", policyname: "audit_events_i4c_plan_conflict_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_MUTATION_CONFLICT", "IDEMPOTENCY_RECORD", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "reason_code"] },
-  { tablename: "audit_events", policyname: "audit_events_i4c_plan_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "operation_scope", "PLAN_WRITE"] },
+  { tablename: "audit_events", policyname: "audit_events_i4c_plan_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["AUTHORITY_ACCESS_DENIED", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "ACCOUNT_SCOPE", "PRINCIPAL_DISABLED", "TENANT_INACTIVE", "MEMBERSHIP_INACTIVE", "ACCESS_INACTIVE", "ACCOUNT_INACTIVE", "AUTHORITY_TUPLE_MISMATCH"] },
   { tablename: "audit_events", policyname: "audit_events_i4c_plan_guard_read", permissive: "PERMISSIVE", cmd: "SELECT", roles: ["investing_app"], qualMarkers: ["PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1", "PLAN_WRITE", "principal_id", "account_id"], checkMarkers: [] },
   { tablename: "audit_events", policyname: "audit_events_i4c_plan_success_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["PLAN_INITIALIZATION_SUCCEEDED", "PLAN_REVISION_ACTIVATED", "PLAN_REVISION", "PLAN_INITIALIZE_V1", "PLAN_CREATE_AND_ACTIVATE_REVISION_V1"] },
   { tablename: "audit_events", policyname: "audit_events_i5_research_investigation_create_denial_insert", permissive: "PERMISSIVE", cmd: "INSERT", roles: ["investing_app"], qualMarkers: [], checkMarkers: ["RESEARCH_INVESTIGATION_CREATE_V1", "RESEARCH_MUTATE", "AUTHORITY_ACCESS_DENIED", "operation_scope", "source_context"] },
@@ -148,6 +166,94 @@ const changedConflictContent: PlanContentV1 = Object.freeze({
   ...allNotSuppliedContent,
   notes: Object.freeze({ state: "SUPPLIED", type: "TEXT", value: "material-conflict-probe" }),
 });
+
+const executableExecutionConfig: ExecutionConfigHashPayloadV1 = {
+  schemaVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1",
+  engineCompatibilityVersion: "ENGINE_V20260918",
+  missingDataPolicy: "MISSING_DATA_EXCLUDE_V1",
+  fxPolicy: "FX_USD_IDENTITY_V1",
+  costsPolicy: "COSTS_ZERO_RESEARCH_V1",
+  slippagePolicy: "SLIPPAGE_ZERO_RESEARCH_V1",
+  fillPolicy: "CLOSE_TO_CLOSE_V1",
+  corporateActionPolicy: "ADJUSTED_PRICE_PROVIDER_V1",
+  calendarSessionPolicy: "XNYS_CLOSE_SESSION_V1",
+  valuationPolicy: "USD_CLOSE_MARK_V1",
+};
+
+const executableMetricRequestSet: MetricRequestSetHashPayloadV1 = {
+  schemaVersion: "METRIC_REQUEST_SET_HASH_PAYLOAD_V1",
+  metricRegistryVersion: "METRIC_REGISTRY_V20260918",
+  requests: [
+    { metricId: "TOTAL_RETURN", metricVersion: "METRIC_V1" },
+    { metricId: "MAX_DRAWDOWN", metricVersion: "METRIC_V1" },
+  ],
+};
+
+function ref(hashDomain: ReturnType<typeof hashRefV1>["hashDomain"], hashHex: string) {
+  return hashRefV1({ hashAlgorithm: "SHA-256", hashDomain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex });
+}
+
+function executableMaterial(instrumentId: string, values: readonly [string, string][]) {
+  const bytes = canonicalDatasetSeriesMaterialBytesV1(values.map(([date, value]) => ({ date, value })));
+  const series: DatasetSeriesHashPayloadV1 = {
+    schemaVersion: "DATASET_SERIES_HASH_PAYLOAD_V1",
+    providerDatasetId: "PG17_CUMULATIVE_EXECUTION_FIXTURE",
+    providerDatasetVersion: "V20260922",
+    instrumentId,
+    fieldId: "ADJUSTED_CLOSE",
+    fieldVersion: "PRICE_FIELD_V1",
+    frequency: "DAILY",
+    timezone: "America/New_York",
+    calendar: "XNYS_TRADING_CALENDAR_V1",
+    currency: "USD",
+    coverageStart: values[0]![0],
+    coverageEnd: values.at(-1)![0],
+    observationCount: String(values.length),
+    contentSha256: sha256HexV1(bytes),
+  };
+  return { series, bytes, verified: verifyDatasetSeriesMaterialV1(series, bytes) };
+}
+
+function executableFixture() {
+  const aaa = executableMaterial("US:CUMA", [["2025-01-06", "100"], ["2025-01-07", "102"], ["2025-01-08", "104"], ["2025-01-10", "106"]]);
+  const bbb = executableMaterial("US:CUMB", [["2025-01-06", "100"], ["2025-01-07", "100"], ["2025-01-08", "100"], ["2025-01-10", "100"]]);
+  const researchIr: ResearchIrV1 = {
+    schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1",
+    irVersion: "RESEARCH_IR_V1",
+    universe: { type: "EXPLICIT_INSTRUMENTS", instrumentIds: ["US:CUMB", "US:CUMA"] },
+    pipeline: [
+      { type: "FILTER", predicate: { type: "COMPARE", left: { type: "DATA_FIELD_REF", fieldId: "ADJUSTED_CLOSE", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" }, operator: "GT", right: { type: "DECIMAL", value: "0", unit: "VALUATION_CURRENCY_PER_INSTRUMENT" } } },
+      { type: "WEIGHT", method: "EQUAL" },
+      { type: "REBALANCE", schedule: "DAILY" },
+    ],
+    benchmark: { type: "BENCHMARK", benchmark: "INSTRUMENT", instrumentId: "US:CUMB" },
+    testPeriod: { startDate: "2025-01-06", endDate: "2025-01-10" },
+    valuationCurrency: "USD",
+    startingCapital: { amount: "1000", currency: "USD", origin: "SIMULATED" },
+  };
+  const datasetSnapshot = {
+    schemaVersion: "DATASET_SNAPSHOT_HASH_PAYLOAD_V1" as const,
+    snapshotPolicy: "DATASET_SNAPSHOT_POLICY_V1" as const,
+    series: [ref("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(aaa.series)), ref("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(bbb.series))],
+  };
+  const runInput: RunInputHashPayloadV1 = {
+    schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1",
+    runType: "HISTORICAL_BACKTEST",
+    researchEnvironment: "HISTORICAL_BACKTEST",
+    researchSourceContext: "PURE_RESEARCH",
+    researchSpec: ref("SYNTRAKE:RESEARCH_SPEC:V1", "A".repeat(64)),
+    researchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(researchIr)),
+    experiment: ref("SYNTRAKE:EXPERIMENT:V1", "B".repeat(64)),
+    datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(datasetSnapshot)),
+    engineId: "HISTORICAL_EXECUTION_ADAPTER",
+    engineVersion: "ENGINE_V20260918",
+    metricRegistryVersion: executableMetricRequestSet.metricRegistryVersion,
+    metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(executableMetricRequestSet)),
+    executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(executableExecutionConfig)),
+    materialPolicies: [],
+  };
+  return { aaa, bbb, researchIr, datasetSnapshot, runInput, runInputHash: hashRunInputV1(runInput), datasetSeries: [aaa.series, bbb.series] };
+}
 
 let adminPool: Pool;
 let adminClient: PoolClient;
@@ -381,6 +487,94 @@ async function seedInitialPaperCashFunding(context: AuthorizedInvestingContext, 
     await adminClient.query("rollback").catch(() => undefined);
     throw error;
   }
+}
+
+async function seedExecutableRunInputForCumulative(
+  client: PoolClient,
+  ids: { tenantId: string; principalId: string; tenantMembershipId: string; researchInvestigationId: string },
+) {
+  const fixture = executableFixture();
+  const draftRootId = randomUUID();
+  const hypothesisRootId = randomUUID();
+  const specRootId = randomUUID();
+  const draftRevisionId = randomUUID();
+  const hypothesisRevisionId = randomUUID();
+  const specRevisionId = randomUUID();
+  const experimentId = randomUUID();
+  const runInputIdentityId = randomUUID();
+  const specIdempotencyId = randomUUID();
+  const experimentIdempotencyId = randomUUID();
+  const draftIdempotencyId = randomUUID();
+  const hypothesisIdempotencyId = randomUUID();
+
+  await client.query(
+    `insert into investing.idempotency_records (
+      idempotency_record_id, idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id,
+      operation_scope, operation, principal_id, tenant_id, account_id, status, completed_at
+    ) values
+      ($1, 'idem-cumulative-spec', $5, 'corr-cumulative-spec', 'USER_PRINCIPAL', $9, 'TENANT_SCOPE', 'RESEARCH_SPEC_REVISION_CREATE_V1', $10, $11, null, 'SUCCEEDED', now()),
+      ($2, 'idem-cumulative-experiment', $6, 'corr-cumulative-experiment', 'USER_PRINCIPAL', $9, 'TENANT_SCOPE', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', $10, $11, null, 'SUCCEEDED', now()),
+      ($3, 'idem-cumulative-draft', $7, 'corr-cumulative-draft', 'USER_PRINCIPAL', $9, 'TENANT_SCOPE', 'RESEARCH_DRAFT_REVISION_CREATE_V1', $10, $11, null, 'SUCCEEDED', now()),
+      ($4, 'idem-cumulative-hypothesis', $8, 'corr-cumulative-hypothesis', 'USER_PRINCIPAL', $9, 'TENANT_SCOPE', 'RESEARCH_HYPOTHESIS_REVISION_CREATE_V1', $10, $11, null, 'SUCCEEDED', now())`,
+    [specIdempotencyId, experimentIdempotencyId, draftIdempotencyId, hypothesisIdempotencyId, "C".repeat(64), "D".repeat(64), "E".repeat(64), "F".repeat(64), primarySubject, ids.principalId, ids.tenantId],
+  );
+  await client.query(
+    `insert into investing.research_material_roots (
+      material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
+    ) values
+      ($1,$4,$5,null,$6,'USER_PRINCIPAL',$7,$8,null,'TENANT_SCOPE','PURE_RESEARCH','DRAFT','RESEARCH_DRAFT_REVISION_CREATE_V1'),
+      ($2,$4,$5,null,$6,'USER_PRINCIPAL',$7,$8,null,'TENANT_SCOPE','PURE_RESEARCH','HYPOTHESIS','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
+      ($3,$4,$5,null,$6,'USER_PRINCIPAL',$7,$8,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC','RESEARCH_SPEC_REVISION_CREATE_V1')`,
+    [draftRootId, hypothesisRootId, specRootId, ids.researchInvestigationId, ids.tenantId, ids.principalId, primarySubject, ids.tenantMembershipId],
+  );
+  await client.query(
+    `insert into investing.research_material_revisions (
+      material_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context, material_kind, revision_number,
+      predecessor_revision_id, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values
+      ($1,$2,$5,$6,null,$7,'USER_PRINCIPAL',$8,$9,null,'TENANT_SCOPE','RESEARCH_DRAFT_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','DRAFT',1,null,'RESEARCH_DRAFT_HASH_PAYLOAD_V1','{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb,$10,$10,$12,'idem-cumulative-draft','corr-cumulative-draft'),
+      ($3,$4,$5,$6,null,$7,'USER_PRINCIPAL',$8,$9,null,'TENANT_SCOPE','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','HYPOTHESIS',1,null,'HYPOTHESIS_HASH_PAYLOAD_V1','{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb,$11,$11,$13,'idem-cumulative-hypothesis','corr-cumulative-hypothesis')`,
+    [draftRevisionId, draftRootId, hypothesisRevisionId, hypothesisRootId, ids.researchInvestigationId, ids.tenantId, ids.principalId, primarySubject, ids.tenantMembershipId, "E".repeat(64), "F".repeat(64), draftIdempotencyId, hypothesisIdempotencyId],
+  );
+  await client.query(
+    `insert into investing.research_spec_revisions (
+      research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
+      tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
+      source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
+      canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values ($1,$2,$3,$4,null,$5,'USER_PRINCIPAL',$6,$7,null,'TENANT_SCOPE','PURE_RESEARCH',
+      'RESEARCH_SPEC_REVISION_CREATE_V1','RESEARCH_MUTATE',1,null,$8,$9,$10,$11,'RESEARCH_SPEC_CANDIDATE_V1','CANDIDATE_ONLY',
+      '{"schemaVersion":"RESEARCH_SPEC_CANDIDATE_V1"}'::jsonb,$12,$13,'idem-cumulative-spec','corr-cumulative-spec')`,
+    [specRevisionId, specRootId, ids.researchInvestigationId, ids.tenantId, ids.principalId, primarySubject, ids.tenantMembershipId, draftRevisionId, "E".repeat(64), hypothesisRevisionId, "F".repeat(64), "C".repeat(64), specIdempotencyId],
+  );
+  await client.query(
+    `insert into investing.research_experiments (
+      research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
+      operation_scope, source_context, operation, capability, relation, parent_experiment_id, research_spec_revision_id,
+      research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex,
+      experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex,
+      experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex,
+      material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    ) values ($1,$2,$3,null,$4,'USER_PRINCIPAL',$5,$6,null,'TENANT_SCOPE','PURE_RESEARCH',
+      'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1','RESEARCH_MUTATE','BASELINE',null,$7,
+      'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$8,
+      'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$9,
+      null,null,null,null,$10,$11,'idem-cumulative-experiment','corr-cumulative-experiment')`,
+    [experimentId, ids.researchInvestigationId, ids.tenantId, ids.principalId, primarySubject, ids.tenantMembershipId, specRevisionId, fixture.runInput.researchIr.hashHex, fixture.runInput.experiment.hashHex, "D".repeat(64), experimentIdempotencyId],
+  );
+
+  for (const series of fixture.datasetSeries) {
+    await client.query("insert into investing.dataset_series_scientific_identities (dataset_series_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SERIES:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenantId, ids.principalId, ids.tenantMembershipId, hashDatasetSeriesV1(series), JSON.stringify(series)]);
+  }
+  await client.query("insert into investing.dataset_snapshots_scientific_identities (dataset_snapshot_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SNAPSHOT:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenantId, ids.principalId, ids.tenantMembershipId, fixture.runInput.datasetSnapshot.hashHex, JSON.stringify(fixture.datasetSnapshot)]);
+  await client.query("insert into investing.metric_request_sets_scientific_identities (metric_request_set_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload, metric_registry_version) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:METRIC_REQUEST_SET:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb,$6) on conflict do nothing", [ids.tenantId, ids.principalId, ids.tenantMembershipId, fixture.runInput.metricRequestSet.hashHex, JSON.stringify(executableMetricRequestSet), executableMetricRequestSet.metricRegistryVersion]);
+  await client.query("insert into investing.execution_configs_scientific_identities (execution_config_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload, engine_compatibility_version) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:EXECUTION_CONFIG:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb,$6) on conflict do nothing", [ids.tenantId, ids.principalId, ids.tenantMembershipId, fixture.runInput.executionConfig.hashHex, JSON.stringify(executableExecutionConfig), executableExecutionConfig.engineCompatibilityVersion]);
+  await client.query("insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (gen_random_uuid(),$1,null,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb) on conflict do nothing", [ids.tenantId, ids.principalId, ids.tenantMembershipId, fixture.runInput.researchIr.hashHex, JSON.stringify(fixture.researchIr)]);
+  await client.query("insert into investing.run_inputs_scientific_identities (run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id, operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex, metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,null,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11,$12,$13,$14,$15,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$16,$17::jsonb)", [runInputIdentityId, ids.tenantId, ids.principalId, ids.tenantMembershipId, ids.researchInvestigationId, experimentId, specRevisionId, fixture.runInput.researchSpec.hashHex, fixture.runInput.researchIr.hashHex, fixture.runInput.experiment.hashHex, fixture.runInput.datasetSnapshot.hashHex, fixture.runInput.metricRegistryVersion, fixture.runInput.metricRequestSet.hashHex, fixture.runInput.engineVersion, fixture.runInput.executionConfig.hashHex, fixture.runInputHash, JSON.stringify(fixture.runInput)]);
+
+  return { runInputIdentityId, fixture };
 }
 
 async function financialSnapshot() {
@@ -714,6 +908,32 @@ afterAll(async () => {
     const investigationReplay = await createResearchInvestigationV1(researchCreateInput);
     expect(investigationReplay).toEqual({ ...investigation, replayed: true });
 
+    const executableRunInput = await seedExecutableRunInputForCumulative(adminClient, {
+      tenantId: bootstrap.tenantId,
+      principalId: bootstrap.principalId,
+      tenantMembershipId: bootstrap.tenantMembershipId,
+      researchInvestigationId: investigation.investigationId,
+    });
+    const materialBytes = new Map<string, Buffer>([
+      [hashDatasetSeriesV1(executableRunInput.fixture.aaa.series), executableRunInput.fixture.aaa.bytes],
+      [hashDatasetSeriesV1(executableRunInput.fixture.bbb.series), executableRunInput.fixture.bbb.bytes],
+    ]);
+    const researchExecution = await executeResearchRunCommandV1({
+      researchInvestigationId: investigation.investigationId,
+      runInputIdentityId: executableRunInput.runInputIdentityId,
+      correlationId: "corr-cumulative-i5-execution-01",
+      datasetMaterialProvider: {
+        loadSeriesContent: async (seriesRef) => materialBytes.get(seriesRef.hashHex) ?? null,
+      },
+    });
+    expect(researchExecution.ok).toBe(true);
+    if (researchExecution.ok !== true) throw new Error(`I5 execution after repair failed: ${JSON.stringify(researchExecution)}`);
+    const evidenceCountAfterExecution = await adminClient.query<{ count: string }>(
+      "select count(*)::text as count from investing.research_evidence_objects_scientific_identities where result_identity_id=$1",
+      [researchExecution.resultIdentityId],
+    );
+    expect(Number(evidenceCountAfterExecution.rows[0]!.count)).toBeGreaterThan(0);
+
     currentSubject = secondarySubject;
     const secondaryBootstrap = await bootstrapInitialPersonalInvestingAccount({
       idempotencyKey: "idem-i0-i4-bootstrap-0002",
@@ -898,37 +1118,38 @@ afterAll(async () => {
     expect(invalidTransitionRejected).toBe(true);
 
     const evidenceRow = await adminClient.query<{ evidence_identity_id: string }>(
-      "select evidence_identity_id::text from investing.research_evidence_objects_scientific_identities limit 1",
+      "select evidence_identity_id::text from investing.research_evidence_objects_scientific_identities where result_identity_id=$1",
+      [researchExecution.resultIdentityId],
     );
-    if (evidenceRow.rows[0]) {
-      let evidenceUpdateRejected = false;
-      await adminClient.query("begin");
-      try {
-        await adminClient.query(
-          "update investing.research_evidence_objects_scientific_identities set descriptor_kind = descriptor_kind where evidence_identity_id=$1",
-          [evidenceRow.rows[0].evidence_identity_id],
-        );
-      } catch (error) {
-        evidenceUpdateRejected = /research evidence objects are append-only/i.test(String((error as Error).message));
-      } finally {
-        await adminClient.query("rollback");
-      }
-      expect(evidenceUpdateRejected).toBe(true);
+    expect(evidenceRow.rows.length).toBeGreaterThan(0);
 
-      let evidenceDeleteRejected = false;
-      await adminClient.query("begin");
-      try {
-        await adminClient.query(
-          "delete from investing.research_evidence_objects_scientific_identities where evidence_identity_id=$1",
-          [evidenceRow.rows[0].evidence_identity_id],
-        );
-      } catch (error) {
-        evidenceDeleteRejected = /research evidence objects are append-only/i.test(String((error as Error).message));
-      } finally {
-        await adminClient.query("rollback");
-      }
-      expect(evidenceDeleteRejected).toBe(true);
+    let evidenceUpdateRejected = false;
+    await adminClient.query("begin");
+    try {
+      await adminClient.query(
+        "update investing.research_evidence_objects_scientific_identities set descriptor_kind = descriptor_kind where evidence_identity_id=$1",
+        [evidenceRow.rows[0]!.evidence_identity_id],
+      );
+    } catch (error) {
+      evidenceUpdateRejected = /research evidence objects are append-only/i.test(String((error as Error).message));
+    } finally {
+      await adminClient.query("rollback");
     }
+    expect(evidenceUpdateRejected).toBe(true);
+
+    let evidenceDeleteRejected = false;
+    await adminClient.query("begin");
+    try {
+      await adminClient.query(
+        "delete from investing.research_evidence_objects_scientific_identities where evidence_identity_id=$1",
+        [evidenceRow.rows[0]!.evidence_identity_id],
+      );
+    } catch (error) {
+      evidenceDeleteRejected = /research evidence objects are append-only/i.test(String((error as Error).message));
+    } finally {
+      await adminClient.query("rollback");
+    }
+    expect(evidenceDeleteRejected).toBe(true);
 
     const securityDefiners = await adminClient.query<{
       proname: string;

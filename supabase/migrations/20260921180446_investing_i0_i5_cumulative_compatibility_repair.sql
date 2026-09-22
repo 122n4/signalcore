@@ -21,6 +21,7 @@ declare
   v_bad_count integer;
   v_acl_bad_count integer;
   v_missing_relations text[];
+  v_policy_mismatches text[];
 begin
   if current_user <> 'postgres' then
     raise exception 'I0-I5 compatibility repair prestate violation: migration executor must be postgres';
@@ -223,7 +224,8 @@ begin
     raise exception 'I0-I5 compatibility repair prestate violation: expected exact historical I5 audit policy count, found %', v_bad_count;
   end if;
 
-  select count(*) into v_bad_count
+  select coalesce(array_agg(expected.policy_name order by expected.policy_name), array[]::text[])
+    into v_policy_mismatches
   from (
     values
       ('audit_events_i2b_authority_denial_insert', 'a', array[
@@ -271,8 +273,8 @@ begin
       )
   );
 
-  if v_bad_count <> 0 then
-    raise exception 'I0-I5 compatibility repair prestate violation: exact historical I5 audit policy semantics drifted';
+  if cardinality(v_policy_mismatches) <> 0 then
+    raise exception 'I0-I5 compatibility repair prestate violation: audit policy semantics drifted: %', v_policy_mismatches;
   end if;
 
   select count(*) into v_bad_count
@@ -6017,6 +6019,7 @@ declare
     'RESEARCH_EXPERIMENT_VARIANT_CREATE_V1'
   ];
   v_bad_count integer;
+  v_policy_mismatches text[];
 begin
   select coalesce(array_agg(token order by token), array[]::text[])
     into v_operation_tokens
@@ -6158,7 +6161,8 @@ begin
     raise exception 'I0-I5 compatibility repair postcondition violation: expected exact final audit_events policy count, found %', v_bad_count;
   end if;
 
-  select count(*) into v_bad_count
+  select coalesce(array_agg(expected.policy_name order by expected.policy_name), array[]::text[])
+    into v_policy_mismatches
   from (
     values
       ('audit_events_i2b_authority_denial_insert', 'a', array[]::text[], array['authority_access_denied','account_context_resolve','account_authority_read','operation_scope','reason_code']::text[]),
@@ -6166,7 +6170,7 @@ begin
       ('audit_events_i3c_buy_null_revision_insert', 'a', array[]::text[], array['i3_fill_accounting_succeeded','i3_fill','i3_internal_paper_fill_accounting_v1','i3_internal_paper_buy_v1','accounting_revision_id']::text[]),
       ('audit_events_i3c_fill_success_insert', 'a', array[]::text[], array['i3_fill_accounting_succeeded','i3_fill','i3_internal_paper_fill_accounting_v1','ledger_transaction_id','material_request_hash']::text[]),
       ('audit_events_i4c_plan_conflict_insert', 'a', array[]::text[], array['plan_mutation_conflict','idempotency_record','plan_initialize_v1','plan_create_and_activate_revision_v1','reason_code']::text[]),
-      ('audit_events_i4c_plan_denial_insert', 'a', array[]::text[], array['authority_access_denied','plan_initialize_v1','plan_create_and_activate_revision_v1','operation_scope','plan_write']::text[]),
+      ('audit_events_i4c_plan_denial_insert', 'a', array[]::text[], array['authority_access_denied','plan_initialize_v1','plan_create_and_activate_revision_v1','account_scope','principal_disabled','tenant_inactive','membership_inactive','access_inactive','account_inactive','authority_tuple_mismatch']::text[]),
       ('audit_events_i4c_plan_guard_read', 'r', array['plan_initialize_v1','plan_create_and_activate_revision_v1','plan_write','principal_id','account_id']::text[], array[]::text[]),
       ('audit_events_i4c_plan_success_insert', 'a', array[]::text[], array['plan_initialization_succeeded','plan_revision_activated','plan_revision','plan_initialize_v1','plan_create_and_activate_revision_v1']::text[]),
       ('audit_events_i5_research_investigation_create_denial_insert', 'a', array[]::text[], array['research_investigation_create_v1','research_mutate','authority_access_denied','operation_scope','source_context']::text[])
@@ -6202,8 +6206,8 @@ begin
       )
   );
 
-  if v_bad_count <> 0 then
-    raise exception 'I0-I5 compatibility repair postcondition violation: exact final audit_events policy semantics drifted';
+  if cardinality(v_policy_mismatches) <> 0 then
+    raise exception 'I0-I5 compatibility repair postcondition violation: audit policy semantics drifted: %', v_policy_mismatches;
   end if;
 
   select count(*) into v_bad_count
