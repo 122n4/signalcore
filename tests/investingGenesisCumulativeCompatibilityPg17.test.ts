@@ -977,7 +977,11 @@ afterAll(async () => {
         tenantId: bootstrap.tenantId,
         correlationId: "corr-cumulative-i5-principal-disabled-negative",
       });
-      expect(principalDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
+      expect(principalDisabledDenial).toEqual({
+        ok: false,
+        code: "PRINCIPAL_DISABLED",
+        externalCode: "FORBIDDEN_OR_NOT_FOUND",
+      });
       const preAuthorityAudit = await adminClient.query<{
         resolution_stage: string;
         reason_code: string;
@@ -1023,7 +1027,11 @@ afterAll(async () => {
         tenantId: bootstrap.tenantId,
         correlationId: "corr-cumulative-i5-membership-inactive-negative",
       });
-      expect(inactiveMembershipDenial).toEqual({ ok: false, code: "MEMBERSHIP_INACTIVE" });
+      expect(inactiveMembershipDenial).toEqual({
+        ok: false,
+        code: "MEMBERSHIP_INACTIVE",
+        externalCode: "FORBIDDEN_OR_NOT_FOUND",
+      });
     } finally {
       await adminClient.query(
         "update investing.tenant_memberships set state='ACTIVE', revoked_at=null where tenant_membership_id=$1",
@@ -1381,12 +1389,20 @@ afterAll(async () => {
       tenantId: bootstrap.tenantId,
       correlationId: "corr-cumulative-i5-disabled-denial",
     });
-    expect(researchDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
+    expect(researchDisabledDenial).toEqual({
+      ok: false,
+      code: "PRINCIPAL_DISABLED",
+      externalCode: "FORBIDDEN_OR_NOT_FOUND",
+    });
     const draftDisabledDenial = await resolveAuthorizedResearchDraftCreateContext({
       researchInvestigationId: investigation.investigationId,
       correlationId: "corr-cumulative-i5-draft-disabled-denial",
     });
-    expect(draftDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
+    expect(draftDisabledDenial).toEqual({
+      ok: false,
+      code: "PRINCIPAL_DISABLED",
+      externalCode: "FORBIDDEN_OR_NOT_FOUND",
+    });
 
     const denialAudit = await adminClient.query<{ count: string }>(
       `select count(*)::text as count from investing.audit_events
