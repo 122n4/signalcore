@@ -96,6 +96,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Research Execution Engine design freeze (unnumbered) | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md`, `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md`, `I5_RESEARCH_METRIC_REGISTRY_V1.md` |
 | I5 Research Execution Closure (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-1 Evidence Object Scientific Closure (unnumbered) | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-2 Evidence Ledger and Passport (unnumbered) | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -176,6 +177,15 @@ freeze/master evidence still relies on its narrow classifications.
   fails closed across tenant/principal/membership/scope/source/account context;
   executes through real `investing_app`; and is rehearsed on PostgreSQL 17.11.
   Generic arbitrary Evidence hashing is not a public Research authority surface.
+- I5 RL-2 Evidence Ledger and Passport:
+  `CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED`. This
+  accepted closure establishes an internal deterministic Investigation-level
+  Evidence Ledger / Passport projection over already accepted canonical
+  Research authorities. `PASSPORT != SCIENTIFIC AUTHORITY`.
+  `EVIDENCE LEDGER != FINANCIAL LEDGER`.
+  `EVIDENCE LEDGER != NEW EVENT STORE`. `LAB != PAPER`. `CORE != LAB`.
+  RL-2 creates no scientific hash domain, no Passport scientific identity, no
+  Passport persistence table and no duplicate scientific persistence.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -309,6 +319,19 @@ not become Investing Genesis authority merely because they use similar words.
   USER_PORTFOLIO/account execution. Production Supabase migration application
   remains `NOT PERFORMED`.
 
+- I5 RL-2 Evidence Ledger and Passport: current accepted, unnumbered. This
+  acceptance establishes a deterministic Investigation-level Evidence Ledger /
+  Passport projection over already accepted canonical Research authorities.
+  Passport is a read model only, not scientific authority, not a new event
+  store, not a financial ledger, not Paper and not Core. RL-2 creates no
+  scientific hash domain and no duplicate scientific persistence. It preserves
+  historical material revisions, ResearchSpec revisions, BASELINE/VARIANT
+  Experiments, RunInputs, operational Runs, lifecycle events, Results and
+  Evidence Objects; supports tenant and account Investigation authority; runs
+  under repeatable-read read-only `investing_app`; and exposes RL-3/RL-8/RL-9
+  as explicit deferred authority. Production Supabase migration application
+  remains `NOT PERFORMED`.
+
 - I5 Research Lab Completion Program: current accepted, unnumbered. This
   acceptance defines RL-2 through RL-11 as the remaining finite backend
   completion bar after accepted RL-1,
@@ -342,7 +365,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -453,6 +476,84 @@ I5 RL-1 Evidence Object Scientific Closure acceptance evidence:
 
 `I5 RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
 
+I5 RL-2 Evidence Ledger and Passport acceptance evidence:
+
+- Canonical predecessor:
+  `15444892a8b12bd53ec8e48d4162093482c4fa40`.
+- Technical candidate:
+  `326feaf0c047c36a88a3be1c0cc71a573d75ffa5`.
+- PR:
+  `#82`.
+- CI:
+  `35774520717 - SUCCESS`.
+- Full suite:
+  `216 passed / 18 skipped files`.
+- Full suite tests:
+  `1192 passed / 43 skipped tests`.
+- Lint:
+  `PASS`.
+- TypeScript:
+  `PASS`.
+- Production build:
+  `PASS`.
+- Dependency audit:
+  `0 vulnerabilities`.
+- PG17:
+  `35774520535 - SUCCESS`.
+- Historical PG17 job:
+  `106904206482 - SUCCESS`.
+- Cumulative compatibility PG17 job:
+  `106904206842 - SUCCESS`.
+- RL-2 dedicated PostgreSQL rehearsal:
+  `7 / 7 PASS`.
+- PostgreSQL:
+  `17.11 (Debian 17.11-1.pgdg13+2)`.
+- Vercel candidate:
+  `READY / PREVIEW`.
+- Independent auditor verdict:
+  `PASS`.
+- Production Supabase mutation:
+  `NONE`.
+- Production migration application:
+  `NOT PERFORMED`.
+- Cumulative compatibility repair production application:
+  `NOT PERFORMED`.
+- Production RL-2 migration application:
+  `NOT PERFORMED`.
+- Accepted RL-2 migration:
+  `20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+
+Accepted RL-2 invariants:
+
+- Passport is deterministic projection/read model only.
+- No Passport persistence table.
+- No Passport scientific hash domain.
+- Dedicated `RESEARCH_PASSPORT_READ_V1 / RESEARCH_READ`.
+- Tenant and account Investigation authority.
+- Repeatable-read read-only snapshot.
+- `current_user/current_role = investing_app`.
+- Full historical material, Experiment, Run, Result and Evidence reconstruction.
+- `DRAFT -> SYNTRAKE:RESEARCH_DRAFT:V1`.
+- `HYPOTHESIS -> SYNTRAKE:HYPOTHESIS:V1`.
+- ResearchSpec scientific identity only when materialized as `SYNTRAKE:RESEARCH_SPEC:V1`.
+- Valid `NO_HYPOTHESIS` support.
+- RunInput to ResearchSpec scientific hash binding.
+- RunInput to Research IR binding.
+- RunInput to Experiment binding.
+- Duplicate ResearchSpec scientific identity rejection.
+- Strict lifecycle validation.
+- Result artifact fail-closed validation.
+- Evidence binding.
+- Result/Evidence reuse visibility across distinct operational Runs.
+- Cross-tenant/principal/membership denial.
+- RLS matrix across all accepted scientific/execution surfaces.
+- Read authority grants no mutation authority.
+- Future RL-3/RL-8/RL-9 represented as explicit deferred authority.
+
+`I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED`.
+
 ## I5 Runtime Presence And Trust State
 
 Implementation presence is not the same as formal trust recovery acceptance.
@@ -475,12 +576,20 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Research Execution Engine design freeze / unnumbered | NO | YES | `I5_RESEARCH_EXECUTION_ENGINE_CONTRACT_V1.md` + `I5_RESEARCH_EXECUTABLE_FIELD_SEMANTICS_V1.md` + `I5_RESEARCH_METRIC_REGISTRY_V1.md` + contract tests + CI | CURRENT ACCEPTED DESIGN CONTRACT - RESEARCH EXECUTION ENGINE FREEZE - UNNUMBERED | CURRENT_ACCEPTED / DESIGN_FREEZE | NONE |
 | Research Execution Closure / unnumbered | YES | YES | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RESEARCH EXECUTION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RESEARCH_EXECUTION_CLOSURE | NONE |
 | RL-1 Evidence Object Scientific Closure / unnumbered | YES | YES | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + Evidence runtime + writer finalization + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE | NONE |
+| RL-2 Evidence Ledger and Passport / unnumbered | YES | YES | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` + Passport reader/service + read-authority migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT | NONE |
 
 RL-1 runtime/progression state:
 
 - design: `YES`.
 - implementation: `YES`.
 - state: `CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE`.
+- permanent A-number: `NONE`.
+
+RL-2 runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- state: `CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT`.
 - permanent A-number: `NONE`.
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence

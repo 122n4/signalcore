@@ -126,6 +126,31 @@ DatasetSeries, DatasetSnapshot, MetricRequestSet, ExecutionConfig and
 ResearchSpec are current owner-exact domains admitted by the accepted unnumbered
 Dataset & Run Scientific Closure owner contract.
 
+## RL-2 Passport And Evidence Ledger Projection
+
+RL-2 Evidence Ledger and Passport V1 is current accepted as a read/projection
+surface only. It introduces no new scientific hash domain and no Passport
+scientific identity.
+
+`RESEARCH_PASSPORT_V1 has no scientific hash domain`.
+
+`Evidence Ledger V1 has no independent scientific hash identity`.
+
+RL-2 may project already accepted HashRefs for:
+
+- Research Draft
+- Hypothesis
+- ResearchSpec
+- Research IR
+- Experiment
+- ExperimentParameters
+- RunInput
+- Result
+- Evidence Object
+
+Those projected HashRefs retain the ownership, payload and admission semantics
+of their accepted source domains.
+
 ## Explicit Exclusions
 
 `SYNTRAKE:RESULT:V1` is current accepted through the unnumbered I5 Research

@@ -11,6 +11,7 @@ on:
       - "tests/investingGenesisI5DatasetRunScientificClosurePg17.test.ts"
       - "tests/investingGenesisI5ResearchExecutionClosurePg17.test.ts"
       - "tests/investingGenesisCumulativeCompatibilityPg17.test.ts"
+      - "tests/investingGenesisI5Rl2ResearchPassportPg17.test.ts"
       - "docs/investing-genesis/SUPABASE_RECONCILIATION_CANDIDATE_20260915.md"
       - ".github/workflows/investing-supabase-reconciliation-pg17.yml"
 
@@ -64,6 +65,9 @@ jobs:
 
       - name: PostgreSQL 17 Research execution closure rehearsal
         run: npx vitest run tests/investingGenesisI5ResearchExecutionClosurePg17.test.ts
+
+      - name: PostgreSQL 17 RL-2 Passport read rehearsal
+        run: npx vitest run tests/investingGenesisI5Rl2ResearchPassportPg17.test.ts
 
   investing-cumulative-compatibility-pg17:
     runs-on: ubuntu-latest
