@@ -1008,7 +1008,7 @@ afterAll(async () => {
       text: "select count(*)::text as count from investing.tenants where tenant_id=$1",
       values: [bootstrap.tenantId],
     }, 0, [
-      { text: "update investing.tenants set state='SUSPENDED' where tenant_id=$1", values: [bootstrap.tenantId] },
+      { text: "update investing.tenants set state='SUSPENDED', suspended_at=transaction_timestamp(), closed_at=null where tenant_id=$1", values: [bootstrap.tenantId] },
     ]);
     await expectInvestingAppCount("wrong principal cannot see OWNER membership", [
       ...researchTenantGucs.filter((statement) => statement.values?.[0] !== "syntrake.investing.principal_id"),
