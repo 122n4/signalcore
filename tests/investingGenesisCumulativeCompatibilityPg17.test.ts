@@ -664,6 +664,100 @@ async function expectInvestingAppCount(
   }
 }
 
+type ReplayVisibilityCounts = {
+  accounts: number;
+  tenant_memberships: number;
+  account_access: number;
+  tenants: number;
+};
+
+async function measureBootstrapReplayVisibility(
+  input: {
+    actorId: string;
+    principalId: string;
+    tenantId: string;
+    tenantMembershipId: string;
+    accountId: string;
+    accountAccessId: string;
+    idempotencyRecordId: string;
+    idempotencyKey: string;
+    materialRequestHash: string;
+    baseCurrency: string;
+    includeCandidateTenantId: boolean;
+  },
+): Promise<ReplayVisibilityCounts> {
+  const setGuc = async (name: string, value: string) => {
+    await adminClient.query("select set_config($1, $2, true)", [name, value]);
+  };
+
+  await adminClient.query("begin");
+  try {
+    await adminClient.query("set local role investing_app");
+    await setGuc("syntrake.investing.actor_kind", "USER_PRINCIPAL");
+    await setGuc("syntrake.investing.actor_id", input.actorId);
+    await setGuc("syntrake.investing.external_provider", "CLERK");
+    await setGuc("syntrake.investing.external_subject", input.actorId);
+    await setGuc("syntrake.investing.operation", "INITIAL_PERSONAL_BOOTSTRAP");
+    await setGuc("syntrake.investing.capability", "AUTHORITY_BOOTSTRAP");
+    await setGuc("syntrake.investing.correlation_id", "corr-cumulative-replay-visibility");
+    await setGuc("syntrake.investing.idempotency_key", input.idempotencyKey);
+    await setGuc("syntrake.investing.idempotency_record_id", input.idempotencyRecordId);
+    await setGuc("syntrake.investing.material_request_hash", input.materialRequestHash);
+    await setGuc("syntrake.investing.base_currency", input.baseCurrency);
+    await setGuc("syntrake.investing.principal_id", input.principalId);
+    await setGuc("syntrake.investing.tenant_id", input.tenantId);
+    await setGuc("syntrake.investing.account_id", input.accountId);
+    await setGuc("syntrake.investing.tenant_membership_id", input.tenantMembershipId);
+    await setGuc("syntrake.investing.account_access_id", input.accountAccessId);
+    if (input.includeCandidateTenantId) {
+      await setGuc("syntrake.investing.candidate_tenant_id", input.tenantId);
+    }
+
+    const accounts = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.accounts
+       where account_id = $1
+         and tenant_id = $2
+         and initial_principal_id = $3
+         and account_origin = 'INITIAL_PERSONAL_BOOTSTRAP'`,
+      [input.accountId, input.tenantId, input.principalId],
+    );
+    const memberships = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.tenant_memberships
+       where tenant_membership_id = $1
+         and tenant_id = $2
+         and principal_id = $3
+         and role = 'OWNER'`,
+      [input.tenantMembershipId, input.tenantId, input.principalId],
+    );
+    const access = await adminClient.query<{ count: string }>(
+      `select count(*)::text as count
+       from investing.account_access
+       where account_access_id = $1
+         and account_id = $2
+         and tenant_id = $3
+         and tenant_membership_id = $4
+         and principal_id = $5
+         and role = 'OWNER'`,
+      [input.accountAccessId, input.accountId, input.tenantId, input.tenantMembershipId, input.principalId],
+    );
+    const tenants = await adminClient.query<{ count: string }>(
+      "select count(*)::text as count from investing.tenants where tenant_id = $1",
+      [input.tenantId],
+    );
+
+    return {
+      accounts: Number(accounts.rows[0]!.count),
+      tenant_memberships: Number(memberships.rows[0]!.count),
+      account_access: Number(access.rows[0]!.count),
+      tenants: Number(tenants.rows[0]!.count),
+    };
+  } finally {
+    await adminClient.query("rollback");
+  }
+}
+
 beforeAll(async () => {
   if (!connectionString) return;
 
@@ -767,6 +861,44 @@ afterAll(async () => {
     }
     expect(bootstrap.ok).toBe(true);
     expect(bootstrap.replayed).toBe(false);
+
+    const bootstrapIdempotency = await adminClient.query<{ material_request_hash: string }>(
+      "select material_request_hash from investing.idempotency_records where idempotency_record_id=$1",
+      [bootstrap.idempotencyRecordId],
+    );
+    expect(bootstrapIdempotency.rows).toHaveLength(1);
+    const replayVisibilityProbe = {
+      actorId: primarySubject,
+      principalId: bootstrap.principalId,
+      tenantId: bootstrap.tenantId,
+      tenantMembershipId: bootstrap.tenantMembershipId,
+      accountId: bootstrap.accountId,
+      accountAccessId: bootstrap.accountAccessId,
+      idempotencyRecordId: bootstrap.idempotencyRecordId,
+      idempotencyKey: "idem-i0-i4-bootstrap-0001",
+      materialRequestHash: bootstrapIdempotency.rows[0]!.material_request_hash,
+      baseCurrency: "EUR",
+    };
+    const replayVisibilityWithoutCandidateTenant = await measureBootstrapReplayVisibility({
+      ...replayVisibilityProbe,
+      includeCandidateTenantId: false,
+    });
+    expect(replayVisibilityWithoutCandidateTenant).toEqual({
+      accounts: 1,
+      tenant_memberships: 1,
+      account_access: 1,
+      tenants: 0,
+    });
+    const replayVisibility = await measureBootstrapReplayVisibility({
+      ...replayVisibilityProbe,
+      includeCandidateTenantId: true,
+    });
+    expect(replayVisibility).toEqual({
+      accounts: 1,
+      tenant_memberships: 1,
+      account_access: 1,
+      tenants: 1,
+    });
 
     const bootstrapReplay = await bootstrapInitialPersonalInvestingAccount({
       idempotencyKey: "idem-i0-i4-bootstrap-0001",

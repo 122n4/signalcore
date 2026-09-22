@@ -872,6 +872,7 @@ async function validateCanonicalReplayReference(
     account_id: reference.accountId,
     tenant_membership_id: reference.tenantMembershipId,
     account_access_id: reference.accountAccessId,
+    candidate_tenant_id: reference.tenantId,
   });
 
   const account = await expectExactlyOne(
