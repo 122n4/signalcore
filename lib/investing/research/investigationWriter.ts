@@ -499,9 +499,9 @@ async function setTransactionContext(
   await setTransactionConfig(client, "external_subject", context.actorId);
   await setTransactionConfig(client, "principal_id", context.principalId);
   await setTransactionConfig(client, "tenant_id", context.tenantId);
-  if ("accountId" in context) await setTransactionConfig(client, "account_id", context.accountId);
+  await setTransactionConfig(client, "account_id", "accountId" in context ? context.accountId : "");
   await setTransactionConfig(client, "tenant_membership_id", context.tenantMembershipId);
-  if ("accountAccessId" in context) await setTransactionConfig(client, "account_access_id", context.accountAccessId);
+  await setTransactionConfig(client, "account_access_id", "accountAccessId" in context ? context.accountAccessId : "");
   await setTransactionConfig(client, "operation", operation);
   await setTransactionConfig(client, "capability", capability);
   await setTransactionConfig(client, "operation_scope", context.operationScope);

@@ -449,7 +449,8 @@ describe("Investing Genesis I5-A1 Research Investigation persistence", () => {
         capability: "RESEARCH_MUTATE",
         source_context: (context as { sourceContext: string }).sourceContext,
       });
-      expect(client.config.get("syntrake.investing.account_id")).toBeUndefined();
+      expect(client.config.get("syntrake.investing.account_id")).toBe("");
+      expect(client.config.get("syntrake.investing.account_access_id")).toBe("");
     }
   });
 
