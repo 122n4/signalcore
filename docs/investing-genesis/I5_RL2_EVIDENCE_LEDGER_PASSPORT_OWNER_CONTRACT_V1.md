@@ -1,23 +1,35 @@
 # I5 RL-2 Evidence Ledger And Passport Owner Contract V1
 
-State: `IMPLEMENTED CANDIDATE - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED`
+State: `CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED`
 
-Classification: `IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT_ON_CANONICAL_PREDECESSOR / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED`
+Classification: `CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED`
 
 Parent accepted program: `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md`
 
-## Candidate Reaudit Status
+## Acceptance Provenance
 
-- Technical candidate: `PENDING`.
+- Technical candidate: `326feaf0c047c36a88a3be1c0cc71a573d75ffa5`.
 - Canonical predecessor: `15444892a8b12bd53ec8e48d4162093482c4fa40`.
 - PR: `#82`.
-- CI: `PENDING`.
-- PG17: `PENDING`.
-- Independent auditor verdict: `PENDING`.
+- CI: `35774520717 - SUCCESS`.
+- Full suite: `216 passed / 18 skipped files`; `1192 passed / 43 skipped tests`.
+- Lint: `PASS`.
+- TypeScript: `PASS`.
+- Production build: `PASS`.
+- Dependency audit: `0 vulnerabilities`.
+- PG17: `35774520535 - SUCCESS`.
+- Historical PG17 job: `106904206482 - SUCCESS`.
+- Cumulative compatibility PG17 job: `106904206842 - SUCCESS`.
+- RL-2 dedicated PostgreSQL rehearsal: `7 / 7 PASS`.
+- PostgreSQL: `17.11 (Debian 17.11-1.pgdg13+2)`.
+- Vercel candidate: `READY / PREVIEW`.
 - Production Supabase mutation: `NONE`.
 - Production migration application: `NOT PERFORMED`.
+- Cumulative compatibility repair production application: `NOT PERFORMED`.
 - Production RL-2 migration application: `NOT PERFORMED`.
+- Accepted RL-2 migration: `20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql`.
 - Permanent A-number: `NOT ASSIGNED`.
+- Independent auditor verdict: `PASS`.
 
 ## Authority
 
@@ -145,11 +157,11 @@ RL-2 does not implement OOS/walk-forward validation, validation methodology, Eng
 
 `ENGINE_V20260918` is unchanged by this contract.
 
-## PostgreSQL 17 Reaudit
+## PostgreSQL 17 Acceptance
 
-PG17 reaudit on canonical predecessor `15444892a8b12bd53ec8e48d4162093482c4fa40` is `PENDING`.
+The accepted rehearsal used PostgreSQL `17.11 (Debian 17.11-1.pgdg13+2)`.
 
-The candidate PG17 proof must show real reads executing as `current_user = investing_app` and `current_role = investing_app`, a seeded Investigation with material revisions, Experiments, RunInput, successful repeated execution, Result, Evidence, failed execution, account-scoped Passport support, same-owner Investigation control, foreign authority denial, full execution/scientific RLS matrix, and mutation denial under `RESEARCH_READ`.
+The accepted PG17 proof showed real reads executing as `current_user = investing_app` and `current_role = investing_app`, a seeded Investigation with material revisions, Experiments, RunInput, successful repeated execution, Result, Evidence, failed execution, account-scoped Passport support, same-owner Investigation control, foreign authority denial, full execution/scientific RLS matrix, and mutation denial under `RESEARCH_READ`.
 
 ## Supersession
 
@@ -171,4 +183,4 @@ Permanent A-number: `NOT ASSIGNED`.
 
 Production migration-history reconciliation remains separate.
 
-`I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT_ON_CANONICAL_PREDECESSOR / UNNUMBERED`
+`I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED`

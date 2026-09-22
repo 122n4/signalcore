@@ -128,9 +128,9 @@ Dataset & Run Scientific Closure owner contract.
 
 ## RL-2 Passport And Evidence Ledger Projection
 
-RL-2 Evidence Ledger and Passport V1 is an implemented candidate pending
-reaudit as a read/projection surface only. It introduces no new scientific hash
-domain and no Passport scientific identity.
+RL-2 Evidence Ledger and Passport V1 is current accepted as a read/projection
+surface only. It introduces no new scientific hash domain and no Passport
+scientific identity.
 
 `RESEARCH_PASSPORT_V1 has no scientific hash domain`.
 
