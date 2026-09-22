@@ -15,6 +15,9 @@ const connectionString = process.env.PG17_RECONCILIATION_URL ?? "";
 const maybeDescribe = connectionString ? describe : describe.skip;
 
 const repairMigration = "supabase/migrations/20260823000000_reconcile_zero_genesis_journal_residual.sql";
+const cumulativeRepairMigration = "supabase/migrations/20260921180446_investing_i0_i5_cumulative_compatibility_repair.sql";
+const oldRl2Migration = "supabase/migrations/20260920160000_investing_i5_rl2_evidence_ledger_passport_read.sql";
+const rl2Migration = "supabase/migrations/20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql";
 const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const migrations = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
@@ -33,7 +36,8 @@ const migrations = [
   "supabase/migrations/20260918170000_investing_i5_dataset_run_scientific_closure.sql",
   "supabase/migrations/20260919090000_investing_i5_research_execution_closure.sql",
   "supabase/migrations/20260920090000_investing_i5_rl1_evidence_object_scientific_closure.sql",
-  "supabase/migrations/20260920160000_investing_i5_rl2_evidence_ledger_passport_read.sql",
+  cumulativeRepairMigration,
+  rl2Migration,
 ] as const;
 
 let pool: Pool;
@@ -454,6 +458,16 @@ async function countVisibleInvestigations(overrides: Record<string, string>) {
     await client.query("rollback").catch(() => undefined);
   }
 }
+
+describe("I5 RL-2 Passport migration ordering", () => {
+  it("keeps RL-2 after the cumulative repair and removes the stale candidate timestamp", () => {
+    const timestamp = (migration: string) => path.basename(migration).slice(0, 14);
+    expect(timestamp(cumulativeRepairMigration) < timestamp(rl2Migration)).toBe(true);
+    expect(fs.existsSync(path.join(repoRoot, cumulativeRepairMigration))).toBe(true);
+    expect(fs.existsSync(path.join(repoRoot, rl2Migration))).toBe(true);
+    expect(fs.existsSync(path.join(repoRoot, oldRl2Migration))).toBe(false);
+  });
+});
 
 maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
   beforeAll(async () => {

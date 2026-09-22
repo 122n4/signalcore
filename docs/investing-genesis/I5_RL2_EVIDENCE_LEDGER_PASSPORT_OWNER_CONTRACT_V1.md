@@ -1,32 +1,23 @@
 # I5 RL-2 Evidence Ledger And Passport Owner Contract V1
 
-State: `CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED`
+State: `IMPLEMENTED CANDIDATE - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED`
 
-Classification: `CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED`
+Classification: `IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT_ON_CANONICAL_PREDECESSOR / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED`
 
 Parent accepted program: `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md`
 
-## Acceptance Provenance
+## Candidate Reaudit Status
 
-- Technical candidate: `0bd9ed43acb4f794d8ce0d857f4bd813433c1c35`.
-- Canonical predecessor: `09b907479d813651c0b5426452e628a68dbe350e`.
+- Technical candidate: `PENDING`.
+- Canonical predecessor: `15444892a8b12bd53ec8e48d4162093482c4fa40`.
 - PR: `#82`.
-- CI: `35561968035 - SUCCESS`.
-- Full suite: `214 passed / 18 skipped files`; `1180 passed / 42 skipped tests`.
-- Lint: `PASS`.
-- TypeScript: `PASS`.
-- Production build: `PASS`.
-- Dependency audit: `0 vulnerabilities`.
-- PG17: `35561968016 - SUCCESS`.
-- PG17 job: `106216414231 - SUCCESS`.
-- RL-2 dedicated PG17: `6 / 6 PASS`.
-- PostgreSQL: `17.11 (Debian 17.11-1.pgdg13+2)`.
-- Vercel: `SUCCESS`.
+- CI: `PENDING`.
+- PG17: `PENDING`.
+- Independent auditor verdict: `PENDING`.
 - Production Supabase mutation: `NONE`.
 - Production migration application: `NOT PERFORMED`.
 - Production RL-2 migration application: `NOT PERFORMED`.
 - Permanent A-number: `NOT ASSIGNED`.
-- Independent auditor verdict: `PASS`.
 
 ## Authority
 
@@ -132,7 +123,7 @@ Passport construction fails closed when canonical lineage is impossible, includi
 
 Cross-tenant, cross-principal and cross-membership Investigation access is externally denied as `FORBIDDEN_OR_NOT_FOUND`.
 
-The accepted PG17 RLS matrix proves `RESEARCH_PASSPORT_READ_V1 / RESEARCH_READ` visibility and invalid-context invisibility across `research_specs_scientific_identities`, `run_inputs_scientific_identities`, `research_execution_runs`, `research_execution_run_events`, `research_result_artifacts`, `research_results_scientific_identities`, and `research_evidence_objects_scientific_identities`.
+The pending PG17 reaudit must prove `RESEARCH_PASSPORT_READ_V1 / RESEARCH_READ` visibility and invalid-context invisibility across `research_specs_scientific_identities`, `run_inputs_scientific_identities`, `research_execution_runs`, `research_execution_run_events`, `research_result_artifacts`, `research_results_scientific_identities`, and `research_evidence_objects_scientific_identities`.
 
 `RESEARCH_READ` grants no mutation authority.
 
@@ -154,11 +145,11 @@ RL-2 does not implement OOS/walk-forward validation, validation methodology, Eng
 
 `ENGINE_V20260918` is unchanged by this contract.
 
-## PostgreSQL 17 Acceptance
+## PostgreSQL 17 Reaudit
 
-The accepted rehearsal used PostgreSQL `17.11 (Debian 17.11-1.pgdg13+2)`.
+PG17 reaudit on canonical predecessor `15444892a8b12bd53ec8e48d4162093482c4fa40` is `PENDING`.
 
-The accepted PG17 proof showed real reads executing as `current_user = investing_app` and `current_role = investing_app`, a seeded Investigation with material revisions, Experiments, RunInput, successful repeated execution, Result, Evidence, failed execution, account-scoped Passport support, same-owner Investigation control, foreign authority denial, full execution/scientific RLS matrix, and mutation denial under `RESEARCH_READ`.
+The candidate PG17 proof must show real reads executing as `current_user = investing_app` and `current_role = investing_app`, a seeded Investigation with material revisions, Experiments, RunInput, successful repeated execution, Result, Evidence, failed execution, account-scoped Passport support, same-owner Investigation control, foreign authority denial, full execution/scientific RLS matrix, and mutation denial under `RESEARCH_READ`.
 
 ## Supersession
 
@@ -180,4 +171,4 @@ Permanent A-number: `NOT ASSIGNED`.
 
 Production migration-history reconciliation remains separate.
 
-`I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED`
+`I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT_ON_CANONICAL_PREDECESSOR / UNNUMBERED`

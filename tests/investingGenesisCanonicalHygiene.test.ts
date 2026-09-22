@@ -129,7 +129,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -167,24 +167,23 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("RESEARCH_EXECUTION_EVIDENCE_V1");
     expect(hash).toContain("Generic or arbitrary raw Evidence hashing is not a sanctioned");
     expect(hash).toContain("Arbitrary raw Evidence objects remain outside the public hashing boundary");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
-  it("records accepted RL-2 Evidence Ledger and Passport without creating Passport scientific authority", () => {
+  it("records candidate RL-2 Evidence Ledger and Passport without creating Passport scientific authority", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
     const contract = read("docs/investing-genesis/I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md");
     const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
     const row = tableRow(state, "RL-2 Evidence Ledger and Passport / unnumbered");
 
-    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED");
-    expect(contract).toContain("CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED");
-    expect(contract).toContain("0bd9ed43acb4f794d8ce0d857f4bd813433c1c35");
-    expect(contract).toContain("35561968035 - SUCCESS");
-    expect(contract).toContain("35561968016 - SUCCESS");
-    expect(contract).toContain("106216414231 - SUCCESS");
-    expect(contract).toContain("17.11 (Debian 17.11-1.pgdg13+2)");
-    expect(contract).toContain("6 / 6 PASS");
+    expect(contract).toContain("IMPLEMENTED CANDIDATE - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED");
+    expect(contract).toContain("IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT_ON_CANONICAL_PREDECESSOR / RL-2_EVIDENCE_LEDGER_PASSPORT / UNNUMBERED");
+    expect(contract).toContain("Canonical predecessor: `15444892a8b12bd53ec8e48d4162093482c4fa40`");
+    expect(contract).toContain("Technical candidate: `PENDING`");
+    expect(contract).toContain("CI: `PENDING`");
+    expect(contract).toContain("PG17: `PENDING`");
+    expect(contract).toContain("Independent auditor verdict: `PENDING`");
     expect(contract).toContain("Production migration application: `NOT PERFORMED`");
     expect(contract).toContain("Permanent A-number: `NOT ASSIGNED`");
     expect(contract).toContain("Passport V1 is a deterministic projection/read model");
@@ -196,26 +195,25 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("RunInput Experiment binding drift");
     expect(contract).toContain("duplicate, or ambiguous ResearchSpec scientific identity");
     expect(contract).toContain("Cross-tenant, cross-principal and cross-membership Investigation access");
-    expect(state).toContain("I5 RL-2 Evidence Ledger and Passport acceptance evidence:");
-    expect(state).toContain("0bd9ed43acb4f794d8ce0d857f4bd813433c1c35");
-    expect(state).toContain("35561968035 - SUCCESS");
-    expect(state).toContain("35561968016 - SUCCESS");
-    expect(state).toContain("106216414231 - SUCCESS");
-    expect(state).toContain("17.11 (Debian 17.11-1.pgdg13+2)");
-    expect(state).toContain("6 / 6 PASS");
+    expect(state).toContain("I5 RL-2 Evidence Ledger and Passport candidate reaudit status:");
+    expect(state).toContain("15444892a8b12bd53ec8e48d4162093482c4fa40");
+    expect(state).toContain("Technical candidate:");
+    expect(state).toContain("CI:");
+    expect(state).toContain("PG17:");
+    expect(state).toContain("Independent auditor verdict:");
     expect(state).toContain("Production RL-2 migration application:");
     expect(state).toContain("NOT PERFORMED");
     expect(state).toContain("Permanent A-number:");
     expect(state).toContain("NOT ASSIGNED");
-    expect(state).toContain("I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT / UNNUMBERED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-2_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("Research Lab is not yet backend-complete");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
     expect(state).not.toContain("RL-3 = CURRENT_ACCEPTED");
     expect(state).not.toContain("RL-3 validation = CURRENT_ACCEPTED");
     expect(row).toContain("| YES | YES |");
-    expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED");
-    expect(row).toContain("CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT");
+    expect(row).toContain("IMPLEMENTED CANDIDATE - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED");
+    expect(row).toContain("IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / PENDING_REAUDIT / RL-2_EVIDENCE_LEDGER_PASSPORT");
     expect(row).toContain("| NONE |");
     expect(hash).toContain("RESEARCH_PASSPORT_V1 has no scientific hash domain");
     expect(hash).toContain("Evidence Ledger V1 has no independent scientific hash identity");
