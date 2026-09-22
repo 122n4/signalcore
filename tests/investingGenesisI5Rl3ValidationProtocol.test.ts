@@ -35,6 +35,7 @@ import {
   i5BaselineCandidateV1,
   i5ExperimentBaseResearchIrV1,
 } from "./support/investingI5ExperimentScientificFixtures";
+import { ownerStructuredHashPreimageV1 } from "../lib/investing/research/scientificPreimage";
 
 const experiment = i5BaselineCandidateV1("91000000-0000-4000-8000-000000000071");
 const subjectResearchIr = ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(i5ExperimentBaseResearchIrV1));
@@ -201,6 +202,34 @@ describe("I5 RL-3A Validation Protocol owner contract", () => {
       (admitted.protocol as { folds: { trainingWindow: { startDate: string } }[] }).folds[0]!.trainingWindow.startDate = "2020-01-01";
     }).toThrow();
     expect(admitted.validationProtocol.hashHex).toBe(goldenVectors[0]!.expectedHash);
+    expect(admitted.validationProtocol.hashHex).toBe(
+      sha256HexV1(ownerStructuredHashPreimageV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", admitted.protocol)),
+    );
+  });
+
+  it("rejects stateful accessors and symbol keys before admitting an identity", () => {
+    let reads = 0;
+    const accessorProtocol = { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds) };
+    Object.defineProperty(accessorProtocol, "engineVersion", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? "ENGINE_V20260918" : "MUTATED";
+      },
+    });
+    const symbolProtocol = { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds) };
+    Object.defineProperty(symbolProtocol, Symbol("hidden"), {
+      enumerable: true,
+      value: "MUTATED",
+    });
+
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: accessorProtocol as unknown as ValidationProtocolHashPayloadV1,
+    }))).toThrow("VALIDATION_CANONICAL_DATA_PROPERTY_REQUIRED");
+    expect(reads).toBe(0);
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: symbolProtocol as unknown as ValidationProtocolHashPayloadV1,
+    }))).toThrow("VALIDATION_CANONICAL_STRING_KEY_REQUIRED");
   });
 
   it("rejects admission when the Experiment proof or Experiment to Research IR lineage does not match", () => {

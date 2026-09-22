@@ -162,7 +162,7 @@ export function canonicalValidationProtocolBytesV1(input: ValidationProtocolHash
 }
 
 export function hashValidationProtocolV1(input: ValidationProtocolHashPayloadV1): CanonicalSha256HexV1 {
-  return sha256HexV1(ownerStructuredHashPreimageV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", canonicalValidationProtocolHashPayloadV1(input)));
+  return hashCanonicalValidationProtocolPayloadV1(canonicalValidationProtocolHashPayloadV1(input));
 }
 
 export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1): AdmittedValidationProtocolV1 {
@@ -200,8 +200,12 @@ export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1):
 
   return Object.freeze({
     protocol: frozenProtocol,
-    validationProtocol: Object.freeze(ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashValidationProtocolV1(input.protocol))),
+    validationProtocol: Object.freeze(ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashCanonicalValidationProtocolPayloadV1(frozenProtocol))),
   });
+}
+
+function hashCanonicalValidationProtocolPayloadV1(payload: CanonicalJsonValue): CanonicalSha256HexV1 {
+  return sha256HexV1(ownerStructuredHashPreimageV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", payload));
 }
 
 export function deriveValidationPhaseResearchIrV1(subjectResearchIr: ResearchIrV1, phaseWindow: ValidationWindowV1): ResearchIrV1 {
@@ -393,9 +397,13 @@ function assertClosedPlainObject(value: unknown, allowedKeys: ReadonlySet<string
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new Error("expected closed plain object");
   }
-  for (const key of Object.keys(value)) {
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") throw new Error("VALIDATION_CANONICAL_STRING_KEY_REQUIRED");
     if (!allowedKeys.has(key)) throw new Error(`undeclared field ${key}`);
-    if ((value as Record<string, unknown>)[key] === undefined) throw new Error(`undefined is not canonical data at ${key}`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) throw new Error("VALIDATION_CANONICAL_DATA_PROPERTY_REQUIRED");
+    if (descriptor.enumerable !== true) throw new Error("VALIDATION_CANONICAL_ENUMERABLE_PROPERTY_REQUIRED");
+    if (descriptor.value === undefined) throw new Error(`undefined is not canonical data at ${key}`);
   }
   for (const key of allowedKeys) {
     if (!Object.hasOwn(value, key)) throw new Error(`missing field ${key}`);
