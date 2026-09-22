@@ -41,6 +41,17 @@ function normalize(sql: string) {
   return sql.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function policySlice(sql: string, policyName: string) {
+  const normalized = normalize(sql);
+  const start = normalized.indexOf(`create policy ${policyName.toLowerCase()}`);
+  expect(start, policyName).toBeGreaterThanOrEqual(0);
+  const next = normalized.indexOf("create policy ", start + 1);
+  const reset = normalized.indexOf("reset role", start + 1);
+  const endCandidates = [next, reset].filter((index) => index > start);
+  const end = endCandidates.length ? Math.min(...endCandidates) : normalized.length;
+  return normalized.slice(start, end);
+}
+
 type PolicyContract = Readonly<{
   policyname: string;
   permissive: "PERMISSIVE";
@@ -301,6 +312,27 @@ describe("Investing Genesis cumulative compatibility forward repair", () => {
     expect(sql).not.toMatch(/language\s+\w+\s+security\s+definer/);
     expect(sql).not.toMatch(/security\s+definer\s+set\s+search_path/);
     expect(sql).not.toContain("supabase_migrations");
+  });
+
+  it("repairs the historical I5 bootstrap RLS recursion without broadening bootstrap authority", () => {
+    const raw = fs.readFileSync(repairMigration, "utf8");
+    const sql = normalize(raw);
+    const repairedPolicy = policySlice(raw, "tenant_memberships_i2c_bootstrap_insert");
+
+    expect(sql).toContain("tenant_memberships -> tenants -> tenant_memberships policy cycle");
+    expect(sql).toContain("drop policy if exists tenant_memberships_i2c_bootstrap_insert");
+    expect(repairedPolicy).toContain("for insert to investing_app");
+    expect(repairedPolicy).toContain("initial_personal_bootstrap");
+    expect(repairedPolicy).toContain("authority_bootstrap");
+    expect(repairedPolicy).toContain("candidate_tenant_membership_id");
+    expect(repairedPolicy).toContain("candidate_tenant_id");
+    expect(repairedPolicy).toContain("principal_id");
+    expect(repairedPolicy).toContain("role = 'owner'");
+    expect(repairedPolicy).toContain("state = 'active'");
+    expect(repairedPolicy).toContain("from investing.principals");
+    expect(repairedPolicy).not.toContain("from investing.tenants");
+    expect(repairedPolicy).not.toContain("join investing.tenants");
+    expect(repairedPolicy).not.toContain("security definer");
   });
 
   it("models exact policy and vocabulary guards against audited negative drift cases", () => {

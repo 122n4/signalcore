@@ -22,14 +22,17 @@ import { bootstrapInitialPersonalInvestingAccount } from "../lib/investing/autho
 import {
   isAuthorizedInvestingContext,
   resolveAuthorizedInvestingAccountContext,
+  resolveAuthorizedResearchDraftCreateContext,
   resolveAuthorizedResearchInvestigationCreateContext,
   type AuthorizedInvestingContext,
+  type AuthorizedResearchDraftCreateContext,
   type AuthorizedResearchInvestigationCreateContext,
   type InvestingAuthorityDatabase,
   type InvestingAuthorityTransactionClient,
 } from "../lib/investing/authority/context";
 import { accountSyntheticI3Fill } from "../lib/investing/accounting/syntheticFill";
 import { createResearchInvestigationV1 } from "../lib/investing/research/investigationWriter";
+import { createResearchDraftV1 } from "../lib/investing/research/draftWriter";
 import {
   canonicalDatasetSeriesMaterialBytesV1,
   hashDatasetSeriesV1,
@@ -253,6 +256,18 @@ function executableFixture() {
     materialPolicies: [],
   };
   return { aaa, bbb, researchIr, datasetSnapshot, runInput, runInputHash: hashRunInputV1(runInput), datasetSeries: [aaa.series, bbb.series] };
+}
+
+function safeBootstrapFailure(result: unknown) {
+  if (typeof result !== "object" || result === null || !("ok" in result) || (result as { ok?: unknown }).ok !== false) {
+    return { stage: "UNKNOWN", code: "UNKNOWN", errorClass: "UNEXPECTED_RESULT" };
+  }
+  const failure = result as { code?: unknown; externalCode?: unknown };
+  return {
+    stage: "INITIAL_PERSONAL_BOOTSTRAP",
+    code: typeof failure.code === "string" ? failure.code : "UNKNOWN",
+    errorClass: typeof failure.externalCode === "string" ? failure.externalCode : "UNKNOWN",
+  };
 }
 
 let adminPool: Pool;
@@ -665,15 +680,30 @@ afterAll(async () => {
       await applySql(migration);
     }
 
+    currentSubject = "user_pg17_cumulative_state_a";
+    const stateABootstrap = await bootstrapInitialPersonalInvestingAccount({
+      idempotencyKey: "idem-cumulative-state-a-bootstrap",
+      correlationId: "corr-cumulative-state-a-bootstrap",
+      baseCurrency: "EUR",
+    });
+    expect(stateABootstrap.ok).toBe(false);
+    if (stateABootstrap.ok !== false) throw new Error("State A unexpectedly succeeded before forward repair");
+    expect(safeBootstrapFailure(stateABootstrap)).toMatchObject({
+      stage: "INITIAL_PERSONAL_BOOTSTRAP",
+    });
+
     await applySql(compatibilityRepairMigration);
 
+    currentSubject = primarySubject;
     const bootstrap = await bootstrapInitialPersonalInvestingAccount({
       idempotencyKey: "idem-i0-i4-bootstrap-0001",
       correlationId: "corr-i0-i4-bootstrap-0001",
       baseCurrency: "EUR",
     });
+    if (bootstrap.ok !== true) {
+      throw new Error(`I2 bootstrap failed after repair: ${JSON.stringify(safeBootstrapFailure(bootstrap))}`);
+    }
     expect(bootstrap.ok).toBe(true);
-    if (bootstrap.ok !== true) throw new Error("I2 bootstrap failed");
     expect(bootstrap.replayed).toBe(false);
 
     const bootstrapReplay = await bootstrapInitialPersonalInvestingAccount({
@@ -908,6 +938,27 @@ afterAll(async () => {
     const investigationReplay = await createResearchInvestigationV1(researchCreateInput);
     expect(investigationReplay).toEqual({ ...investigation, replayed: true });
 
+    const draftContext = await resolveAuthorizedResearchDraftCreateContext({
+      researchInvestigationId: investigation.investigationId,
+      correlationId: "corr-cumulative-i5-draft-context",
+    });
+    expect(draftContext.ok).toBe(true);
+    if (draftContext.ok !== true) throw new Error(`I5 draft authority after repair failed: ${JSON.stringify(draftContext)}`);
+    const draftCreate = await createResearchDraftV1({
+      authorizedContext: draftContext.context as AuthorizedResearchDraftCreateContext,
+      draft: {
+        schemaVersion: "RESEARCH_DRAFT_HASH_PAYLOAD_V1",
+        rawIntent: "Cumulative repair PG17 draft probe.",
+        interpretedObjective: { state: "USER_SUPPLIED", value: "Verify research draft create after cumulative repair." },
+        constraints: [{ state: "USER_SUPPLIED", value: "PURE_RESEARCH tenant-scoped probe." }],
+      },
+      idempotencyKey: "idem-cumulative-i5-draft-01",
+      correlationId: "corr-cumulative-i5-draft-01",
+    });
+    expect(draftCreate.ok).toBe(true);
+    if (draftCreate.ok !== true) throw new Error(`I5 draft create after repair failed: ${JSON.stringify(draftCreate)}`);
+    expect(draftCreate.replayed).toBe(false);
+
     const executableRunInput = await seedExecutableRunInputForCumulative(adminClient, {
       tenantId: bootstrap.tenantId,
       principalId: bootstrap.principalId,
@@ -990,6 +1041,11 @@ afterAll(async () => {
       correlationId: "corr-cumulative-i5-disabled-denial",
     });
     expect(researchDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
+    const draftDisabledDenial = await resolveAuthorizedResearchDraftCreateContext({
+      researchInvestigationId: investigation.investigationId,
+      correlationId: "corr-cumulative-i5-draft-disabled-denial",
+    });
+    expect(draftDisabledDenial).toEqual({ ok: false, code: "PRINCIPAL_DISABLED" });
 
     const denialAudit = await adminClient.query<{ count: string }>(
       `select count(*)::text as count from investing.audit_events

@@ -294,6 +294,44 @@ begin
   end if;
 end $$;
 
+-- Forward-only RLS recursion repair for the accepted historical I5 state.
+-- Historical I5 adds tenants SELECT policies that legitimately inspect
+-- tenant_memberships for research authority. The original I2-C bootstrap
+-- tenant_memberships INSERT policy also inspected tenants, producing a
+-- tenant_memberships -> tenants -> tenant_memberships policy cycle during a
+-- fresh runtime bootstrap after I5. Preserve the bootstrap authority contract
+-- using only the candidate row and principal identity; tenant existence is
+-- still enforced by the tenant_memberships FK and first-create tenant state is
+-- enforced by tenants_i2c_bootstrap_insert immediately before this insert.
+set local role investing_owner;
+
+drop policy if exists tenant_memberships_i2c_bootstrap_insert
+  on investing.tenant_memberships;
+
+create policy tenant_memberships_i2c_bootstrap_insert
+  on investing.tenant_memberships
+  for insert
+  to investing_app
+  with check (
+    current_setting('syntrake.investing.operation', true) = 'INITIAL_PERSONAL_BOOTSTRAP'
+    and current_setting('syntrake.investing.capability', true) = 'AUTHORITY_BOOTSTRAP'
+    and tenant_membership_id = nullif(current_setting('syntrake.investing.candidate_tenant_membership_id', true), '')::uuid
+    and tenant_id = nullif(current_setting('syntrake.investing.candidate_tenant_id', true), '')::uuid
+    and principal_id = nullif(current_setting('syntrake.investing.principal_id', true), '')::uuid
+    and role = 'OWNER'
+    and state = 'ACTIVE'
+    and exists (
+      select 1
+      from investing.principals p
+      where p.principal_id = tenant_memberships.principal_id
+        and p.external_provider = current_setting('syntrake.investing.external_provider', true)
+        and p.external_subject = current_setting('syntrake.investing.external_subject', true)
+        and p.state = 'ACTIVE'
+    )
+  );
+
+reset role;
+
 -- Derived from docs/investing-genesis/sql/I3A_ACCOUNTING_FOUNDATIONS_CANDIDATE.sql; pre/poststate checks are replaced by this forward-only migration.
 -- SYNTRAKE INVESTING GENESIS I3-A ACCOUNTING FOUNDATIONS
 --
