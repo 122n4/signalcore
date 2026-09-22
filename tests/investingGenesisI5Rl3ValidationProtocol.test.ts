@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  admitValidationProtocolV1,
   assertExecutionConfigBoundToValidationProtocolV1,
   assertOnlyResearchIrTestPeriodChangedV1,
   canonicalDatasetSeriesMaterialBytesV1,
@@ -18,6 +19,7 @@ import {
   sliceValidationDatasetSeriesPrefixV1,
   type DatasetSeriesHashPayloadV1,
   type DatasetSeriesObservationV1,
+  type ValidationProtocolCandidateV1,
   type ValidationFoldV1,
   type ValidationModeV1,
   type ValidationProtocolHashPayloadV1,
@@ -114,6 +116,20 @@ function materialSeries(): { series: DatasetSeriesHashPayloadV1; bytes: Buffer }
   };
 }
 
+function validationCandidate(
+  overrides: Partial<ValidationProtocolCandidateV1> & { protocol?: ValidationProtocolHashPayloadV1 } = {},
+): ValidationProtocolCandidateV1 {
+  return {
+    protocol: protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds),
+    subjectExperimentCandidate: experiment,
+    subjectResearchIrPayload: i5ExperimentBaseResearchIrV1,
+    sourceDatasetSnapshotPayload: datasetSnapshotV1(),
+    metricRequestSetPayload: metricRequestSetV1,
+    executionConfigPayload: executionConfigV1,
+    ...overrides,
+  };
+}
+
 const goldenVectors = [
   {
     name: "chronological holdout",
@@ -152,6 +168,82 @@ describe("I5 RL-3A Validation Protocol owner contract", () => {
     const bytes = canonicalValidationProtocolBytesV1(payload).toString("utf8");
     expect(bytes).toBe(expectedBytes);
     expect(hashValidationProtocolV1(payload)).toBe(expectedHash);
+  });
+
+  it("admits a Validation Protocol only after proving exact scientific lineage and material refs", () => {
+    const admitted = admitValidationProtocolV1(validationCandidate());
+    expect(admitted.protocol).toEqual(JSON.parse(goldenVectors[0]!.expectedBytes));
+    expect(admitted.validationProtocol).toEqual({
+      hashAlgorithm: "SHA-256",
+      hashDomain: "SYNTRAKE:VALIDATION_PROTOCOL:V1",
+      hashVersion: "SYNTRAKE_SHA256_V1",
+      hashHex: goldenVectors[0]!.expectedHash,
+    });
+    expect(Object.isFrozen(admitted)).toBe(true);
+    expect(Object.isFrozen(admitted.validationProtocol)).toBe(true);
+  });
+
+  it("rejects admission when the Experiment proof or Experiment to Research IR lineage does not match", () => {
+    const alternateResearchIr = {
+      ...i5ExperimentBaseResearchIrV1,
+      testPeriod: { startDate: "2020-02-05", endDate: "2020-02-06" },
+    };
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), subjectExperiment: ref("SYNTRAKE:EXPERIMENT:V1", "A".repeat(64)) },
+    }))).toThrow("ValidationProtocol Experiment HashRef mismatch");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: {
+        ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds),
+        subjectResearchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(alternateResearchIr)),
+      },
+      subjectResearchIrPayload: alternateResearchIr,
+    }))).toThrow("ValidationProtocol Experiment Research IR HashRef mismatch");
+  });
+
+  it("rejects admission when Research IR, DatasetSnapshot, MetricRequestSet or ExecutionConfig proofs do not match", () => {
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      subjectResearchIrPayload: {
+        ...i5ExperimentBaseResearchIrV1,
+        testPeriod: { startDate: "2020-02-05", endDate: "2020-02-06" },
+      },
+    }))).toThrow("ValidationProtocol Research IR HashRef mismatch");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), sourceDatasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "C".repeat(64)) },
+    }))).toThrow("ValidationProtocol DatasetSnapshot HashRef mismatch");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", "D".repeat(64)) },
+    }))).toThrow("ValidationProtocol MetricRequestSet HashRef mismatch");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", "E".repeat(64)) },
+    }))).toThrow("ValidationProtocol ExecutionConfig HashRef mismatch");
+  });
+
+  it("rejects admission when engine or metric registry compatibility diverges from current V1 closure", () => {
+    const metricRequestSetPatch = { ...metricRequestSetV1, metricRegistryVersion: "METRIC_REGISTRY_V20260918_PATCH1" };
+    const executionConfigPatch = { ...executionConfigV1, engineCompatibilityVersion: "ENGINE_V20260918_PATCH1" };
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), metricRegistryVersion: "METRIC_REGISTRY_V20260918_PATCH1" },
+    }))).toThrow("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: {
+        ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds),
+        metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(metricRequestSetPatch)),
+      },
+      metricRequestSetPayload: metricRequestSetPatch,
+    }))).toThrow("VALIDATION_METRIC_REGISTRY_VERSION_MISMATCH");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), engineVersion: "ENGINE_V20260918_PATCH1" },
+    }))).toThrow("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: {
+        ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds),
+        executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(executionConfigPatch)),
+      },
+      executionConfigPayload: executionConfigPatch,
+    }))).toThrow("VALIDATION_ENGINE_VERSION_MISMATCH");
+    expect(() => admitValidationProtocolV1(validationCandidate({
+      protocol: { ...protocol("CHRONOLOGICAL_HOLDOUT", holdoutFolds), engineId: "HISTORICAL_EXECUTION_ADAPTER_V2" },
+    }))).toThrow("VALIDATION_ENGINE_ID_UNSUPPORTED");
   });
 
   it("is deterministic across input object key insertion order", () => {
@@ -263,6 +355,27 @@ describe("I5 RL-3A Validation Protocol owner contract", () => {
     expect(() => sliceValidationDatasetSeriesPrefixV1({ ...source.series, contentSha256: "F".repeat(64) }, source.bytes, "2020-02-06")).toThrow("DATASET_MATERIAL_HASH_MISMATCH");
     expect(() => sliceValidationDatasetSeriesPrefixV1(source.series, source.bytes, "2020-01-30")).toThrow("VALIDATION_PREFIX_EMPTY");
     expect(() => sliceValidationDatasetSeriesPrefixV1(source.series, source.bytes, "2020-02-08")).toThrow("VALIDATION_PHASE_END_NOT_XNYS_SESSION");
+  });
+
+  it("fails closed when phase end is outside coverage or missing from otherwise valid material", () => {
+    const coveredObservations = materialObservations.slice(0, 5);
+    const coveredBytes = canonicalDatasetSeriesMaterialBytesV1(coveredObservations);
+    const coveredSeries = {
+      ...datasetSeriesV1,
+      coverageEnd: "2020-02-06",
+      observationCount: String(coveredObservations.length),
+      contentSha256: sha256HexV1(coveredBytes),
+    };
+    const missingEndObservations = materialObservations.filter((observation) => observation.date !== "2020-02-06");
+    const missingEndBytes = canonicalDatasetSeriesMaterialBytesV1(missingEndObservations);
+    const missingEndSeries = {
+      ...datasetSeriesV1,
+      coverageEnd: "2020-02-10",
+      observationCount: String(missingEndObservations.length),
+      contentSha256: sha256HexV1(missingEndBytes),
+    };
+    expect(() => sliceValidationDatasetSeriesPrefixV1(coveredSeries, coveredBytes, "2020-02-07")).toThrow("VALIDATION_PHASE_END_OUTSIDE_SOURCE_COVERAGE");
+    expect(() => sliceValidationDatasetSeriesPrefixV1(missingEndSeries, missingEndBytes, "2020-02-06")).toThrow("VALIDATION_PHASE_END_MATERIAL_MISSING");
   });
 
   it("binds the exact ExecutionConfig hash and missing-data policy", () => {

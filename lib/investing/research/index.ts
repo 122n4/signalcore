@@ -159,6 +159,7 @@ export {
 } from "./datasetMaterial";
 
 export {
+  admitValidationProtocolV1,
   assertExecutionConfigBoundToValidationProtocolV1,
   assertOnlyResearchIrTestPeriodChangedV1,
   canonicalValidationProtocolBytesV1,
@@ -166,7 +167,9 @@ export {
   deriveValidationPhaseResearchIrV1,
   hashValidationProtocolV1,
   sliceValidationDatasetSeriesPrefixV1,
+  type AdmittedValidationProtocolV1,
   type DatasetSeriesPrefixSliceV1,
+  type ValidationProtocolCandidateV1,
   type ValidationFoldV1,
   type ValidationModeV1,
   type ValidationProtocolHashPayloadV1,

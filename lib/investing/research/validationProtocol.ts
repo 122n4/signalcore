@@ -13,9 +13,13 @@ import {
 import { isXnysSessionV1, nextXnysSessionV1, xnysSessionsInRangeV1 } from "./calendars";
 import {
   canonicalDatasetSeriesHashPayloadV1,
+  hashDatasetSnapshotV1,
   hashExecutionConfigV1,
+  hashMetricRequestSetV1,
   type DatasetSeriesHashPayloadV1,
+  type DatasetSnapshotHashPayloadV1,
   type ExecutionConfigHashPayloadV1,
+  type MetricRequestSetHashPayloadV1,
 } from "./executionMaterials";
 import {
   canonicalDatasetSeriesMaterialBytesV1,
@@ -23,6 +27,12 @@ import {
   type DatasetSeriesObservationV1,
 } from "./datasetMaterial";
 import { canonicalResearchIrPayloadV1, type ResearchIrV1 } from "./researchIr";
+import {
+  canonicalExperimentHashPayloadV1,
+  hashExperimentV1,
+  type ExperimentCandidateV1,
+} from "./experiment";
+import { hashResearchIrV1 } from "./researchIr";
 import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";
 
 export type ValidationModeV1 =
@@ -66,6 +76,20 @@ export type DatasetSeriesPrefixSliceV1 = Readonly<{
   observations: readonly DatasetSeriesObservationV1[];
 }>;
 
+export type ValidationProtocolCandidateV1 = Readonly<{
+  protocol: ValidationProtocolHashPayloadV1;
+  subjectExperimentCandidate: ExperimentCandidateV1;
+  subjectResearchIrPayload: ResearchIrV1;
+  sourceDatasetSnapshotPayload: DatasetSnapshotHashPayloadV1;
+  metricRequestSetPayload: MetricRequestSetHashPayloadV1;
+  executionConfigPayload: ExecutionConfigHashPayloadV1;
+}>;
+
+export type AdmittedValidationProtocolV1 = Readonly<{
+  protocol: CanonicalJsonValue;
+  validationProtocol: HashRefV1;
+}>;
+
 const payloadKeys = new Set([
   "schemaVersion",
   "methodology",
@@ -88,6 +112,10 @@ const windowKeys = new Set(["startDate", "endDate"]);
 const validationModes = new Set(["CHRONOLOGICAL_HOLDOUT", "IS_OOS_SPLIT", "ROLLING_WALK_FORWARD", "EXPANDING_WALK_FORWARD"]);
 
 type CanonicalValidationFoldV1 = ValidationFoldV1 & CanonicalJsonValue;
+
+const acceptedEngineIdV1 = "HISTORICAL_EXECUTION_ADAPTER";
+const acceptedEngineVersionV1 = "ENGINE_V20260918";
+const acceptedMetricRegistryVersionV1 = "METRIC_REGISTRY_V20260918";
 
 export function canonicalValidationProtocolHashPayloadV1(input: ValidationProtocolHashPayloadV1): CanonicalJsonValue {
   assertClosedPlainObject(input, payloadKeys);
@@ -137,6 +165,44 @@ export function hashValidationProtocolV1(input: ValidationProtocolHashPayloadV1)
   return sha256HexV1(ownerStructuredHashPreimageV1("SYNTRAKE:VALIDATION_PROTOCOL:V1", canonicalValidationProtocolHashPayloadV1(input)));
 }
 
+export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1): AdmittedValidationProtocolV1 {
+  const protocol = canonicalValidationProtocolHashPayloadV1(input.protocol);
+  if (input.protocol.engineId !== acceptedEngineIdV1) throw new Error("VALIDATION_ENGINE_ID_UNSUPPORTED");
+  if (input.protocol.engineVersion !== acceptedEngineVersionV1) throw new Error("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
+  if (input.protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1) {
+    throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
+  }
+
+  const experiment = ref("SYNTRAKE:EXPERIMENT:V1", hashExperimentV1(input.subjectExperimentCandidate));
+  assertSameRef(input.protocol.subjectExperiment, experiment, "ValidationProtocol Experiment");
+  const experimentPayload = canonicalExperimentHashPayloadV1(input.subjectExperimentCandidate);
+  assertSameRef(experimentPayload.researchIr, input.protocol.subjectResearchIr, "ValidationProtocol Experiment Research IR");
+
+  const researchIr = ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(input.subjectResearchIrPayload));
+  assertSameRef(input.protocol.subjectResearchIr, researchIr, "ValidationProtocol Research IR");
+
+  const datasetSnapshot = ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(input.sourceDatasetSnapshotPayload));
+  assertSameRef(input.protocol.sourceDatasetSnapshot, datasetSnapshot, "ValidationProtocol DatasetSnapshot");
+
+  const metricRequestSet = ref("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(input.metricRequestSetPayload));
+  assertSameRef(input.protocol.metricRequestSet, metricRequestSet, "ValidationProtocol MetricRequestSet");
+  if (input.metricRequestSetPayload.metricRegistryVersion !== input.protocol.metricRegistryVersion) {
+    throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_MISMATCH");
+  }
+
+  const executionConfig = ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(input.executionConfigPayload));
+  assertSameRef(input.protocol.executionConfig, executionConfig, "ValidationProtocol ExecutionConfig");
+  if (input.executionConfigPayload.engineCompatibilityVersion !== input.protocol.engineVersion) {
+    throw new Error("VALIDATION_ENGINE_VERSION_MISMATCH");
+  }
+  assertExecutionConfigBoundToValidationProtocolV1(input.protocol, input.executionConfigPayload);
+
+  return Object.freeze({
+    protocol,
+    validationProtocol: Object.freeze(ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashValidationProtocolV1(input.protocol))),
+  });
+}
+
 export function deriveValidationPhaseResearchIrV1(subjectResearchIr: ResearchIrV1, phaseWindow: ValidationWindowV1): ResearchIrV1 {
   canonicalResearchIrPayloadV1(subjectResearchIr);
   const window = canonicalWindowV1(phaseWindow);
@@ -164,9 +230,11 @@ export function sliceValidationDatasetSeriesPrefixV1(
   const verified = verifyDatasetSeriesMaterialV1(sourceSeries, sourceBytes);
   const endDate = canonicalDateV1(phaseEndDate);
   if (!isXnysSessionV1(endDate)) throw new Error("VALIDATION_PHASE_END_NOT_XNYS_SESSION");
+  if (endDate > sourceSeries.coverageEnd) throw new Error("VALIDATION_PHASE_END_OUTSIDE_SOURCE_COVERAGE");
   const observations = verified.observations.filter((observation) => observation.date <= endDate);
   if (observations.length === 0) throw new Error("VALIDATION_PREFIX_EMPTY");
   if (observations.some((observation) => observation.date > endDate)) throw new Error("VALIDATION_PREFIX_LOOKAHEAD");
+  if (observations.at(-1)!.date !== endDate) throw new Error("VALIDATION_PHASE_END_MATERIAL_MISSING");
   const bytes = canonicalDatasetSeriesMaterialBytesV1(observations);
   const series: DatasetSeriesHashPayloadV1 = {
     ...sourceSeries,
@@ -285,6 +353,23 @@ function assertNonOverlappingEvaluations(folds: readonly ValidationFoldV1[]): vo
 
 function sessionCount(window: ValidationWindowV1): number {
   return xnysSessionsInRangeV1(window.startDate, window.endDate).length;
+}
+
+function ref(hashDomain: HashRefV1["hashDomain"], hashHex: CanonicalSha256HexV1): HashRefV1 {
+  return hashRefV1({ hashAlgorithm: "SHA-256", hashDomain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex });
+}
+
+function assertSameRef(actualInput: HashRefV1, expectedInput: HashRefV1, name: string): void {
+  const actual = hashRefV1(actualInput);
+  const expected = hashRefV1(expectedInput);
+  if (
+    actual.hashAlgorithm !== expected.hashAlgorithm ||
+    actual.hashDomain !== expected.hashDomain ||
+    actual.hashVersion !== expected.hashVersion ||
+    actual.hashHex !== expected.hashHex
+  ) {
+    throw new Error(`${name} HashRef mismatch`);
+  }
 }
 
 function withoutKey(value: CanonicalJsonValue, keyToDrop: string): CanonicalJsonValue {

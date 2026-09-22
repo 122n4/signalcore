@@ -46,6 +46,45 @@ The payload is a closed object with:
 - one closed validation mode;
 - an ordered fold sequence.
 
+The raw canonical/hash functions define the owner payload bytes only. They do
+not, by themselves, admit a scientific Validation Protocol identity. Scientific
+admission is performed by `admitValidationProtocolV1`, which re-proves the
+payload against exact owner proofs before returning the
+`SYNTRAKE:VALIDATION_PROTOCOL:V1` HashRef.
+
+## Admission Boundary
+
+`admitValidationProtocolV1` requires an exact candidate containing the protocol
+payload plus the subject Experiment candidate, subject Research IR payload,
+source DatasetSnapshot payload, MetricRequestSet payload and ExecutionConfig
+payload.
+
+Admission recalculates and compares:
+
+- Experiment hash against `protocol.subjectExperiment`;
+- Experiment owner payload `researchIr` against `protocol.subjectResearchIr`;
+- Research IR hash against `protocol.subjectResearchIr`;
+- DatasetSnapshot hash against `protocol.sourceDatasetSnapshot`;
+- MetricRequestSet hash against `protocol.metricRequestSet`;
+- ExecutionConfig hash against `protocol.executionConfig`.
+
+This fails closed on mixed lineage such as Experiment A with Research IR B. It
+also fails closed when MetricRequestSet `metricRegistryVersion` diverges from
+the protocol or ExecutionConfig `engineCompatibilityVersion` diverges from the
+protocol engine version.
+
+RL-3A Validation Protocol V1 is bound to the currently accepted V1 execution and
+metric registry closure:
+
+```text
+engineId = HISTORICAL_EXECUTION_ADAPTER
+engineVersion = ENGINE_V20260918
+metricRegistryVersion = METRIC_REGISTRY_V20260918
+```
+
+Engine V2, Metric Registry V2 or any mutable compatibility alias require a
+future explicit/versioned owner contract.
+
 ## Validation Modes
 
 Allowed modes are:
@@ -79,6 +118,12 @@ material bytes. A prefix slice includes only observations with
 `observation.date <= phaseEndDate`, recomputes canonical material bytes and
 content SHA-256, updates coverage end and observation count, and re-verifies
 the resulting DatasetSeries material.
+
+The requested `phaseEndDate` must be an exact XNYS session inside the declared
+source coverage and must exist as the final observation of the prefix. A source
+whose declared coverage ends before the requested phase end fails closed. A
+source whose material skips the requested phase end also fails closed. No
+nearest-date, previous-session, weekend or missing-data substitution is allowed.
 
 Future observations remain part of the original source material authority but
 are not visible inside the phase prefix material.
