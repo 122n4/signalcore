@@ -559,10 +559,13 @@ async function lockValidationRunInput(client: InvestingAuthorityTransactionClien
   const row = await one<{ research_validation_run_input_identity_id: string }>(
     client,
     [
-      "select research_validation_run_input_identity_id",
-      "from investing.research_validation_run_inputs_scientific_identities",
-      "where research_validation_run_input_identity_id = $1",
-      "for update",
+      "select visible.research_validation_run_input_identity_id",
+      "from (",
+      "  select research_validation_run_input_identity_id",
+      "  from investing.research_validation_run_inputs_scientific_identities",
+      "  where research_validation_run_input_identity_id = $1",
+      ") visible",
+      "cross join lateral pg_advisory_xact_lock(hashtextextended('SYNTRAKE:RL3B:VALIDATION_CHILD:' || visible.research_validation_run_input_identity_id::text, 0)) lock",
     ].join(" "),
     [runInputId],
   );
