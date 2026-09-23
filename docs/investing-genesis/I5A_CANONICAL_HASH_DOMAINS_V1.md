@@ -154,11 +154,12 @@ of their accepted source domains.
 
 ## RL-3A Validation Protocol Foundation
 
-`SYNTRAKE:VALIDATION_PROTOCOL:V1` is admitted as `OWNER_PAYLOAD_EXACT` only for
-the deterministic Validation Protocol V1 owner payload. The payload binds exact
-Research IR, Experiment, DatasetSnapshot, MetricRequestSet and ExecutionConfig
-HashRefs, immutable engine and registry versions, a closed validation mode, and
-ordered XNYS-session fold windows.
+`SYNTRAKE:VALIDATION_PROTOCOL:V1` is current accepted through RL-3A Validation
+Protocol Foundation as `OWNER_PAYLOAD_EXACT` only for the deterministic
+Validation Protocol V1 owner payload. The payload binds exact Research IR,
+Experiment, DatasetSnapshot, MetricRequestSet and ExecutionConfig HashRefs,
+immutable engine and registry versions, a closed validation mode, and ordered
+XNYS-session fold windows.
 
 Validation Protocol identity is a planning and methodology identity. It does not
 create Validation Result, Child Result, RunInput, promotion, blind-truth,

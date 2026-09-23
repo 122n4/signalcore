@@ -97,6 +97,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 Research Execution Closure (unnumbered) | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-1 Evidence Object Scientific Closure (unnumbered) | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-2 Evidence Ledger and Passport (unnumbered) | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` |
+| I5 RL-3A Validation Protocol Foundation (unnumbered) | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -186,6 +187,15 @@ freeze/master evidence still relies on its narrow classifications.
   `EVIDENCE LEDGER != NEW EVENT STORE`. `LAB != PAPER`. `CORE != LAB`.
   RL-2 creates no scientific hash domain, no Passport scientific identity, no
   Passport persistence table and no duplicate scientific persistence.
+- I5 RL-3A Validation Protocol Foundation:
+  `CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION / UNNUMBERED`. This
+  accepted owner contract admits `SYNTRAKE:VALIDATION_PROTOCOL:V1 =
+  OWNER_PAYLOAD_EXACT` for the deterministic Validation Protocol V1 owner
+  payload only. RL-3A establishes exact protocol admission, no-lookahead fold
+  planning, deterministic phase material slicing and phase Research IR
+  derivation. It does not accept complete RL-3, RL-3B, RL-3C, Validation Result,
+  child execution, persistence, migration, promotion, blind truth, API/UI,
+  Paper, broker, Capital Kernel or Production mutation.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -331,6 +341,17 @@ not become Investing Genesis authority merely because they use similar words.
   under repeatable-read read-only `investing_app`; and exposes RL-3/RL-8/RL-9
   as explicit deferred authority. Production Supabase migration application
   remains `NOT PERFORMED`.
+
+- I5 RL-3A Validation Protocol Foundation: current accepted, unnumbered. This
+  acceptance establishes the deterministic Validation Protocol V1 owner payload
+  and exact `SYNTRAKE:VALIDATION_PROTOCOL:V1 = OWNER_PAYLOAD_EXACT` admission
+  boundary for RL-3A only. It binds accepted Research IR, Experiment,
+  DatasetSnapshot, MetricRequestSet and ExecutionConfig HashRefs; immutable
+  engine and metric registry versions; closed validation modes; ordered
+  XNYS-session fold windows; no-lookahead prefix material slicing; and phase
+  Research IR derivation. It creates no Validation Result, child-result,
+  promotion, blind-truth, persistence, migration, RLS, SQL, API/UI, Paper,
+  broker, Live, Capital Kernel or Production authority.
 
 - I5 Research Lab Completion Program: current accepted, unnumbered. This
   acceptance defines RL-2 through RL-11 as the remaining finite backend
@@ -554,6 +575,37 @@ Accepted RL-2 invariants:
 
 `I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED`.
 
+I5 RL-3A Validation Protocol Foundation acceptance evidence:
+
+- Canonical predecessor:
+  `fdc8351457c6e421163ec7144fb00dda6b7135f0`.
+- Final independently audited technical candidate:
+  `3e7e61458b6b9ca16928e0ad1908e010d7134db3`.
+- PR:
+  `#84`.
+- CI:
+  `35784005405 - SUCCESS`.
+- verify:
+  `106936222294 - SUCCESS`.
+- dependency-audit:
+  `106936222042 - SUCCESS`.
+- Vercel:
+  `SUCCESS`.
+- RL-3A dedicated tests:
+  `26 PASS`.
+- Architecture boundaries:
+  `27 PASS`.
+- Full suite:
+  `1218 PASS / 43 SKIPPED`.
+- PostgreSQL rehearsal:
+  `NOT REQUIRED - NO PERSISTENCE / MIGRATION / RLS / SQL IN RL-3A`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Independent auditor verdict:
+  `PASS`.
+
+`I5 RL-3A VALIDATION PROTOCOL FOUNDATION V1 = CURRENT_ACCEPTED / UNNUMBERED`.
+
 ## I5 Runtime Presence And Trust State
 
 Implementation presence is not the same as formal trust recovery acceptance.
@@ -577,6 +629,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | Research Execution Closure / unnumbered | YES | YES | `I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md` + runtime + writer/service + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RESEARCH EXECUTION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RESEARCH_EXECUTION_CLOSURE | NONE |
 | RL-1 Evidence Object Scientific Closure / unnumbered | YES | YES | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + Evidence runtime + writer finalization + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE | NONE |
 | RL-2 Evidence Ledger and Passport / unnumbered | YES | YES | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` + Passport reader/service + read-authority migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT | NONE |
+| RL-3A Validation Protocol Foundation / unnumbered | YES | YES | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` + Validation Protocol runtime/tests + architecture boundaries + CI; no persistence, migration, RLS or SQL | CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED | CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION | NONE |
 
 RL-1 runtime/progression state:
 
@@ -590,6 +643,13 @@ RL-2 runtime/progression state:
 - design: `YES`.
 - implementation: `YES`.
 - state: `CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT`.
+- permanent A-number: `NONE`.
+
+RL-3A runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- state: `CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION`.
 - permanent A-number: `NONE`.
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence

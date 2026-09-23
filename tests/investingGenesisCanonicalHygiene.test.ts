@@ -46,6 +46,7 @@ const requiredCurrentDocs = [
   "I5_RESEARCH_EXECUTION_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md",
+  "I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
@@ -227,6 +228,50 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("Evidence Ledger V1 has no independent scientific hash identity");
     expect(hash).not.toContain("SYNTRAKE:PASSPORT");
     expect(hash).not.toContain("SYNTRAKE:RESEARCH_PASSPORT");
+  });
+
+  it("records accepted RL-3A Validation Protocol Foundation without closing RL-3", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md");
+    const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+    const row = tableRow(state, "RL-3A Validation Protocol Foundation / unnumbered");
+
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION / UNNUMBERED");
+    expect(contract).toContain("This acceptance covers only RL-3A Validation Protocol Foundation");
+    expect(contract).toContain("accept complete RL-3, RL-3B, RL-3C, Validation Result");
+    expect(contract).toContain("RL-3A does not execute validation runs, persist validation results");
+    expect(contract).toContain("No migration, RLS policy, SQL function, database role, grant or Production");
+    expect(hash).toContain("`SYNTRAKE:VALIDATION_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("current accepted through RL-3A Validation");
+    expect(hash).toContain("Protocol Foundation as `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("No Validation Result, Validation Child Result, Validation RunInput");
+    expect(hash).toContain("promotion");
+    expect(hash).toContain("blind-truth");
+    expect(state).toContain("I5 RL-3A Validation Protocol Foundation (unnumbered)");
+    expect(state).toContain("I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("I5 RL-3A Validation Protocol Foundation acceptance evidence:");
+    expect(state).toContain("fdc8351457c6e421163ec7144fb00dda6b7135f0");
+    expect(state).toContain("3e7e61458b6b9ca16928e0ad1908e010d7134db3");
+    expect(state).toContain("35784005405 - SUCCESS");
+    expect(state).toContain("106936222294 - SUCCESS");
+    expect(state).toContain("106936222042 - SUCCESS");
+    expect(state).toContain("RL-3A dedicated tests:");
+    expect(state).toContain("26 PASS");
+    expect(state).toContain("Architecture boundaries:");
+    expect(state).toContain("27 PASS");
+    expect(state).toContain("1218 PASS / 43 SKIPPED");
+    expect(state).toContain("NOT REQUIRED - NO PERSISTENCE / MIGRATION / RLS / SQL IN RL-3A");
+    expect(state).toContain("Independent auditor verdict:");
+    expect(state).toContain("PASS");
+    expect(state).toContain("I5 RL-3A VALIDATION PROTOCOL FOUNDATION V1 = CURRENT_ACCEPTED / UNNUMBERED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION");
+    expect(row).toContain("| NONE |");
+    expect(state).toContain("RL-3A runtime/progression state:");
+    expect(state).toContain("state: `CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION`");
+    expect(state).toContain("permanent A-number: `NONE`");
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {

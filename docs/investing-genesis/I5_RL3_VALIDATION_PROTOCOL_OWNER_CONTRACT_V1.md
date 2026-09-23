@@ -1,10 +1,15 @@
 # Syntrake Investing Genesis I5 RL-3A - Validation Protocol Owner Contract V1
 
-State: `IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION / UNNUMBERED`
+State: `CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION / UNNUMBERED`
 
 This contract defines a deterministic Validation Protocol foundation for I5
 Research Lab. It admits the exact owner payload for
 `SYNTRAKE:VALIDATION_PROTOCOL:V1` and nothing else.
+
+This acceptance covers only RL-3A Validation Protocol Foundation. It does not
+accept complete RL-3, RL-3B, RL-3C, Validation Result, child execution,
+persistence, migration, API/UI orchestration, promotion or blind-truth
+authority.
 
 ## Scope
 
