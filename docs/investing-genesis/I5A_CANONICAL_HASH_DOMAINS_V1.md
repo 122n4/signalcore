@@ -169,16 +169,16 @@ Portfolio Core, accounting, brokerage, Paper, Live, Capital Kernel, API or UI
 authority. Phase execution and result persistence remain outside this RL-3A
 foundation.
 
-## RL-3B Validation Child Execution Candidate
+## RL-3B Validation Child Execution
 
-`SYNTRAKE:VALIDATION_RUN_INPUT:V1` is implemented candidate
+`SYNTRAKE:VALIDATION_RUN_INPUT:V1` is current accepted
 `OWNER_PAYLOAD_EXACT` for exact fold/phase child execution inputs only.
 
-`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` is implemented candidate
+`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` is current accepted
 `OWNER_PAYLOAD_EXACT` for exact child phase results produced by the accepted V1
 historical execution kernel.
 
-These candidate domains do not create aggregate Validation Result, Validation
+These accepted domains do not create aggregate Validation Result, Validation
 Evidence, promotion, robustness or Blind Truth authority.
 
 ## Explicit Exclusions
