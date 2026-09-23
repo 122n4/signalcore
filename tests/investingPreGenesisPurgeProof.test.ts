@@ -6,7 +6,7 @@ const repoRoot = path.resolve(__dirname, "..");
 const migrationsRoot = path.join(repoRoot, "supabase", "migrations");
 const rollbacksRoot = path.join(repoRoot, "supabase", "rollbacks");
 
-const forbiddenPreGenesisInvestingMigrations = [
+const historicalPreGenesisInvestingMigrations = [
   "20260707190000_create_investing_core_tables.sql",
   "20260717110000_create_investing_audit_tables.sql",
   "20260719120000_investing_financial_architecture.sql",
@@ -112,14 +112,21 @@ function rollbackExists(file: string): boolean {
 }
 
 describe("Investing pre-Genesis source purge", () => {
-  it("keeps the deletion contract explicit and complete", () => {
-    expect(forbiddenPreGenesisInvestingMigrations).toHaveLength(53);
+  it("keeps the historical-lineage and deletion contracts explicit and complete", () => {
+    expect(historicalPreGenesisInvestingMigrations).toHaveLength(53);
     expect(forbiddenPreGenesisInvestingRollbacks).toHaveLength(6);
   });
 
-  it("removes every pre-Genesis Investing migration from the current source tree", () => {
-    for (const file of forbiddenPreGenesisInvestingMigrations) {
-      expect(migrationExists(file), file).toBe(false);
+  it("preserves every pre-Genesis Investing migration as historical lineage", () => {
+    for (const file of historicalPreGenesisInvestingMigrations) {
+      expect(migrationExists(file), file).toBe(true);
+    }
+  });
+
+  it("keeps historical Investing migration lineage strictly before the Zero-Genesis boundary", () => {
+    for (const file of historicalPreGenesisInvestingMigrations) {
+      const version = Number(file.slice(0, 14));
+      expect(version, file).toBeLessThan(20260822125631);
     }
   });
 
