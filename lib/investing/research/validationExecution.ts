@@ -34,6 +34,7 @@ import {
   deriveValidationPhaseResearchIrV1,
   sliceValidationDatasetSeriesPrefixV1,
   type ValidationProtocolCandidateV1,
+  type ValidationProtocolHashPayloadV1,
   type ValidationWindowV1,
 } from "./validationProtocol";
 import { verifyDatasetSeriesMaterialV1, type DatasetSeriesObservationV1, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
@@ -77,6 +78,21 @@ export type ValidationChildResultHashPayloadV1 = Readonly<{
 
 export type ValidationRunInputCandidateV1 = Readonly<{
   validationProtocolCandidate: ValidationProtocolCandidateV1;
+  validationRunInput: ValidationRunInputHashPayloadV1;
+  phaseResearchIrPayload: ResearchIrV1;
+  phaseDatasetSeriesPayloads: readonly DatasetSeriesHashPayloadV1[];
+  phaseDatasetSnapshotPayload: DatasetSnapshotHashPayloadV1;
+  sourceDatasetSeriesPayloads: readonly DatasetSeriesHashPayloadV1[];
+  sourceMaterials: readonly Buffer[];
+}>;
+
+export type PersistedValidationRunInputCandidateV1 = Readonly<{
+  validationProtocol: HashRefV1;
+  protocol: ValidationProtocolHashPayloadV1;
+  subjectResearchIrPayload: ResearchIrV1;
+  sourceDatasetSnapshotPayload: DatasetSnapshotHashPayloadV1;
+  metricRequestSetPayload: MetricRequestSetHashPayloadV1;
+  executionConfigPayload: ExecutionConfigHashPayloadV1;
   validationRunInput: ValidationRunInputHashPayloadV1;
   phaseResearchIrPayload: ResearchIrV1;
   phaseDatasetSeriesPayloads: readonly DatasetSeriesHashPayloadV1[];
@@ -199,11 +215,28 @@ export function hashValidationRunInputV1(input: ValidationRunInputHashPayloadV1)
 
 export function admitValidationRunInputV1(input: ValidationRunInputCandidateV1): AdmittedValidationRunInputV1 {
   const admittedProtocol = admitValidationProtocolV1(input.validationProtocolCandidate);
-  const protocol = admittedProtocol.protocol as ValidationProtocolCandidateV1["protocol"] & {
+  return admitValidationRunInputFromPersistedProtocolV1({
+    validationProtocol: admittedProtocol.validationProtocol,
+    protocol: admittedProtocol.protocol as ValidationProtocolHashPayloadV1,
+    subjectResearchIrPayload: input.validationProtocolCandidate.subjectResearchIrPayload,
+    sourceDatasetSnapshotPayload: input.validationProtocolCandidate.sourceDatasetSnapshotPayload,
+    metricRequestSetPayload: input.validationProtocolCandidate.metricRequestSetPayload,
+    executionConfigPayload: input.validationProtocolCandidate.executionConfigPayload,
+    validationRunInput: input.validationRunInput,
+    phaseResearchIrPayload: input.phaseResearchIrPayload,
+    phaseDatasetSeriesPayloads: input.phaseDatasetSeriesPayloads,
+    phaseDatasetSnapshotPayload: input.phaseDatasetSnapshotPayload,
+    sourceDatasetSeriesPayloads: input.sourceDatasetSeriesPayloads,
+    sourceMaterials: input.sourceMaterials,
+  });
+}
+
+export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedValidationRunInputCandidateV1): AdmittedValidationRunInputV1 {
+  const protocol = input.protocol as ValidationProtocolHashPayloadV1 & {
     folds: readonly { ordinal: string; trainingWindow: ValidationWindowV1; evaluationWindow: ValidationWindowV1 }[];
   };
   const runInput = canonicalValidationRunInputHashPayloadV1(input.validationRunInput) as ValidationRunInputHashPayloadV1 & CanonicalJsonValue;
-  assertSameRef(runInput.validationProtocol, admittedProtocol.validationProtocol, "Validation Protocol");
+  assertSameRef(runInput.validationProtocol, input.validationProtocol, "Validation Protocol");
   assertSameRef(runInput.subjectExperiment, protocol.subjectExperiment, "subject Experiment");
   assertSameRef(runInput.subjectResearchIr, protocol.subjectResearchIr, "subject Research IR");
   assertSameRef(runInput.sourceDatasetSnapshot, protocol.sourceDatasetSnapshot, "source DatasetSnapshot");
@@ -217,14 +250,14 @@ export function admitValidationRunInputV1(input: ValidationRunInputCandidateV1):
     throw new Error("VALIDATION_PHASE_WINDOW_MISMATCH");
   }
 
-  const subjectResearchIr = canonicalResearchIrPayloadV1(input.validationProtocolCandidate.subjectResearchIrPayload) as ResearchIrV1;
+  const subjectResearchIr = canonicalResearchIrPayloadV1(input.subjectResearchIrPayload) as ResearchIrV1;
   const phaseResearchIr = canonicalResearchIrPayloadV1(input.phaseResearchIrPayload) as ResearchIrV1;
   const expectedPhaseIr = deriveValidationPhaseResearchIrV1(subjectResearchIr, expectedWindow);
   assertOnlyResearchIrTestPeriodChangedV1(subjectResearchIr, phaseResearchIr);
   if (!canonicalBytesEqual(expectedPhaseIr, phaseResearchIr)) throw new Error("VALIDATION_PHASE_RESEARCH_IR_MISMATCH");
   assertSameRef(runInput.phaseResearchIr, ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(phaseResearchIr)), "phase Research IR");
 
-  const sourceSnapshot = canonicalDatasetSnapshotHashPayloadV1(input.validationProtocolCandidate.sourceDatasetSnapshotPayload) as DatasetSnapshotHashPayloadV1;
+  const sourceSnapshot = canonicalDatasetSnapshotHashPayloadV1(input.sourceDatasetSnapshotPayload) as DatasetSnapshotHashPayloadV1;
   assertSameRef(runInput.sourceDatasetSnapshot, ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(sourceSnapshot)), "source DatasetSnapshot");
   const sourceDatasetSeries = input.sourceDatasetSeriesPayloads.map((series) => canonicalDatasetSeriesHashPayloadV1(series) as DatasetSeriesHashPayloadV1);
   assertDatasetSnapshotSeries(sourceSnapshot, sourceDatasetSeries, "source DatasetSnapshot");
@@ -239,8 +272,8 @@ export function admitValidationRunInputV1(input: ValidationRunInputCandidateV1):
   assertDatasetSnapshotSeries(phaseSnapshot, phaseDatasetSeries, "phase DatasetSnapshot");
   assertSameRef(runInput.phaseDatasetSnapshot, ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(phaseSnapshot)), "phase DatasetSnapshot");
 
-  const metricRequestSet = canonicalMetricRequestSetHashPayloadV1(input.validationProtocolCandidate.metricRequestSetPayload) as MetricRequestSetHashPayloadV1;
-  const executionConfig = canonicalExecutionConfigHashPayloadV1(input.validationProtocolCandidate.executionConfigPayload) as ExecutionConfigHashPayloadV1;
+  const metricRequestSet = canonicalMetricRequestSetHashPayloadV1(input.metricRequestSetPayload) as MetricRequestSetHashPayloadV1;
+  const executionConfig = canonicalExecutionConfigHashPayloadV1(input.executionConfigPayload) as ExecutionConfigHashPayloadV1;
   if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || runInput.engineVersion !== "ENGINE_V20260918") throw new Error("VALIDATION_RUN_INPUT_ENGINE_UNSUPPORTED");
   if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
   if (metricRequestSet.metricRegistryVersion !== runInput.metricRegistryVersion) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_MISMATCH");

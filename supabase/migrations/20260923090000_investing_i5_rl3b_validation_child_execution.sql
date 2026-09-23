@@ -38,8 +38,55 @@ create table if not exists investing.research_validation_protocols_scientific_id
     and hash_version = 'SYNTRAKE_SHA256_V1'
     and hash_hex ~ '^[0-9A-F]{64}$'
   ),
+  constraint research_validation_protocols_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
   unique (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex)
 );
+
+create unique index if not exists research_experiments_rl3b_authority_key
+  on investing.research_experiments (
+    research_experiment_id,
+    research_investigation_id,
+    tenant_id,
+    principal_id,
+    tenant_membership_id,
+    operation_scope,
+    source_context
+  );
+
+create unique index if not exists research_validation_protocols_authority_key
+  on investing.research_validation_protocols_scientific_identities (
+    research_validation_protocol_identity_id,
+    research_investigation_id,
+    research_experiment_id,
+    tenant_id,
+    principal_id,
+    tenant_membership_id,
+    operation_scope,
+    source_context
+  );
+
+alter table investing.research_validation_protocols_scientific_identities
+  add constraint research_validation_protocols_experiment_authority_fk
+  foreign key (
+    research_experiment_id,
+    research_investigation_id,
+    tenant_id,
+    principal_id,
+    tenant_membership_id,
+    operation_scope,
+    source_context
+  )
+  references investing.research_experiments (
+    research_experiment_id,
+    research_investigation_id,
+    tenant_id,
+    principal_id,
+    tenant_membership_id,
+    operation_scope,
+    source_context
+  );
 
 create table if not exists investing.research_validation_run_inputs_scientific_identities (
   research_validation_run_input_identity_id uuid primary key default gen_random_uuid(),
@@ -49,6 +96,10 @@ create table if not exists investing.research_validation_run_inputs_scientific_i
   research_investigation_id uuid not null,
   research_validation_protocol_identity_id uuid not null references investing.research_validation_protocols_scientific_identities(research_validation_protocol_identity_id),
   research_experiment_id uuid not null,
+  operation text not null check (operation = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'),
+  capability text not null check (capability = 'RESEARCH_EXECUTE'),
+  operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
+  source_context text not null check (source_context = 'PURE_RESEARCH'),
   fold_ordinal integer not null check (fold_ordinal >= 0),
   phase text not null check (phase in ('TRAINING', 'EVALUATION')),
   phase_research_ir_hash_hex text not null check (phase_research_ir_hash_hex ~ '^[0-9A-F]{64}$'),
@@ -70,9 +121,43 @@ create table if not exists investing.research_validation_run_inputs_scientific_i
     and hash_version = 'SYNTRAKE_SHA256_V1'
     and hash_hex ~ '^[0-9A-F]{64}$'
   ),
+  constraint research_validation_run_inputs_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
+  constraint research_validation_run_inputs_protocol_authority_fk
+    foreign key (
+      research_validation_protocol_identity_id,
+      research_investigation_id,
+      research_experiment_id,
+      tenant_id,
+      principal_id,
+      tenant_membership_id,
+      operation_scope,
+      source_context
+    )
+    references investing.research_validation_protocols_scientific_identities (
+      research_validation_protocol_identity_id,
+      research_investigation_id,
+      research_experiment_id,
+      tenant_id,
+      principal_id,
+      tenant_membership_id,
+      operation_scope,
+      source_context
+    ),
   unique (research_validation_protocol_identity_id, fold_ordinal, phase),
   unique (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex)
 );
+
+create unique index if not exists research_validation_run_inputs_authority_key
+  on investing.research_validation_run_inputs_scientific_identities (
+    research_validation_run_input_identity_id,
+    research_investigation_id,
+    research_validation_protocol_identity_id,
+    tenant_id,
+    principal_id,
+    tenant_membership_id
+  );
 
 create table if not exists investing.research_validation_execution_runs (
   research_validation_execution_run_id uuid primary key default gen_random_uuid(),
@@ -90,11 +175,40 @@ create table if not exists investing.research_validation_execution_runs (
   capability text not null check (capability = 'RESEARCH_EXECUTE'),
   operation_scope text not null check (operation_scope = 'TENANT_SCOPE'),
   source_context text not null check (source_context = 'PURE_RESEARCH'),
-  status text not null default 'REGISTERED' check (status in ('REGISTERED', 'STARTED', 'SUCCEEDED', 'FAILED')),
-  failure_code text,
   correlation_id text not null,
-  created_at timestamptz not null default transaction_timestamp()
+  created_at timestamptz not null default transaction_timestamp(),
+  constraint research_validation_execution_runs_authority_tuple_fk
+    foreign key (tenant_membership_id, tenant_id, principal_id)
+    references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
+  constraint research_validation_execution_runs_run_input_authority_fk
+    foreign key (
+      research_validation_run_input_identity_id,
+      research_investigation_id,
+      research_validation_protocol_identity_id,
+      tenant_id,
+      principal_id,
+      tenant_membership_id
+    )
+    references investing.research_validation_run_inputs_scientific_identities (
+      research_validation_run_input_identity_id,
+      research_investigation_id,
+      research_validation_protocol_identity_id,
+      tenant_id,
+      principal_id,
+      tenant_membership_id
+    )
 );
+
+create unique index if not exists research_validation_execution_runs_authority_key
+  on investing.research_validation_execution_runs (
+    research_validation_execution_run_id,
+    research_investigation_id,
+    research_validation_protocol_identity_id,
+    research_validation_run_input_identity_id,
+    tenant_id,
+    principal_id,
+    tenant_membership_id
+  );
 
 create table if not exists investing.research_validation_execution_run_events (
   research_validation_execution_run_event_id uuid primary key default gen_random_uuid(),
@@ -128,6 +242,7 @@ create table if not exists investing.research_validation_result_artifacts (
     encode(sha256(content_bytes), 'hex') = lower(content_sha256)
     and octet_length(content_bytes) = content_byte_length
   ),
+  unique (research_validation_result_artifact_id, research_validation_execution_run_id),
   unique (research_validation_execution_run_id, artifact_kind)
 );
 
@@ -158,6 +273,37 @@ create table if not exists investing.research_validation_child_results_scientifi
     and hash_version = 'SYNTRAKE_SHA256_V1'
     and hash_hex ~ '^[0-9A-F]{64}$'
   ),
+  constraint research_validation_child_results_execution_authority_fk
+    foreign key (
+      research_validation_execution_run_id,
+      research_investigation_id,
+      research_validation_protocol_identity_id,
+      research_validation_run_input_identity_id,
+      tenant_id,
+      principal_id,
+      tenant_membership_id
+    )
+    references investing.research_validation_execution_runs (
+      research_validation_execution_run_id,
+      research_investigation_id,
+      research_validation_protocol_identity_id,
+      research_validation_run_input_identity_id,
+      tenant_id,
+      principal_id,
+      tenant_membership_id
+    ),
+  constraint research_validation_child_results_trace_run_fk
+    foreign key (execution_trace_artifact_id, research_validation_execution_run_id)
+    references investing.research_validation_result_artifacts (research_validation_result_artifact_id, research_validation_execution_run_id),
+  constraint research_validation_child_results_valuation_run_fk
+    foreign key (valuation_series_artifact_id, research_validation_execution_run_id)
+    references investing.research_validation_result_artifacts (research_validation_result_artifact_id, research_validation_execution_run_id),
+  constraint research_validation_child_results_metrics_run_fk
+    foreign key (metric_result_set_artifact_id, research_validation_execution_run_id)
+    references investing.research_validation_result_artifacts (research_validation_result_artifact_id, research_validation_execution_run_id),
+  constraint research_validation_child_results_benchmark_run_fk
+    foreign key (benchmark_series_artifact_id, research_validation_execution_run_id)
+    references investing.research_validation_result_artifacts (research_validation_result_artifact_id, research_validation_execution_run_id),
   unique (research_validation_run_input_identity_id),
   unique (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex)
 );
@@ -171,6 +317,71 @@ begin
   raise exception 'research validation records are append-only';
 end;
 $$;
+
+create or replace function investing.enforce_research_validation_execution_event_transition()
+returns trigger
+language plpgsql
+set search_path = investing, pg_temp
+as $$
+declare
+  v_previous text;
+  v_existing_terminal integer;
+begin
+  if tg_op <> 'INSERT' then
+    raise exception 'research validation execution events are append-only';
+  end if;
+
+  select count(*)::integer into v_existing_terminal
+  from investing.research_validation_execution_run_events e
+  where e.research_validation_execution_run_id = new.research_validation_execution_run_id
+    and e.event_type in ('SUCCEEDED', 'FAILED');
+
+  if v_existing_terminal <> 0 then
+    raise exception 'research validation execution run already terminal';
+  end if;
+
+  if new.sequence = 1 then
+    if new.event_type <> 'REGISTERED' or new.previous_event_type is not null then
+      raise exception 'invalid research validation event transition';
+    end if;
+    if exists (
+      select 1
+      from investing.research_validation_execution_run_events e
+      where e.research_validation_execution_run_id = new.research_validation_execution_run_id
+    ) then
+      raise exception 'invalid research validation event transition';
+    end if;
+    return new;
+  end if;
+
+  select e.event_type into v_previous
+  from investing.research_validation_execution_run_events e
+  where e.research_validation_execution_run_id = new.research_validation_execution_run_id
+    and e.sequence = new.sequence - 1;
+
+  if new.sequence = 2 and not (new.event_type = 'STARTED' and new.previous_event_type = 'REGISTERED' and v_previous = 'REGISTERED') then
+    raise exception 'invalid research validation event transition';
+  end if;
+
+  if new.sequence = 3 and not (new.event_type in ('SUCCEEDED', 'FAILED') and new.previous_event_type = 'STARTED' and v_previous = 'STARTED') then
+    raise exception 'invalid research validation event transition';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger research_validation_execution_run_events_transition_trigger
+before insert on investing.research_validation_execution_run_events
+for each row execute function investing.enforce_research_validation_execution_event_transition();
+
+create trigger research_validation_protocols_append_only_trigger
+before update or delete on investing.research_validation_protocols_scientific_identities
+for each row execute function investing.reject_research_validation_update_delete();
+
+create trigger research_validation_run_inputs_append_only_trigger
+before update or delete on investing.research_validation_run_inputs_scientific_identities
+for each row execute function investing.reject_research_validation_update_delete();
 
 create trigger research_validation_execution_run_events_append_only_trigger
 before update or delete on investing.research_validation_execution_run_events
@@ -217,6 +428,65 @@ for insert to investing_app
 with check (
   current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1'
   and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy research_validation_protocol_create_select
+on investing.research_validation_protocols_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy research_validation_child_protocol_selector_select
+on investing.research_validation_protocols_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+);
+
+create policy research_validation_child_protocol_parent_select
+on investing.research_validation_protocols_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy research_validation_child_execute_run_input_select
+on investing.research_validation_run_inputs_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
   and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
   and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
   and current_setting('syntrake.investing.account_id', true) = ''
@@ -360,6 +630,161 @@ with check (
   and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
   and current_setting('syntrake.investing.account_id', true) = ''
   and current_setting('syntrake.investing.account_access_id', true) = ''
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy tenants_rl3b_validation_read
+on investing.tenants
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) in ('RESEARCH_VALIDATION_PROTOCOL_CREATE_V1', 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1')
+  and current_setting('syntrake.investing.capability', true) in ('RESEARCH_MUTATE', 'RESEARCH_EXECUTE')
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and state = 'ACTIVE'
+);
+
+create policy tenant_memberships_rl3b_validation_read
+on investing.tenant_memberships
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) in ('RESEARCH_VALIDATION_PROTOCOL_CREATE_V1', 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1')
+  and current_setting('syntrake.investing.capability', true) in ('RESEARCH_MUTATE', 'RESEARCH_EXECUTE')
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and role = 'OWNER'
+  and state = 'ACTIVE'
+);
+
+create policy research_investigations_rl3b_validation_read
+on investing.research_investigations
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) in ('RESEARCH_VALIDATION_PROTOCOL_CREATE_V1', 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1')
+  and current_setting('syntrake.investing.capability', true) in ('RESEARCH_MUTATE', 'RESEARCH_EXECUTE')
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  and operation_scope = 'TENANT_SCOPE'
+  and source_context = 'PURE_RESEARCH'
+  and account_id is null
+);
+
+create policy research_experiments_rl3b_validation_read
+on investing.research_experiments
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) in ('RESEARCH_VALIDATION_PROTOCOL_CREATE_V1', 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1')
+  and current_setting('syntrake.investing.capability', true) in ('RESEARCH_MUTATE', 'RESEARCH_EXECUTE')
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  and operation_scope = 'TENANT_SCOPE'
+  and source_context = 'PURE_RESEARCH'
+  and account_id is null
+);
+
+create policy research_ir_rl3b_validation_select
+on investing.research_ir_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) in ('RESEARCH_VALIDATION_PROTOCOL_CREATE_V1', 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1')
+  and current_setting('syntrake.investing.capability', true) in ('RESEARCH_MUTATE', 'RESEARCH_EXECUTE')
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy research_ir_rl3b_validation_insert
+on investing.research_ir_scientific_identities
+for insert to investing_app
+with check (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy dataset_series_rl3b_validation_select
+on investing.dataset_series_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy dataset_series_rl3b_validation_insert
+on investing.dataset_series_scientific_identities
+for insert to investing_app
+with check (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy dataset_snapshots_rl3b_validation_select
+on investing.dataset_snapshots_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy dataset_snapshots_rl3b_validation_insert
+on investing.dataset_snapshots_scientific_identities
+for insert to investing_app
+with check (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy metric_request_sets_rl3b_validation_select
+on investing.metric_request_sets_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy execution_configs_rl3b_validation_select
+on investing.execution_configs_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
   and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
   and principal_id::text = current_setting('syntrake.investing.principal_id', true)
   and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)

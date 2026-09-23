@@ -12,8 +12,8 @@ import {
   type CreateValidationProtocolV1Result,
   type ExecuteValidationChildV1Result,
 } from "./validationExecutionWriter";
+import type { ResearchDatasetMaterialProviderV1 } from "./datasetMaterial";
 import type { ValidationProtocolCandidateV1 } from "./validationProtocol";
-import type { ValidationRunInputCandidateV1 } from "./validationExecution";
 
 export type CreateValidationProtocolCommandV1 = Readonly<{
   researchInvestigationId: string;
@@ -28,7 +28,7 @@ export type ExecuteValidationChildCommandV1 = Readonly<{
   foldOrdinal: string;
   phase: "TRAINING" | "EVALUATION";
   correlationId: string;
-  candidate: ValidationRunInputCandidateV1;
+  datasetMaterialProvider: ResearchDatasetMaterialProviderV1;
 }>;
 
 export async function createValidationProtocolCommandV1(
@@ -61,6 +61,6 @@ export async function executeValidationChildCommandV1(
   if (!isAuthorizedResearchValidationChildExecutionContext(authority.context)) return { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" };
   return executeValidationChildV1({
     authorizedContext: authority.context,
-    candidate: input.candidate,
+    datasetMaterialProvider: input.datasetMaterialProvider,
   });
 }
