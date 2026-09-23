@@ -1,5 +1,14 @@
 begin;
 
+do $$
+begin
+  if current_user <> 'postgres' then
+    raise exception 'I5 RL-3B prestate violation: migration must run as postgres, got %', current_user;
+  end if;
+end $$;
+
+set local role investing_owner;
+
 create table if not exists investing.research_validation_protocols_scientific_identities (
   research_validation_protocol_identity_id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -197,7 +206,7 @@ revoke all on investing.research_validation_child_results_scientific_identities 
 
 grant select, insert on investing.research_validation_protocols_scientific_identities to investing_app;
 grant select, insert on investing.research_validation_run_inputs_scientific_identities to investing_app;
-grant select, insert, update on investing.research_validation_execution_runs to investing_app;
+grant select, insert on investing.research_validation_execution_runs to investing_app;
 grant select, insert on investing.research_validation_execution_run_events to investing_app;
 grant select, insert on investing.research_validation_result_artifacts to investing_app;
 grant select, insert on investing.research_validation_child_results_scientific_identities to investing_app;
@@ -232,18 +241,198 @@ with check (
   and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
 );
 
-create policy research_validation_child_execute_all
+create policy research_validation_child_execute_select
 on investing.research_validation_execution_runs
-for all to investing_app
+for select to investing_app
 using (
   current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
   and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
   and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
-)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy research_validation_child_execute_run_insert
+on investing.research_validation_execution_runs
+for insert to investing_app
 with check (
   current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
   and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
   and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
 );
+
+create policy research_validation_child_execute_event_select
+on investing.research_validation_execution_run_events
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and exists (
+    select 1
+    from investing.research_validation_execution_runs r
+    where r.research_validation_execution_run_id = research_validation_execution_run_events.research_validation_execution_run_id
+      and r.tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+      and r.principal_id::text = current_setting('syntrake.investing.principal_id', true)
+      and r.tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  )
+);
+
+create policy research_validation_child_execute_event_insert
+on investing.research_validation_execution_run_events
+for insert to investing_app
+with check (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and exists (
+    select 1
+    from investing.research_validation_execution_runs r
+    where r.research_validation_execution_run_id = research_validation_execution_run_events.research_validation_execution_run_id
+      and r.tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+      and r.principal_id::text = current_setting('syntrake.investing.principal_id', true)
+      and r.tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  )
+);
+
+create policy research_validation_child_execute_artifact_select
+on investing.research_validation_result_artifacts
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and exists (
+    select 1
+    from investing.research_validation_execution_runs r
+    where r.research_validation_execution_run_id = research_validation_result_artifacts.research_validation_execution_run_id
+      and r.tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+      and r.principal_id::text = current_setting('syntrake.investing.principal_id', true)
+      and r.tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  )
+);
+
+create policy research_validation_child_execute_artifact_insert
+on investing.research_validation_result_artifacts
+for insert to investing_app
+with check (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and exists (
+    select 1
+    from investing.research_validation_execution_runs r
+    where r.research_validation_execution_run_id = research_validation_result_artifacts.research_validation_execution_run_id
+      and r.tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+      and r.principal_id::text = current_setting('syntrake.investing.principal_id', true)
+      and r.tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  )
+);
+
+create policy research_validation_child_execute_result_select
+on investing.research_validation_child_results_scientific_identities
+for select to investing_app
+using (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+create policy research_validation_child_execute_result_insert
+on investing.research_validation_child_results_scientific_identities
+for insert to investing_app
+with check (
+  current_setting('syntrake.investing.operation', true) = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1'
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_EXECUTE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
+  and current_setting('syntrake.investing.account_id', true) = ''
+  and current_setting('syntrake.investing.account_access_id', true) = ''
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+);
+
+do $$
+declare
+  v_bad_count integer;
+begin
+  select count(*)::integer into v_bad_count
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  join pg_catalog.pg_roles r on r.oid = c.relowner
+  where n.nspname = 'investing'
+    and c.relname in (
+      'research_validation_protocols_scientific_identities',
+      'research_validation_run_inputs_scientific_identities',
+      'research_validation_execution_runs',
+      'research_validation_execution_run_events',
+      'research_validation_result_artifacts',
+      'research_validation_child_results_scientific_identities'
+    )
+    and r.rolname <> 'investing_owner';
+
+  if v_bad_count <> 0 then
+    raise exception 'I5 RL-3B postcondition violation: validation relations must be owned by investing_owner';
+  end if;
+
+  select count(*)::integer into v_bad_count
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and table_name in (
+      'research_validation_protocols_scientific_identities',
+      'research_validation_run_inputs_scientific_identities',
+      'research_validation_execution_runs',
+      'research_validation_execution_run_events',
+      'research_validation_result_artifacts',
+      'research_validation_child_results_scientific_identities'
+    )
+    and grantee in ('public', 'anon', 'authenticated', 'service_role');
+
+  if v_bad_count <> 0 then
+    raise exception 'I5 RL-3B postcondition violation: forbidden grants on validation relations';
+  end if;
+
+  select count(*)::integer into v_bad_count
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and table_name = 'research_validation_execution_runs'
+    and grantee = 'investing_app'
+    and privilege_type = 'UPDATE';
+
+  if v_bad_count <> 0 then
+    raise exception 'I5 RL-3B postcondition violation: broad UPDATE grant on validation runs';
+  end if;
+
+  select count(*)::integer into v_bad_count
+  from pg_catalog.pg_class c
+  join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'investing'
+    and c.relname in (
+      'research_validation_protocols_scientific_identities',
+      'research_validation_run_inputs_scientific_identities',
+      'research_validation_execution_runs',
+      'research_validation_execution_run_events',
+      'research_validation_result_artifacts',
+      'research_validation_child_results_scientific_identities'
+    )
+    and (not c.relrowsecurity or not c.relforcerowsecurity);
+
+  if v_bad_count <> 0 then
+    raise exception 'I5 RL-3B postcondition violation: validation relations must force RLS';
+  end if;
+end $$;
 
 commit;

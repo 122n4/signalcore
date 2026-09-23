@@ -22,9 +22,9 @@ import {
   type MetricRequestSetHashPayloadV1,
 } from "./executionMaterials";
 import { executeHistoricalKernelV1, type HistoricalKernelInputV1 } from "./historicalExecutionEngine";
-import { hashResearchIrV1, type ResearchIrV1 } from "./researchIr";
+import { canonicalResearchIrPayloadV1, hashResearchIrV1, type ResearchIrV1 } from "./researchIr";
 import {
-  canonicalResultHashPayloadV1,
+  canonicalExecutionResultFieldsV1,
   type ResearchArtifactDescriptorV1,
 } from "./resultArtifacts";
 import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";
@@ -36,7 +36,7 @@ import {
   type ValidationProtocolCandidateV1,
   type ValidationWindowV1,
 } from "./validationProtocol";
-import { type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
+import { verifyDatasetSeriesMaterialV1, type DatasetSeriesObservationV1, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
 
 export type ValidationPhaseV1 = "TRAINING" | "EVALUATION";
 
@@ -91,13 +91,13 @@ export type AdmittedValidationRunInputV1 = Readonly<{
   phaseResearchIr: ResearchIrV1;
   phaseDatasetSeries: readonly DatasetSeriesHashPayloadV1[];
   phaseDatasetSnapshot: DatasetSnapshotHashPayloadV1;
+  executionConfig: ExecutionConfigHashPayloadV1;
+  metricRequestSet: MetricRequestSetHashPayloadV1;
+  phaseMaterials: readonly VerifiedDatasetSeriesMaterialV1[];
 }>;
 
 export type ValidationChildExecutionInputV1 = Readonly<{
   admittedRunInput: AdmittedValidationRunInputV1;
-  executionConfig: ExecutionConfigHashPayloadV1;
-  metricRequestSet: MetricRequestSetHashPayloadV1;
-  materials: readonly VerifiedDatasetSeriesMaterialV1[];
 }>;
 
 export type ValidationChildExecutionResultV1 =
@@ -148,6 +148,7 @@ const childResultKeys = new Set([
   "benchmark",
 ]);
 const windowKeys = new Set(["startDate", "endDate"]);
+const admittedValidationRunInputs = new WeakSet<object>();
 
 export function canonicalValidationRunInputHashPayloadV1(input: ValidationRunInputHashPayloadV1): CanonicalJsonValue {
   assertClosedPlainObject(input, runInputKeys);
@@ -216,21 +217,26 @@ export function admitValidationRunInputV1(input: ValidationRunInputCandidateV1):
     throw new Error("VALIDATION_PHASE_WINDOW_MISMATCH");
   }
 
-  const expectedPhaseIr = deriveValidationPhaseResearchIrV1(input.validationProtocolCandidate.subjectResearchIrPayload, expectedWindow);
-  assertOnlyResearchIrTestPeriodChangedV1(input.validationProtocolCandidate.subjectResearchIrPayload, input.phaseResearchIrPayload);
-  if (!canonicalBytesEqual(expectedPhaseIr, input.phaseResearchIrPayload)) throw new Error("VALIDATION_PHASE_RESEARCH_IR_MISMATCH");
-  assertSameRef(runInput.phaseResearchIr, ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(input.phaseResearchIrPayload)), "phase Research IR");
+  const subjectResearchIr = canonicalResearchIrPayloadV1(input.validationProtocolCandidate.subjectResearchIrPayload) as ResearchIrV1;
+  const phaseResearchIr = canonicalResearchIrPayloadV1(input.phaseResearchIrPayload) as ResearchIrV1;
+  const expectedPhaseIr = deriveValidationPhaseResearchIrV1(subjectResearchIr, expectedWindow);
+  assertOnlyResearchIrTestPeriodChangedV1(subjectResearchIr, phaseResearchIr);
+  if (!canonicalBytesEqual(expectedPhaseIr, phaseResearchIr)) throw new Error("VALIDATION_PHASE_RESEARCH_IR_MISMATCH");
+  assertSameRef(runInput.phaseResearchIr, ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(phaseResearchIr)), "phase Research IR");
 
   const sourceSnapshot = canonicalDatasetSnapshotHashPayloadV1(input.validationProtocolCandidate.sourceDatasetSnapshotPayload) as DatasetSnapshotHashPayloadV1;
   assertSameRef(runInput.sourceDatasetSnapshot, ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(sourceSnapshot)), "source DatasetSnapshot");
-  assertDatasetSnapshotSeries(sourceSnapshot, input.sourceDatasetSeriesPayloads, "source DatasetSnapshot");
+  const sourceDatasetSeries = input.sourceDatasetSeriesPayloads.map((series) => canonicalDatasetSeriesHashPayloadV1(series) as DatasetSeriesHashPayloadV1);
+  assertDatasetSnapshotSeries(sourceSnapshot, sourceDatasetSeries, "source DatasetSnapshot");
 
   if (input.sourceDatasetSeriesPayloads.length !== input.sourceMaterials.length) throw new Error("VALIDATION_SOURCE_MATERIAL_COUNT_MISMATCH");
-  const sliced = input.sourceDatasetSeriesPayloads.map((series, index) =>
-    sliceValidationDatasetSeriesPrefixV1(series, input.sourceMaterials[index]!, expectedWindow.endDate).series);
-  assertSamePayloadSet(sliced, input.phaseDatasetSeriesPayloads, "VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
+  const sliced = sourceDatasetSeries.map((series, index) =>
+    sliceValidationDatasetSeriesPrefixV1(series, input.sourceMaterials[index]!, expectedWindow.endDate));
+  const slicedSeries = sliced.map((slice) => slice.series);
+  const phaseDatasetSeries = input.phaseDatasetSeriesPayloads.map((series) => canonicalDatasetSeriesHashPayloadV1(series) as DatasetSeriesHashPayloadV1);
+  assertSamePayloadSet(slicedSeries, phaseDatasetSeries, "VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
   const phaseSnapshot = canonicalDatasetSnapshotHashPayloadV1(input.phaseDatasetSnapshotPayload) as DatasetSnapshotHashPayloadV1;
-  assertDatasetSnapshotSeries(phaseSnapshot, input.phaseDatasetSeriesPayloads, "phase DatasetSnapshot");
+  assertDatasetSnapshotSeries(phaseSnapshot, phaseDatasetSeries, "phase DatasetSnapshot");
   assertSameRef(runInput.phaseDatasetSnapshot, ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(phaseSnapshot)), "phase DatasetSnapshot");
 
   const metricRequestSet = canonicalMetricRequestSetHashPayloadV1(input.validationProtocolCandidate.metricRequestSetPayload) as MetricRequestSetHashPayloadV1;
@@ -241,13 +247,19 @@ export function admitValidationRunInputV1(input: ValidationRunInputCandidateV1):
   if (executionConfig.engineCompatibilityVersion !== runInput.engineVersion) throw new Error("VALIDATION_RUN_INPUT_EXECUTION_CONFIG_MISMATCH");
 
   const frozenRunInput = deepFreezeCanonicalJsonV1(runInput);
-  return Object.freeze({
+  const phaseMaterials = sliced.map((slice) => freezeVerifiedDatasetSeriesMaterialV1(verifyDatasetSeriesMaterialV1(slice.series, slice.bytes)));
+  const admitted = Object.freeze({
     validationRunInput: frozenRunInput,
     validationRunInputHash: Object.freeze(ref("SYNTRAKE:VALIDATION_RUN_INPUT:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:VALIDATION_RUN_INPUT:V1", frozenRunInput))),
-    phaseResearchIr: deepFreezeCanonicalJsonV1(input.phaseResearchIrPayload),
-    phaseDatasetSeries: Object.freeze(input.phaseDatasetSeriesPayloads.map((series) => deepFreezeCanonicalJsonV1(series))),
-    phaseDatasetSnapshot: deepFreezeCanonicalJsonV1(input.phaseDatasetSnapshotPayload),
+    phaseResearchIr: deepFreezeCanonicalJsonV1(phaseResearchIr),
+    phaseDatasetSeries: Object.freeze(phaseDatasetSeries.map((series) => deepFreezeCanonicalJsonV1(series))),
+    phaseDatasetSnapshot: deepFreezeCanonicalJsonV1(phaseSnapshot),
+    executionConfig: deepFreezeCanonicalJsonV1(executionConfig),
+    metricRequestSet: deepFreezeCanonicalJsonV1(metricRequestSet),
+    phaseMaterials: Object.freeze(phaseMaterials),
   });
+  admittedValidationRunInputs.add(admitted);
+  return admitted;
 }
 
 export function canonicalValidationChildResultHashPayloadV1(input: ValidationChildResultHashPayloadV1): CanonicalJsonValue {
@@ -255,37 +267,11 @@ export function canonicalValidationChildResultHashPayloadV1(input: ValidationChi
   if (input.schemaVersion !== "VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V1") throw new Error("VALIDATION_CHILD_RESULT_SCHEMA_INVALID");
   const validationRunInput = hashRefV1(input.validationRunInput);
   assertHashRefDomainV1(validationRunInput, "SYNTRAKE:VALIDATION_RUN_INPUT:V1");
-  const resultLike = canonicalResultHashPayloadV1({
-    schemaVersion: "RESULT_HASH_PAYLOAD_V1",
-    runInput: ref("SYNTRAKE:RUN_INPUT:V1", "0".repeat(64) as CanonicalSha256HexV1),
-    engineId: input.engineId,
-    engineVersion: input.engineVersion,
-    executionModelClass: input.executionModelClass,
-    valuationCurrency: input.valuationCurrency,
-    testPeriod: input.testPeriod,
-    startingNav: input.startingNav,
-    endingNav: input.endingNav,
-    terminalCash: input.terminalCash,
-    executionTrace: input.executionTrace,
-    valuationSeries: input.valuationSeries,
-    metricResultSet: input.metricResultSet,
-    benchmark: input.benchmark,
-  }) as Record<string, CanonicalJsonValue>;
+  const resultFields = canonicalExecutionResultFieldsV1(input);
   return {
     schemaVersion: "VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V1",
     validationRunInput,
-    engineId: resultLike.engineId!,
-    engineVersion: resultLike.engineVersion!,
-    executionModelClass: resultLike.executionModelClass!,
-    valuationCurrency: resultLike.valuationCurrency!,
-    testPeriod: resultLike.testPeriod!,
-    startingNav: resultLike.startingNav!,
-    endingNav: resultLike.endingNav!,
-    terminalCash: resultLike.terminalCash!,
-    executionTrace: resultLike.executionTrace!,
-    valuationSeries: resultLike.valuationSeries!,
-    metricResultSet: resultLike.metricResultSet!,
-    benchmark: resultLike.benchmark!,
+    ...resultFields,
   };
 }
 
@@ -298,13 +284,16 @@ export function hashValidationChildResultV1(input: ValidationChildResultHashPayl
 }
 
 export function executeValidationChildBacktestV1(input: ValidationChildExecutionInputV1): ValidationChildExecutionResultV1 {
+  if (!admittedValidationRunInputs.has(input.admittedRunInput as object)) {
+    return { ok: false, code: "VALIDATION_RUN_INPUT_NOT_ADMITTED" };
+  }
   const runInput = input.admittedRunInput.validationRunInput as ValidationRunInputHashPayloadV1;
   const kernelInput: HistoricalKernelInputV1 = {
     researchIr: input.admittedRunInput.phaseResearchIr,
     datasetSeries: input.admittedRunInput.phaseDatasetSeries,
-    executionConfig: input.executionConfig,
-    metricRequestSet: input.metricRequestSet,
-    materials: input.materials,
+    executionConfig: input.admittedRunInput.executionConfig,
+    metricRequestSet: input.admittedRunInput.metricRequestSet,
+    materials: input.admittedRunInput.phaseMaterials,
   };
   const kernel = executeHistoricalKernelV1(kernelInput);
   if (kernel.ok === false) return kernel;
@@ -394,6 +383,18 @@ function deepFreezeCanonicalJsonV1<T extends CanonicalJsonValue>(value: T): T {
   if (Object.getPrototypeOf(value) !== Object.prototype) throw new Error("expected canonical JSON plain object");
   for (const child of Object.values(value)) deepFreezeCanonicalJsonV1(child);
   return Object.freeze(value) as T;
+}
+
+function freezeVerifiedDatasetSeriesMaterialV1(material: VerifiedDatasetSeriesMaterialV1): VerifiedDatasetSeriesMaterialV1 {
+  const observations = material.observations.map((observation) => Object.freeze({
+    date: observation.date,
+    value: observation.value,
+  } satisfies DatasetSeriesObservationV1));
+  return Object.freeze({
+    series: deepFreezeCanonicalJsonV1(material.series),
+    observations: Object.freeze(observations),
+    byDate: material.byDate,
+  });
 }
 
 function assertClosedPlainObject(value: unknown, allowedKeys: ReadonlySet<string>): void {

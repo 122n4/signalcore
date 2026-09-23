@@ -200,6 +200,18 @@ describe("I5 RL-3B Validation Child Execution runtime", () => {
     expect(admitted.phaseResearchIr.testPeriod).toEqual(training.validationRunInputPayload.phaseWindow);
     expect(admitted.phaseResearchIr.pipeline).toEqual(i5ExperimentBaseResearchIrV1.pipeline);
     expect(admitted.phaseResearchIr.startingCapital).toEqual(i5ExperimentBaseResearchIrV1.startingCapital);
+    expect(admitted.executionConfig).toEqual(executionConfigV1);
+    expect(admitted.metricRequestSet).toEqual(metricRequestSetV1);
+    expect(admitted.phaseMaterials).toHaveLength(training.phaseMaterials.length);
+    expect(Object.isFrozen(admitted.phaseResearchIr)).toBe(true);
+    expect(Object.isFrozen(admitted.phaseDatasetSeries)).toBe(true);
+    expect(Object.isFrozen(admitted.phaseDatasetSeries[0])).toBe(true);
+    expect(Object.isFrozen(admitted.phaseDatasetSnapshot)).toBe(true);
+    expect(Object.isFrozen(admitted.executionConfig)).toBe(true);
+    expect(Object.isFrozen(admitted.metricRequestSet)).toBe(true);
+    expect(Object.isFrozen(admitted.phaseMaterials)).toBe(true);
+    expect(Object.isFrozen(admitted.phaseMaterials[0])).toBe(true);
+    expect(Object.isFrozen(admitted.phaseMaterials[0]!.observations)).toBe(true);
     expect(training.validationRunInputPayload.subjectExperiment).toEqual(ref("SYNTRAKE:EXPERIMENT:V1", hashExperimentV1(subjectExperimentCandidate)));
 
     const forbiddenRunInput: RunInputHashPayloadV1 = {
@@ -257,15 +269,9 @@ describe("I5 RL-3B Validation Child Execution runtime", () => {
     });
     const first = executeValidationChildBacktestV1({
       admittedRunInput: admitted,
-      executionConfig: executionConfigV1,
-      metricRequestSet: metricRequestSetV1,
-      materials: training.phaseMaterials,
     });
     const second = executeValidationChildBacktestV1({
       admittedRunInput: admitted,
-      executionConfig: executionConfigV1,
-      metricRequestSet: metricRequestSetV1,
-      materials: training.phaseMaterials,
     });
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
@@ -314,6 +320,48 @@ describe("I5 RL-3B Validation Child Execution runtime", () => {
     expect(historical.artifacts.executionTraceBytes.equals(first.artifacts.executionTraceBytes)).toBe(true);
     expect(hashResultV1(historical.resultPayload)).not.toBe(first.childResultHash.hashHex);
     expect(historical.resultPayload.runInput.hashDomain).toBe("SYNTRAKE:RUN_INPUT:V1");
+  });
+
+  it("does not execute forged child packages with unbound execution config, metrics, or materials", () => {
+    const training = validationRunInput("TRAINING");
+    const admitted = admitValidationRunInputV1({
+      validationProtocolCandidate: training.candidate,
+      validationRunInput: training.validationRunInputPayload,
+      phaseResearchIrPayload: training.phaseResearchIrPayload,
+      phaseDatasetSeriesPayloads: training.phaseDatasetSeriesPayloads,
+      phaseDatasetSnapshotPayload: training.phaseDatasetSnapshotPayload,
+      sourceDatasetSeriesPayloads: training.candidate.sourceDatasetSeriesPayloads,
+      sourceMaterials: training.candidate.sourceBytes,
+    });
+
+    const forgedConfig = executeValidationChildBacktestV1({
+      admittedRunInput: {
+        ...admitted,
+        executionConfig: {
+          ...executionConfigV1,
+          costsPolicy: "COSTS_MUTATED",
+        },
+      } as any,
+    });
+    const forgedMetrics = executeValidationChildBacktestV1({
+      admittedRunInput: {
+        ...admitted,
+        metricRequestSet: {
+          ...metricRequestSetV1,
+          metricRegistryVersion: "METRIC_REGISTRY_MUTATED",
+        },
+      } as any,
+    });
+    const forgedMaterials = executeValidationChildBacktestV1({
+      admittedRunInput: {
+        ...admitted,
+        phaseMaterials: training.phaseMaterials,
+      } as any,
+    });
+
+    expect(forgedConfig).toEqual({ ok: false, code: "VALIDATION_RUN_INPUT_NOT_ADMITTED" });
+    expect(forgedMetrics).toEqual({ ok: false, code: "VALIDATION_RUN_INPUT_NOT_ADMITTED" });
+    expect(forgedMaterials).toEqual({ ok: false, code: "VALIDATION_RUN_INPUT_NOT_ADMITTED" });
   });
 
   it("rejects corrupted source material and mismatched phase snapshots", () => {

@@ -16,7 +16,7 @@ import {
   type ExactRationalV1,
 } from "./exactRational";
 import { type ResearchIrV1, type ResearchOperationV1, type BooleanExpressionV1, type DataFieldRefV1 } from "./index";
-import { canonicalJsonlArtifactBytesV1, artifactDescriptorV1, type ResultHashPayloadV1 } from "./resultArtifacts";
+import { canonicalJsonlArtifactBytesV1, artifactDescriptorV1, type ExecutionResultFieldsV1, type ResultHashPayloadV1 } from "./resultArtifacts";
 import { metricResultRecordsV1, type ValuationRecordV1 } from "./researchMetrics";
 import { type RunInputHashPayloadV1 } from "./canonical";
 import { type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
@@ -53,7 +53,7 @@ export type ResearchExecutionSuccessV1 = Readonly<{
 
 export type ResearchExecutionResultV1 = ResearchExecutionSuccessV1 | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 }>;
 export type HistoricalKernelArtifactsV1 = ResearchExecutionSuccessV1["artifacts"];
-export type HistoricalKernelResultFieldsV1 = Omit<ResultHashPayloadV1, "schemaVersion" | "runInput">;
+export type HistoricalKernelResultFieldsV1 = ExecutionResultFieldsV1;
 export type HistoricalKernelSuccessV1 = Readonly<{
   ok: true;
   artifacts: HistoricalKernelArtifactsV1;
@@ -102,6 +102,7 @@ export function executeHistoricalBacktestV1(input: EngineInput): ResearchExecuti
 
 export function executeHistoricalKernelV1(input: HistoricalKernelInputV1): HistoricalKernelResultV1 {
   try {
+    validateHistoricalKernelProfileV1(input);
     const sessions = xnysSessionsInRangeV1(input.researchIr.testPeriod.startDate, input.researchIr.testPeriod.endDate);
     if (sessions.length < 1) return { ok: false, code: "NO_ELIGIBLE_SESSIONS" };
     const executable = validateExecutableIr(input.researchIr);
@@ -235,6 +236,11 @@ function validateProfile(input: Omit<EngineInput, "materials">) {
     throw new Error("UNSUPPORTED_RUN_PROFILE");
   }
   if (input.runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || input.runInput.engineVersion !== "ENGINE_V20260918") throw new Error("UNSUPPORTED_ENGINE");
+  validateHistoricalKernelProfileV1(input);
+}
+
+export function validateHistoricalKernelProfileV1(input: Omit<HistoricalKernelInputV1, "materials">): void {
+  if (input.executionConfig.engineCompatibilityVersion !== "ENGINE_V20260918") throw new Error("UNSUPPORTED_ENGINE");
   const config = input.executionConfig;
   if (
     config.missingDataPolicy !== "MISSING_DATA_EXCLUDE_V1" ||
@@ -246,9 +252,11 @@ function validateProfile(input: Omit<EngineInput, "materials">) {
     config.calendarSessionPolicy !== "XNYS_CLOSE_SESSION_V1" ||
     config.valuationPolicy !== "USD_CLOSE_MARK_V1"
   ) throw new Error("UNSUPPORTED_EXECUTION_CONFIG");
+  if (input.metricRequestSet.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("UNSUPPORTED_EXECUTION_CONFIG");
   for (const request of input.metricRequestSet.requests) {
     if ((request.metricId !== "TOTAL_RETURN" && request.metricId !== "MAX_DRAWDOWN") || request.metricVersion !== "METRIC_V1") throw new Error("UNSUPPORTED_EXECUTION_CONFIG");
   }
+  validateExecutableIr(input.researchIr);
 }
 
 function validateExecutableIr(ir: ResearchIrV1) {
