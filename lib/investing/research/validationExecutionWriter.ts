@@ -93,8 +93,14 @@ type RunRow = { research_validation_execution_run_id: string };
 type ResultRow = {
   research_validation_child_result_identity_id: string;
   research_validation_execution_run_id: string;
+  research_validation_run_input_identity_id: string;
+  research_validation_protocol_identity_id: string;
   hash_hex: string;
   canonical_payload: unknown;
+  execution_trace_artifact_id: string;
+  valuation_series_artifact_id: string;
+  metric_result_set_artifact_id: string;
+  benchmark_series_artifact_id: string | null;
 };
 
 type PreparedChild = Readonly<{
@@ -190,9 +196,22 @@ export async function executeValidationChildV1(
       await setValidationContext(client, input.authorizedContext);
       const prepared = await loadPreparedChild(client, input.authorizedContext);
       if (prepared.ok === false) return prepared;
-      const materialized = await materializeValidationRunInput(client, input.authorizedContext, prepared.value, input.datasetMaterialProvider);
-      if (materialized.ok === false) return materialized;
-      const replay = await findExistingResult(client, input.authorizedContext, materialized.runInputId);
+      return prepared;
+    });
+    if (preparedTx.ok === false) return preparedTx;
+
+    const materialized = await buildValidationRunInput(input.authorizedContext, preparedTx.value, input.datasetMaterialProvider);
+    if (materialized.ok === false) return materialized;
+
+    const registeredTx = await withTransaction(database, async (client) => {
+      await setValidationContext(client, input.authorizedContext);
+      const reproved = await loadPreparedChild(client, input.authorizedContext);
+      if (reproved.ok === false) return reproved;
+      if (canonicalString(reproved.value.protocol) !== canonicalString(preparedTx.value.protocol)) return { ok: false as const, code: "CONFLICT" as const };
+      const persisted = await persistValidationRunInput(client, input.authorizedContext, materialized);
+      if (persisted.ok === false) return persisted;
+      await lockValidationRunInput(client, persisted.runInputId);
+      const replay = await findExistingResult(client, input.authorizedContext, persisted.runInputId);
       if (replay) return { ok: true as const, replayed: true as const, replay };
       const existingStarted = await one<RunRow>(
         client,
@@ -207,26 +226,26 @@ export async function executeValidationChildV1(
           "  having max(e.sequence) = 2",
           ")",
         ].join(" "),
-        [materialized.runInputId],
+        [persisted.runInputId],
       );
       if (existingStarted) return { ok: false as const, code: "CONFLICT" as const };
-      const created = await createStartedRun(client, input.authorizedContext, materialized.runInputId, materialized.runInput);
-      return { ok: true as const, replayed: false as const, prepared: materialized, runId: created.research_validation_execution_run_id };
+      const created = await createStartedRun(client, input.authorizedContext, persisted.runInputId, materialized.runInput);
+      return { ok: true as const, replayed: false as const, prepared: { ...materialized, runInputId: persisted.runInputId }, runId: created.research_validation_execution_run_id };
     });
-    if (preparedTx.ok === false) return preparedTx;
-    if (preparedTx.replayed) {
+    if (registeredTx.ok === false) return registeredTx;
+    if (registeredTx.replayed) {
       return {
         ok: true,
         replayed: true,
-        researchValidationExecutionRunId: preparedTx.replay.research_validation_execution_run_id,
-        researchValidationRunInputIdentityId: preparedTx.replay.research_validation_run_input_identity_id,
-        researchValidationChildResultIdentityId: preparedTx.replay.research_validation_child_result_identity_id,
-        childResultHashHex: preparedTx.replay.hash_hex,
+        researchValidationExecutionRunId: registeredTx.replay.research_validation_execution_run_id,
+        researchValidationRunInputIdentityId: registeredTx.replay.research_validation_run_input_identity_id,
+        researchValidationChildResultIdentityId: registeredTx.replay.research_validation_child_result_identity_id,
+        childResultHashHex: registeredTx.replay.hash_hex,
       };
     }
-    runId = preparedTx.runId;
-    runInputId = preparedTx.prepared.runInputId;
-    const execution = executeValidationChildBacktestV1({ admittedRunInput: preparedTx.prepared.admitted });
+    runId = registeredTx.runId;
+    runInputId = registeredTx.prepared.runInputId;
+    const execution = executeValidationChildBacktestV1({ admittedRunInput: registeredTx.prepared.admitted });
     if (execution.ok === false) {
       await appendTerminalFailure(database, input.authorizedContext, runId, execution.code);
       return execution;
@@ -274,6 +293,7 @@ export async function executeValidationChildV1(
       if (!row || row.hash_hex !== childResultHashHex || canonicalString(row.canonical_payload) !== canonicalString(execution.childResultPayload)) {
         return { ok: false as const, code: "CONFLICT" as const };
       }
+      if (row.research_validation_execution_run_id !== runId) return { ok: false as const, code: "CONFLICT" as const };
       await insertEvent(client, runId!, 3, "SUCCEEDED", "STARTED", null);
       return {
         ok: true as const,
@@ -360,8 +380,7 @@ async function loadPreparedChild(
   };
 }
 
-async function materializeValidationRunInput(
-  client: InvestingAuthorityTransactionClient,
+async function buildValidationRunInput(
   context: AuthorizedResearchValidationChildExecutionContext,
   prepared: PreparedChild,
   provider: ResearchDatasetMaterialProviderV1,
@@ -400,9 +419,6 @@ async function materializeValidationRunInput(
     metricRequestSet: prepared.protocol.metricRequestSet,
     executionConfig: prepared.protocol.executionConfig,
   };
-  await persistResearchIr(client, context, phaseResearchIr);
-  for (const series of phaseDatasetSeries) await persistDatasetSeries(client, context, series);
-  await persistDatasetSnapshot(client, context, phaseDatasetSnapshot);
   const admitted = admitValidationRunInputFromPersistedProtocolV1({
     validationProtocol: hashRef("SYNTRAKE:VALIDATION_PROTOCOL:V1", hashValidationProtocolV1(prepared.protocol)),
     protocol: prepared.protocol,
@@ -417,6 +433,17 @@ async function materializeValidationRunInput(
     sourceDatasetSeriesPayloads: prepared.sourceDatasetSeries,
     sourceMaterials: slices.map((slice) => slice.bytes),
   });
+  return { ok: true as const, admitted, runInput, phaseResearchIr, phaseDatasetSeries, phaseDatasetSnapshot };
+}
+
+async function persistValidationRunInput(
+  client: InvestingAuthorityTransactionClient,
+  context: AuthorizedResearchValidationChildExecutionContext,
+  materialized: Extract<Awaited<ReturnType<typeof buildValidationRunInput>>, { ok: true }>,
+) {
+  await persistResearchIr(client, context, materialized.phaseResearchIr);
+  for (const series of materialized.phaseDatasetSeries) await persistDatasetSeries(client, context, series);
+  await persistDatasetSnapshot(client, context, materialized.phaseDatasetSnapshot);
   const insertedId = randomUUID();
   await client.query(
     [
@@ -435,17 +462,17 @@ async function materializeValidationRunInput(
       context.tenantMembershipId,
       context.researchInvestigationId,
       context.researchValidationProtocolIdentityId,
-      Number(runInput.foldOrdinal),
-      runInput.phase,
-      runInput.phaseResearchIr.hashHex,
-      runInput.sourceDatasetSnapshot.hashHex,
-      runInput.phaseDatasetSnapshot.hashHex,
-      runInput.engineId,
-      runInput.engineVersion,
-      runInput.metricRequestSet.hashHex,
-      runInput.executionConfig.hashHex,
-      admitted.validationRunInputHash.hashHex,
-      canonicalString(admitted.validationRunInput),
+      Number(materialized.runInput.foldOrdinal),
+      materialized.runInput.phase,
+      materialized.runInput.phaseResearchIr.hashHex,
+      materialized.runInput.sourceDatasetSnapshot.hashHex,
+      materialized.runInput.phaseDatasetSnapshot.hashHex,
+      materialized.runInput.engineId,
+      materialized.runInput.engineVersion,
+      materialized.runInput.metricRequestSet.hashHex,
+      materialized.runInput.executionConfig.hashHex,
+      materialized.admitted.validationRunInputHash.hashHex,
+      canonicalString(materialized.admitted.validationRunInput),
     ],
   );
   const row = await one<RunInputRow>(
@@ -455,12 +482,12 @@ async function materializeValidationRunInput(
       "from investing.research_validation_run_inputs_scientific_identities",
       "where research_validation_protocol_identity_id = $1 and fold_ordinal = $2 and phase = $3",
     ].join(" "),
-    [context.researchValidationProtocolIdentityId, Number(runInput.foldOrdinal), runInput.phase],
+    [context.researchValidationProtocolIdentityId, Number(materialized.runInput.foldOrdinal), materialized.runInput.phase],
   );
-  if (!row || row.hash_hex !== admitted.validationRunInputHash.hashHex || canonicalString(row.canonical_payload) !== canonicalString(admitted.validationRunInput)) {
+  if (!row || row.hash_hex !== materialized.admitted.validationRunInputHash.hashHex || canonicalString(row.canonical_payload) !== canonicalString(materialized.admitted.validationRunInput)) {
     return { ok: false as const, code: "CONFLICT" as const };
   }
-  return { ok: true as const, admitted, runInput, runInputId: row.research_validation_run_input_identity_id };
+  return { ok: true as const, runInputId: row.research_validation_run_input_identity_id };
 }
 
 async function loadIdentityPayload<T>(client: InvestingAuthorityTransactionClient, table: string, ref: HashRefV1): Promise<T | null> {
@@ -480,36 +507,64 @@ async function loadIdentityPayload<T>(client: InvestingAuthorityTransactionClien
 }
 
 async function persistResearchIr(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchValidationChildExecutionContext, payload: ResearchIrV1) {
+  const hashHex = hashResearchIrV1(payload);
+  const canonicalPayload = canonicalString(payload);
   await client.query(
     [
       "insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload)",
-      "values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$5,$6::jsonb)",
+      "values ($1,$2,null,$3,$4,'RESEARCH_VALIDATION_CHILD_EXECUTE_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$5,$6::jsonb)",
       "on conflict do nothing",
     ].join(" "),
-    [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, hashResearchIrV1(payload), canonicalString(payload)],
+    [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, hashHex, canonicalPayload],
   );
+  await verifyIdentityReuse(client, "research_ir_scientific_identities", hashRef("SYNTRAKE:RESEARCH_IR:V1", hashHex), canonicalPayload);
 }
 
 async function persistDatasetSeries(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchValidationChildExecutionContext, payload: DatasetSeriesHashPayloadV1) {
+  const hashHex = hashDatasetSeriesV1(payload);
+  const canonicalPayload = canonicalString(payload);
   await client.query(
     [
       "insert into investing.dataset_series_scientific_identities (dataset_series_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload)",
-      "values ($1,$2,null,$3,$4,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SERIES:V1','SYNTRAKE_SHA256_V1',$5,$6::jsonb)",
+      "values ($1,$2,null,$3,$4,'RESEARCH_VALIDATION_CHILD_EXECUTE_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SERIES:V1','SYNTRAKE_SHA256_V1',$5,$6::jsonb)",
       "on conflict do nothing",
     ].join(" "),
-    [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, hashDatasetSeriesV1(payload), canonicalString(payload)],
+    [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, hashHex, canonicalPayload],
   );
+  await verifyIdentityReuse(client, "dataset_series_scientific_identities", hashRef("SYNTRAKE:DATASET_SERIES:V1", hashHex), canonicalPayload);
 }
 
 async function persistDatasetSnapshot(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchValidationChildExecutionContext, payload: DatasetSnapshotHashPayloadV1) {
+  const hashHex = hashDatasetSnapshotV1(payload);
+  const canonicalPayload = canonicalString(payload);
   await client.query(
     [
       "insert into investing.dataset_snapshots_scientific_identities (dataset_snapshot_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload)",
-      "values ($1,$2,null,$3,$4,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SNAPSHOT:V1','SYNTRAKE_SHA256_V1',$5,$6::jsonb)",
+      "values ($1,$2,null,$3,$4,'RESEARCH_VALIDATION_CHILD_EXECUTE_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:DATASET_SNAPSHOT:V1','SYNTRAKE_SHA256_V1',$5,$6::jsonb)",
       "on conflict do nothing",
     ].join(" "),
-    [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, hashDatasetSnapshotV1(payload), canonicalString(payload)],
+    [randomUUID(), context.tenantId, context.principalId, context.tenantMembershipId, hashHex, canonicalPayload],
   );
+  await verifyIdentityReuse(client, "dataset_snapshots_scientific_identities", hashRef("SYNTRAKE:DATASET_SNAPSHOT:V1", hashHex), canonicalPayload);
+}
+
+async function verifyIdentityReuse(client: InvestingAuthorityTransactionClient, table: string, ref: HashRefV1, canonicalPayload: string): Promise<void> {
+  const row = await loadIdentityPayload<unknown>(client, table, ref);
+  if (!row || canonicalString(row) !== canonicalPayload) throw new Error("CONFLICT");
+}
+
+async function lockValidationRunInput(client: InvestingAuthorityTransactionClient, runInputId: string): Promise<void> {
+  const row = await one<{ research_validation_run_input_identity_id: string }>(
+    client,
+    [
+      "select research_validation_run_input_identity_id",
+      "from investing.research_validation_run_inputs_scientific_identities",
+      "where research_validation_run_input_identity_id = $1",
+      "for update",
+    ].join(" "),
+    [runInputId],
+  );
+  if (!row) throw new Error("CONFLICT");
 }
 
 async function createStartedRun(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchValidationChildExecutionContext, runInputId: string, runInput: ValidationRunInputHashPayloadV1) {
@@ -529,16 +584,58 @@ async function createStartedRun(client: InvestingAuthorityTransactionClient, con
 }
 
 async function findExistingResult(client: InvestingAuthorityTransactionClient, context: AuthorizedResearchValidationChildExecutionContext, runInputId: string) {
-  return one<ResultRow & { research_validation_run_input_identity_id: string }>(
+  const row = await one<ResultRow>(
     client,
     [
-      "select research_validation_child_result_identity_id, research_validation_execution_run_id, research_validation_run_input_identity_id, hash_hex, canonical_payload",
+      "select research_validation_child_result_identity_id, research_validation_execution_run_id,",
+      "research_validation_run_input_identity_id, research_validation_protocol_identity_id, hash_hex, canonical_payload,",
+      "execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, benchmark_series_artifact_id",
       "from investing.research_validation_child_results_scientific_identities",
       "where tenant_id = $1 and principal_id = $2 and tenant_membership_id = $3 and research_validation_protocol_identity_id = $4",
       "and research_validation_run_input_identity_id = $5",
     ].join(" "),
     [context.tenantId, context.principalId, context.tenantMembershipId, context.researchValidationProtocolIdentityId, runInputId],
   );
+  if (!row) return null;
+  if (
+    row.research_validation_run_input_identity_id !== runInputId ||
+    row.research_validation_protocol_identity_id !== context.researchValidationProtocolIdentityId ||
+    hashValidationChildResultV1(row.canonical_payload as never) !== row.hash_hex
+  ) {
+    throw new Error("CONFLICT");
+  }
+  await verifyResultArtifacts(client, row);
+  return row;
+}
+
+async function verifyResultArtifacts(client: InvestingAuthorityTransactionClient, row: ResultRow): Promise<void> {
+  const payload = row.canonical_payload as Record<string, ResearchArtifactDescriptorV1 | null>;
+  await verifyArtifact(client, row.research_validation_execution_run_id, row.execution_trace_artifact_id, payload.executionTrace as ResearchArtifactDescriptorV1);
+  await verifyArtifact(client, row.research_validation_execution_run_id, row.valuation_series_artifact_id, payload.valuationSeries as ResearchArtifactDescriptorV1);
+  await verifyArtifact(client, row.research_validation_execution_run_id, row.metric_result_set_artifact_id, payload.metricResultSet as ResearchArtifactDescriptorV1);
+  if (row.benchmark_series_artifact_id !== null) {
+    await verifyArtifact(client, row.research_validation_execution_run_id, row.benchmark_series_artifact_id, payload.benchmark as ResearchArtifactDescriptorV1);
+  }
+}
+
+async function verifyArtifact(client: InvestingAuthorityTransactionClient, runId: string, artifactId: string, descriptor: ResearchArtifactDescriptorV1): Promise<void> {
+  const artifact = await one<{ content_sha256: string; content_byte_length: string; record_count: string }>(
+    client,
+    [
+      "select content_sha256, content_byte_length::text as content_byte_length, record_count::text as record_count",
+      "from investing.research_validation_result_artifacts",
+      "where research_validation_result_artifact_id = $1 and research_validation_execution_run_id = $2",
+    ].join(" "),
+    [artifactId, runId],
+  );
+  if (
+    !artifact ||
+    artifact.content_sha256 !== descriptor.contentSha256 ||
+    artifact.content_byte_length !== descriptor.contentByteLength ||
+    artifact.record_count !== descriptor.recordCount
+  ) {
+    throw new Error("CONFLICT");
+  }
 }
 
 async function appendTerminalFailure(database: InvestingAuthorityDatabase, context: AuthorizedResearchValidationChildExecutionContext, runId: string, code: string) {

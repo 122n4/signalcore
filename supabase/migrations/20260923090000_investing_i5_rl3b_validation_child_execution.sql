@@ -9,6 +9,50 @@ end $$;
 
 set local role investing_owner;
 
+alter table investing.research_ir_scientific_identities
+  drop constraint if exists research_ir_scientific_identities_operation_check,
+  drop constraint if exists research_ir_scientific_identities_capability_check,
+  drop constraint if exists research_ir_operation_capability_pair_check;
+
+alter table investing.research_ir_scientific_identities
+  add constraint research_ir_scientific_identities_operation_check
+  check (operation in ('RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_EXECUTION_RUN_V1','RESEARCH_VALIDATION_CHILD_EXECUTE_V1')),
+  add constraint research_ir_scientific_identities_capability_check
+  check (capability in ('RESEARCH_MUTATE','RESEARCH_EXECUTE')),
+  add constraint research_ir_operation_capability_pair_check check (
+    (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1' and capability = 'RESEARCH_MUTATE')
+    or (operation = 'RESEARCH_EXECUTION_RUN_V1' and capability = 'RESEARCH_EXECUTE')
+    or (operation = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1' and capability = 'RESEARCH_EXECUTE')
+  );
+
+alter table investing.dataset_series_scientific_identities
+  drop constraint if exists dataset_series_scientific_identities_operation_check,
+  drop constraint if exists dataset_series_scientific_identities_capability_check;
+
+alter table investing.dataset_series_scientific_identities
+  add constraint dataset_series_scientific_identities_operation_check
+  check (operation in ('RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_VALIDATION_CHILD_EXECUTE_V1')),
+  add constraint dataset_series_scientific_identities_capability_check
+  check (capability in ('RESEARCH_MUTATE','RESEARCH_EXECUTE')),
+  add constraint dataset_series_operation_capability_pair_check check (
+    (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1' and capability = 'RESEARCH_MUTATE')
+    or (operation = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1' and capability = 'RESEARCH_EXECUTE')
+  );
+
+alter table investing.dataset_snapshots_scientific_identities
+  drop constraint if exists dataset_snapshots_scientific_identities_operation_check,
+  drop constraint if exists dataset_snapshots_scientific_identities_capability_check;
+
+alter table investing.dataset_snapshots_scientific_identities
+  add constraint dataset_snapshots_scientific_identities_operation_check
+  check (operation in ('RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_VALIDATION_CHILD_EXECUTE_V1')),
+  add constraint dataset_snapshots_scientific_identities_capability_check
+  check (capability in ('RESEARCH_MUTATE','RESEARCH_EXECUTE')),
+  add constraint dataset_snapshots_operation_capability_pair_check check (
+    (operation = 'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1' and capability = 'RESEARCH_MUTATE')
+    or (operation = 'RESEARCH_VALIDATION_CHILD_EXECUTE_V1' and capability = 'RESEARCH_EXECUTE')
+  );
+
 create table if not exists investing.research_validation_protocols_scientific_identities (
   research_validation_protocol_identity_id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,

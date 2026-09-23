@@ -141,7 +141,7 @@ maybeDescribe("I5 RL-3B Validation Child Execution real PG17 rehearsal", () => {
       join pg_class c on c.oid = t.tgrelid
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'investing'
-        and t.tgname like 'research_validation_%append_only_trigger'
+        and t.tgname like 'research_validation_%'
         and not t.tgisinternal
       order by t.tgname
     `);
@@ -155,9 +155,43 @@ maybeDescribe("I5 RL-3B Validation Child Execution real PG17 rehearsal", () => {
         relname: "research_validation_execution_run_events",
       },
       {
+        tgname: "research_validation_execution_run_events_transition_trigger",
+        relname: "research_validation_execution_run_events",
+      },
+      {
+        tgname: "research_validation_protocols_append_only_trigger",
+        relname: "research_validation_protocols_scientific_identities",
+      },
+      {
         tgname: "research_validation_result_artifacts_append_only_trigger",
         relname: "research_validation_result_artifacts",
       },
+      {
+        tgname: "research_validation_run_inputs_append_only_trigger",
+        relname: "research_validation_run_inputs_scientific_identities",
+      },
     ]);
+
+    const provenanceConstraints = await client.query<{ relname: string; conname: string; def: string }>(`
+      select c.relname, con.conname, pg_get_constraintdef(con.oid, true) as def
+      from pg_constraint con
+      join pg_class c on c.oid = con.conrelid
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'investing'
+        and c.relname in (
+          'research_ir_scientific_identities',
+          'dataset_series_scientific_identities',
+          'dataset_snapshots_scientific_identities'
+        )
+        and con.conname in (
+          'research_ir_operation_capability_pair_check',
+          'dataset_series_operation_capability_pair_check',
+          'dataset_snapshots_operation_capability_pair_check'
+        )
+      order by c.relname, con.conname
+    `);
+    expect(provenanceConstraints.rows).toHaveLength(3);
+    expect(provenanceConstraints.rows.every((row) => row.def.includes("RESEARCH_VALIDATION_CHILD_EXECUTE_V1"))).toBe(true);
+    expect(provenanceConstraints.rows.every((row) => row.def.includes("RESEARCH_EXECUTE"))).toBe(true);
   }, 120_000);
 });
