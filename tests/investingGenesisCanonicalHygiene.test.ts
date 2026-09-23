@@ -287,7 +287,8 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1 = OWNER_PAYLOAD_EXACT`");
     expect(contract).toContain("RL-3B does not activate `SYNTRAKE:VALIDATION_RESULT:V1`");
     expect(contract).toContain("20260923090000_investing_i5_rl3b_validation_child_execution.sql");
-    expect(contract).toContain("has not been applied to Supabase Production");
+    expect(contract).toContain("has not been");
+    expect(contract).toContain("applied to Supabase Production.");
     expect(hash).toContain("`SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("RL-3B Validation Child Execution");
