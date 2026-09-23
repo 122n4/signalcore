@@ -61,6 +61,8 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT` |
 | `SYNTRAKE:VALIDATION_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT` |
@@ -167,6 +169,18 @@ Portfolio Core, accounting, brokerage, Paper, Live, Capital Kernel, API or UI
 authority. Phase execution and result persistence remain outside this RL-3A
 foundation.
 
+## RL-3B Validation Child Execution Candidate
+
+`SYNTRAKE:VALIDATION_RUN_INPUT:V1` is implemented candidate
+`OWNER_PAYLOAD_EXACT` for exact fold/phase child execution inputs only.
+
+`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` is implemented candidate
+`OWNER_PAYLOAD_EXACT` for exact child phase results produced by the accepted V1
+historical execution kernel.
+
+These candidate domains do not create aggregate Validation Result, Validation
+Evidence, promotion, robustness or Blind Truth authority.
+
 ## Explicit Exclusions
 
 `SYNTRAKE:RESULT:V1` is current accepted through the unnumbered I5 Research
@@ -181,6 +195,5 @@ Arbitrary raw Evidence objects remain outside the public hashing boundary.
 No ResearchTemplate or account-context hashing domain is activated by this
 contract unless the runtime already admits it with an exact owner payload.
 
-No Validation Result, Validation Child Result, Validation RunInput, promotion
-decision, blind-truth result or future RL-3/RL-8/RL-9 identity domain is
-activated by this contract.
+No aggregate Validation Result, promotion decision, blind-truth result or future
+RL-3/RL-8/RL-9 identity domain is activated by this contract.

@@ -34,6 +34,8 @@ export type ResultHashPayloadV1 = Readonly<{
   benchmark: ResearchArtifactDescriptorV1 | null;
 }>;
 
+export type ExecutionResultFieldsV1 = Omit<ResultHashPayloadV1, "schemaVersion" | "runInput">;
+
 export function canonicalJsonlArtifactBytesV1(records: readonly CanonicalJsonValue[]): Buffer {
   return Buffer.from(records.map((record) => `${i5ResearchInternalCanonicalJsonBytesV1(record).toString("utf8")}\n`).join(""), "utf8");
 }
@@ -68,6 +70,15 @@ export function canonicalResultHashPayloadV1(input: ResultHashPayloadV1): Canoni
   if (input.schemaVersion !== "RESULT_HASH_PAYLOAD_V1") throw new Error("RESULT_SCHEMA_INVALID");
   const runInput = hashRefV1(input.runInput);
   if (runInput.hashDomain !== "SYNTRAKE:RUN_INPUT:V1") throw new Error("RESULT_RUN_INPUT_DOMAIN_INVALID");
+  const fields = canonicalExecutionResultFieldsV1(input);
+  return {
+    schemaVersion: "RESULT_HASH_PAYLOAD_V1",
+    runInput,
+    ...fields,
+  };
+}
+
+export function canonicalExecutionResultFieldsV1(input: ExecutionResultFieldsV1): ExecutionResultFieldsV1 {
   if (input.engineId !== "HISTORICAL_EXECUTION_ADAPTER") throw new Error("RESULT_ENGINE_INVALID");
   if (input.engineVersion !== "ENGINE_V20260918") throw new Error("RESULT_ENGINE_INVALID");
   if (input.executionModelClass !== "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1") throw new Error("RESULT_EXECUTION_MODEL_INVALID");
@@ -83,8 +94,6 @@ export function canonicalResultHashPayloadV1(input: ResultHashPayloadV1): Canoni
   const metricResultSet = canonicalArtifactDescriptor(input.metricResultSet, "METRIC_RESULT_SET_V1");
   const benchmark = input.benchmark === null ? null : canonicalArtifactDescriptor(input.benchmark, "RESEARCH_BENCHMARK_SERIES_V1");
   return {
-    schemaVersion: "RESULT_HASH_PAYLOAD_V1",
-    runInput,
     engineId: input.engineId,
     engineVersion: input.engineVersion,
     executionModelClass: input.executionModelClass,
