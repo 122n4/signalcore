@@ -60,6 +60,7 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:RUN_INPUT:V1` | `PREIMAGE_ENVELOPE_EXACT` |
 | `SYNTRAKE:RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EVIDENCE_OBJECT:V1` | `CONTENT_PREIMAGE_EXACT` |
+| `SYNTRAKE:VALIDATION_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT` |
@@ -151,6 +152,21 @@ RL-2 may project already accepted HashRefs for:
 Those projected HashRefs retain the ownership, payload and admission semantics
 of their accepted source domains.
 
+## RL-3A Validation Protocol Foundation
+
+`SYNTRAKE:VALIDATION_PROTOCOL:V1` is current accepted through RL-3A Validation
+Protocol Foundation as `OWNER_PAYLOAD_EXACT` only for the deterministic
+Validation Protocol V1 owner payload. The payload binds exact Research IR,
+Experiment, DatasetSnapshot, MetricRequestSet and ExecutionConfig HashRefs,
+immutable engine and registry versions, a closed validation mode, and ordered
+XNYS-session fold windows.
+
+Validation Protocol identity is a planning and methodology identity. It does not
+create Validation Result, Child Result, RunInput, promotion, blind-truth,
+Portfolio Core, accounting, brokerage, Paper, Live, Capital Kernel, API or UI
+authority. Phase execution and result persistence remain outside this RL-3A
+foundation.
+
 ## Explicit Exclusions
 
 `SYNTRAKE:RESULT:V1` is current accepted through the unnumbered I5 Research
@@ -164,3 +180,7 @@ Arbitrary raw Evidence objects remain outside the public hashing boundary.
 
 No ResearchTemplate or account-context hashing domain is activated by this
 contract unless the runtime already admits it with an exact owner payload.
+
+No Validation Result, Validation Child Result, Validation RunInput, promotion
+decision, blind-truth result or future RL-3/RL-8/RL-9 identity domain is
+activated by this contract.

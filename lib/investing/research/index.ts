@@ -140,6 +140,7 @@ export {
 
 export {
   isXnysSessionV1,
+  nextXnysSessionV1,
   previousXnysSessionV1,
   latestXnysSessionOnOrBeforeV1,
   rebalanceSessionsV1,
@@ -156,6 +157,24 @@ export {
   type ResearchDatasetMaterialProviderV1,
   type VerifiedDatasetSeriesMaterialV1,
 } from "./datasetMaterial";
+
+export {
+  admitValidationProtocolV1,
+  assertExecutionConfigBoundToValidationProtocolV1,
+  assertOnlyResearchIrTestPeriodChangedV1,
+  canonicalValidationProtocolBytesV1,
+  canonicalValidationProtocolHashPayloadV1,
+  deriveValidationPhaseResearchIrV1,
+  hashValidationProtocolV1,
+  sliceValidationDatasetSeriesPrefixV1,
+  type AdmittedValidationProtocolV1,
+  type DatasetSeriesPrefixSliceV1,
+  type ValidationProtocolCandidateV1,
+  type ValidationFoldV1,
+  type ValidationModeV1,
+  type ValidationProtocolHashPayloadV1,
+  type ValidationWindowV1,
+} from "./validationProtocol";
 
 export {
   canonicalResultBytesV1,
