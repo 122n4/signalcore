@@ -194,10 +194,34 @@ export {
 
 export {
   executeHistoricalBacktestV1,
+  executeHistoricalKernelV1,
+  type HistoricalKernelArtifactsV1,
+  type HistoricalKernelInputV1,
+  type HistoricalKernelResultFieldsV1,
+  type HistoricalKernelResultV1,
+  type HistoricalKernelSuccessV1,
   type ResearchExecutionFailureCodeV1,
   type ResearchExecutionResultV1,
   type ResearchExecutionSuccessV1,
 } from "./historicalExecutionEngine";
+
+export {
+  admitValidationRunInputV1,
+  canonicalValidationChildResultBytesV1,
+  canonicalValidationChildResultHashPayloadV1,
+  canonicalValidationRunInputBytesV1,
+  canonicalValidationRunInputHashPayloadV1,
+  executeValidationChildBacktestV1,
+  hashValidationChildResultV1,
+  hashValidationRunInputV1,
+  type AdmittedValidationRunInputV1,
+  type ValidationChildExecutionInputV1,
+  type ValidationChildExecutionResultV1,
+  type ValidationChildResultHashPayloadV1,
+  type ValidationPhaseV1,
+  type ValidationRunInputCandidateV1,
+  type ValidationRunInputHashPayloadV1,
+} from "./validationExecution";
 
 export {
   admitExperimentBaselineV1,

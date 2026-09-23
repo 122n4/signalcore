@@ -47,6 +47,7 @@ const requiredCurrentDocs = [
   "I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md",
   "I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md",
+  "I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
@@ -244,7 +245,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("`SYNTRAKE:VALIDATION_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("current accepted through RL-3A Validation");
     expect(hash).toContain("Protocol Foundation as `OWNER_PAYLOAD_EXACT`");
-    expect(hash).toContain("No Validation Result, Validation Child Result, Validation RunInput");
+    expect(hash).toContain("No aggregate Validation Result");
     expect(hash).toContain("promotion");
     expect(hash).toContain("blind-truth");
     expect(state).toContain("I5 RL-3A Validation Protocol Foundation (unnumbered)");
@@ -272,6 +273,34 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("RL-3A runtime/progression state:");
     expect(state).toContain("state: `CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION`");
     expect(state).toContain("permanent A-number: `NONE`");
+  });
+
+  it("records RL-3B Validation Child Execution as candidate without closing RL-3", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md");
+    const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+    const row = tableRow(state, "RL-3B Validation Child Execution / unnumbered");
+
+    expect(contract).toContain("IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED");
+    expect(contract).toContain("`SYNTRAKE:RUN_INPUT:V1` cannot be reused for validation phases");
+    expect(contract).toContain("`SYNTRAKE:VALIDATION_RUN_INPUT:V1 = OWNER_PAYLOAD_EXACT`");
+    expect(contract).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1 = OWNER_PAYLOAD_EXACT`");
+    expect(contract).toContain("RL-3B does not activate `SYNTRAKE:VALIDATION_RESULT:V1`");
+    expect(contract).toContain("20260923090000_investing_i5_rl3b_validation_child_execution.sql");
+    expect(hash).toContain("`SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("RL-3B Validation Child Execution Candidate");
+    expect(hash).toContain("No aggregate Validation Result");
+    expect(state).toContain("I5 RL-3B Validation Child Execution candidate (unnumbered)");
+    expect(state).toContain("I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED");
+    expect(state).toContain("RL-3B_VALIDATION_CHILD_EXECUTION");
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("IMPLEMENTED CANDIDATE OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION - UNNUMBERED");
+    expect(row).toContain("NEEDS_PG17_CI_AND_INDEPENDENT_AUDIT");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toContain("RL-3 = CURRENT_ACCEPTED");
+    expect(state).not.toContain("RL-3 validation = CURRENT_ACCEPTED");
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {

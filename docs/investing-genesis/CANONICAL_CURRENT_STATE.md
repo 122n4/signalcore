@@ -98,6 +98,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-1 Evidence Object Scientific Closure (unnumbered) | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-2 Evidence Ledger and Passport (unnumbered) | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` |
 | I5 RL-3A Validation Protocol Foundation (unnumbered) | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` |
+| I5 RL-3B Validation Child Execution candidate (unnumbered) | `I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -196,6 +197,14 @@ freeze/master evidence still relies on its narrow classifications.
   derivation. It does not accept complete RL-3, RL-3B, RL-3C, Validation Result,
   child execution, persistence, migration, promotion, blind truth, API/UI,
   Paper, broker, Capital Kernel or Production mutation.
+- I5 RL-3B Validation Child Execution:
+  `IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED /
+  RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED`. This candidate adds
+  `SYNTRAKE:VALIDATION_RUN_INPUT:V1` and
+  `SYNTRAKE:VALIDATION_CHILD_RESULT:V1` owner payloads, reuses the deterministic
+  V1 historical execution kernel, and introduces candidate persistence for
+  protocol identities, fold/phase run inputs, child runs, artifacts and child
+  results. It does not accept complete RL-3 or aggregate Validation Result.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -630,6 +639,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-1 Evidence Object Scientific Closure / unnumbered | YES | YES | `I5_RL1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE_OWNER_CONTRACT_V1.md` + Evidence runtime + writer finalization + migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-1 EVIDENCE OBJECT SCIENTIFIC CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-1_EVIDENCE_OBJECT_SCIENTIFIC_CLOSURE | NONE |
 | RL-2 Evidence Ledger and Passport / unnumbered | YES | YES | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` + Passport reader/service + read-authority migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT | NONE |
 | RL-3A Validation Protocol Foundation / unnumbered | YES | YES | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` + Validation Protocol runtime/tests + architecture boundaries + CI; no persistence, migration, RLS or SQL | CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED | CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION | NONE |
+| RL-3B Validation Child Execution / unnumbered | YES | YES | `I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md` + Validation child runtime + candidate migration + runtime tests | IMPLEMENTED CANDIDATE OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION - UNNUMBERED | IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION | NEEDS_PG17_CI_AND_INDEPENDENT_AUDIT |
 
 RL-1 runtime/progression state:
 

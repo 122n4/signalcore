@@ -52,6 +52,14 @@ export type ResearchExecutionSuccessV1 = Readonly<{
 }>;
 
 export type ResearchExecutionResultV1 = ResearchExecutionSuccessV1 | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 }>;
+export type HistoricalKernelArtifactsV1 = ResearchExecutionSuccessV1["artifacts"];
+export type HistoricalKernelResultFieldsV1 = Omit<ResultHashPayloadV1, "schemaVersion" | "runInput">;
+export type HistoricalKernelSuccessV1 = Readonly<{
+  ok: true;
+  artifacts: HistoricalKernelArtifactsV1;
+  resultFields: HistoricalKernelResultFieldsV1;
+}>;
+export type HistoricalKernelResultV1 = HistoricalKernelSuccessV1 | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 }>;
 
 type EngineInput = Readonly<{
   runInput: RunInputHashPayloadV1;
@@ -62,6 +70,7 @@ type EngineInput = Readonly<{
   metricRequestSet: MetricRequestSetHashPayloadV1;
   materials: readonly VerifiedDatasetSeriesMaterialV1[];
 }>;
+export type HistoricalKernelInputV1 = Omit<EngineInput, "runInput" | "runInputHash">;
 
 type Position = { quantity: ExactRationalV1 };
 type Intent = Readonly<{ sequence: string; evaluationSequence: string; signalSession: string; executionSession: string; weights: ReadonlyMap<string, ExactRationalV1> }>;
@@ -74,6 +83,25 @@ const maxArtifactBytes = 67_108_864;
 export function executeHistoricalBacktestV1(input: EngineInput): ResearchExecutionResultV1 {
   try {
     validateProfile(input);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "NUMERIC_INVARIANT_VIOLATION";
+    return isFailureCode(code) ? { ok: false, code } : { ok: false, code: "NUMERIC_INVARIANT_VIOLATION" };
+  }
+  const kernel = executeHistoricalKernelV1(input);
+  if (kernel.ok === false) return kernel;
+  return {
+    ok: true,
+    artifacts: kernel.artifacts,
+    resultPayload: {
+      schemaVersion: "RESULT_HASH_PAYLOAD_V1",
+      runInput: hashRefV1(input.runInputHash),
+      ...kernel.resultFields,
+    },
+  };
+}
+
+export function executeHistoricalKernelV1(input: HistoricalKernelInputV1): HistoricalKernelResultV1 {
+  try {
     const sessions = xnysSessionsInRangeV1(input.researchIr.testPeriod.startDate, input.researchIr.testPeriod.endDate);
     if (sessions.length < 1) return { ok: false, code: "NO_ELIGIBLE_SESSIONS" };
     const executable = validateExecutableIr(input.researchIr);
@@ -167,9 +195,7 @@ export function executeHistoricalBacktestV1(input: EngineInput): ResearchExecuti
     return {
       ok: true,
       artifacts: { executionTraceBytes, valuationSeriesBytes, metricResultSetBytes, benchmarkSeriesBytes },
-      resultPayload: {
-        schemaVersion: "RESULT_HASH_PAYLOAD_V1",
-        runInput: hashRefV1(input.runInputHash),
+      resultFields: {
         engineId: "HISTORICAL_EXECUTION_ADAPTER",
         engineVersion: "ENGINE_V20260918",
         executionModelClass: "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1",

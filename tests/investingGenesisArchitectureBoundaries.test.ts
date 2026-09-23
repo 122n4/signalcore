@@ -321,6 +321,7 @@ const i5ExperimentModulePath = normalizeRelativePath(path.join("lib", "investing
 const i5ExecutionMaterialsModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "executionMaterials.ts"));
 const i5RunInputScientificModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "runInputScientific.ts"));
 const i5ValidationProtocolModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "validationProtocol.ts"));
+const i5ValidationExecutionModulePath = normalizeRelativePath(path.join("lib", "investing", "research", "validationExecution.ts"));
 
 function scriptKindFor(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -532,6 +533,7 @@ function canReferenceI5ResearchScientificPreimageModule(fromFile: string) {
     normalized === i5ExperimentModulePath ||
     normalized === i5ExecutionMaterialsModulePath ||
     normalized === i5ValidationProtocolModulePath ||
+    normalized === i5ValidationExecutionModulePath ||
     isExcludedSourcePath(normalized)
   );
 }
@@ -552,6 +554,7 @@ function isForbiddenI5ResearchIrOwnerReference(fromFile: string, toFile: string)
     normalizedFrom !== i5ExperimentParametersModulePath &&
     normalizedFrom !== i5RunInputScientificModulePath &&
     normalizedFrom !== i5ValidationProtocolModulePath &&
+    normalizedFrom !== i5ValidationExecutionModulePath &&
     !isExcludedSourcePath(normalizedFrom)
   );
 }
@@ -1031,6 +1034,9 @@ describe("Investing Genesis architecture boundaries", () => {
       source("lib/investing/research/validationProtocol.ts", 'import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";'),
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
+      source("lib/investing/research/validationExecution.ts", 'import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";'),
+    ])).toEqual([]);
+    expect(analyzeArchitectureGraph([
       source("lib/investing/research/public-consumer.ts", 'import { hashResearchDraftV1 } from "./index";'),
     ])).toEqual([]);
     expectViolation(
@@ -1070,6 +1076,9 @@ describe("Investing Genesis architecture boundaries", () => {
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
       source("lib/investing/research/validationProtocol.ts", 'import { hashResearchIrV1 } from "./researchIr";'),
+    ])).toEqual([]);
+    expect(analyzeArchitectureGraph([
+      source("lib/investing/research/validationExecution.ts", 'import { hashResearchIrV1 } from "./researchIr";'),
     ])).toEqual([]);
     expect(analyzeArchitectureGraph([
       source("lib/investing/research-consumer.ts", 'import { hashResearchIrV1 } from "./research";'),
