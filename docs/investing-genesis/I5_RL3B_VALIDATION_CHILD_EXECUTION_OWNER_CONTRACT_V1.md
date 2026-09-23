@@ -1,8 +1,8 @@
 # Syntrake Investing Genesis I5 RL-3B - Validation Child Execution Owner Contract V1
 
-State: `IMPLEMENTED_CANDIDATE / NOT_CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED`
+State: `CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED`
 
-This contract defines the RL-3B candidate boundary for executing and persisting
+This contract defines the RL-3B accepted boundary for executing and persisting
 Validation child phases. It does not accept complete RL-3.
 
 ## Purpose
@@ -18,7 +18,7 @@ owner identity rather than weakening the existing invariant.
 
 ## Scientific Domains
 
-RL-3B candidate activates exactly:
+RL-3B activates exactly:
 
 - `SYNTRAKE:VALIDATION_RUN_INPUT:V1 = OWNER_PAYLOAD_EXACT`;
 - `SYNTRAKE:VALIDATION_CHILD_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
@@ -59,9 +59,9 @@ wrapper that builds `RESULT_HASH_PAYLOAD_V1`; Validation child execution builds
 
 No V1 historical golden hash may change.
 
-## Persistence Candidate
+## Persistence
 
-Candidate migration:
+Accepted migration in canonical Git lineage:
 
 `20260923090000_investing_i5_rl3b_validation_child_execution.sql`
 
@@ -102,4 +102,6 @@ overfit classification, Experiment comparison, parameter fitting, optimization,
 Engine V2, Metric Registry V2, Blind Truth, UI/API, Core, Trading, Paper,
 broker, Live, Capital Kernel, Monte Carlo, Scenario or Stress.
 
-Production Supabase migration application is not performed by this candidate.
+The RL-3B migration is accepted in canonical Git lineage but has not been
+applied to Supabase Production. Production application remains a separate
+authorized operation.
