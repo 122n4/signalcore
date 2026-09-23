@@ -389,11 +389,13 @@ async function buildValidationRunInput(
   if (!fold) return { ok: false as const, code: "VALIDATION_FOLD_NOT_FOUND" as const };
   const phaseWindow: ValidationWindowV1 = context.phase === "TRAINING" ? fold.trainingWindow : fold.evaluationWindow;
   const phaseResearchIr = deriveValidationPhaseResearchIrV1(prepared.subjectResearchIr, phaseWindow);
+  const sourceMaterials: Buffer[] = [];
   const slices = [];
   for (const series of prepared.sourceDatasetSeries) {
     const ref = hashRef("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(series));
     const bytes = await provider.loadSeriesContent(ref);
     if (!bytes) return { ok: false as const, code: "DATASET_MATERIAL_NOT_FOUND" as const };
+    sourceMaterials.push(bytes);
     slices.push(sliceValidationDatasetSeriesPrefixV1(series, bytes, phaseWindow.endDate));
   }
   const phaseDatasetSeries = slices.map((slice) => slice.series);
@@ -431,7 +433,7 @@ async function buildValidationRunInput(
     phaseDatasetSeriesPayloads: phaseDatasetSeries,
     phaseDatasetSnapshotPayload: phaseDatasetSnapshot,
     sourceDatasetSeriesPayloads: prepared.sourceDatasetSeries,
-    sourceMaterials: slices.map((slice) => slice.bytes),
+    sourceMaterials,
   });
   return { ok: true as const, admitted, runInput, phaseResearchIr, phaseDatasetSeries, phaseDatasetSnapshot };
 }
