@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isAuthorizedResearchValidationChildExecutionContext,
   isAuthorizedResearchValidationProtocolCreateContext,
+  isAuthorizedResearchValidationResultFinalizeContext,
   resolveAuthorizedResearchValidationChildExecutionContext,
   resolveAuthorizedResearchValidationProtocolCreateContext,
+  resolveAuthorizedResearchValidationResultFinalizeContext,
   type InvestingAuthorityTransactionClient,
 } from "../lib/investing/authority/context";
 import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
@@ -74,6 +76,29 @@ class FakeRl3bAuthorityClient implements InvestingAuthorityTransactionClient {
         rowCount: 1,
       };
     }
+    if (sql.includes("from investing.tenants")) {
+      const active = (this.rows.tenantState ?? "ACTIVE") === "ACTIVE";
+      return {
+        rows: active ? [{ tenant_id: ids.tenant, state: "ACTIVE" } as Row] : [],
+        rowCount: active ? 1 : 0,
+      };
+    }
+    if (sql.includes("from investing.tenant_memberships")) {
+      const active =
+        (this.rows.membershipState ?? "ACTIVE") === "ACTIVE" &&
+        (this.rows.membershipRole ?? "OWNER") === "OWNER";
+      return {
+        rows: active
+          ? [{
+              tenant_membership_id: ids.membership,
+              tenant_id: ids.tenant,
+              principal_id: ids.principal,
+              state: "ACTIVE",
+            } as Row]
+          : [],
+        rowCount: active ? 1 : 0,
+      };
+    }
     if (sql.includes("from investing.research_experiments e")) {
       const experimentPrincipal = this.rows.experimentPrincipal ?? ids.principal;
       const experimentTenant = this.rows.experimentTenant ?? ids.tenant;
@@ -102,7 +127,10 @@ class FakeRl3bAuthorityClient implements InvestingAuthorityTransactionClient {
         rowCount: visible ? 1 : 0,
       };
     }
-    if (sql.includes("from investing.research_validation_protocols_scientific_identities v")) {
+    if (
+      sql.includes("from investing.research_validation_protocols_scientific_identities v") ||
+      sql.includes("from investing.research_validation_protocols_scientific_identities")
+    ) {
       const protocolPrincipal = this.rows.protocolPrincipal ?? ids.principal;
       const protocolTenant = this.rows.protocolTenant ?? ids.tenant;
       const protocolInvestigation = this.rows.protocolInvestigation ?? ids.investigation;
@@ -120,6 +148,7 @@ class FakeRl3bAuthorityClient implements InvestingAuthorityTransactionClient {
           ? [{
               research_investigation_id: protocolInvestigation,
               research_validation_protocol_identity_id: ids.protocol,
+              research_experiment_id: ids.experiment,
               tenant_id: protocolTenant,
               principal_id: protocolPrincipal,
               tenant_membership_id: ids.membership,
@@ -222,6 +251,35 @@ describe("I5 RL-3B Validation authority contexts", () => {
       expect(isAuthorizedResearchValidationChildExecutionContext(result.context)).toBe(true);
       expect("accountId" in result.context).toBe(false);
       expect(result.context.operation).toBe("RESEARCH_VALIDATION_CHILD_EXECUTE_V1");
+    }
+  });
+  it.each([
+    ["valid Protocol owner", {}, { ok: true }],
+    ["Protocol other principal denied", { protocolPrincipal: ids.otherPrincipal }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
+    ["Protocol other tenant denied", { protocolTenant: ids.otherTenant }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
+    ["Investigation mismatch denied", { researchInvestigationId: ids.otherInvestigation }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
+    ["inactive membership", { membershipState: "REVOKED" }, { ok: false, code: "MEMBERSHIP_INACTIVE" }],
+    ["non-OWNER", { membershipRole: "VIEWER" }, { ok: false, code: "MEMBERSHIP_INACTIVE" }],
+    ["inactive tenant", { tenantState: "SUSPENDED" }, { ok: false, code: "TENANT_INACTIVE" }],
+    ["account-scoped context rejected", { inputExtras: { accountId: ids.account } }, { ok: false, code: "VALIDATION_ERROR" }],
+    ["injected authority fields rejected", { inputExtras: { principalId: ids.principal, operation: "RESEARCH_VALIDATION_RESULT_FINALIZE_V1" } }, { ok: false, code: "VALIDATION_ERROR" }],
+  ])("resolves Validation aggregate finalize authority: %s", async (_label, override, expected) => {
+    const fixture = override as ChildOverride;
+    mockClerkOk();
+    mockDatabase(fixture);
+    const result = await resolveAuthorizedResearchValidationResultFinalizeContext({
+      researchInvestigationId: fixture.researchInvestigationId ?? ids.investigation,
+      researchValidationProtocolIdentityId: fixture.protocolId ?? ids.protocol,
+      correlationId: "corr-rl3c-finalize-0001",
+      ...(fixture.inputExtras ?? {}),
+    } as never);
+    expect(result).toMatchObject(expected);
+    if (result.ok) {
+      expect(isAuthorizedResearchValidationResultFinalizeContext(result.context)).toBe(true);
+      expect("accountId" in result.context).toBe(false);
+      expect(result.context.operation).toBe("RESEARCH_VALIDATION_RESULT_FINALIZE_V1");
+      expect(result.context.capability).toBe("RESEARCH_MUTATE");
+      expect(result.context.researchExperimentId).toBe(ids.experiment);
     }
   });
 });
