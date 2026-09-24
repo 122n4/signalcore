@@ -1373,9 +1373,23 @@ Rules:
 
 ### Evaluation observation digest
 
+V2 boolean evaluation uses full deterministic clause evaluation for scientific
+observation capture:
+
+- AND evaluates every clause in canonical clause order;
+- OR evaluates every clause in canonical clause order;
+- NOT evaluates its single clause;
+- there is no observation-level short-circuit even when the final boolean value
+  is already determined;
+- final three-valued boolean semantics remain equivalent to the accepted V1
+  truth table.
+
+This rule prevents implementation-specific short-circuit choices from changing
+the trace digest.
+
 For each EVALUATION, the kernel constructs an ephemeral canonical observation
-set containing each unique field-expression evaluation actually requested by
-the pipeline for that session/instrument.
+set containing each unique field-expression evaluation requested by the fully
+evaluated pipeline for that session/instrument.
 
 Each exact observation record is:
 
@@ -1962,6 +1976,7 @@ Mandatory evidence:
 - benchmark fixtures;
 - FX fail-closed fixtures;
 - exact trace/valuation/benchmark record-schema and ordering fixtures;
+- full-evaluation/no-short-circuit observation fixtures;
 - evaluation observation-digest reproducibility fixtures;
 - artifact byte-limit rejection fixtures;
 - artifact integrity fixtures;
