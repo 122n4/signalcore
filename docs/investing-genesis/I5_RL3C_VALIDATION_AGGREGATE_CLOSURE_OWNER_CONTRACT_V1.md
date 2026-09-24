@@ -99,23 +99,59 @@ SYNTRAKE:VALIDATION_RESULT:V1
 payload. It must bind only accepted methodology and exact child scientific
 identities.
 
-Required fields:
+The exact payload shape is:
 
-- `schemaVersion = VALIDATION_RESULT_HASH_PAYLOAD_V1`;
-- `methodology = VALIDATION_AGGREGATION_METHODOLOGY_V1`;
-- exact Validation Protocol HashRef;
-- exact subject Experiment HashRef;
-- exact validation mode copied from the Protocol;
-- immutable aggregation/methodology version;
-- ordered complete fold set.
+```text
+VALIDATION_RESULT_HASH_PAYLOAD_V1 = {
+  schemaVersion,
+  methodology,
+  validationProtocol,
+  subjectExperiment,
+  validationMode,
+  folds
+}
+```
 
-Each fold entry must include:
+Required values:
 
-- exact fold ordinal;
-- TRAINING ValidationRunInput HashRef;
-- TRAINING ValidationChildResult HashRef;
-- EVALUATION ValidationRunInput HashRef;
-- EVALUATION ValidationChildResult HashRef.
+```text
+schemaVersion = VALIDATION_RESULT_HASH_PAYLOAD_V1
+methodology = VALIDATION_AGGREGATION_METHODOLOGY_V1
+```
+
+`methodology` is the immutable versioned behavior token for aggregate
+structural validation. There is no second aggregation-version field.
+
+`validationProtocol` is the exact
+`SYNTRAKE:VALIDATION_PROTOCOL:V1` HashRef.
+
+`subjectExperiment` is the exact `SYNTRAKE:EXPERIMENT:V1` HashRef and must equal
+`ValidationProtocol.subjectExperiment`.
+
+`validationMode` must equal `ValidationProtocol.validationMode`.
+
+`subjectExperiment` and `validationMode` are redundant with the Protocol HashRef
+by deliberate self-description/integrity cross-check. Any divergence between
+the aggregate payload and the Protocol payload is fail-closed.
+
+Each fold entry has exact shape:
+
+```text
+{
+  ordinal,
+  trainingRunInput,
+  trainingChildResult,
+  evaluationRunInput,
+  evaluationChildResult
+}
+```
+
+All four refs are exact accepted HashRefs:
+
+- `trainingRunInput`: `SYNTRAKE:VALIDATION_RUN_INPUT:V1`;
+- `trainingChildResult`: `SYNTRAKE:VALIDATION_CHILD_RESULT:V1`;
+- `evaluationRunInput`: `SYNTRAKE:VALIDATION_RUN_INPUT:V1`;
+- `evaluationChildResult`: `SYNTRAKE:VALIDATION_CHILD_RESULT:V1`.
 
 Canonical ordering is:
 
@@ -160,10 +196,24 @@ The aggregate is valid only when all of the following are true:
 - all children belong to the same subject Experiment;
 - each child RunInput matches the exact fold ordinal and phase window;
 - each Child Result is bound to the exact child RunInput;
-- each child execution is terminal `SUCCEEDED`;
+- for every required fold/phase, the scientific Child Result exists and the
+  exact operational execution run referenced by that Child Result has a
+  terminal `SUCCEEDED` lifecycle;
 - each Child Result exists and passes integrity verification;
-- relevant artifacts remain available and pass descriptor/content integrity;
+- all artifact IDs/descriptors referenced by each Child Result pass exact
+  artifact integrity verification;
 - representation is canonical and ordered as specified above.
+
+Prior operational `FAILED` attempts for the same ValidationRunInput:
+
+- remain in history;
+- remain visible in Passport and Evidence Ledger projections;
+- do not by themselves invalidate the scientific Child Result produced by a
+  later successful retry;
+- must not be deleted or hidden.
+
+A Child Result whose own backing run does not have terminal `SUCCEEDED` fails
+closed.
 
 RL-3C must fail closed on:
 
@@ -175,6 +225,20 @@ RL-3C must fail closed on:
 - missing/corrupt artifact;
 - duplicate or extra child rows;
 - incomplete fold set.
+
+Artifact integrity is exact. Every non-null artifact ID and descriptor
+referenced by a Child Result must:
+
+- exist;
+- belong to that exact backing validation execution run;
+- match artifact kind;
+- match SHA-256;
+- match byte length;
+- match record count.
+
+If the benchmark descriptor/ID is null, both sides must exactly follow accepted
+Child Result null benchmark semantics. Partially verified descriptors are not
+accepted.
 
 RL-3C does not calculate:
 
@@ -210,6 +274,28 @@ CONFLICT / FAIL CLOSED
 There is no overwrite, update or delete path. Aggregate Validation Result
 identity is append-only.
 
+Concurrent finalization of the same Validation Protocol must serialize on the
+logical Protocol identity.
+
+Required concurrent semantics:
+
+```text
+concurrent identical payloads
+=> exactly one persisted aggregate identity
+=> all successful callers receive exact reuse of that same identity
+
+concurrent divergent payloads
+=> at most one accepted identity
+=> divergent caller receives CONFLICT
+=> no overwrite
+=> no duplicate logical aggregate
+=> no partial rows
+```
+
+A future implementation may use row locks, advisory locks, unique constraints
+plus transactions or another audited mechanism. This contract freezes behavior,
+not the mechanism.
+
 ## Proposed Persistence Contract
 
 The future relation name is:
@@ -221,24 +307,78 @@ investing.research_validation_results_scientific_identities
 This name follows the existing accepted scientific identity table pattern and
 distinguishes aggregate Validation Result from RL-3B child results.
 
-The future relation must preserve at minimum:
+The future relation must contain at minimum:
 
-- operational UUID primary key;
-- tenant ID;
-- principal ID;
-- tenant membership ID;
-- research Investigation ID;
-- Validation Protocol FK;
-- subject Experiment lineage;
-- operation;
-- capability;
-- operation scope;
-- source context;
-- SHA-256 domain envelope;
-- canonical aggregate payload;
-- created_at operational timestamp;
-- unique scientific hash;
-- unique aggregate logical identity for the exact Protocol when correct.
+```text
+research_validation_result_identity_id
+tenant_id
+principal_id
+tenant_membership_id
+research_investigation_id
+research_validation_protocol_identity_id
+research_experiment_id
+operation
+capability
+operation_scope
+source_context
+hash_algorithm
+hash_domain
+hash_version
+hash_hex
+canonical_payload
+created_at
+```
+
+Mandatory value constraints:
+
+```text
+operation = RESEARCH_VALIDATION_RESULT_FINALIZE_V1
+capability = RESEARCH_MUTATE
+operation_scope = TENANT_SCOPE
+source_context = PURE_RESEARCH
+hash_algorithm = SHA-256
+hash_domain = SYNTRAKE:VALIDATION_RESULT:V1
+hash_version = SYNTRAKE_SHA256_V1
+```
+
+The relation must include an authority-preserving composite FK to the Protocol
+that proves together:
+
+```text
+protocol
+investigation
+experiment
+tenant
+principal
+tenant membership
+scope
+source context
+```
+
+The aggregate relation must never trust `research_experiment_id` independently
+of the Protocol.
+
+Logical uniqueness:
+
+```text
+UNIQUE(research_validation_protocol_identity_id)
+```
+
+Scientific uniqueness:
+
+```text
+UNIQUE(
+  tenant_id,
+  hash_algorithm,
+  hash_domain,
+  hash_version,
+  hash_hex
+)
+```
+
+The first constraint guarantees one logical aggregate per Protocol. The second
+guarantees unique scientific identity within the tenant. A divergent payload for
+an already finalized Protocol is `VALIDATION_RESULT_CONFLICT`.
 
 Mandatory database properties:
 
@@ -311,6 +451,59 @@ Passport remains:
 - not a new Passport hash domain;
 - not a new event store.
 
+For supported `TENANT_SCOPE / PURE_RESEARCH`, Passport validation projection
+uses:
+
+```text
+availability = AVAILABLE_RL3
+```
+
+Each episode has exactly one derived state:
+
+```text
+CHILDREN_INCOMPLETE
+CHILD_FAILED
+AGGREGATE_PENDING
+AGGREGATE_AVAILABLE
+```
+
+Deterministic precedence:
+
+```text
+aggregate exists
+=> AGGREGATE_AVAILABLE
+
+else all required scientific Child Results exist
+=> AGGREGATE_PENDING
+
+else at least one required child lacks a scientific Child Result and has a
+terminal FAILED attempt with no successful result yet
+=> CHILD_FAILED
+
+else
+=> CHILDREN_INCOMPLETE
+```
+
+Historical failed attempts remain projected even when the episode later becomes
+`AGGREGATE_PENDING` or `AGGREGATE_AVAILABLE`.
+
+For unsupported scopes:
+
+```text
+TEST_PORTFOLIO
+USER_PORTFOLIO
+ACCOUNT_SCOPE
+```
+
+Passport must not return an empty array that looks like "no validations". It
+must return:
+
+```text
+availability = UNAVAILABLE_RL3_SCOPE
+episodes = []
+reason = RL3_PURE_RESEARCH_TENANT_SCOPE_ONLY
+```
+
 The future Passport `validation` projection must reconstruct each validation
 episode with:
 
@@ -323,16 +516,32 @@ episode with:
 - Child Result;
 - aggregate Validation Result when materialized.
 
-The projection must distinguish at least:
+Absence must never be converted into success.
 
-- protocol exists but children incomplete;
-- child failed;
-- children complete but aggregate not yet materialized;
-- aggregate available.
+## Passport RL-3 Read Authority
 
-Absence must never be converted into success. For scopes not accepted by RL-3,
-Passport must expose an explicit unavailable/fail-closed state rather than an
-empty successful validation result.
+`RESEARCH_PASSPORT_READ_V1 / RESEARCH_READ` receives only the SELECT authority
+needed to project RL-3 validation over:
+
+```text
+research_validation_protocols_scientific_identities
+research_validation_run_inputs_scientific_identities
+research_validation_execution_runs
+research_validation_execution_run_events
+research_validation_result_artifacts
+research_validation_child_results_scientific_identities
+research_validation_results_scientific_identities
+```
+
+This SELECT authority applies only when the authorized Passport context is:
+
+```text
+TENANT_SCOPE / PURE_RESEARCH
+```
+
+It grants no INSERT, UPDATE or DELETE authority to Passport. `TEST_PORTFOLIO`,
+Account Portfolio and User Portfolio Passport contexts have no RL-3 validation
+read authority and return `UNAVAILABLE_RL3_SCOPE`.
 
 ## Evidence Ledger Extension
 
@@ -368,9 +577,15 @@ material distinctions. At minimum:
 - `VALIDATION_CHILD_RUN_INPUT_BINDING_INVALID`;
 - `VALIDATION_CHILD_RESULT_BINDING_INVALID`;
 - `VALIDATION_CHILD_RUN_NOT_SUCCEEDED`;
+- `VALIDATION_CHILD_BACKING_RUN_INVALID`;
 - `VALIDATION_CHILD_ARTIFACT_INTEGRITY_FAILURE`;
 - `VALIDATION_RESULT_CONFLICT`;
+- `VALIDATION_RESULT_PROTOCOL_MISMATCH`;
+- `VALIDATION_RESULT_EXPERIMENT_MISMATCH`;
+- `VALIDATION_RESULT_MODE_MISMATCH`;
+- `VALIDATION_RESULT_CONCURRENT_CONFLICT`;
 - `VALIDATION_RESULT_INCOMPLETE`;
+- `PASSPORT_VALIDATION_SCOPE_UNAVAILABLE`;
 - `PASSPORT_VALIDATION_LINEAGE_INVALID`.
 
 Implementations may add narrower codes, but must not collapse materially
@@ -395,9 +610,15 @@ The future implementation closure must prove on PostgreSQL 17:
 - mixed Protocol rejected;
 - wrong Experiment rejected;
 - non-SUCCEEDED child rejected;
+- failed attempt followed by successful retry produces an allowed aggregate;
+- Child Result backed by a non-SUCCEEDED run rejected;
 - corrupted child/artifact rejected;
 - exact replay returns the same Validation Result;
 - divergent replay conflicts;
+- concurrent identical finalization produces exactly one aggregate identity and
+  exact reuse for successful callers;
+- concurrent divergent finalization accepts at most one identity and returns
+  conflict for divergent callers;
 - update/delete denied;
 - Passport read sees the exact validation episode;
 - Passport read from foreign authority sees nothing;
@@ -494,4 +715,3 @@ Vercel state.
 `SYNTRAKE:VALIDATION_RESULT:V1` remains a proposed future domain until a
 separate implementation closure activates it through accepted runtime and
 canonical hash-domain authority.
-
