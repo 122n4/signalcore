@@ -324,6 +324,11 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql");
     expect(contract).toContain("CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED");
     expect(hash).toContain("`SYNTRAKE:VALIDATION_RESULT:V1` | `OWNER_PAYLOAD_EXACT`");
+    expect(hash).toContain("## RL-3C Validation Aggregate Closure");
+    expect(hash).toContain("current accepted through RL-3C Validation");
+    expect(hash).toContain("20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql");
+    expect(hash).not.toContain("## RL-3C Validation Aggregate Closure Candidate");
+    expect(hash).not.toContain("only on its candidate branch");
 
     expect(state).toContain("I5 RL-3C Validation Aggregate Closure (unnumbered)");
     expect(state).toContain("I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md");

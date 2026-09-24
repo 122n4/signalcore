@@ -182,18 +182,22 @@ historical execution kernel.
 These accepted domains do not create aggregate Validation Result, Validation
 Evidence, promotion, robustness or Blind Truth authority.
 
-## RL-3C Validation Aggregate Closure Candidate
+## RL-3C Validation Aggregate Closure
 
-The current RL-3C implementation candidate activates
-`SYNTRAKE:VALIDATION_RESULT:V1` as `OWNER_PAYLOAD_EXACT` only on its candidate
-branch. The owner payload is `VALIDATION_RESULT_HASH_PAYLOAD_V1` and binds the
-exact Validation Protocol, subject Experiment, validation mode, and ordered
-complete fold set of Validation RunInput and Child Result HashRefs.
+`SYNTRAKE:VALIDATION_RESULT:V1` is current accepted through RL-3C Validation
+Aggregate Closure as `OWNER_PAYLOAD_EXACT` for
+`VALIDATION_RESULT_HASH_PAYLOAD_V1`.
 
-This candidate activation is not canonical acceptance until its implementation,
-migration, PostgreSQL 17 rehearsal and independent gate pass and the accepted
-candidate is merged to the protected canonical branch. It creates no promotion,
-robustness, Blind Truth, Paper, Live or Core authority.
+The exact owner payload binds the accepted Validation Protocol, subject
+Experiment, validation mode, and ordered complete fold set of Validation
+RunInput and Child Result HashRefs. The accepted implementation is canonical in
+Git at `5dc276c0f5cd1d2b8f9946edbfc9b3fde2a87e17` and the exact production
+migration `20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`
+is applied in Supabase Production.
+
+This acceptance closes RL-3 together with accepted RL-3A and RL-3B. It does not
+create promotion, robustness/comparison, Blind Truth, Paper, Live or Core
+authority.
 
 ## Explicit Exclusions
 
@@ -209,5 +213,7 @@ Arbitrary raw Evidence objects remain outside the public hashing boundary.
 No ResearchTemplate or account-context hashing domain is activated by this
 contract unless the runtime already admits it with an exact owner payload.
 
-No aggregate Validation Result, promotion decision, blind-truth result or future
-RL-3/RL-8/RL-9 identity domain is activated by this contract.
+No promotion decision, blind-truth result or future RL-8/RL-9 identity domain is
+activated by this contract. Aggregate Validation Result authority is limited to
+the accepted owner-exact `SYNTRAKE:VALIDATION_RESULT:V1` boundary described
+above.
