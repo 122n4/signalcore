@@ -444,7 +444,11 @@ async function validatePhase(
   }
   if (
     hashValidationChildResultV1(childPayload) !== child.hash_hex ||
-    childPayload.validationRunInput.hashHex !== runInput.hash_hex
+    childPayload.validationRunInput.hashHex !== runInput.hash_hex ||
+    childPayload.engineId !== runInputPayload.engineId ||
+    childPayload.engineVersion !== runInputPayload.engineVersion ||
+    childPayload.testPeriod.startDate !== runInputPayload.phaseWindow.startDate ||
+    childPayload.testPeriod.endDate !== runInputPayload.phaseWindow.endDate
   ) {
     throw new FinalizeFailure("VALIDATION_CHILD_RESULT_BINDING_INVALID");
   }
