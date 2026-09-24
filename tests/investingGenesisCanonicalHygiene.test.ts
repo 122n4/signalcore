@@ -131,7 +131,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -169,7 +169,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("RESEARCH_EXECUTION_EVIDENCE_V1");
     expect(hash).toContain("Generic or arbitrary raw Evidence hashing is not a sanctioned");
     expect(hash).toContain("Arbitrary raw Evidence objects remain outside the public hashing boundary");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -216,11 +216,9 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Permanent A-number:");
     expect(state).toContain("NOT ASSIGNED");
     expect(state).toContain("I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("Research Lab is not yet backend-complete");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
-    expect(state).not.toContain("RL-3 = CURRENT_ACCEPTED");
-    expect(state).not.toContain("RL-3 validation = CURRENT_ACCEPTED");
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT");
@@ -265,7 +263,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Independent auditor verdict:");
     expect(state).toContain("PASS");
     expect(state).toContain("I5 RL-3A VALIDATION PROTOCOL FOUNDATION V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION");
@@ -275,7 +273,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("permanent A-number: `NONE`");
   });
 
-  it("records RL-3B Validation Child Execution as accepted without closing RL-3", () => {
+  it("records historical RL-3B acceptance without erasing later RL-3 closure", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
     const contract = read("docs/investing-genesis/I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md");
     const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
