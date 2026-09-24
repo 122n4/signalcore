@@ -74,8 +74,11 @@ jobs:
       - name: PostgreSQL 17 RL-3B Validation child execution rehearsal
         run: npx vitest run tests/investingGenesisI5Rl3bValidationChildExecutionPg17.test.ts
 
-      - name: PostgreSQL 17 RL-3C Validation aggregate rehearsal
-        run: npx vitest run tests/investingGenesisI5Rl3cValidationAggregatePg17.test.ts tests/investingGenesisI5Rl3cValidationFinalizerPg17.test.ts
+      - name: PostgreSQL 17 RL-3C Validation aggregate physical rehearsal
+        run: npx vitest run tests/investingGenesisI5Rl3cValidationAggregatePg17.test.ts
+
+      - name: PostgreSQL 17 RL-3C Validation finalizer rehearsal
+        run: npx vitest run tests/investingGenesisI5Rl3cValidationFinalizerPg17.test.ts
 
   investing-cumulative-compatibility-pg17:
     runs-on: ubuntu-latest
