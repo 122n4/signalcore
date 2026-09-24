@@ -7,6 +7,11 @@ import type {
 } from "../authority/context";
 import { isAuthorizedResearchPassportReadContext } from "../authority/context";
 import { getInvestingAuthorityDatabase } from "../authority/transport";
+import {
+  readValidationPassportProjectionV1,
+  type ValidationPassportProjectionV1,
+  type ValidationLedgerEventV1,
+} from "./validationPassport";
 
 export type ResearchPassportV1SchemaVersion = "RESEARCH_PASSPORT_V1";
 
@@ -22,7 +27,15 @@ export type ResearchEvidenceLedgerEventKindV1 =
   | "RUN_SUCCEEDED"
   | "RUN_FAILED"
   | "RESULT_AVAILABLE"
-  | "EVIDENCE_AVAILABLE";
+  | "EVIDENCE_AVAILABLE"
+  | "VALIDATION_PROTOCOL_CREATED"
+  | "VALIDATION_RUN_INPUT_MATERIALIZED"
+  | "VALIDATION_RUN_REGISTERED"
+  | "VALIDATION_RUN_STARTED"
+  | "VALIDATION_RUN_SUCCEEDED"
+  | "VALIDATION_RUN_FAILED"
+  | "VALIDATION_CHILD_RESULT_AVAILABLE"
+  | "VALIDATION_RESULT_AVAILABLE";
 
 export type ResearchPassportIntegrityFailureCodeV1 =
   | "FORBIDDEN_OR_NOT_FOUND"
@@ -38,6 +51,8 @@ export type ResearchPassportIntegrityFailureCodeV1 =
   | "RESULT_ARTIFACT_BINDING_INVALID"
   | "EVIDENCE_RESULT_BINDING_INVALID"
   | "SUCCEEDED_RUN_EVIDENCE_MISSING"
+  | "PASSPORT_VALIDATION_SCOPE_UNAVAILABLE"
+  | "PASSPORT_VALIDATION_LINEAGE_INVALID"
   | "DATABASE_ERROR";
 
 export type HashRefProjectionV1 = Readonly<{
@@ -102,7 +117,7 @@ export type ResearchPassportV1 = Readonly<{
   results: readonly ResultPassportRowV1[];
   evidence: readonly EvidencePassportRowV1[];
   ledger: readonly ResearchEvidenceLedgerEventV1[];
-  validation: { availability: "DEFERRED_RL3"; episodes: readonly [] };
+  validation: ValidationPassportProjectionV1;
   scientificPromotion: { availability: "DEFERRED_RL8"; transitions: readonly [] };
   blindTruth: { availability: "DEFERRED_RL9"; episodes: readonly [] };
 }>;
@@ -621,6 +636,12 @@ export async function readResearchPassportV1(
       return { ok: false, code: integrity };
     }
 
+    const validationRead = await readValidationPassportProjectionV1(client, context);
+    if (validationRead.ok === false) {
+      await client.query("rollback");
+      return { ok: false, code: validationRead.code };
+    }
+
     const artifactsById = new Map(artifactRows.map((artifact) => [artifact.artifact_id, artifact]));
     const materialRevisions = materialRows.map(projectMaterialRevision);
     const specIdentitiesByRevision = uniqueSpecIdentitiesByRevision(specIdentityRows);
@@ -639,6 +660,7 @@ export async function readResearchPassportV1(
       executionRuns,
       results,
       evidence,
+      validationEvents: validationRead.ledgerEvents,
     });
 
     await client.query("commit");
@@ -691,7 +713,7 @@ export async function readResearchPassportV1(
         results,
         evidence,
         ledger,
-        validation: { availability: "DEFERRED_RL3", episodes: [] },
+        validation: validationRead.validation,
         scientificPromotion: { availability: "DEFERRED_RL8", transitions: [] },
         blindTruth: { availability: "DEFERRED_RL9", episodes: [] },
       },
@@ -1130,6 +1152,7 @@ function buildLedger(input: {
   executionRuns: readonly ExecutionRunPassportRowV1[];
   results: readonly ResultPassportRowV1[];
   evidence: readonly EvidencePassportRowV1[];
+  validationEvents: readonly ValidationLedgerEventV1[];
 }): readonly ResearchEvidenceLedgerEventV1[] {
   const events: ResearchEvidenceLedgerEventV1[] = [
     {
@@ -1266,6 +1289,7 @@ function buildLedger(input: {
       occurredAt: row.createdAt,
     });
   }
+  events.push(...input.validationEvents);
   return events.sort(byLedgerOrder);
 }
 
@@ -1282,6 +1306,14 @@ const phaseOrder: Record<ResearchEvidenceLedgerEventKindV1, number> = {
   RUN_FAILED: 53,
   RESULT_AVAILABLE: 60,
   EVIDENCE_AVAILABLE: 70,
+  VALIDATION_PROTOCOL_CREATED: 80,
+  VALIDATION_RUN_INPUT_MATERIALIZED: 81,
+  VALIDATION_RUN_REGISTERED: 82,
+  VALIDATION_RUN_STARTED: 83,
+  VALIDATION_RUN_SUCCEEDED: 84,
+  VALIDATION_RUN_FAILED: 85,
+  VALIDATION_CHILD_RESULT_AVAILABLE: 86,
+  VALIDATION_RESULT_AVAILABLE: 87,
 };
 
 function byLedgerOrder(a: ResearchEvidenceLedgerEventV1, b: ResearchEvidenceLedgerEventV1) {

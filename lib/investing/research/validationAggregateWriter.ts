@@ -165,7 +165,6 @@ export async function finalizeValidationResultV1(
             "from investing.research_validation_protocols_scientific_identities",
             "where research_validation_protocol_identity_id = $1 and research_investigation_id = $2",
             "and research_experiment_id = $3 and tenant_id = $4 and principal_id = $5 and tenant_membership_id = $6",
-            "for update",
           ].join(" "),
           [
             input.authorizedContext.researchValidationProtocolIdentityId,
@@ -179,6 +178,9 @@ export async function finalizeValidationResultV1(
         "FORBIDDEN_OR_NOT_FOUND",
       );
       const protocol = validateProtocol(protocolRow);
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+        protocolRow.research_validation_protocol_identity_id,
+      ]);
 
       const existing = oneOrNull(
         await client.query<AggregateRow>(
@@ -191,7 +193,6 @@ export async function finalizeValidationResultV1(
           [protocolRow.research_validation_protocol_identity_id],
         ),
       );
-      if (existing) return replayExisting(existing, protocolRow, protocol);
 
       const runInputs = (
         await client.query<RunInputRow>(
@@ -287,6 +288,7 @@ export async function finalizeValidationResultV1(
       };
       const canonicalPayload = canonicalValidationResultHashPayloadV1(payload);
       const hashHex = hashValidationResultV1(payload);
+      if (existing) return replayExisting(existing, protocolRow, canonicalPayload, hashHex);
       const identityId = randomUUID();
 
       await client.query(
@@ -526,7 +528,8 @@ async function verifyArtifact(
 function replayExisting(
   row: AggregateRow,
   protocolRow: ProtocolRow,
-  protocol: ValidationProtocolHashPayloadV1,
+  expectedCanonicalPayload: unknown,
+  expectedHashHex: string,
 ): FinalizeValidationResultV1Result {
   if (
     row.research_validation_protocol_identity_id !== protocolRow.research_validation_protocol_identity_id ||
@@ -536,12 +539,18 @@ function replayExisting(
   ) {
     throw new FinalizeFailure("VALIDATION_RESULT_CONFLICT");
   }
-  const payload = canonicalValidationResultHashPayloadV1(row.canonical_payload as ValidationResultHashPayloadV1) as ValidationResultHashPayloadV1;
+  let payload: ValidationResultHashPayloadV1;
+  try {
+    payload = canonicalValidationResultHashPayloadV1(
+      row.canonical_payload as ValidationResultHashPayloadV1,
+    ) as ValidationResultHashPayloadV1;
+  } catch {
+    throw new FinalizeFailure("VALIDATION_RESULT_CONFLICT");
+  }
   if (
     hashValidationResultV1(payload) !== row.hash_hex ||
-    payload.validationProtocol.hashHex !== protocolRow.hash_hex ||
-    payload.subjectExperiment.hashHex !== protocol.subjectExperiment.hashHex ||
-    payload.validationMode !== protocol.validationMode
+    row.hash_hex !== expectedHashHex ||
+    canonicalString(payload) !== canonicalString(expectedCanonicalPayload)
   ) {
     throw new FinalizeFailure("VALIDATION_RESULT_CONFLICT");
   }
