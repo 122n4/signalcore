@@ -327,6 +327,13 @@ class FakeClient implements InvestingAuthorityTransactionClient {
     if (sql.includes("from investing.research_evidence_objects_scientific_identities ev")) {
       return this.rows<Row>(this.store.evidenceRows as Row[]);
     }
+    if (sql.includes("from investing.research_validation_protocols_scientific_identities")) return this.rows<Row>([]);
+    if (sql.includes("from investing.research_validation_run_inputs_scientific_identities")) return this.rows<Row>([]);
+    if (sql.includes("from investing.research_validation_execution_runs")) return this.rows<Row>([]);
+    if (sql.includes("from investing.research_validation_execution_run_events")) return this.rows<Row>([]);
+    if (sql.includes("from investing.research_validation_result_artifacts")) return this.rows<Row>([]);
+    if (sql.includes("from investing.research_validation_child_results_scientific_identities")) return this.rows<Row>([]);
+    if (sql.includes("from investing.research_validation_results_scientific_identities")) return this.rows<Row>([]);
     throw new Error(`Unexpected query: ${text}`);
   }
 
@@ -385,7 +392,7 @@ describe("I5 RL-2 Research Passport projection", () => {
     expect(first.passport.executionRuns[2]?.terminalState).toBe("FAILED");
     expect(first.passport.executionRuns[2]?.failureReasonCode).toBe("UNSUPPORTED_ENGINE");
     expect(first.passport.ledger.map((event) => event.eventKind)).toContain("RUN_FAILED");
-    expect(first.passport.validation.availability).toBe("DEFERRED_RL3");
+    expect(first.passport.validation).toEqual({ availability: "AVAILABLE_RL3", episodes: [] });
     expect(first.passport.scientificPromotion.availability).toBe("DEFERRED_RL8");
     expect(first.passport.blindTruth.availability).toBe("DEFERRED_RL9");
     const acceptedDomains = new Set([
