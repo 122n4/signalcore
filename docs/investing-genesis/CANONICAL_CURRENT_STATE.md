@@ -100,6 +100,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-2 Evidence Ledger and Passport (unnumbered) | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` |
 | I5 RL-3A Validation Protocol Foundation (unnumbered) | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` |
 | I5 RL-3B Validation Child Execution (unnumbered) | `I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md` |
+| I5 RL-3C Validation Aggregate Closure (unnumbered) | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -204,7 +205,21 @@ freeze/master evidence still relies on its narrow classifications.
   `SYNTRAKE:VALIDATION_CHILD_RESULT:V1` owner payloads, reuses the deterministic
   V1 historical execution kernel, and introduces accepted persistence for
   protocol identities, fold/phase run inputs, child runs, artifacts and child
-  results. It does not accept complete RL-3 or aggregate Validation Result.
+  results. Its historical acceptance did not by itself accept complete RL-3 or
+  aggregate Validation Result; that limitation is now superseded only by the
+  separately accepted RL-3C closure.
+- I5 RL-3C Validation Aggregate Closure:
+  `CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED`. This
+  accepted closure activates `SYNTRAKE:VALIDATION_RESULT:V1 =
+  OWNER_PAYLOAD_EXACT`, derives one deterministic aggregate identity from the
+  exact complete fold/phase child set, finalizes append-only under dedicated
+  tenant-only PURE_RESEARCH authority, projects validation episodes into the
+  Passport/Evidence Ledger, preserves retry history, fails closed on lineage or
+  artifact corruption, and is rehearsed on PostgreSQL 17 including the real
+  concurrent finalizer. Its exact migration is applied in Supabase Production.
+  Together with accepted RL-3A and RL-3B it closes
+  `RL-3_VALIDATION_PROTOCOL_V1`; it does not introduce promotion/robustness,
+  Blind Truth, Engine V2, Paper, Live, Core or a permanent A-number.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -396,7 +411,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -655,40 +670,96 @@ I5 RL-3B Validation Child Execution acceptance evidence:
 
 `I5 RL-3B VALIDATION CHILD EXECUTION V1 = CURRENT_ACCEPTED / UNNUMBERED`.
 
-## Production Supabase Migration State
+I5 RL-3C Validation Aggregate Closure acceptance evidence:
 
-Production Supabase migration state:
-`CURRENT THROUGH RL-3B`.
-
-- Latest:
-  `20260923090000 investing_i5_rl3b_validation_child_execution`.
-- Migration ledger:
-  `95 versions`.
-- A4 -> RL-3B production application:
+- Canonical predecessor for implementation:
+  `4e0615c703d94830095f9a3f5c39e733696724d3`.
+- Final independently audited implementation candidate:
+  `cbe9165e1d89e45d6bda9af281200c31d25f950b`.
+- PR:
+  `#90`.
+- Accepted rebase merge / canonical main:
+  `e1721482b0ba2b9a67b3d8751778ba2695e3e751`.
+- Candidate verify:
+  `107782658280 - SUCCESS`.
+- Candidate dependency-audit:
+  `107782658214 - SUCCESS`.
+- Candidate PostgreSQL 17 RL-3C reconciliation:
+  `107782658459 - SUCCESS`.
+- Candidate cumulative PostgreSQL 17:
+  `107782658690 - SUCCESS`.
+- Merged-main verify:
+  `107789159512 - SUCCESS`.
+- Merged-main dependency-audit:
+  `107789159724 - SUCCESS`.
+- PostgreSQL 17 RL-3C physical rehearsal:
+  `PASS`.
+- PostgreSQL 17 real concurrent finalizer/replay:
+  `PASS`.
+- Independent implementation audit:
+  `PASS`.
+- Production migration:
+  `20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`.
+- Production migration application:
   `PASSED`.
 - Post-apply independent audit:
   `PASSED`.
+- Security Advisor finding in schema `investing`:
+  `NONE`.
+- Performance Advisor debt:
+  `PRESENT / NON-BLOCKING`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+
+`I5 RL-3C VALIDATION AGGREGATE CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
+
+`I5 RL-3 VALIDATION PROTOCOL V1 = CURRENT_ACCEPTED / UNNUMBERED`.
+
+## Production Supabase Migration State
+
+Production Supabase migration state:
+`CURRENT THROUGH RL-3C`.
+
+- Latest:
+  `20260924175716 investing_i5_rl3c_validation_aggregate_closure`.
+- Migration ledger:
+  `96 versions`.
+- A4 -> RL-3B production application:
+  `PASSED`.
+- RL-3C production application:
+  `PASSED`.
+- RL-3C post-apply independent audit:
+  `PASSED`.
 - Unexpected migrations:
   `NONE`.
-- Physical audit:
-  `30/30 expected material relations present`.
+- RL-3C aggregate relation:
+  `investing.research_validation_results_scientific_identities = PRESENT`.
 - Owner:
   `investing_owner`.
 - RLS:
   `PASS`.
 - FORCE RLS:
   `PASS`.
-- Blocked-role relation grants:
-  `NONE`.
-- Schema authority boundary:
+- Authority-preserving Protocol/tenant membership FKs:
   `PASS`.
-- Security advisor blocker in `investing`:
+- Append-only trigger:
+  `PASS`.
+- `investing_app` aggregate relation authority:
+  `SELECT + INSERT ONLY`.
+- PUBLIC / anon / authenticated / service_role aggregate relation authority:
   `NONE`.
-- Observed `SECURITY DEFINER` trigger guards:
-  `investing.enforce_research_execution_run_event_transition()`;
-  `investing.reject_research_evidence_update_delete()`.
+- Passport RL-3 read authority:
+  `PASS`.
+- Security Advisor finding in schema `investing`:
+  `NONE`.
+- Performance Advisor debt:
+  `PRESENT / NON-BLOCKING`.
+  Current Investing performance findings include unindexed foreign keys,
+  `auth_rls_initplan`, unused indexes and multiple permissive policies. They
+  are tracked as a separate future hardening/performance slice and are not to be
+  corrected ad hoc in Production.
 
-Applied production migration batch:
+Applied Production migration batch through RL-3C:
 
 ```text
 20260915150000_investing_i5_experiment_baseline_persistence.sql
@@ -700,14 +771,23 @@ Applied production migration batch:
 20260921180446_investing_i0_i5_cumulative_compatibility_repair.sql
 20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql
 20260923090000_investing_i5_rl3b_validation_child_execution.sql
+20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql
 ```
 
-`RL-3B = CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED`.
-`RL-3B Production migration = APPLIED`.
-`RL-3B post-apply audit = PASSED`.
+Historical production closure remains:
 
-This production state does not accept complete RL-3, RL-3C, aggregate Validation
-Result, promotion, Blind Truth, Paper, Live or any permanent A-number.
+- `RL-3B Production migration = APPLIED`.
+- `RL-3B post-apply audit = PASSED`.
+
+Current production closure is:
+
+- `RL-3C = CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED`.
+- `RL-3C Production migration = APPLIED`.
+- `RL-3C post-apply audit = PASSED`.
+- `RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
+
+This production state does not accept RL-4+, promotion/robustness, Blind Truth,
+Paper, Live, Core or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -734,6 +814,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-2 Evidence Ledger and Passport / unnumbered | YES | YES | `I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md` + Passport reader/service + read-authority migration + runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-2 EVIDENCE LEDGER AND PASSPORT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-2_EVIDENCE_LEDGER_PASSPORT | NONE |
 | RL-3A Validation Protocol Foundation / unnumbered | YES | YES | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` + Validation Protocol runtime/tests + architecture boundaries + CI; no persistence, migration, RLS or SQL | CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED | CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION | NONE |
 | RL-3B Validation Child Execution / unnumbered | YES | YES | owner contract + runtime + writer/service + migration + authority/runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION | NONE |
+| RL-3C Validation Aggregate Closure / unnumbered | YES | YES | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` + Validation Result runtime/finalizer + Passport/Evidence Ledger projection + migration + PG17 physical/finalizer/cumulative rehearsals + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE | NONE |
 
 RL-1 runtime/progression state:
 
@@ -754,6 +835,30 @@ RL-3A runtime/progression state:
 - design: `YES`.
 - implementation: `YES`.
 - state: `CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION`.
+- permanent A-number: `NONE`.
+
+RL-3B runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- state: `CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION`.
+- Production: `APPLIED`.
+- permanent A-number: `NONE`.
+
+RL-3C runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- state: `CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE`.
+- Production: `APPLIED`.
+- permanent A-number: `NONE`.
+
+RL-3 Validation Protocol V1 progression state:
+
+- RL-3A: `ACCEPTED`.
+- RL-3B: `ACCEPTED`.
+- RL-3C: `ACCEPTED`.
+- state: `CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1`.
 - permanent A-number: `NONE`.
 
 `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is not evidence of A1/A2/A4 persistence

@@ -309,15 +309,49 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(row).toContain("CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION");
     expect(row).toContain("| NONE |");
     expect(state).toContain("Production Supabase Migration State");
-    expect(state).toContain("`CURRENT THROUGH RL-3B`");
-    expect(state).toContain(
-      "`20260923090000 investing_i5_rl3b_validation_child_execution`",
-    );
     expect(state).toContain("`RL-3B Production migration = APPLIED`");
     expect(state).toContain("`RL-3B post-apply audit = PASSED`");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
-    expect(state).not.toContain("RL-3 = CURRENT_ACCEPTED");
-    expect(state).not.toContain("RL-3 validation = CURRENT_ACCEPTED");
+  });
+
+
+  it("records RL-3C aggregate closure in Production and closes RL-3", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md");
+    const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+    const row = tableRow(state, "RL-3C Validation Aggregate Closure / unnumbered");
+
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED");
+    expect(contract).toContain("cbe9165e1d89e45d6bda9af281200c31d25f950b");
+    expect(contract).toContain("e1721482b0ba2b9a67b3d8751778ba2695e3e751");
+    expect(contract).toContain("20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED");
+    expect(hash).toContain("`SYNTRAKE:VALIDATION_RESULT:V1` | `OWNER_PAYLOAD_EXACT`");
+
+    expect(state).toContain("I5 RL-3C Validation Aggregate Closure (unnumbered)");
+    expect(state).toContain("I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("I5 RL-3C Validation Aggregate Closure acceptance evidence:");
+    expect(state).toContain("cbe9165e1d89e45d6bda9af281200c31d25f950b");
+    expect(state).toContain("e1721482b0ba2b9a67b3d8751778ba2695e3e751");
+    expect(state).toContain("107782658459 - SUCCESS");
+    expect(state).toContain("107782658690 - SUCCESS");
+    expect(state).toContain("`CURRENT THROUGH RL-3C`");
+    expect(state).toContain(
+      "`20260924175716 investing_i5_rl3c_validation_aggregate_closure`",
+    );
+    expect(state).toContain("`96 versions`");
+    expect(state).toContain("`RL-3C Production migration = APPLIED`");
+    expect(state).toContain("`RL-3C post-apply audit = PASSED`");
+    expect(state).toContain("`RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`");
+    expect(state).toContain("Security Advisor finding in schema `investing`:");
+    expect(state).toContain("`NONE`");
+    expect(state).toContain("Performance Advisor debt:");
+    expect(state).toContain("`PRESENT / NON-BLOCKING`");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
+
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE");
+    expect(row).toContain("| NONE |");
   });
 
   it("records A5 accepted trust recovery without claiming global recovery", () => {
