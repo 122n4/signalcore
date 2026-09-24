@@ -77,18 +77,23 @@ class FakeRl3bAuthorityClient implements InvestingAuthorityTransactionClient {
       };
     }
     if (sql.includes("from investing.tenants")) {
-      const active = (this.rows.tenantState ?? "ACTIVE") === "ACTIVE";
+      const tenantMatches = values[0] === ids.tenant;
       return {
-        rows: active ? [{ tenant_id: ids.tenant, state: "ACTIVE" } as Row] : [],
-        rowCount: active ? 1 : 0,
+        rows: tenantMatches
+          ? [{ tenant_id: ids.tenant, state: this.rows.tenantState ?? "ACTIVE" } as Row]
+          : [],
+        rowCount: tenantMatches ? 1 : 0,
       };
     }
     if (sql.includes("from investing.tenant_memberships")) {
-      const active =
+      const membershipMatches =
+        values[0] === ids.membership &&
+        values[1] === ids.tenant &&
+        values[2] === ids.principal &&
         (this.rows.membershipState ?? "ACTIVE") === "ACTIVE" &&
         (this.rows.membershipRole ?? "OWNER") === "OWNER";
       return {
-        rows: active
+        rows: membershipMatches
           ? [{
               tenant_membership_id: ids.membership,
               tenant_id: ids.tenant,
@@ -96,7 +101,7 @@ class FakeRl3bAuthorityClient implements InvestingAuthorityTransactionClient {
               state: "ACTIVE",
             } as Row]
           : [],
-        rowCount: active ? 1 : 0,
+        rowCount: membershipMatches ? 1 : 0,
       };
     }
     if (sql.includes("from investing.research_experiments e")) {
@@ -134,15 +139,21 @@ class FakeRl3bAuthorityClient implements InvestingAuthorityTransactionClient {
       const protocolPrincipal = this.rows.protocolPrincipal ?? ids.principal;
       const protocolTenant = this.rows.protocolTenant ?? ids.tenant;
       const protocolInvestigation = this.rows.protocolInvestigation ?? ids.investigation;
+      const isRl3bJoinedSelector = sql.includes("from investing.research_validation_protocols_scientific_identities v");
       const visible =
         values[0] === ids.protocol &&
         values[1] === protocolInvestigation &&
         values[2] === ids.principal &&
         protocolPrincipal === ids.principal &&
         protocolTenant === ids.tenant &&
-        (this.rows.tenantState ?? "ACTIVE") === "ACTIVE" &&
-        (this.rows.membershipState ?? "ACTIVE") === "ACTIVE" &&
-        (this.rows.membershipRole ?? "OWNER") === "OWNER";
+        (
+          !isRl3bJoinedSelector ||
+          (
+            (this.rows.tenantState ?? "ACTIVE") === "ACTIVE" &&
+            (this.rows.membershipState ?? "ACTIVE") === "ACTIVE" &&
+            (this.rows.membershipRole ?? "OWNER") === "OWNER"
+          )
+        );
       return {
         rows: visible
           ? [{
