@@ -18,6 +18,8 @@ const repairMigration = "supabase/migrations/20260823000000_reconcile_zero_genes
 const cumulativeRepairMigration = "supabase/migrations/20260921180446_investing_i0_i5_cumulative_compatibility_repair.sql";
 const oldRl2Migration = "supabase/migrations/20260920160000_investing_i5_rl2_evidence_ledger_passport_read.sql";
 const rl2Migration = "supabase/migrations/20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql";
+const rl3bMigration = "supabase/migrations/20260923090000_investing_i5_rl3b_validation_child_execution.sql";
+const rl3cMigration = "supabase/migrations/20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql";
 const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const migrations = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
@@ -38,6 +40,8 @@ const migrations = [
   "supabase/migrations/20260920090000_investing_i5_rl1_evidence_object_scientific_closure.sql",
   cumulativeRepairMigration,
   rl2Migration,
+  rl3bMigration,
+  rl3cMigration,
 ] as const;
 
 let pool: Pool;
@@ -551,7 +555,7 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
     expect(first.passport.executionRuns[2]?.terminalState).toBe("FAILED");
     expect(first.passport.executionRuns[2]?.failureReasonCode).toBe("UNSUPPORTED_ENGINE");
     expect(first.passport.ledger.map((event) => event.eventKind)).toEqual(expect.arrayContaining(["RUN_FAILED", "RESULT_AVAILABLE", "EVIDENCE_AVAILABLE"]));
-    expect(first.passport.validation.availability).toBe("DEFERRED_RL3");
+    expect(first.passport.validation).toEqual({ availability: "AVAILABLE_RL3", episodes: [] });
     expect(first.passport.scientificPromotion.availability).toBe("DEFERRED_RL8");
     expect(first.passport.blindTruth.availability).toBe("DEFERRED_RL9");
     expect(JSON.stringify(first.passport.ledger)).not.toContain("SYNTRAKE:RESEARCH_MATERIAL:V1");
@@ -573,7 +577,11 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
     expect(result.passport.executionRuns).toEqual([]);
     expect(result.passport.results).toEqual([]);
     expect(result.passport.evidence).toEqual([]);
-    expect(result.passport.validation.availability).toBe("DEFERRED_RL3");
+    expect(result.passport.validation).toEqual({
+      availability: "UNAVAILABLE_RL3_SCOPE",
+      episodes: [],
+      reason: "RL3_PURE_RESEARCH_TENANT_SCOPE_ONLY",
+    });
   });
 
   it("keeps same-owner alternate Investigation readable but denies foreign authority without disclosure", async () => {
