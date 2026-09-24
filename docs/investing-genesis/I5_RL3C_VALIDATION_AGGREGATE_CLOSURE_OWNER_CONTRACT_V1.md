@@ -467,25 +467,85 @@ AGGREGATE_PENDING
 AGGREGATE_AVAILABLE
 ```
 
-Deterministic precedence:
+For each required ValidationRunInput that does not yet have a valid scientific
+Child Result, Passport derives the current operational attempt by ordering
+persisted operational runs by `created_at`, using stable run ID as deterministic
+tie-breaker when needed. The last run in that order is the current operational
+attempt. Earlier runs remain projected in Passport and Evidence Ledger as
+history.
+
+Historical failed attempts are never deleted, hidden or ignored as historical
+facts. They are not, by themselves, the current operational state once a later
+retry exists.
+
+Deterministic episode-state precedence:
 
 ```text
-aggregate exists
+1. An aggregate Validation Result exists AND passes full aggregate scientific
+   integrity verification
 => AGGREGATE_AVAILABLE
 
-else all required scientific Child Results exist
+2. Else all required fold/phase scientific Child Results exist and each passes
+   the RL-3C binding/backing-run/artifact integrity rules
 => AGGREGATE_PENDING
 
-else at least one required child lacks a scientific Child Result and has a
-terminal FAILED attempt with no successful result yet
+3. Else at least one missing required Child Result has a current operational
+   attempt whose terminal lifecycle is FAILED, and that ValidationRunInput has
+   no later REGISTERED or STARTED attempt
 => CHILD_FAILED
 
-else
+4. Else
 => CHILDREN_INCOMPLETE
 ```
 
-Historical failed attempts remain projected even when the episode later becomes
-`AGGREGATE_PENDING` or `AGGREGATE_AVAILABLE`.
+Required consequences:
+
+```text
+FAILED old attempt + later STARTED retry
+=> CHILDREN_INCOMPLETE
+
+FAILED old attempt + later SUCCEEDED Child Result
+=> no failure classification from the historical FAILED attempt
+
+latest attempt FAILED + no Child Result + no later attempt
+=> CHILD_FAILED
+```
+
+If multiple required children have different operational states, the same
+global precedence applies. For example, one child whose latest attempt is
+`FAILED` plus another child currently `STARTED`, without a complete valid child
+set, yields `CHILD_FAILED`.
+
+`AGGREGATE_AVAILABLE` requires more than the presence of a row in
+`research_validation_results_scientific_identities`. Passport must revalidate at
+least:
+
+- hash envelope;
+- canonical payload shape;
+- recomputed `SYNTRAKE:VALIDATION_RESULT:V1` hash;
+- exact Protocol binding;
+- exact Experiment binding;
+- validation mode binding;
+- exact complete fold set;
+- child RunInput HashRefs;
+- Child Result HashRefs.
+
+If an aggregate row exists but scientific integrity cannot be proved, Passport
+fails closed with `PASSPORT_VALIDATION_LINEAGE_INVALID` or a narrower integrity
+code. It must never degrade a corrupt aggregate row to `AGGREGATE_PENDING`.
+
+Likewise, "all required scientific Child Results exist" means:
+
+- rows exist;
+- hash envelopes are valid;
+- canonical child payloads rehash correctly;
+- exact RunInput bindings hold;
+- backing runs are terminal `SUCCEEDED`;
+- artifact integrity passes.
+
+A merely present row does not count as a valid scientific Child Result.
+Integrity failure yields `PASSPORT_VALIDATION_LINEAGE_INVALID` or a narrower
+accepted code and must not be converted into a normal episode state.
 
 For unsupported scopes:
 
@@ -613,6 +673,17 @@ The future implementation closure must prove on PostgreSQL 17:
 - failed attempt followed by successful retry produces an allowed aggregate;
 - Child Result backed by a non-SUCCEEDED run rejected;
 - corrupted child/artifact rejected;
+- old `FAILED` attempt plus later `STARTED` retry projects Passport episode
+  `CHILDREN_INCOMPLETE`;
+- latest attempt `FAILED` with no later retry projects Passport episode
+  `CHILD_FAILED`;
+- historical `FAILED` plus later valid Child Result keeps the historical
+  failure projected while allowing episode progress to `AGGREGATE_PENDING` or
+  `AGGREGATE_AVAILABLE`;
+- corrupt aggregate row fails Passport closed and never projects
+  `AGGREGATE_AVAILABLE`;
+- corrupt Child Result or artifact fails Passport closed and never projects
+  `AGGREGATE_PENDING`;
 - exact replay returns the same Validation Result;
 - divergent replay conflicts;
 - concurrent identical finalization produces exactly one aggregate identity and
