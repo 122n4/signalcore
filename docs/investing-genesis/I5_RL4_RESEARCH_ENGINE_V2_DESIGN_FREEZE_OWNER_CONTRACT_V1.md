@@ -1261,7 +1261,7 @@ V2 reuses the exact generic research-artifact descriptor structural shape:
 with:
 
 ```text
-format = CANONICAL_JSONL_UTF8_LF_V1
+format = CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1
 contentSha256 = SHA-256 over exact artifact bytes
 contentByteLength = canonical non-negative integer string
 recordCount = canonical non-negative integer string
@@ -1423,7 +1423,7 @@ Then:
 observationDigest
 =
 SHA256_UPPER_HEX(
-  CANONICAL_JSONL_UTF8_LF_V1(sorted_observation_records)
+  CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1(sorted_observation_records)
 )
 ```
 
