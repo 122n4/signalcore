@@ -102,6 +102,21 @@ overfit classification, Experiment comparison, parameter fitting, optimization,
 Engine V2, Metric Registry V2, Blind Truth, UI/API, Core, Trading, Paper,
 broker, Live, Capital Kernel, Monte Carlo, Scenario or Stress.
 
-The RL-3B migration is accepted in canonical Git lineage but has not been
-applied to Supabase Production. Production application remains a separate
-authorized operation.
+## Production Application State
+
+At initial RL-3B acceptance time, the migration has not been applied to Supabase Production.
+That historical limitation is superseded by the authorized A4 -> RL-3B
+production catch-up recorded here.
+
+The accepted RL-3B migration
+`20260923090000_investing_i5_rl3b_validation_child_execution.sql` is applied in
+Supabase Production.
+
+Production application occurred after explicit authorization as part of the
+A4 -> RL-3B production catch-up. Migration history remained consistent through
+`20260923090000 investing_i5_rl3b_validation_child_execution`, with no
+unexpected migrations, and the independent post-apply audit passed.
+
+This production application does not broaden this contract's functional
+boundary. Complete RL-3, RL-3C, aggregate Validation Result, promotion, Blind
+Truth and the other out-of-scope surfaces above remain outside RL-3B acceptance.
