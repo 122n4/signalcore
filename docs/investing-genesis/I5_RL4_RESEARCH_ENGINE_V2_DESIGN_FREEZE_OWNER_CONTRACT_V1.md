@@ -159,6 +159,11 @@ SYNTRAKE:EXPERIMENT:V2
 SYNTRAKE:EXECUTION_CONFIG:V2
 SYNTRAKE:RUN_INPUT:V2
 SYNTRAKE:RESULT:V2
+SYNTRAKE:EVIDENCE_OBJECT:V2
+SYNTRAKE:VALIDATION_PROTOCOL:V2
+SYNTRAKE:VALIDATION_RUN_INPUT:V2
+SYNTRAKE:VALIDATION_CHILD_RESULT:V2
+SYNTRAKE:VALIDATION_RESULT:V2
 ```
 
 RL-4 does **not** activate them.
@@ -172,6 +177,11 @@ EXPERIMENT:V2             = OWNER_PAYLOAD_EXACT
 EXECUTION_CONFIG:V2       = OWNER_PAYLOAD_EXACT
 RUN_INPUT:V2              = PREIMAGE_ENVELOPE_EXACT
 RESULT:V2                 = OWNER_PAYLOAD_EXACT
+EVIDENCE_OBJECT:V2        = CONTENT_PREIMAGE_EXACT
+VALIDATION_PROTOCOL:V2    = OWNER_PAYLOAD_EXACT
+VALIDATION_RUN_INPUT:V2   = OWNER_PAYLOAD_EXACT
+VALIDATION_CHILD_RESULT:V2 = OWNER_PAYLOAD_EXACT
+VALIDATION_RESULT:V2      = OWNER_PAYLOAD_EXACT
 ```
 
 The canonical JSON/hash algorithm remains `SYNTRAKE_SHA256_V1`; domain
@@ -198,9 +208,18 @@ A V2-only DatasetSeries must carry a V2-specific immutable `fieldVersion`.
 `ENGINE_V20260918` must continue to reject any field/profile outside its
 accepted V1 executable contract.
 
-MetricRequestSet V1 may be reused in RL-5 with the currently accepted metric
-registry. RL-6 may later introduce a new registry version without changing V1
-metric formulas.
+MetricRequestSet V1 may be reused because its owner payload already binds the
+exact `metricRegistryVersion` and exact metricId/version requests.
+
+RL-5 initially admits the currently accepted V1 metric registry and
+`METRIC_RESULT_SET_V1`. RL-6 may later admit a new metric-registry version
+through the same structurally generic MetricRequestSet V1 domain without
+changing any V1 metric formula or Engine V2 execution semantics.
+
+RunInput V2 always binds the exact registry token from its MetricRequestSet.
+Result V2 artifact admission must verify that the metric-result artifact schema
+is compatible with that exact registry token; no mutable "current metrics"
+alias exists.
 
 ## 7. V2 Run Scope
 
@@ -330,17 +349,36 @@ RETURN_SESSIONS_V1
 
 There is no generic arithmetic expression language.
 
-A V2 field expression is either:
+A V2 field expression is one of these exact closed shapes:
 
 ```text
-DIRECT_FIELD_REF
-or
-LAG_SESSIONS(source, sessions)
-or
-SMA_SESSIONS(source, windowSessions)
-or
-RETURN_SESSIONS(source, lagSessions)
+DIRECT_FIELD_REF_V2 = {
+  type: "DIRECT_FIELD_REF",
+  fieldId,
+  fieldVersion
+}
+
+LAG_SESSIONS_V1 = {
+  type: "LAG_SESSIONS_V1",
+  source: FieldExpressionV2,
+  sessions
+}
+
+SMA_SESSIONS_V1 = {
+  type: "SMA_SESSIONS_V1",
+  source: FieldExpressionV2,
+  windowSessions
+}
+
+RETURN_SESSIONS_V1 = {
+  type: "RETURN_SESSIONS_V1",
+  source: FieldExpressionV2,
+  lagSessions
+}
 ```
+
+No undeclared key is accepted. `sessions`, `windowSessions` and
+`lagSessions` are canonical decimal-integer strings, never JSON numbers.
 
 Closed limits:
 
@@ -352,11 +390,15 @@ sessions/windowSessions/lagSessions = canonical integer 1..504
 
 Type rules:
 
-- `LAG_SESSIONS` preserves the source value category;
-- `SMA_SESSIONS` accepts only numeric price/volume sources and preserves the
-  numeric category;
-- `RETURN_SESSIONS` accepts only positive price-valued sources and produces
-  `DECIMAL_RETURN_RATIO`;
+- `LAG_SESSIONS_V1` preserves the source value category;
+- `SMA_SESSIONS_V1` accepts only `DECIMAL_PRICE` sources and produces
+  `DECIMAL_PRICE`; its internal value may be an exact non-terminating rational
+  and must not be rounded before scientific comparison;
+- `RETURN_SESSIONS_V1` accepts only positive `DECIMAL_PRICE` sources and
+  produces `DECIMAL_RETURN_RATIO`;
+- `INTEGER_VOLUME` may be used directly or through `LAG_SESSIONS_V1`, but the
+  initial V2 profile does not define a volume-average transform because an
+  average need not remain an integer;
 - DATE/ENUM/BOOLEAN sources cannot enter SMA or RETURN.
 
 Unknown transforms fail closed.
@@ -425,9 +467,55 @@ Therefore:
 Execution-time OPEN material for the next session is execution truth, not signal
 truth and cannot be fed backward into the prior signal evaluation.
 
+### Adjusted-price scale-invariance law
+
+The initial V2 profile deliberately uses provider-adjusted OHLC for synthetic
+research execution. To prevent retroactive positive adjustment factors from
+becoming hidden future information in signal logic, V2 admits only
+scale-invariant uses of `DECIMAL_PRICE` signal expressions.
+
+For the current instrument:
+
+- a `DECIMAL_PRICE` expression may be compared only with another
+  `DECIMAL_PRICE` expression derived from that same instrument;
+- a `DECIMAL_PRICE` expression may not be compared with an absolute price
+  literal;
+- `RANK` may not rank instruments by a `DECIMAL_PRICE` expression;
+- `RETURN_SESSIONS_V1` output may be filtered/ranked/compared as a return ratio;
+- `INTEGER_VOLUME` may be filtered/ranked under its own exact category.
+
+Thus price-vs-price conditions such as close versus its own SMA remain admitted,
+while absolute adjusted-price thresholds and cross-instrument price-level ranks
+fail closed.
+
+RL-5 must include an adversarial scale-invariance fixture proving that
+multiplying one instrument's complete adjusted OHLC history by an arbitrary
+positive constant cannot change that instrument's V2 signal decisions or
+portfolio economic truth under this profile.
+
+The adjusted OHLC compatibility proof itself must be deterministic from:
+
+- exact hashed DatasetSeries payload fields;
+- exact DatasetSeries content bytes;
+- immutable `providerDatasetId`;
+- immutable `providerDatasetVersion`;
+- the frozen field-registry/engine contract.
+
+No mutable provider metadata, live API response or post-hash side channel may
+decide whether already-hashed material is admissible.
+
+For one instrument, the four adjusted OHLC series must have exact equal
+`providerDatasetId`, `providerDatasetVersion`, frequency, timezone, calendar
+and currency. The immutable provider dataset version/field-registry contract
+must define the adjustment methodology. For each session, the same positive
+adjustment factor must apply consistently to OPEN/HIGH/LOW/CLOSE.
+
+If those facts cannot be proven from immutable scientific material and the
+frozen adapter/registry contract, V2 fails closed.
+
 ## 13. ExecutionConfig V2 Owner Payload
 
-The future exact owner payload is:
+The future exact owner payload is a closed plain object:
 
 ```text
 EXECUTION_CONFIG_HASH_PAYLOAD_V2 = {
@@ -436,9 +524,19 @@ EXECUTION_CONFIG_HASH_PAYLOAD_V2 = {
   missingDataPolicy,
   fxPolicy,
   transactionCostPolicy,
-  commissionPolicy,
-  feePolicy,
-  slippagePolicy,
+  commissionPolicy: {
+    policyVersion,
+    commissionBps
+  },
+  feePolicy: {
+    policyVersion,
+    sellFeeBps
+  },
+  slippagePolicy: {
+    policyVersion,
+    halfSpreadBps,
+    slippageBps
+  },
   fillPolicy,
   corporateActionPolicy,
   calendarSessionPolicy,
@@ -447,6 +545,9 @@ EXECUTION_CONFIG_HASH_PAYLOAD_V2 = {
   transformRegistryVersion
 }
 ```
+
+Every nested policy object is exact/closed: no undeclared key, implicit default,
+nullable shortcut or omitted parameter is admitted.
 
 Constants:
 
@@ -462,7 +563,14 @@ calendarSessionPolicy = XNYS_OPEN_CLOSE_SESSION_V2
 valuationPolicy = USD_CLOSE_MARK_V2
 fieldRegistryVersion = RESEARCH_FIELD_REGISTRY_V20260924
 transformRegistryVersion = RESEARCH_TRANSFORM_REGISTRY_V20260924
+
+commissionPolicy.policyVersion = COMMISSION_NOTIONAL_BPS_V1
+feePolicy.policyVersion = SELL_NOTIONAL_FEE_BPS_V1
+slippagePolicy.policyVersion = OPEN_HALF_SPREAD_PLUS_SLIPPAGE_BPS_V1
 ```
+
+The policy parameter values are scientific owner-payload data and therefore
+change the `EXECUTION_CONFIG:V2` identity.
 
 ## 14. Commission And Fee Model
 
@@ -512,6 +620,21 @@ There is no hidden minimum commission, tiering, rebate or venue fee in this
 profile.
 
 A zero rate is valid but remains explicitly represented by the versioned policy.
+
+Cash accounting is exact:
+
+```text
+BUY cash_delta
+=
+-(fill_notional + commission)
+
+SELL cash_delta
+=
++(fill_notional - commission - sell_fee)
+```
+
+`fill_notional` is the absolute quantity times the side-specific fill price.
+No fee is netted invisibly into quantity or price.
 
 ## 15. Spread And Slippage Model
 
@@ -581,6 +704,36 @@ All cost components are non-negative under the accepted policy.
 
 Trace/result artifacts must make commission, sell fee and price impact separately
 reconstructable. No undocumented composite cost may be substituted.
+
+The Result V2 cost summary is the exact closed object:
+
+```text
+TRANSACTION_COST_SUMMARY_V2 = {
+  schemaVersion: "TRANSACTION_COST_SUMMARY_V2",
+  commissionTotal,
+  sellFeeTotal,
+  explicitCashCostTotal,
+  priceImpactCostTotal,
+  totalModeledTradingCost
+}
+```
+
+All values are canonical non-negative decimal strings under the V2 exact-money
+bounds, with:
+
+```text
+explicitCashCostTotal
+=
+commissionTotal + sellFeeTotal
+
+totalModeledTradingCost
+=
+explicitCashCostTotal + priceImpactCostTotal
+```
+
+Before a Result V2 identity may be created, the writer/service must recompute
+these totals from verified execution-trace bytes and reject any mismatch.
+Scientific hashing must not trust a caller-provided summary.
 
 ## 17. Numeric Model V2
 
@@ -735,12 +888,16 @@ missing required signal field/transform
 -> exclude from that evaluation
 ```
 
-For a held or targeted instrument requiring execution:
+On any session with a pending target intent, pre-trade open NAV requires
+`ADJUSTED_OPEN` for every currently held instrument and every target instrument:
 
 ```text
 missing required ADJUSTED_OPEN
 -> fail closed
 ```
+
+A session with no pending target intent does not invent an open valuation merely
+to create data.
 
 For a held instrument requiring close valuation:
 
@@ -768,19 +925,24 @@ ADJUSTED_OHLC_PROVIDER_V2
 
 This remains a synthetic adjusted-price Research Lab model.
 
-For one instrument, admitted adjusted OPEN/HIGH/LOW/CLOSE series must be proven
-by the material adapter to share:
+For one instrument, admitted adjusted OPEN/HIGH/LOW/CLOSE series must satisfy the
+exact immutable compatibility tuple frozen in section 12:
 
-- provider dataset family;
-- immutable provider dataset version;
-- adjustment basis/version;
-- currency;
+- exact equal `providerDatasetId`;
+- exact equal immutable `providerDatasetVersion`;
+- compatible RL-4 adjusted-OHLC field versions;
+- exact equal currency;
 - DAILY frequency;
 - XNYS calendar;
 - America/New_York timezone.
 
-The provider/data contract must explicitly prove that the adjusted OHLC fields
-are internally compatible. If it cannot, V2 execution is unavailable.
+The immutable provider dataset version/field-registry contract is the adjustment
+basis/version authority. A mutable provider description page or live metadata
+lookup is not scientific truth.
+
+The provider/data adapter must prove that the four fields use one compatible
+adjustment methodology and one positive per-session adjustment factor across
+OPEN/HIGH/LOW/CLOSE. If it cannot, V2 execution is unavailable.
 
 V2 does not independently book:
 
@@ -981,6 +1143,10 @@ RESULT_HASH_PAYLOAD_V2 = {
 
 `runInput` must be a `SYNTRAKE:RUN_INPUT:V2` HashRef.
 
+`transactionCostSummary` must be exactly
+`TRANSACTION_COST_SUMMARY_V2` from section 16 and must have been independently
+recomputed from verified trace bytes before Result hashing.
+
 Required identity tokens are the exact V2 tokens frozen above.
 
 The result identity must not contain:
@@ -1018,6 +1184,28 @@ deterministicSeed = ABSENT
 materialPolicies = exact versioned set
 ```
 
+For the initial V2 profile the exact material policy set is:
+
+```text
+[
+  {
+    policyId: "DAILY_BAR_PUBLICATION",
+    policyVersion: "DAILY_OHLCV_CLOSE_ATOMIC_V1"
+  },
+  {
+    policyId: "OHLC_ADJUSTMENT_COMPATIBILITY",
+    policyVersion: "PROVIDER_ADJUSTED_OHLC_COMPATIBILITY_V1"
+  },
+  {
+    policyId: "ADJUSTED_PRICE_SIGNAL_SAFETY",
+    policyVersion: "ADJUSTED_PRICE_SCALE_INVARIANT_SIGNAL_V1"
+  }
+]
+```
+
+The RunInput canonicalizer sorts by policyId using the same deterministic byte
+ordering law as V1 and rejects duplicates, missing entries, extras or aliases.
+
 V2 may not be forced through `RUN_INPUT:V1`.
 
 ## 30. Experiment V2 Boundary
@@ -1039,30 +1227,113 @@ EXPERIMENT:V2 -> EXPERIMENT:V1 variant
 A V1 vs V2 comparison may later exist as comparison evidence, but it is not
 parent/variant identity.
 
-## 31. Validation Boundary
+## 31. Evidence And Validation V2 Boundary
 
-Accepted RL-3 validation scientific identities are V1 and remain immutable.
+### Evidence V2
 
-RL-4 does not silently make:
+Accepted `RESEARCH_EXECUTION_EVIDENCE_V1` is hard-bound to RunInput V1,
+Result V1 and `ENGINE_V20260918`; it may not be broadened silently.
+
+RL-4 therefore freezes a separate future evidence boundary:
 
 ```text
-VALIDATION_PROTOCOL:V1
-VALIDATION_RUN_INPUT:V1
-VALIDATION_CHILD_RESULT:V1
-VALIDATION_RESULT:V1
+SYNTRAKE:EVIDENCE_OBJECT:V2
+content schema = RESEARCH_EXECUTION_EVIDENCE_V2
+admission = CONTENT_PREIMAGE_EXACT
 ```
 
-accept V2 Research IR, RunInput or Result.
+The V2 evidence content must bind at minimum:
 
-Before V2 execution can be treated as RL-3-style validation evidence, a
-separately accepted version-separated validation bridge/envelope is required.
+```text
+schemaVersion = RESEARCH_EXECUTION_EVIDENCE_V2
+result = SYNTRAKE:RESULT:V2 HashRef
+runInput = SYNTRAKE:RUN_INPUT:V2 HashRef
+researchSpec = SYNTRAKE:RESEARCH_SPEC:V1 HashRef
+researchIr = SYNTRAKE:RESEARCH_IR:V2 HashRef
+experiment = SYNTRAKE:EXPERIMENT:V2 HashRef
+datasetSnapshot = SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef
+datasetSeries = exact ordered canonical set of DATASET_SERIES:V1 HashRefs
+metricRegistryVersion
+metricRequestSet = SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef
+executionConfig = SYNTRAKE:EXECUTION_CONFIG:V2 HashRef
+engineId = HISTORICAL_EXECUTION_ADAPTER
+engineVersion = ENGINE_V20260924
+resultArtifacts = exact V2 artifact descriptors
+transactionCostSummary = exact TRANSACTION_COST_SUMMARY_V2
+```
 
-That bridge may reuse the accepted RL-3 methodology semantics, but it must not
-rewrite V1 scientific identity.
+The V2 Evidence owner/writer must independently rehash RunInput V2, Result V2,
+DatasetSnapshot and all DatasetSeries and verify artifact descriptors/content
+before an Evidence Object V2 may exist.
 
-RL-5 single-Run Engine V2 closure is not blocked on activating V2 validation
-identity. RL-7 may not claim V2 OOS/walk-forward evidence until that
-version-separated bridge exists.
+Passport/Evidence Ledger remains a projection/read model, not a new scientific
+hash authority, but RL-5 must extend it so accepted V2 Runs/Results/Evidence do
+not disappear from research history.
+
+### Validation V2
+
+Accepted RL-3 validation scientific identities are V1 and remain immutable.
+Current code explicitly requires `EXPERIMENT:V1`, `RESEARCH_IR:V1` and
+`EXECUTION_CONFIG:V1`.
+
+RL-4 therefore freezes version-separated V2 validation identities:
+
+```text
+SYNTRAKE:VALIDATION_PROTOCOL:V2
+SYNTRAKE:VALIDATION_RUN_INPUT:V2
+SYNTRAKE:VALIDATION_CHILD_RESULT:V2
+SYNTRAKE:VALIDATION_RESULT:V2
+```
+
+Their methodology, fold/window generation, XNYS boundary law, retry history,
+aggregate-completeness law and Passport current-attempt semantics incorporate
+the accepted RL-3 V1 contracts unchanged except for the explicitly versioned
+scientific references and V2 result/artifact economics.
+
+At minimum:
+
+```text
+VALIDATION_PROTOCOL:V2
+binds EXPERIMENT:V2
+      RESEARCH_IR:V2
+      DATASET_SNAPSHOT:V1
+      METRIC_REQUEST_SET:V1
+      EXECUTION_CONFIG:V2
+      ENGINE_V20260924
+      exact accepted validation mode/folds
+
+VALIDATION_RUN_INPUT:V2
+binds VALIDATION_PROTOCOL:V2
+      EXPERIMENT:V2
+      RESEARCH_IR:V2 phase material
+      DATASET_SNAPSHOT:V1 source/phase material
+      EXECUTION_CONFIG:V2
+      exact fold/phase/window
+
+VALIDATION_CHILD_RESULT:V2
+binds VALIDATION_RUN_INPUT:V2
+      ENGINE_V20260924
+      V2 trace/valuation/metric/benchmark descriptors
+      TRANSACTION_COST_SUMMARY_V2
+
+VALIDATION_RESULT:V2
+binds VALIDATION_PROTOCOL:V2
+      EXPERIMENT:V2
+      exact ordered complete fold set of V2 RunInput/ChildResult HashRefs
+```
+
+No V1 validation identity accepts a V2 scientific reference.
+
+Because RL-7 requires OOS/walk-forward comparison evidence and no separate
+completion-program slice exists for a V2 validation bridge, **RL-5 Engine V2
+Implementation Closure must implement and independently rehearse this minimal V2
+Evidence/Validation bridge together with the V2 engine**. RL-5 is not complete
+with a V2 single-run kernel that cannot enter accepted Evidence/Passport and
+Validation lineage.
+
+This requirement does not add robustness scoring, promotion or RL-7 comparison
+semantics to RL-5. It only preserves already-accepted RL-1/RL-2/RL-3 research
+capabilities across the version boundary.
 
 ## 32. Stable Failure Families
 
@@ -1083,6 +1354,8 @@ ENGINE_V2_FX_UNSUPPORTED
 ENGINE_V2_COST_CONFIG_INVALID
 ENGINE_V2_NON_POSITIVE_EXECUTION_PRICE
 ENGINE_V2_ARTIFACT_INTEGRITY_FAILURE
+ENGINE_V2_EVIDENCE_LINEAGE_INVALID
+ENGINE_V2_VALIDATION_LINEAGE_INVALID
 ENGINE_V2_V1_COMPATIBILITY_VIOLATION
 ```
 
@@ -1102,7 +1375,10 @@ Mandatory evidence:
 - no-lookahead adversarial fixtures;
 - lag/window missingness fixtures;
 - verified adjusted OHLC material fixtures;
+- immutable adjusted-OHLC compatibility/provenance fixtures;
+- adjusted-price scale-invariance adversarial fixtures;
 - malformed OHLC rejection;
+- forbidden absolute adjusted-price threshold/rank fixtures;
 - next-session-open fill fixtures;
 - sell-before-buy deterministic ordering;
 - commission/fee fixtures;
@@ -1112,9 +1388,15 @@ Mandatory evidence:
 - benchmark fixtures;
 - FX fail-closed fixtures;
 - artifact integrity fixtures;
-- V1 golden/hash/result byte-identical compatibility proof;
+- exact transaction-cost-summary revalidation from trace bytes;
+- Evidence Object V2 hashing/integrity/persistence fixtures;
+- Passport/Evidence Ledger V2 projection fixtures;
+- Validation Protocol/RunInput/ChildResult/Aggregate V2 fixtures using the
+  unchanged accepted RL-3 methodology semantics;
+- V2 validation retry/current-attempt/corruption fail-closed fixtures;
+- V1 golden/hash/result/validation/evidence byte-identical compatibility proof;
 - no network/DB/filesystem/wall-clock/randomness inside kernel;
-- PostgreSQL 17 service/writer rehearsal where persistence is introduced.
+- PostgreSQL 17 service/writer rehearsal for V2 persistence/authority paths.
 
 RL-5 may be split into small candidate commits, but acceptance is one coherent
 V2 implementation closure.
@@ -1127,7 +1409,8 @@ RL-4 does not require or authorize:
 - hash-domain runtime admission;
 - database schema/migration;
 - Production mutation;
-- V2 validation identity implementation;
+- V2 validation identity implementation in RL-4 itself (it is an RL-5
+  implementation obligation under the frozen bridge above);
 - Metric Registry V2;
 - robustness/comparison scoring;
 - promotion;
@@ -1185,7 +1468,9 @@ RL-4 may be accepted when independent audit proves that this contract:
 - defines adjustment/corporate-action boundaries;
 - defines FX/currency boundaries;
 - defines calendar/session behavior;
-- defines V2 scientific version separation;
+- defines V2 scientific version separation including Evidence and Validation;
+- prevents adjusted-price future-adjustment leakage through the frozen
+  scale-invariant signal law;
 - fails closed on unsupported/missing truth;
 - contains no arbitrary user-code escape hatch;
 - does not absorb RL-5/RL-6/RL-7/RL-8/RL-9/Paper/Live/Core authority.
