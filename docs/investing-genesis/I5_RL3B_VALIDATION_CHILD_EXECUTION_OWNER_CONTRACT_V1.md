@@ -104,7 +104,7 @@ broker, Live, Capital Kernel, Monte Carlo, Scenario or Stress.
 
 ## Production Application State
 
-At initial RL-3B acceptance time, the migration has not been applied to Supabase Production.
+At initial RL-3B acceptance time, the migration had not been applied to Supabase Production.
 That historical limitation is superseded by the authorized A4 -> RL-3B
 production catch-up recorded here.
 
