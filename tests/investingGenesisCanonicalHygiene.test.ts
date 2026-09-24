@@ -243,7 +243,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("`SYNTRAKE:VALIDATION_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("current accepted through RL-3A Validation");
     expect(hash).toContain("Protocol Foundation as `OWNER_PAYLOAD_EXACT`");
-    expect(hash).toContain("No aggregate Validation Result");
+    expect(hash).toContain("These accepted domains do not create aggregate Validation Result");
     expect(hash).toContain("promotion");
     expect(hash).toContain("blind-truth");
     expect(state).toContain("I5 RL-3A Validation Protocol Foundation (unnumbered)");
