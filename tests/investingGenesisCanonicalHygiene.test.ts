@@ -287,8 +287,16 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1 = OWNER_PAYLOAD_EXACT`");
     expect(contract).toContain("RL-3B does not activate `SYNTRAKE:VALIDATION_RESULT:V1`");
     expect(contract).toContain("20260923090000_investing_i5_rl3b_validation_child_execution.sql");
-    expect(contract).toContain("has not been");
-    expect(contract).toContain("applied to Supabase Production.");
+    expect(contract).toContain(
+      "At initial RL-3B acceptance time, the migration had not been applied to Supabase Production.",
+    );
+    expect(contract).toContain(
+      "`20260923090000_investing_i5_rl3b_validation_child_execution.sql` is applied in",
+    );
+    expect(contract).toContain("Supabase Production.");
+    expect(contract).toContain(
+      "This production application does not broaden this contract's functional",
+    );
     expect(hash).toContain("`SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("RL-3B Validation Child Execution");
@@ -300,6 +308,13 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION V1 - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION");
     expect(row).toContain("| NONE |");
+    expect(state).toContain("Production Supabase Migration State");
+    expect(state).toContain("`CURRENT THROUGH RL-3B`");
+    expect(state).toContain(
+      "`20260923090000 investing_i5_rl3b_validation_child_execution`",
+    );
+    expect(state).toContain("`RL-3B Production migration = APPLIED`");
+    expect(state).toContain("`RL-3B post-apply audit = PASSED`");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-3_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("RL-3 = CURRENT_ACCEPTED");
     expect(state).not.toContain("RL-3 validation = CURRENT_ACCEPTED");
