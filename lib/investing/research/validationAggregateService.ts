@@ -18,11 +18,7 @@ export type FinalizeValidationResultCommandV1 = Readonly<{
 export async function finalizeValidationResultCommandV1(
   input: FinalizeValidationResultCommandV1,
 ): Promise<FinalizeValidationResultV1Result> {
-  const authority = await resolveAuthorizedResearchValidationResultFinalizeContext({
-    researchInvestigationId: input.researchInvestigationId,
-    researchValidationProtocolIdentityId: input.researchValidationProtocolIdentityId,
-    correlationId: input.correlationId,
-  });
+  const authority = await resolveAuthorizedResearchValidationResultFinalizeContext(input);
   if (authority.ok === false) {
     return {
       ok: false,
