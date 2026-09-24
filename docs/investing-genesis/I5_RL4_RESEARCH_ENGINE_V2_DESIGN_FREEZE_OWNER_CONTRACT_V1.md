@@ -1030,6 +1030,28 @@ missing required signal field/transform
 -> exclude from that evaluation
 ```
 
+For the initial V2 executable profile:
+
+```text
+RANK.missingPolicy = EXCLUDE
+```
+
+is the only admitted RANK missing policy. The inherited V1 literal `LAST` may
+remain representable in a syntactic Research IR V2 candidate but admission to
+`ENGINE_V20260924` fails closed with `ENGINE_V2_UNSUPPORTED_PROFILE`.
+
+For a currently held instrument, missing signal material that is required to
+determine FILTER/RANK/EXIT/weight eligibility for that session is not converted
+into exclusion, retention or a synthetic value:
+
+```text
+missing required held-instrument signal field/transform
+-> fail closed
+```
+
+This prevents missing research truth from silently manufacturing a SELL, HOLD
+or ranking outcome.
+
 On any session with a pending target intent, pre-trade open NAV requires
 `ADJUSTED_OPEN` for every currently held instrument and every target instrument:
 
@@ -1932,6 +1954,7 @@ ENGINE_V2_REQUIRED_MARKET_FIELD_MISSING
 ENGINE_V2_ADJUSTMENT_BASIS_MISMATCH
 ENGINE_V2_OHLC_INVARIANT_INVALID
 ENGINE_V2_TRANSFORM_LOOKBACK_INCOMPLETE
+ENGINE_V2_HELD_SIGNAL_MATERIAL_MISSING
 ENGINE_V2_REQUIRED_EXECUTION_OPEN_MISSING
 ENGINE_V2_REQUIRED_VALUATION_CLOSE_MISSING
 ENGINE_V2_BENCHMARK_MATERIAL_MISSING
@@ -1962,6 +1985,8 @@ Mandatory evidence:
 - byte-identical repeated execution;
 - no-lookahead adversarial fixtures;
 - lag/window missingness fixtures;
+- RANK LAST rejection / EXCLUDE-only fixtures;
+- held-instrument missing-signal fail-closed fixtures;
 - verified adjusted OHLC material fixtures;
 - immutable adjusted-OHLC compatibility/provenance fixtures;
 - adjusted-price scale-invariance adversarial fixtures;
