@@ -53,23 +53,38 @@ describe("I5 RL-3C Validation aggregate scientific identity", () => {
 
   it("changes identity when a child scientific identity changes", () => {
     const first = payload();
-    const second = structuredClone(first);
-    second.folds[1] = {
-      ...second.folds[1],
-      evaluationChildResult: ref("SYNTRAKE:VALIDATION_CHILD_RESULT:V1", "9"),
+    const second: ValidationResultHashPayloadV1 = {
+      ...first,
+      folds: first.folds.map((fold, index) =>
+        index === 1
+          ? {
+              ...fold,
+              evaluationChildResult: ref("SYNTRAKE:VALIDATION_CHILD_RESULT:V1", "9"),
+            }
+          : fold,
+      ),
     };
     expect(hashValidationResultV1(first)).not.toBe(hashValidationResultV1(second));
   });
 
   it("fails closed on unordered/duplicate folds and wrong domains", () => {
-    const unordered = structuredClone(payload());
-    unordered.folds = [unordered.folds[1]!, unordered.folds[0]!];
+    const candidate = payload();
+    const unordered: ValidationResultHashPayloadV1 = {
+      ...candidate,
+      folds: [candidate.folds[1]!, candidate.folds[0]!],
+    };
     expect(() => hashValidationResultV1(unordered)).toThrow("VALIDATION_RESULT_FOLD_ORDER_INVALID");
 
-    const wrong = structuredClone(payload());
-    wrong.folds[0] = {
-      ...wrong.folds[0],
-      trainingRunInput: ref("SYNTRAKE:RUN_INPUT:V1", "7"),
+    const wrong: ValidationResultHashPayloadV1 = {
+      ...candidate,
+      folds: candidate.folds.map((fold, index) =>
+        index === 0
+          ? {
+              ...fold,
+              trainingRunInput: ref("SYNTRAKE:RUN_INPUT:V1", "7"),
+            }
+          : fold,
+      ),
     };
     expect(() => hashValidationResultV1(wrong)).toThrow();
   });
