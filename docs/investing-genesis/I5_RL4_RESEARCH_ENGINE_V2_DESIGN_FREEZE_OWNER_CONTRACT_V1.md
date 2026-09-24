@@ -187,6 +187,20 @@ VALIDATION_RESULT:V2      = OWNER_PAYLOAD_EXACT
 The canonical JSON/hash algorithm remains `SYNTRAKE_SHA256_V1`; domain
 versioning separates the owner payload/semantics.
 
+Every V2 `OWNER_PAYLOAD_EXACT` domain uses exactly:
+
+```text
+UTF8("<EXACT_DOMAIN>\n")
++
+SYNTRAKE_CANONICAL_JSON_V1(exact_owner_payload)
+```
+
+followed by SHA-256 and uppercase 64-character hexadecimal serialization.
+
+`SYNTRAKE:RUN_INPUT:V2` uses that exact domain-envelope form after independently
+validating every nested HashRef and behavior token. `EVIDENCE_OBJECT:V2` uses
+its separately frozen descriptor+content preimage in section 31.
+
 RL-5 must not activate any V2 domain until its exact owner payload is implemented
 and independently audited.
 
@@ -971,11 +985,33 @@ that economic effect.
 
 Buys may never create negative research cash.
 
-For each buy, the engine computes the maximum affordable quantity under the
-actual deterministic fill price and commission policy.
+For each buy, with the current available cash after all prior canonical-order
+fills, the exact linear affordability denominator is:
 
-If desired quantity exceeds affordable quantity, it is capped using the same
-8-decimal TOWARD_ZERO quantity rule.
+```text
+unit_cash_requirement
+=
+fill_price
+*
+(1 + commissionBps / 10000)
+
+max_affordable_quantity_exact
+=
+available_cash / unit_cash_requirement
+
+max_affordable_quantity
+=
+truncate_toward_zero(
+  max_affordable_quantity_exact,
+  8 decimal places
+)
+```
+
+No buy-side sell fee exists in this profile.
+
+If desired quantity exceeds `max_affordable_quantity`, it is capped to that
+value. The cap is recomputed for each canonical-order buy from then-current cash;
+target quantities themselves remain derived from the one pre-trade state.
 
 If maximum affordable quantity is zero, no fill occurs and a deterministic
 trace reason is emitted. This is not synthetic capital and is not a scientific
@@ -1269,6 +1305,12 @@ RESULT_HASH_PAYLOAD_V2 = {
 `TRANSACTION_COST_SUMMARY_V2` from section 16 and must have been independently
 recomputed from verified trace bytes before Result hashing.
 
+`valuationCurrency` is exactly `USD`. `testPeriod` is the exact canonical
+`{startDate,endDate}` window from Research IR V2. `startingNav`,
+`endingNav` and `terminalCash` are canonical non-negative exact decimal
+strings under the V2 money scale bound; `startingNav` must equal the admitted
+Research IR V2 starting capital.
+
 Required identity tokens are the exact V2 tokens frozen above.
 
 The result identity must not contain:
@@ -1285,26 +1327,32 @@ Operational attempts may converge to the same Result V2 identity.
 
 ## 29. RunInput V2 Envelope
 
-The future V2 RunInput binds at minimum:
+The future V2 RunInput exact closed owner payload is:
 
 ```text
-schemaVersion = RUN_INPUT_HASH_PAYLOAD_V2
-runType = HISTORICAL_BACKTEST
-researchEnvironment = HISTORICAL_BACKTEST
-researchSourceContext = PURE_RESEARCH
-researchSpec = SYNTRAKE:RESEARCH_SPEC:V1 HashRef
-researchIr = SYNTRAKE:RESEARCH_IR:V2 HashRef
-experiment = SYNTRAKE:EXPERIMENT:V2 HashRef
-datasetSnapshot = SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef
-engineId = HISTORICAL_EXECUTION_ADAPTER
-engineVersion = ENGINE_V20260924
-metricRegistryVersion = exact immutable token
-metricRequestSet = SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef
-executionConfig = SYNTRAKE:EXECUTION_CONFIG:V2 HashRef
-accountResearchContext = ABSENT
-deterministicSeed = ABSENT
-materialPolicies = exact versioned set
+RUN_INPUT_HASH_PAYLOAD_V2 = {
+  schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V2",
+  runType: "HISTORICAL_BACKTEST",
+  researchEnvironment: "HISTORICAL_BACKTEST",
+  researchSourceContext: "PURE_RESEARCH",
+  researchSpec: SYNTRAKE:RESEARCH_SPEC:V1 HashRef,
+  researchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  experiment: SYNTRAKE:EXPERIMENT:V2 HashRef,
+  datasetSnapshot: SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef,
+  engineId: "HISTORICAL_EXECUTION_ADAPTER",
+  engineVersion: "ENGINE_V20260924",
+  metricRegistryVersion,
+  metricRequestSet: SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef,
+  executionConfig: SYNTRAKE:EXECUTION_CONFIG:V2 HashRef,
+  materialPolicies
+}
 ```
+
+`accountResearchContext` and `deterministicSeed` are absent keys, not nulls
+and not ignored optional values.
+
+`metricRegistryVersion` is an immutable behavior token and must equal the exact
+registry version bound by the MetricRequestSet payload.
 
 For the initial V2 profile the exact material policy set is:
 
@@ -1588,6 +1636,69 @@ Evidence/Passport and Validation lineage. This requirement does not add
 robustness scoring, promotion or RL-7 comparison semantics to RL-5; it preserves
 already-accepted RL-1/RL-2/RL-3 capabilities across the version boundary.
 
+## 31A. V2 Authority And Persistence Boundary
+
+V2 remains:
+
+```text
+operation_scope = TENANT_SCOPE
+source_context = PURE_RESEARCH
+account_id = NULL / absent
+account_access_id = NULL / absent
+```
+
+Client-supplied tenant, principal, membership, investigation, Experiment, Run or
+scientific identity IDs never prove ownership. Authority is resolved server-side
+from verified principal/tenant/membership lineage and exact persisted parents.
+
+The frozen V2 operation/capability pairs are:
+
+```text
+RESEARCH_EXPERIMENT_BASELINE_CREATE_V2 / RESEARCH_MUTATE
+RESEARCH_EXPERIMENT_VARIANT_CREATE_V2  / RESEARCH_MUTATE
+RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V2 / RESEARCH_MUTATE
+RESEARCH_EXECUTION_RUN_V2              / RESEARCH_EXECUTE
+RESEARCH_VALIDATION_PROTOCOL_CREATE_V2 / RESEARCH_MUTATE
+RESEARCH_VALIDATION_CHILD_EXECUTE_V2   / RESEARCH_EXECUTE
+RESEARCH_VALIDATION_RESULT_FINALIZE_V2 / RESEARCH_MUTATE
+```
+
+Evidence Object V2 is created only inside an authorized
+`RESEARCH_EXECUTION_RUN_V2 / RESEARCH_EXECUTE` closure after Result V2 and
+artifact integrity pass. It has no independent client-callable write authority.
+
+Passport/Evidence Ledger V2 projection reuses the accepted read boundary:
+
+```text
+RESEARCH_PASSPORT_READ_V1 / RESEARCH_READ
+```
+
+because Passport is a non-scientific longitudinal read/projection surface; this
+does not grant any V2 mutation authority.
+
+RL-5 may choose version-aware extensions of existing persistence relations or
+new V2-specific relations only if independent migration audit proves all of
+these logical invariants:
+
+- owner = `investing_owner`;
+- RLS + FORCE RLS;
+- append-only scientific identity rows;
+- exact tenant/principal/membership/investigation lineage;
+- exact V2 parent-domain foreign-key/lineage constraints;
+- no V1 scientific row is overwritten or reinterpreted;
+- no cross-version parent/child relation unless this contract explicitly allows
+  it;
+- `investing_app` gets only the minimum SELECT/INSERT capabilities needed by
+  the exact operation;
+- no broad UPDATE/DELETE authority;
+- PUBLIC/anon/authenticated/service_role receive no direct relation authority;
+- service_role capability is never treated as ownership;
+- exact-idempotent retry reuses scientific identity;
+- divergent same-logical-owner payload conflicts fail closed;
+- concurrency cannot create duplicate/divergent scientific truth.
+
+A persistence mechanism is not accepted merely because it can store V2 bytes.
+
 ## 32. Stable Failure Families
 
 RL-5 must expose stable typed failures that preserve at least these distinctions:
@@ -1609,6 +1720,8 @@ ENGINE_V2_NON_POSITIVE_EXECUTION_PRICE
 ENGINE_V2_ARTIFACT_INTEGRITY_FAILURE
 ENGINE_V2_EVIDENCE_LINEAGE_INVALID
 ENGINE_V2_VALIDATION_LINEAGE_INVALID
+ENGINE_V2_AUTHORITY_INVALID
+ENGINE_V2_CONCURRENT_IDENTITY_CONFLICT
 ENGINE_V2_V1_COMPATIBILITY_VIOLATION
 ```
 
@@ -1647,6 +1760,8 @@ Mandatory evidence:
 - Validation Protocol/RunInput/ChildResult/Aggregate V2 fixtures using the
   unchanged accepted RL-3 methodology semantics;
 - V2 validation retry/current-attempt/corruption fail-closed fixtures;
+- V2 authority/tenant-isolation/RLS/append-only negative fixtures;
+- V2 idempotent retry and divergent-concurrency fixtures;
 - V1 golden/hash/result/validation/evidence byte-identical compatibility proof;
 - no network/DB/filesystem/wall-clock/randomness inside kernel;
 - PostgreSQL 17 service/writer rehearsal for V2 persistence/authority paths.
@@ -1725,6 +1840,7 @@ RL-4 may be accepted when independent audit proves that this contract:
 - defines V2 scientific version separation including Evidence and Validation;
 - prevents adjusted-price future-adjustment leakage through the frozen
   scale-invariant signal law;
+- freezes V2 operation/capability and persistence-isolation invariants;
 - fails closed on unsupported/missing truth;
 - contains no arbitrary user-code escape hatch;
 - does not absorb RL-5/RL-6/RL-7/RL-8/RL-9/Paper/Live/Core authority.
