@@ -28,7 +28,10 @@ function context(sourceContext: "PURE_RESEARCH" | "TEST_PORTFOLIO" | "USER_PORTF
 
 class NoQueryClient implements InvestingAuthorityTransactionClient {
   calls = 0;
-  async query<Row = Record<string, unknown>>() {
+  async query<Row = Record<string, unknown>>(
+    _text: string,
+    _values: readonly unknown[] = [],
+  ): Promise<{ rows: Row[]; rowCount: number | null }> {
     this.calls += 1;
     throw new Error("validation tables must not be queried for unsupported scope");
   }
