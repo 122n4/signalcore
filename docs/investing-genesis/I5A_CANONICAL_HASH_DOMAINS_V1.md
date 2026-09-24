@@ -63,6 +63,7 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:VALIDATION_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:VALIDATION_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT` |
@@ -180,6 +181,19 @@ historical execution kernel.
 
 These accepted domains do not create aggregate Validation Result, Validation
 Evidence, promotion, robustness or Blind Truth authority.
+
+## RL-3C Validation Aggregate Closure Candidate
+
+The current RL-3C implementation candidate activates
+`SYNTRAKE:VALIDATION_RESULT:V1` as `OWNER_PAYLOAD_EXACT` only on its candidate
+branch. The owner payload is `VALIDATION_RESULT_HASH_PAYLOAD_V1` and binds the
+exact Validation Protocol, subject Experiment, validation mode, and ordered
+complete fold set of Validation RunInput and Child Result HashRefs.
+
+This candidate activation is not canonical acceptance until its implementation,
+migration, PostgreSQL 17 rehearsal and independent gate pass and the accepted
+candidate is merged to the protected canonical branch. It creates no promotion,
+robustness, Blind Truth, Paper, Live or Core authority.
 
 ## Explicit Exclusions
 
