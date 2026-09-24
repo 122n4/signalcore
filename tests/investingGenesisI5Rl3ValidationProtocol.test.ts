@@ -159,11 +159,11 @@ const goldenVectors = [
 ] as const;
 
 describe("I5 RL-3A Validation Protocol owner contract", () => {
-  it("admits only the Validation Protocol owner payload hash domain", () => {
+  it("preserves RL-3A domains while later RL-3C activates aggregate Validation Result", () => {
     expect(hashDomainStateV1("SYNTRAKE:VALIDATION_PROTOCOL:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:VALIDATION_RUN_INPUT:V1")).toBe("OWNER_PAYLOAD_EXACT");
     expect(hashDomainStateV1("SYNTRAKE:VALIDATION_CHILD_RESULT:V1")).toBe("OWNER_PAYLOAD_EXACT");
-    expect(() => hashDomainStateV1("SYNTRAKE:VALIDATION_RESULT:V1" as never)).toThrow("unknown hash domain");
+    expect(hashDomainStateV1("SYNTRAKE:VALIDATION_RESULT:V1")).toBe("OWNER_PAYLOAD_EXACT");
   });
 
   it.each(goldenVectors)("matches the golden vector for $name", ({ payload, expectedBytes, expectedHash }) => {
