@@ -298,7 +298,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("`SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("`SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT`");
     expect(hash).toContain("RL-3B Validation Child Execution");
-    expect(hash).toContain("No aggregate Validation Result");
+    expect(hash).toContain("These accepted domains do not create aggregate Validation Result");
     expect(state).toContain("I5 RL-3B Validation Child Execution (unnumbered)");
     expect(state).toContain("I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md");
     expect(state).toContain("CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED");
