@@ -14,13 +14,14 @@ not create feature authority.
 - Pre-Genesis Investing documents and source are historical lineage only unless a
   current accepted Genesis contract explicitly incorporates them.
 - Pre-Genesis Investing migrations before the Zero-Genesis retirement boundary
-  are historical lineage and are removed from the current source tree by the
-  source-purge candidate based on `main` `860b521578b77cb3d4ae4651ae7719fbad7e1f04`.
+  are `HISTORICAL_LINEAGE_ONLY`. The prior source-purge candidate based on
+  `main` `860b521578b77cb3d4ae4651ae7719fbad7e1f04` is historical fact, not the
+  current source-tree state.
 - Git history remains the historical record. The Zero-Genesis retirement bridge
-  migrations and current Genesis/I5 migrations remain in the active tree.
-- This source-tree purge does not mutate, rewrite, repair or reconcile production
-  Supabase migration history. Production migration-history reconciliation is a
-  separate controlled operation and remains unauthorized by this candidate.
+  migrations, 53 restored pre-Genesis `HISTORICAL_LINEAGE_ONLY` migrations and
+  current Genesis/I5 migrations remain in the active tree.
+- Migration-history reconciliation has passed. Current architecture authority is
+  not derived from those historical migrations.
 
 ## Source-Of-Truth Precedence
 
@@ -138,8 +139,7 @@ freeze/master evidence still relies on its narrow classifications.
 - I5 Experiment Scientific Closure:
   `lib/investing/research/experiment.ts`, Experiment BASELINE/VARIANT
   persistence migrations and PostgreSQL 17 rehearsal establish durable
-  Experiment scientific hash-envelope persistence without changing production
-  Supabase.
+  Experiment scientific hash-envelope persistence in canonical lineage.
 
 - I5 Dataset & Run Scientific Closure:
   `lib/investing/research/executionMaterials.ts`,
@@ -218,10 +218,10 @@ not become Investing Genesis authority merely because they use similar words.
 ## Gate State
 
 - Zero-Genesis retirement: canonical baseline preserved.
-- Pre-Genesis Investing migration source purge: `IMPLEMENTED_CANDIDATE`; exactly
-  53 pre-Genesis Investing migrations removed from the current tree while the
-  Zero-Genesis retirement bridge, Genesis/I5 migrations and Trading migrations
-  remain present. Production Supabase state is unchanged by this source commit.
+- Pre-Genesis Investing migration-history reconciliation: `PASSED`; exactly 53
+  pre-Genesis Investing migrations are restored in the current tree as
+  `HISTORICAL_LINEAGE_ONLY`. They are not current architecture, implementation
+  templates, runtime authority or Zero-Genesis rule changes.
 - I0-I4 Genesis: current accepted canonical contracts preserved.
 - I5 authority/audit runtime and DB contract: current in canonical lineage.
   `I5_MATERIAL_COMMAND_IDENTITY_V1.md` is material command identity only and
@@ -293,8 +293,8 @@ not become Investing Genesis authority merely because they use similar words.
   Result and Evidence were not established; Run execution lifecycle and Result
   are now narrowly superseded by the accepted I5 Research Execution Closure.
   The former Evidence limitation is now superseded by accepted RL-1 Evidence
-  Object Scientific Closure. Production Supabase has not received the
-  Dataset/Run closure migration.
+  Object Scientific Closure. Production Supabase received the Dataset/Run
+  closure migration in the A4 -> RL-3B production catch-up recorded below.
 - I5 Research Execution Engine Design Freeze: current accepted, unnumbered.
   This acceptance freezes deterministic Research Lab execution, executable
   field and metric semantics for PURE_RESEARCH/HISTORICAL_BACKTEST only. This
@@ -318,8 +318,9 @@ not become Investing Genesis authority merely because they use similar words.
   It does not complete Evidence Object acceptance, Passport completion, Evidence
   Ledger product surface, OOS/walk-forward, Monte Carlo, optimizer, Strategy
   DNA, Strategy Autopsy, Blind Truth promotion, Paper, broker, Capital Kernel,
-  Live, UI or USER_PORTFOLIO/account execution. Production Supabase migration
-  application remains `NOT PERFORMED`.
+  Live, UI or USER_PORTFOLIO/account execution. Production Supabase received
+  the Research Execution Closure migration in the A4 -> RL-3B production
+  catch-up recorded below.
 
 - I5 RL-1 Evidence Object Scientific Closure: current accepted, unnumbered.
   This acceptance establishes the first durable scientific Evidence Object for
@@ -335,8 +336,8 @@ not become Investing Genesis authority merely because they use similar words.
   Evidence hashing is not a public Research authority surface. It does not
   establish Passport completion, Evidence Ledger product surface, RL-2 or later
   Research Lab closure, Paper, broker, Capital Kernel, Live, UI or
-  USER_PORTFOLIO/account execution. Production Supabase migration application
-  remains `NOT PERFORMED`.
+  USER_PORTFOLIO/account execution. Production Supabase received the RL-1
+  migration in the A4 -> RL-3B production catch-up recorded below.
 
 - I5 RL-2 Evidence Ledger and Passport: current accepted, unnumbered. This
   acceptance establishes a deterministic Investigation-level Evidence Ledger /
@@ -348,8 +349,8 @@ not become Investing Genesis authority merely because they use similar words.
   Experiments, RunInputs, operational Runs, lifecycle events, Results and
   Evidence Objects; supports tenant and account Investigation authority; runs
   under repeatable-read read-only `investing_app`; and exposes RL-3/RL-8/RL-9
-  as explicit deferred authority. Production Supabase migration application
-  remains `NOT PERFORMED`.
+  as explicit deferred authority. Production Supabase received the RL-2
+  migration in the A4 -> RL-3B production catch-up recorded below.
 
 - I5 RL-3A Validation Protocol Foundation: current accepted, unnumbered. This
   acceptance establishes the deterministic Validation Protocol V1 owner payload
@@ -457,7 +458,7 @@ I5 Research Execution Closure acceptance evidence:
 - Production Supabase mutation:
   `NONE`.
 - Production migration application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 
 `I5 RESEARCH EXECUTION CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
 
@@ -498,7 +499,7 @@ I5 RL-1 Evidence Object Scientific Closure acceptance evidence:
 - Production Supabase mutation:
   `NONE`.
 - Production migration application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 - Permanent A-number:
   `NOT ASSIGNED`.
 - Independent auditor verdict:
@@ -545,11 +546,11 @@ I5 RL-2 Evidence Ledger and Passport acceptance evidence:
 - Production Supabase mutation:
   `NONE`.
 - Production migration application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 - Cumulative compatibility repair production application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 - Production RL-2 migration application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 - Accepted RL-2 migration:
   `20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql`.
 - Permanent A-number:
@@ -646,13 +647,71 @@ I5 RL-3B Validation Child Execution acceptance evidence:
 - Vercel merged-main deployment:
   `SUCCESS`.
 - Production Supabase:
-  `NOT TOUCHED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+- Production migration:
+  `20260923090000_investing_i5_rl3b_validation_child_execution.sql`.
+- Post-apply independent audit:
+  `PASS`.
 - Independent auditor verdict:
   `PASS`.
 - Permanent A-number:
   `NOT ASSIGNED`.
 
 `I5 RL-3B VALIDATION CHILD EXECUTION V1 = CURRENT_ACCEPTED / UNNUMBERED`.
+
+## Production Supabase Migration State
+
+Production Supabase migration state:
+`CURRENT THROUGH RL-3B`.
+
+- Latest:
+  `20260923090000 investing_i5_rl3b_validation_child_execution`.
+- Migration ledger:
+  `95 versions`.
+- A4 -> RL-3B production application:
+  `PASSED`.
+- Post-apply independent audit:
+  `PASSED`.
+- Unexpected migrations:
+  `NONE`.
+- Physical audit:
+  `30/30 expected material relations present`.
+- Owner:
+  `investing_owner`.
+- RLS:
+  `PASS`.
+- FORCE RLS:
+  `PASS`.
+- Blocked-role relation grants:
+  `NONE`.
+- Schema authority boundary:
+  `PASS`.
+- Security advisor blocker in `investing`:
+  `NONE`.
+- Observed `SECURITY DEFINER` trigger guards:
+  `investing.enforce_research_execution_run_event_transition()`;
+  `investing.reject_research_evidence_update_delete()`.
+
+Applied production migration batch:
+
+```text
+20260915150000_investing_i5_experiment_baseline_persistence.sql
+20260916194400_investing_i5_experiment_variant_persistence.sql
+20260917183000_investing_i5_experiment_scientific_closure.sql
+20260918170000_investing_i5_dataset_run_scientific_closure.sql
+20260919090000_investing_i5_research_execution_closure.sql
+20260920090000_investing_i5_rl1_evidence_object_scientific_closure.sql
+20260921180446_investing_i0_i5_cumulative_compatibility_repair.sql
+20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql
+20260923090000_investing_i5_rl3b_validation_child_execution.sql
+```
+
+`RL-3B = CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION / UNNUMBERED`.
+`RL-3B Production migration = APPLIED`.
+`RL-3B post-apply audit = PASSED`.
+
+This production state does not accept complete RL-3, RL-3C, aggregate Validation
+Result, promotion, Blind Truth, Paper, Live or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -903,7 +962,7 @@ Experiment Scientific Closure acceptance evidence:
 - Permanent A-number:
   `NOT ASSIGNED`.
 - Production Supabase migration application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 
 `EXPERIMENT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED`.
 
@@ -945,7 +1004,7 @@ Dataset & Run Scientific Closure acceptance evidence:
 - Permanent A-number:
   `NOT ASSIGNED`.
 - Production Supabase migration application:
-  `NOT PERFORMED`.
+  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
 
 `DATASET & RUN SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED`.
 
@@ -1089,9 +1148,10 @@ Trusted Genesis Baseline acceptance evidence:
   `PASS`.
 - Permanent A-number:
   `NOT ASSIGNED`.
-- Production mutation:
+- Production mutation at Trusted Genesis Baseline acceptance time:
   `NONE`.
-- Production Supabase migration application:
+- Production Supabase migration application at Trusted Genesis Baseline
+  acceptance time:
   `NOT PERFORMED`.
 
 `TRUSTED GENESIS BASELINE = CURRENT_ACCEPTED`.
