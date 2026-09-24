@@ -1,20 +1,37 @@
 # Syntrake Investing Genesis I5 RL-3C - Validation Aggregate Closure Owner Contract V1
 
-State: `CANDIDATE DESIGN / OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED`
+State: `CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED`
 
-Classification: `CANDIDATE_DESIGN / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED`
+Classification: `CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED`
 
 Parent accepted program: `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md`
 
 Permanent A-number: `NOT ASSIGNED`
 
-This candidate freezes the minimum design contract needed before implementing
-aggregate Validation Result closure for RL-3 Validation Protocol V1. It is a
-design/owner-contract candidate only.
+At initial RL-3C design-freeze time, this document froze the minimum contract
+needed before implementing aggregate Validation Result closure for RL-3
+Validation Protocol V1. At that time it was design-only and did not itself
+implement runtime, activate a hash domain, create a migration, alter Supabase,
+change authority runtime/RLS or declare RL-3 accepted.
 
-This document does not implement runtime, activate a hash domain, create a
-migration, alter Supabase, alter Vercel, change authority runtime, change RLS or
-declare RL-3 accepted.
+That historical design state is preserved. The current accepted implementation
+is now canonical in Git at
+`e1721482b0ba2b9a67b3d8751778ba2695e3e751`, from independently audited
+candidate `cbe9165e1d89e45d6bda9af281200c31d25f950b` via PR `#90`.
+The canonical implementation activates
+`SYNTRAKE:VALIDATION_RESULT:V1 = OWNER_PAYLOAD_EXACT`, implements aggregate
+finalization, Passport validation projection, Evidence Ledger validation
+events, append-only persistence/RLS and PostgreSQL 17 rehearsals.
+
+Supabase Production now contains exact canonical migration
+`20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`.
+Post-apply independent audit confirms 96 migration versions with exact latest
+`20260924175716 investing_i5_rl3c_validation_aggregate_closure`, owner
+`investing_owner`, RLS + FORCE RLS, authority-preserving foreign keys,
+append-only enforcement, `investing_app` SELECT+INSERT only, zero relation
+authority for PUBLIC/anon/authenticated/service_role, and no Security Advisor
+finding in schema `investing`. Performance Advisor debt is recorded separately
+and is non-blocking for this acceptance gate.
 
 ## Purpose
 
@@ -71,20 +88,21 @@ execution model or weaken the accepted V1 historical execution semantics.
 
 ## Proposed Scientific Domain
 
-The proposed future aggregate domain is:
+The accepted aggregate domain is:
 
 ```text
 SYNTRAKE:VALIDATION_RESULT:V1
 ```
 
-The intended state after a separately implemented and audited closure is:
+Its current accepted runtime state is:
 
 ```text
 OWNER_PAYLOAD_EXACT
 ```
 
-This docs-only candidate does not activate `SYNTRAKE:VALIDATION_RESULT:V1` in
-runtime and does not change `I5A_CANONICAL_HASH_DOMAINS_V1.md`.
+At initial design-freeze time this domain was proposed but not activated. That
+historical limitation is now superseded by the accepted RL-3C implementation
+and current canonical hash-domain/runtime authority.
 
 The future hash preimage must be:
 
@@ -698,7 +716,7 @@ The future implementation closure must prove on PostgreSQL 17:
 
 ## RL-3 Definition Of Done
 
-RL-3 may be declared only after a future implementation closure proves together:
+The RL-3 acceptance condition remains:
 
 ```text
 RL-3A protocol planning
@@ -714,21 +732,17 @@ PostgreSQL 17 rehearsal
 canonical integrity
 ```
 
-Only then may canonical state declare:
+This condition is now satisfied by accepted canonical RL-3A, RL-3B and RL-3C
+implementation/evidence. Therefore canonical state may and does declare:
 
 ```text
 CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED
 ```
 
-Until that later implementation and audit:
-
-```text
-RL-3A = accepted
-RL-3B = accepted
-RL-3 complete = NOT ACCEPTED
-```
-
-This candidate does not make that declaration.
+Historical design-freeze wording that RL-3 was not yet complete applied before
+the separately implemented, independently audited and merged RL-3C closure.
+It is superseded only for current progression state; the historical acceptance
+sequence remains part of the record.
 
 ## Explicit Out Of Scope
 
@@ -762,8 +776,7 @@ RL-3C does not introduce:
 
 ## What This Slice Supersedes
 
-This design candidate intends to supersede only the absence of a closed contract
-for:
+Accepted RL-3C supersedes the former absence of a closed implementation for:
 
 - aggregate Validation Result;
 - complete RL-3 closure semantics;
@@ -775,14 +788,35 @@ It does not supersede RL-3B.
 
 It does not change V1 historical execution semantics.
 
-It does not close RL-3 by itself.
+Together with already accepted RL-3A and RL-3B, the accepted RL-3C
+implementation now closes RL-3 Validation Protocol V1.
 
-## Candidate Scope
+## Acceptance And Production State
 
-This candidate is design-only documentation. It changes no runtime, migration,
-RLS, hash-domain runtime admission, tests, workflows, Supabase Production or
-Vercel state.
+At initial design-freeze time this document changed no runtime, migration, RLS,
+hash-domain runtime admission, Supabase Production or Vercel state. That is
+historical truth and remains true for the design-freeze event itself.
 
-`SYNTRAKE:VALIDATION_RESULT:V1` remains a proposed future domain until a
-separate implementation closure activates it through accepted runtime and
-canonical hash-domain authority.
+Current canonical state is separately:
+
+- RL-3C implementation: `CURRENT_ACCEPTED`;
+- canonical main: `e1721482b0ba2b9a67b3d8751778ba2695e3e751`;
+- accepted implementation candidate:
+  `cbe9165e1d89e45d6bda9af281200c31d25f950b`;
+- PR: `#90`;
+- `SYNTRAKE:VALIDATION_RESULT:V1 = OWNER_PAYLOAD_EXACT`;
+- migration:
+  `20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`;
+- Supabase Production migration ledger: `96 versions`;
+- Supabase Production latest:
+  `20260924175716 investing_i5_rl3c_validation_aggregate_closure`;
+- RL-3C Production migration: `APPLIED`;
+- RL-3C independent post-apply audit: `PASSED`;
+- Security Advisor finding in schema `investing`: `NONE`;
+- Performance Advisor debt: `PRESENT / NON-BLOCKING`;
+- RL-3 current state:
+  `CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
+
+This production/current-state closure does not introduce pass/fail scoring,
+promotion, robustness, Blind Truth, Engine V2, Paper, Live, Core or any
+permanent A-number.
