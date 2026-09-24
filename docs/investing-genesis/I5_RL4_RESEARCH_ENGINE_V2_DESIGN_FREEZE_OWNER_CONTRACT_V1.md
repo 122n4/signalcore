@@ -301,6 +301,112 @@ V2 retains:
 
 Dynamic universes are outside RL-4.
 
+### Research IR V2 inherited canonical shapes
+
+Except where this contract explicitly replaces a V1 `DATA_FIELD_REF` with
+`FieldExpressionV2`, the V2 Research IR reuses the exact accepted V1
+canonical shapes and semantics for:
+
+- explicit universe;
+- FILTER / ENTER / EXIT boolean-expression topology;
+- AND / OR / NOT ordering law;
+- comparison operators;
+- TAKE;
+- RANK direction and missing policy;
+- EQUAL / FIXED_TARGETS weight structures;
+- REBALANCE schedules;
+- benchmark declaration;
+- testPeriod;
+- valuationCurrency;
+- startingCapital.
+
+All objects remain closed. No extra key, null shortcut or alias is admitted.
+
+For V2, FILTER / ENTER / EXIT comparison operands and RANK field input use the
+closed `FieldExpressionV2` family from section 10. The scale-invariance law in
+section 12 further restricts executable combinations even when a syntactically
+valid V2 field expression exists.
+
+## 8A. Experiment And ExperimentParameters V2
+
+The exact ExperimentParameters owner payload is:
+
+```text
+EXPERIMENT_PARAMETERS_HASH_PAYLOAD_V2 = {
+  schemaVersion: "EXPERIMENT_PARAMETERS_HASH_PAYLOAD_V2",
+  parameterizationPolicy: "I5_EXPERIMENT_PARAMETERS_POLICY_V2",
+  baseResearchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  resolvedResearchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef
+}
+```
+
+Candidate admission must independently rehash both Research IR V2 payloads.
+A no-op parameterization where the two Research IR hashes are equal is rejected.
+
+`I5_EXPERIMENT_PARAMETERS_POLICY_V2` defines one structural family. Base and
+resolved Research IR V2 must have identical:
+
+- universe;
+- fieldRegistryVersion;
+- transformRegistryVersion;
+- pipeline operation count/order/types;
+- boolean-expression topology;
+- comparison operators;
+- direct field IDs/fieldVersions;
+- transform topology/types/source topology;
+- RANK direction/missing policy;
+- WEIGHT method;
+- FIXED_TARGETS instrument IDs/order after canonicalization;
+- benchmark;
+- testPeriod;
+- valuationCurrency;
+- startingCapital.
+
+Only these parameter values may differ:
+
+- admitted COMPARE literal value where that literal category is executable under
+  V2;
+- TAKE count;
+- FIXED_TARGETS weight values;
+- REBALANCE schedule value;
+- `LAG_SESSIONS_V1.sessions`;
+- `SMA_SESSIONS_V1.windowSessions`;
+- `RETURN_SESSIONS_V1.lagSessions`.
+
+Changing a field ID/version, transform type/topology, operator, universe,
+benchmark, test period, capital, registry version or execution-cost policy is
+not an ExperimentParameters V2 variant.
+
+The exact Experiment owner payload is the closed tagged union:
+
+```text
+EXPERIMENT_HASH_PAYLOAD_V2 baseline = {
+  schemaVersion: "EXPERIMENT_HASH_PAYLOAD_V2",
+  relation: "BASELINE",
+  researchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  experimentParameters: null
+}
+
+EXPERIMENT_HASH_PAYLOAD_V2 variant = {
+  schemaVersion: "EXPERIMENT_HASH_PAYLOAD_V2",
+  relation: "VARIANT",
+  parentExperiment: SYNTRAKE:EXPERIMENT:V2 HashRef,
+  researchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  experimentParameters: SYNTRAKE:EXPERIMENT_PARAMETERS:V2 HashRef
+}
+```
+
+Operational database IDs, ResearchSpec revision IDs, tenant/principal identity,
+timestamps and idempotency/correlation values are not Experiment V2 scientific
+owner payload.
+
+A VARIANT must independently prove:
+
+- parent Experiment V2 exists and rehashes exactly;
+- ExperimentParameters V2 rehashes exactly;
+- its `baseResearchIr` equals the parent Experiment V2 Research IR;
+- its `resolvedResearchIr` equals the VARIANT Research IR.
+
 ## 9. Market Field Registry V2
 
 The first admitted direct field registry is:
@@ -1090,6 +1196,22 @@ RESULT_HASH_PAYLOAD_V2
 Canonical artifact bytes remain deterministic canonical JSONL UTF-8 with LF and
 a final newline unless a separately accepted contract changes the format.
 
+V2 reuses the generic research-artifact descriptor structural shape:
+
+```text
+{
+  artifactSchemaVersion,
+  format,
+  contentSha256,
+  contentByteLength,
+  recordCount
+}
+```
+
+The descriptor structure is not a scientific content domain by itself.
+V2-specific artifact schema tokens and the exact metric-registry compatibility
+law determine what bytes are admissible.
+
 A V2 fill trace must make reconstructable at minimum:
 
 - session date;
@@ -1119,11 +1241,11 @@ Valuation records must expose exact:
 
 ## 28. Result V2 Manifest
 
-The future compact owner payload is:
+The future exact closed owner payload is:
 
 ```text
 RESULT_HASH_PAYLOAD_V2 = {
-  schemaVersion,
+  schemaVersion: "RESULT_HASH_PAYLOAD_V2",
   runInput,
   engineId,
   engineVersion,
@@ -1210,7 +1332,10 @@ V2 may not be forced through `RUN_INPUT:V1`.
 
 ## 30. Experiment V2 Boundary
 
-V2 Experiments preserve BASELINE/VARIANT lineage but bind only Research IR V2.
+The exact ExperimentParameters V2 and Experiment V2 owner payloads are frozen in
+section 8A.
+
+V2 preserves BASELINE/VARIANT lineage but binds only Research IR V2.
 
 A V2 VARIANT must have a V2 parent Experiment and V2 ExperimentParameters.
 
@@ -1224,116 +1349,244 @@ EXPERIMENT:V2 -> EXPERIMENT:V1 variant
 = NOT ALLOWED
 ```
 
-A V1 vs V2 comparison may later exist as comparison evidence, but it is not
-parent/variant identity.
+A V1-vs-V2 relationship may later exist only as comparison evidence. It is not
+parent/variant scientific identity.
 
 ## 31. Evidence And Validation V2 Boundary
 
-### Evidence V2
+### Evidence V2 exact boundary
 
 Accepted `RESEARCH_EXECUTION_EVIDENCE_V1` is hard-bound to RunInput V1,
 Result V1 and `ENGINE_V20260918`; it may not be broadened silently.
 
-RL-4 therefore freezes a separate future evidence boundary:
+RL-4 therefore freezes:
 
 ```text
 SYNTRAKE:EVIDENCE_OBJECT:V2
-content schema = RESEARCH_EXECUTION_EVIDENCE_V2
 admission = CONTENT_PREIMAGE_EXACT
 ```
 
-The V2 evidence content must bind at minimum:
+The exact Evidence descriptor is:
 
 ```text
-schemaVersion = RESEARCH_EXECUTION_EVIDENCE_V2
-result = SYNTRAKE:RESULT:V2 HashRef
-runInput = SYNTRAKE:RUN_INPUT:V2 HashRef
-researchSpec = SYNTRAKE:RESEARCH_SPEC:V1 HashRef
-researchIr = SYNTRAKE:RESEARCH_IR:V2 HashRef
-experiment = SYNTRAKE:EXPERIMENT:V2 HashRef
-datasetSnapshot = SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef
-datasetSeries = exact ordered canonical set of DATASET_SERIES:V1 HashRefs
-metricRegistryVersion
-metricRequestSet = SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef
-executionConfig = SYNTRAKE:EXECUTION_CONFIG:V2 HashRef
-engineId = HISTORICAL_EXECUTION_ADAPTER
-engineVersion = ENGINE_V20260924
-resultArtifacts = exact V2 artifact descriptors
-transactionCostSummary = exact TRANSACTION_COST_SUMMARY_V2
+EVIDENCE_CONTENT_DESCRIPTOR_V2 = {
+  schemaVersion: "EVIDENCE_CONTENT_DESCRIPTOR_V2",
+  kind: "RESEARCH_EXECUTION_EVIDENCE",
+  artifactSchemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V2",
+  format: "CANONICAL_JSON_UTF8_V1",
+  contentByteLength
+}
+```
+
+`contentByteLength` is a canonical non-negative integer string and must equal
+the actual canonical UTF-8 content byte length.
+
+The exact closed V2 evidence content is:
+
+```text
+RESEARCH_EXECUTION_EVIDENCE_V2 = {
+  schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V2",
+  result: SYNTRAKE:RESULT:V2 HashRef,
+  runInput: SYNTRAKE:RUN_INPUT:V2 HashRef,
+  researchSpec: SYNTRAKE:RESEARCH_SPEC:V1 HashRef,
+  researchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  experiment: SYNTRAKE:EXPERIMENT:V2 HashRef,
+  datasetSnapshot: SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef,
+  datasetSeries: exact canonical ordered complete set of DATASET_SERIES:V1 HashRefs,
+  metricRegistryVersion,
+  metricRequestSet: SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef,
+  executionConfig: SYNTRAKE:EXECUTION_CONFIG:V2 HashRef,
+  engineId: "HISTORICAL_EXECUTION_ADAPTER",
+  engineVersion: "ENGINE_V20260924",
+  transactionCostSummary: TRANSACTION_COST_SUMMARY_V2,
+  resultArtifacts: {
+    executionTrace,
+    valuationSeries,
+    metricResultSet,
+    benchmark
+  }
+}
+```
+
+`executionTrace`, `valuationSeries`, `metricResultSet` and non-null
+`benchmark` are exact generic research-artifact descriptors with fields:
+
+```text
+artifactSchemaVersion
+format
+contentSha256
+contentByteLength
+recordCount
+```
+
+using the V2 artifact-schema/metric-registry compatibility rules frozen by this
+contract. `benchmark` is either one exact descriptor or `null`.
+
+The Evidence V2 hash preimage is exactly:
+
+```text
+UTF8("SYNTRAKE:EVIDENCE_OBJECT:V2\n")
++
+canonical_json_bytes(EVIDENCE_CONTENT_DESCRIPTOR_V2)
++
+UTF8("\n")
++
+canonical_json_bytes(RESEARCH_EXECUTION_EVIDENCE_V2)
 ```
 
 The V2 Evidence owner/writer must independently rehash RunInput V2, Result V2,
-DatasetSnapshot and all DatasetSeries and verify artifact descriptors/content
-before an Evidence Object V2 may exist.
+DatasetSnapshot and every DatasetSeries, prove the DatasetSeries set equals the
+Snapshot exactly, verify every artifact descriptor/content pair, and recompute
+`TRANSACTION_COST_SUMMARY_V2` from trace bytes before Evidence Object V2 may
+exist.
 
 Passport/Evidence Ledger remains a projection/read model, not a new scientific
-hash authority, but RL-5 must extend it so accepted V2 Runs/Results/Evidence do
-not disappear from research history.
+hash authority. RL-5 must extend it so accepted V2 Runs/Results/Evidence do not
+disappear from research history.
 
-### Validation V2
+### Validation V2 exact owner payloads
 
-Accepted RL-3 validation scientific identities are V1 and remain immutable.
-Current code explicitly requires `EXPERIMENT:V1`, `RESEARCH_IR:V1` and
-`EXECUTION_CONFIG:V1`.
+Accepted RL-3 validation identities remain immutable V1 authority. Current code
+explicitly binds V1 Experiment, Research IR and ExecutionConfig domains.
 
-RL-4 therefore freezes version-separated V2 validation identities:
+RL-4 freezes separate V2 identities with the same accepted RL-3 methodology and
+fold/window semantics.
 
-```text
-SYNTRAKE:VALIDATION_PROTOCOL:V2
-SYNTRAKE:VALIDATION_RUN_INPUT:V2
-SYNTRAKE:VALIDATION_CHILD_RESULT:V2
-SYNTRAKE:VALIDATION_RESULT:V2
-```
-
-Their methodology, fold/window generation, XNYS boundary law, retry history,
-aggregate-completeness law and Passport current-attempt semantics incorporate
-the accepted RL-3 V1 contracts unchanged except for the explicitly versioned
-scientific references and V2 result/artifact economics.
-
-At minimum:
+The exact closed Protocol payload is:
 
 ```text
-VALIDATION_PROTOCOL:V2
-binds EXPERIMENT:V2
-      RESEARCH_IR:V2
-      DATASET_SNAPSHOT:V1
-      METRIC_REQUEST_SET:V1
-      EXECUTION_CONFIG:V2
-      ENGINE_V20260924
-      exact accepted validation mode/folds
-
-VALIDATION_RUN_INPUT:V2
-binds VALIDATION_PROTOCOL:V2
-      EXPERIMENT:V2
-      RESEARCH_IR:V2 phase material
-      DATASET_SNAPSHOT:V1 source/phase material
-      EXECUTION_CONFIG:V2
-      exact fold/phase/window
-
-VALIDATION_CHILD_RESULT:V2
-binds VALIDATION_RUN_INPUT:V2
-      ENGINE_V20260924
-      V2 trace/valuation/metric/benchmark descriptors
-      TRANSACTION_COST_SUMMARY_V2
-
-VALIDATION_RESULT:V2
-binds VALIDATION_PROTOCOL:V2
-      EXPERIMENT:V2
-      exact ordered complete fold set of V2 RunInput/ChildResult HashRefs
+VALIDATION_PROTOCOL_HASH_PAYLOAD_V2 = {
+  schemaVersion: "VALIDATION_PROTOCOL_HASH_PAYLOAD_V2",
+  methodology: "VALIDATION_METHODOLOGY_V1",
+  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1",
+  missingDataSemantics: "INHERIT_EXECUTION_CONFIG_EXACT_V2",
+  sourceMaterialPolicy: "PREFIX_TO_PHASE_END_NO_FUTURE_DATA_V1",
+  subjectExperiment: SYNTRAKE:EXPERIMENT:V2 HashRef,
+  subjectResearchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  sourceDatasetSnapshot: SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef,
+  engineId: "HISTORICAL_EXECUTION_ADAPTER",
+  engineVersion: "ENGINE_V20260924",
+  metricRegistryVersion,
+  metricRequestSet: SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef,
+  executionConfig: SYNTRAKE:EXECUTION_CONFIG:V2 HashRef,
+  validationMode,
+  folds
+}
 ```
+
+`validationMode` is exactly one of the accepted RL-3 modes:
+
+```text
+CHRONOLOGICAL_HOLDOUT
+IS_OOS_SPLIT
+ROLLING_WALK_FORWARD
+EXPANDING_WALK_FORWARD
+```
+
+Each exact fold is:
+
+```text
+{
+  ordinal,
+  trainingWindow: { startDate, endDate },
+  evaluationWindow: { startDate, endDate }
+}
+```
+
+All ordinal/window/count/session-generation laws are exactly the accepted RL-3
+V1 laws.
+
+The exact closed child RunInput payload is:
+
+```text
+VALIDATION_RUN_INPUT_HASH_PAYLOAD_V2 = {
+  schemaVersion: "VALIDATION_RUN_INPUT_HASH_PAYLOAD_V2",
+  validationProtocol: SYNTRAKE:VALIDATION_PROTOCOL:V2 HashRef,
+  subjectExperiment: SYNTRAKE:EXPERIMENT:V2 HashRef,
+  subjectResearchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  phaseResearchIr: SYNTRAKE:RESEARCH_IR:V2 HashRef,
+  sourceDatasetSnapshot: SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef,
+  phaseDatasetSnapshot: SYNTRAKE:DATASET_SNAPSHOT:V1 HashRef,
+  foldOrdinal,
+  phase,
+  phaseWindow: { startDate, endDate },
+  engineId: "HISTORICAL_EXECUTION_ADAPTER",
+  engineVersion: "ENGINE_V20260924",
+  metricRegistryVersion,
+  metricRequestSet: SYNTRAKE:METRIC_REQUEST_SET:V1 HashRef,
+  executionConfig: SYNTRAKE:EXECUTION_CONFIG:V2 HashRef
+}
+```
+
+`phase` is exactly `TRAINING` or `EVALUATION`. Phase Research IR V2 differs
+from the frozen subject strategy only by exact `testPeriod`, preserving the
+accepted RL-3 no-fitting/no-optimization law.
+
+The exact closed child result payload is:
+
+```text
+VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V2 = {
+  schemaVersion: "VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V2",
+  validationRunInput: SYNTRAKE:VALIDATION_RUN_INPUT:V2 HashRef,
+  engineId: "HISTORICAL_EXECUTION_ADAPTER",
+  engineVersion: "ENGINE_V20260924",
+  executionModelClass: "SYNTHETIC_ADJUSTED_OHLC_NEXT_OPEN_COSTED_RESEARCH_V2",
+  valuationCurrency: "USD",
+  testPeriod: { startDate, endDate },
+  startingNav,
+  endingNav,
+  terminalCash,
+  transactionCostSummary: TRANSACTION_COST_SUMMARY_V2,
+  executionTrace,
+  valuationSeries,
+  metricResultSet,
+  benchmark
+}
+```
+
+Artifact descriptors follow the exact descriptor law above.
+
+The exact aggregate fold is:
+
+```text
+{
+  ordinal,
+  trainingRunInput: SYNTRAKE:VALIDATION_RUN_INPUT:V2 HashRef,
+  trainingChildResult: SYNTRAKE:VALIDATION_CHILD_RESULT:V2 HashRef,
+  evaluationRunInput: SYNTRAKE:VALIDATION_RUN_INPUT:V2 HashRef,
+  evaluationChildResult: SYNTRAKE:VALIDATION_CHILD_RESULT:V2 HashRef
+}
+```
+
+The exact closed aggregate payload is:
+
+```text
+VALIDATION_RESULT_HASH_PAYLOAD_V2 = {
+  schemaVersion: "VALIDATION_RESULT_HASH_PAYLOAD_V2",
+  methodology: "VALIDATION_AGGREGATION_METHODOLOGY_V1",
+  validationProtocol: SYNTRAKE:VALIDATION_PROTOCOL:V2 HashRef,
+  subjectExperiment: SYNTRAKE:EXPERIMENT:V2 HashRef,
+  validationMode,
+  folds
+}
+```
+
+Fold ordering, completeness, child/backing-run/artifact integrity, retry history,
+concurrent finalize semantics and Passport current-attempt precedence are
+exactly the accepted RL-3 rules, with V2 scientific domains substituted only
+where explicitly frozen above.
 
 No V1 validation identity accepts a V2 scientific reference.
 
 Because RL-7 requires OOS/walk-forward comparison evidence and no separate
 completion-program slice exists for a V2 validation bridge, **RL-5 Engine V2
 Implementation Closure must implement and independently rehearse this minimal V2
-Evidence/Validation bridge together with the V2 engine**. RL-5 is not complete
-with a V2 single-run kernel that cannot enter accepted Evidence/Passport and
-Validation lineage.
+Evidence/Validation bridge together with the V2 engine**.
 
-This requirement does not add robustness scoring, promotion or RL-7 comparison
-semantics to RL-5. It only preserves already-accepted RL-1/RL-2/RL-3 research
-capabilities across the version boundary.
+RL-5 is not complete with a V2 single-run kernel that cannot enter accepted
+Evidence/Passport and Validation lineage. This requirement does not add
+robustness scoring, promotion or RL-7 comparison semantics to RL-5; it preserves
+already-accepted RL-1/RL-2/RL-3 capabilities across the version boundary.
 
 ## 32. Stable Failure Families
 
@@ -1468,6 +1721,7 @@ RL-4 may be accepted when independent audit proves that this contract:
 - defines adjustment/corporate-action boundaries;
 - defines FX/currency boundaries;
 - defines calendar/session behavior;
+- freezes exact owner payload shapes for every proposed V2 scientific domain;
 - defines V2 scientific version separation including Evidence and Validation;
 - prevents adjusted-price future-adjustment leakage through the frozen
   scale-invariant signal law;
