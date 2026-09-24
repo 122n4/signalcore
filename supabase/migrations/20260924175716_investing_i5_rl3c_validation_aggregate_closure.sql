@@ -12,7 +12,7 @@ end $$;
 
 set local role investing_owner;
 
-do $
+do $$
 declare
   v_owner text;
   v_rls boolean;
@@ -38,7 +38,7 @@ begin
   if v_owner <> 'investing_owner' or not v_rls or not v_force_rls then
     raise exception 'I5 RL-3C prestate violation: RL-3B Protocol relation authority/RLS drift';
   end if;
-end $;
+end $$;
 
 create table investing.research_validation_results_scientific_identities (
   research_validation_result_identity_id uuid primary key default gen_random_uuid(),
@@ -338,7 +338,7 @@ using (
   and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
 );
 
-do $
+do $$
 declare
   v_owner text;
   v_rls boolean;
@@ -401,6 +401,6 @@ begin
   if v_policy_count <> 3 then
     raise exception 'I5 RL-3C poststate violation: aggregate relation policy set incomplete';
   end if;
-end $;
+end $$;
 
 commit;
