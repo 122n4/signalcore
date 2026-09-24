@@ -124,7 +124,7 @@ export function hashValidationResultV1(input: ValidationResultHashPayloadV1): Ca
   );
 }
 
-function assertClosedPlainObject(value: unknown, allowedKeys: ReadonlySet<string>, label: string): asserts value is Record<string, unknown> {
+function assertClosedPlainObject(value: unknown, allowedKeys: ReadonlySet<string>, label: string): void {
   if (value === null || typeof value !== "object" || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new Error(label + " must be a plain object");
   }
