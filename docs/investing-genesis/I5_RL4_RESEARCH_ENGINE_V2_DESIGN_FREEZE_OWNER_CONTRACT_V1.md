@@ -1220,7 +1220,7 @@ Hard invariants:
 
 ## 27. Result Artifact V2 Architecture
 
-RL-5 must introduce version-separated V2 artifact schemas:
+RL-5 must introduce these version-separated artifact schema tokens:
 
 ```text
 RESEARCH_EXECUTION_TRACE_V2
@@ -1229,10 +1229,24 @@ RESEARCH_BENCHMARK_SERIES_V2
 RESULT_HASH_PAYLOAD_V2
 ```
 
-Canonical artifact bytes remain deterministic canonical JSONL UTF-8 with LF and
-a final newline unless a separately accepted contract changes the format.
+The initial RL-5 metric artifact remains `METRIC_RESULT_SET_V1` while the
+bound MetricRequestSet uses the accepted V1 metric registry. RL-6 may introduce
+a new metric artifact schema only through an exact metric-registry compatibility
+mapping.
 
-V2 reuses the generic research-artifact descriptor structural shape:
+Canonical artifact bytes are deterministic canonical JSONL UTF-8 with LF after
+every record including the final record.
+
+Each artifact has:
+
+```text
+MAX_ARTIFACT_BYTES_V2 = 67_108_864
+```
+
+Exceeding that exact byte limit fails closed with
+`ENGINE_V2_ARTIFACT_LIMIT_EXCEEDED`; artifacts are never truncated.
+
+V2 reuses the exact generic research-artifact descriptor structural shape:
 
 ```text
 {
@@ -1244,36 +1258,229 @@ V2 reuses the generic research-artifact descriptor structural shape:
 }
 ```
 
-The descriptor structure is not a scientific content domain by itself.
-V2-specific artifact schema tokens and the exact metric-registry compatibility
-law determine what bytes are admissible.
+with:
 
-A V2 fill trace must make reconstructable at minimum:
+```text
+format = CANONICAL_JSONL_UTF8_LF_V1
+contentSha256 = SHA-256 over exact artifact bytes
+contentByteLength = canonical non-negative integer string
+recordCount = canonical non-negative integer string
+```
 
-- session date;
-- instrument;
-- side;
-- target quantity;
-- executed quantity;
-- reference adjusted open;
-- fill price;
-- half-spread bps;
-- slippage bps;
-- fill notional;
-- commission;
-- sell fee;
-- cash after fill;
-- originating target-intent identity/sequence.
+The descriptor structure is not a separate scientific content domain.
+Artifact-schema and metric-registry compatibility determine admissible bytes.
 
-Valuation records must expose exact:
+### Execution trace record ordering
 
-- session date;
-- cash;
-- position market value;
-- NAV;
-- cumulative commission;
-- cumulative sell fees;
-- cumulative price-impact cost.
+`RESEARCH_EXECUTION_TRACE_V2` is an ordered JSONL stream.
+
+Every record contains a canonical decimal-integer-string `sequence`.
+Sequence begins at `"0"`, is strictly contiguous by one and reflects actual
+deterministic event order.
+
+The exact closed record union is:
+
+```text
+EVALUATION_V2 = {
+  sequence,
+  type: "EVALUATION",
+  sessionDate,
+  observationDigest,
+  eligibleInstrumentOrder,
+  targetWeights
+}
+
+TARGET_INTENT_V2 = {
+  sequence,
+  type: "TARGET_INTENT",
+  originatingEvaluationSequence,
+  signalSession,
+  requiredExecutionSession,
+  targetWeights
+}
+
+UNEXECUTED_TARGET_INTENT_V2 = {
+  sequence,
+  type: "UNEXECUTED_TARGET_INTENT",
+  originatingEvaluationSequence,
+  signalSession,
+  requiredExecutionSession,
+  reason: "OUTSIDE_TEST_PERIOD",
+  targetWeights
+}
+
+FILL_V2 = {
+  sequence,
+  type: "FILL",
+  originatingTargetIntentSequence,
+  executionSession,
+  instrumentId,
+  side,
+  preQuantity,
+  targetQuantity,
+  requestedDeltaQuantity,
+  executedQuantity,
+  postQuantity,
+  referenceAdjustedOpen,
+  fillPrice,
+  fillNotional,
+  halfSpreadBps,
+  slippageBps,
+  commission,
+  sellFee,
+  priceImpactCost,
+  cashBefore,
+  cashAfter
+}
+
+NO_FILL_V2 = {
+  sequence,
+  type: "NO_FILL",
+  originatingTargetIntentSequence,
+  executionSession,
+  instrumentId,
+  side: "BUY",
+  reason: "INSUFFICIENT_CASH_AFTER_COSTS",
+  preQuantity,
+  targetQuantity,
+  requestedDeltaQuantity,
+  referenceAdjustedOpen,
+  fillPrice,
+  unitCashRequirement,
+  cashBefore
+}
+```
+
+Rules:
+
+- `side` in `FILL_V2` is exactly `BUY` or `SELL`;
+- targetWeights is a canonical array of `{instrumentId, weight}` sorted by
+  instrumentId byte lexical order;
+- `eligibleInstrumentOrder` preserves exact pipeline output order because RANK
+  and TAKE make order scientific truth;
+- quantity fields are canonical V2 quantity decimals;
+- money/cost/price fields are canonical exact V2 decimals;
+- bps fields exactly equal the bound ExecutionConfig V2 values;
+- `sellFee = "0"` on BUY;
+- SELL `requestedDeltaQuantity = executedQuantity`;
+- BUY may have `executedQuantity < requestedDeltaQuantity` only because of the
+  exact cash-affordability rule;
+- a positive desired BUY with maximum affordable quantity zero emits exactly one
+  `NO_FILL_V2`, charges no commission/fee and does not mutate position/cash;
+- a zero delta emits neither FILL nor NO_FILL;
+- an out-of-period target emits `UNEXECUTED_TARGET_INTENT_V2` and never becomes
+  pending execution state.
+
+### Evaluation observation digest
+
+For each EVALUATION, the kernel constructs an ephemeral canonical observation
+set containing each unique field-expression evaluation actually requested by
+the pipeline for that session/instrument.
+
+Each exact observation record is:
+
+```text
+{
+  instrumentId,
+  fieldExpression,
+  value
+}
+```
+
+`fieldExpression` is the exact canonical `FieldExpressionV2`.
+
+`value` is exactly one of:
+
+```text
+{ kind: "RATIONAL", numerator, denominator }
+{ kind: "INTEGER", value }
+{ kind: "DATE", value }
+{ kind: "MISSING", reason }
+```
+
+RATIONAL is reduced by GCD, denominator is a positive canonical integer string,
+and no rounded decimal substitutes for the exact rational.
+
+MISSING reason is exactly one of:
+
+```text
+SOURCE_MISSING
+LOOKBACK_INCOMPLETE
+```
+
+Duplicate instrument/expression observations are collapsed only if their exact
+canonical values are identical; divergence is an invariant failure.
+
+Observation records are sorted by byte comparison of canonical JSON bytes of:
+
+```text
+{ instrumentId, fieldExpression }
+```
+
+Then:
+
+```text
+observationDigest
+=
+SHA256_UPPER_HEX(
+  CANONICAL_JSONL_UTF8_LF_V1(sorted_observation_records)
+)
+```
+
+The ephemeral observation bytes need not be persisted as another artifact, but
+RL-5 must prove the digest is exactly reproducible from the bound materials and
+Research IR V2.
+
+### Valuation series
+
+Every `RESEARCH_VALUATION_SERIES_V2` record is exactly:
+
+```text
+{
+  sessionDate,
+  cash,
+  marketValue,
+  nav,
+  cumulativeCommission,
+  cumulativeSellFee,
+  cumulativePriceImpactCost,
+  cumulativeTotalModeledTradingCost
+}
+```
+
+Records are strictly increasing XNYS close sessions inside testPeriod with
+exactly one record per eligible portfolio valuation session.
+
+All economic fields are canonical exact V2 money decimals and:
+
+```text
+nav = cash + marketValue
+
+cumulativeTotalModeledTradingCost
+=
+cumulativeCommission
++ cumulativeSellFee
++ cumulativePriceImpactCost
+```
+
+Cumulative values begin at zero and never decrease.
+
+### Benchmark series
+
+When benchmark is enabled, every
+`RESEARCH_BENCHMARK_SERIES_V2` record is exactly:
+
+```text
+{
+  sessionDate,
+  value
+}
+```
+
+It has exactly the same ordered sessionDate set as the valuation series.
+
+When benchmark is NONE, benchmark artifact descriptor is exactly `null` and no
+benchmark bytes are emitted.
 
 ## 28. Result V2 Manifest
 
@@ -1718,6 +1925,7 @@ ENGINE_V2_FX_UNSUPPORTED
 ENGINE_V2_COST_CONFIG_INVALID
 ENGINE_V2_NON_POSITIVE_EXECUTION_PRICE
 ENGINE_V2_ARTIFACT_INTEGRITY_FAILURE
+ENGINE_V2_ARTIFACT_LIMIT_EXCEEDED
 ENGINE_V2_EVIDENCE_LINEAGE_INVALID
 ENGINE_V2_VALIDATION_LINEAGE_INVALID
 ENGINE_V2_AUTHORITY_INVALID
@@ -1753,6 +1961,9 @@ Mandatory evidence:
 - exact arithmetic/scale fixtures;
 - benchmark fixtures;
 - FX fail-closed fixtures;
+- exact trace/valuation/benchmark record-schema and ordering fixtures;
+- evaluation observation-digest reproducibility fixtures;
+- artifact byte-limit rejection fixtures;
 - artifact integrity fixtures;
 - exact transaction-cost-summary revalidation from trace bytes;
 - Evidence Object V2 hashing/integrity/persistence fixtures;
@@ -1833,6 +2044,7 @@ RL-4 may be accepted when independent audit proves that this contract:
 - defines exact commission/fee/spread/slippage formulas;
 - defines exact arithmetic/rounding boundaries;
 - defines benchmark semantics;
+- freezes exact V2 trace/valuation/benchmark artifact schemas;
 - defines adjustment/corporate-action boundaries;
 - defines FX/currency boundaries;
 - defines calendar/session behavior;
