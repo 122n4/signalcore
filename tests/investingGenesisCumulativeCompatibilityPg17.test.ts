@@ -102,6 +102,12 @@ const historicalI5Migrations = [
 const compatibilityRepairMigration =
   "supabase/migrations/20260921180446_investing_i0_i5_cumulative_compatibility_repair.sql";
 
+const postRepairI5Migrations = [
+  "supabase/migrations/20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql",
+  "supabase/migrations/20260923090000_investing_i5_rl3b_validation_child_execution.sql",
+  "supabase/migrations/20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql",
+] as const;
+
 const expectedFinalIdempotencyOperations = [
   "I3_INTERNAL_PAPER_FILL_ACCOUNTING_V1",
   "INITIAL_PAPER_CASH_FUNDING",
@@ -942,6 +948,9 @@ afterAll(async () => {
     expect(lastAuthorityDbError?.message.toLowerCase()).toContain("infinite recursion");
 
     await applySql(compatibilityRepairMigration);
+    for (const migration of postRepairI5Migrations) {
+      await applySql(migration);
+    }
 
     currentSubject = primarySubject;
     const bootstrap = await bootstrapInitialPersonalInvestingAccount({
