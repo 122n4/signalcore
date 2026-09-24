@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Pool } from "pg";
@@ -11,8 +12,6 @@ import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
 import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
 import type { InvestingAuthorityDatabase, InvestingAuthorityTransactionClient } from "../lib/investing/authority/context";
 import {
-  artifactDescriptorV1,
-  canonicalJsonlArtifactBytesV1,
   hashRefV1,
   hashValidationChildResultV1,
   hashValidationProtocolV1,
@@ -21,6 +20,7 @@ import {
   type ValidationProtocolHashPayloadV1,
   type ValidationRunInputHashPayloadV1,
 } from "../lib/investing/research";
+import { artifactDescriptorV1, canonicalJsonlArtifactBytesV1 } from "../lib/investing/research/resultArtifacts";
 import { finalizeValidationResultCommandV1 } from "../lib/investing/research/validationAggregateService";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -309,9 +309,9 @@ async function seedScientificChildren() {
       );
 
       const artifactIds = {
-        trace: crypto.randomUUID(),
-        valuation: crypto.randomUUID(),
-        metrics: crypto.randomUUID(),
+        trace: randomUUID(),
+        valuation: randomUUID(),
+        metrics: randomUUID(),
       };
       for (const artifact of [
         { id: artifactIds.trace, kind: "EXECUTION_TRACE", descriptor: trace, bytes: traceBytes },
