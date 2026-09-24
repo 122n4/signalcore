@@ -1961,7 +1961,7 @@ export async function resolveAuthorizedResearchValidationChildExecutionContext(
 
 export async function resolveAuthorizedResearchValidationResultFinalizeContext(
   input: ResolveAuthorizedResearchValidationResultFinalizeContextInput,
-): Promise<InvestingAuthorityResult | { ok: true; context: AuthorizedResearchValidationResultFinalizeContext }> {
+): Promise<InvestingAuthorityFailure | { ok: true; context: AuthorizedResearchValidationResultFinalizeContext }> {
   if (
     input === null ||
     typeof input !== "object" ||
