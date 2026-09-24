@@ -317,16 +317,16 @@ Dynamic universes are outside RL-4.
 
 ### Research IR V2 inherited canonical shapes
 
-Except where this contract explicitly replaces a V1 `DATA_FIELD_REF` with
-`FieldExpressionV2`, the V2 Research IR reuses the exact accepted V1
-canonical shapes and semantics for:
+Except where this contract explicitly replaces a V1
+`DATA_FIELD_REF` or literal vocabulary, the V2 Research IR reuses the exact
+accepted V1 canonical shapes and semantics for:
 
 - explicit universe;
 - FILTER / ENTER / EXIT boolean-expression topology;
 - AND / OR / NOT ordering law;
 - comparison operators;
 - TAKE;
-- RANK direction and missing policy;
+- RANK direction;
 - EQUAL / FIXED_TARGETS weight structures;
 - REBALANCE schedules;
 - benchmark declaration;
@@ -336,10 +336,62 @@ canonical shapes and semantics for:
 
 All objects remain closed. No extra key, null shortcut or alias is admitted.
 
-For V2, FILTER / ENTER / EXIT comparison operands and RANK field input use the
-closed `FieldExpressionV2` family from section 10. The scale-invariance law in
-section 12 further restricts executable combinations even when a syntactically
-valid V2 field expression exists.
+The exact V2 literal union is:
+
+```text
+DECIMAL_RATIO_LITERAL_V2 = {
+  type: "DECIMAL",
+  value,
+  unit: "RATIO"
+}
+
+INTEGER_VOLUME_LITERAL_V2 = {
+  type: "INTEGER",
+  value,
+  unit: "VOLUME"
+}
+
+DATE_LITERAL_V2 = {
+  type: "DATE",
+  value
+}
+```
+
+`value` is canonical according to its category. V2 does not admit an absolute
+price literal, BOOLEAN literal or ENUM literal in the initial executable
+profile.
+
+For V2, FILTER / ENTER / EXIT comparisons use `FieldExpressionV2` on the left
+and either a type-compatible `FieldExpressionV2` or exact V2 literal on the
+right.
+
+The exact comparison compatibility matrix is:
+
+```text
+DECIMAL_PRICE
+  <-> DECIMAL_PRICE FieldExpressionV2 only
+
+DECIMAL_RETURN_RATIO
+  <-> DECIMAL_RETURN_RATIO FieldExpressionV2
+  <-> DECIMAL literal unit RATIO
+
+INTEGER_VOLUME
+  <-> INTEGER_VOLUME FieldExpressionV2
+  <-> INTEGER literal unit VOLUME
+
+DATE
+  <-> DATE FieldExpressionV2
+  <-> DATE literal
+```
+
+Cross-category comparisons fail closed.
+
+RANK input must produce exactly `DECIMAL_RETURN_RATIO` or `INTEGER_VOLUME`.
+RANK over `DECIMAL_PRICE`, DATE or any other category is not executable in the
+initial V2 profile. Its missing policy must be `EXCLUDE`.
+
+The scale-invariance law in section 12 further restricts executable combinations
+even when a syntactically valid V2 field expression exists.
 
 ## 8A. Experiment And ExperimentParameters V2
 
@@ -378,8 +430,7 @@ resolved Research IR V2 must have identical:
 
 Only these parameter values may differ:
 
-- admitted COMPARE literal value where that literal category is executable under
-  V2;
+- admitted V2 COMPARE literal value under the exact compatibility matrix above;
 - TAKE count;
 - FIXED_TARGETS weight values;
 - REBALANCE schedule value;
@@ -1949,6 +2000,9 @@ RL-5 must expose stable typed failures that preserve at least these distinctions
 ```text
 ENGINE_V2_UNSUPPORTED_PROFILE
 ENGINE_V2_FIELD_REGISTRY_MISMATCH
+ENGINE_V2_LITERAL_TYPE_INVALID
+ENGINE_V2_COMPARISON_TYPE_INVALID
+ENGINE_V2_RANK_TYPE_INVALID
 ENGINE_V2_TRANSFORM_REGISTRY_MISMATCH
 ENGINE_V2_REQUIRED_MARKET_FIELD_MISSING
 ENGINE_V2_ADJUSTMENT_BASIS_MISMATCH
@@ -1991,7 +2045,8 @@ Mandatory evidence:
 - immutable adjusted-OHLC compatibility/provenance fixtures;
 - adjusted-price scale-invariance adversarial fixtures;
 - malformed OHLC rejection;
-- forbidden absolute adjusted-price threshold/rank fixtures;
+- forbidden absolute adjusted-price literal/rank fixtures;
+- V2 volume literal and comparison-type matrix fixtures;
 - next-session-open fill fixtures;
 - sell-before-buy deterministic ordering;
 - commission/fee fixtures;
