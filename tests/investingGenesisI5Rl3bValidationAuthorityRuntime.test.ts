@@ -269,9 +269,9 @@ describe("I5 RL-3B Validation authority contexts", () => {
     ["Protocol other principal denied", { protocolPrincipal: ids.otherPrincipal }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
     ["Protocol other tenant denied", { protocolTenant: ids.otherTenant }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
     ["Investigation mismatch denied", { researchInvestigationId: ids.otherInvestigation }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
-    ["inactive membership", { membershipState: "REVOKED" }, { ok: false, code: "MEMBERSHIP_INACTIVE" }],
-    ["non-OWNER", { membershipRole: "VIEWER" }, { ok: false, code: "MEMBERSHIP_INACTIVE" }],
-    ["inactive tenant", { tenantState: "SUSPENDED" }, { ok: false, code: "TENANT_INACTIVE" }],
+    ["inactive membership", { membershipState: "REVOKED" }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
+    ["non-OWNER", { membershipRole: "VIEWER" }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
+    ["inactive tenant", { tenantState: "SUSPENDED" }, { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" }],
     ["account-scoped context rejected", { inputExtras: { accountId: ids.account } }, { ok: false, code: "VALIDATION_ERROR" }],
     ["injected authority fields rejected", { inputExtras: { principalId: ids.principal, operation: "RESEARCH_VALIDATION_RESULT_FINALIZE_V1" } }, { ok: false, code: "VALIDATION_ERROR" }],
   ])("resolves Validation aggregate finalize authority: %s", async (_label, override, expected) => {
