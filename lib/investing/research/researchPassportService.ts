@@ -30,6 +30,8 @@ export type ReadResearchPassportServiceResultV1 =
         | "RESULT_ARTIFACT_BINDING_INVALID"
         | "EVIDENCE_RESULT_BINDING_INVALID"
         | "SUCCEEDED_RUN_EVIDENCE_MISSING"
+        | "PASSPORT_VALIDATION_SCOPE_UNAVAILABLE"
+        | "PASSPORT_VALIDATION_LINEAGE_INVALID"
         | "DATABASE_ERROR";
       externalCode: "UNAUTHENTICATED" | "FORBIDDEN_OR_NOT_FOUND" | "INTERNAL_ERROR";
     };
@@ -56,7 +58,9 @@ export async function readResearchPassportServiceV1(
     ok: false,
     code: read.code,
     externalCode:
-      read.code === "DATABASE_ERROR" || read.code === "PASSPORT_SOURCE_INTEGRITY_FAILURE"
+      read.code === "DATABASE_ERROR" ||
+      read.code === "PASSPORT_SOURCE_INTEGRITY_FAILURE" ||
+      read.code === "PASSPORT_VALIDATION_LINEAGE_INVALID"
         ? "INTERNAL_ERROR"
         : "FORBIDDEN_OR_NOT_FOUND",
   };
