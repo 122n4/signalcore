@@ -41,6 +41,7 @@ export type ValidationResultFinalizeFailureCodeV1 =
   | "VALIDATION_FOLD_SET_DUPLICATE"
   | "VALIDATION_CHILD_RUN_INPUT_BINDING_INVALID"
   | "VALIDATION_CHILD_RESULT_BINDING_INVALID"
+  | "VALIDATION_CHILD_RUN_NOT_SUCCEEDED"
   | "VALIDATION_CHILD_BACKING_RUN_INVALID"
   | "VALIDATION_CHILD_ARTIFACT_INTEGRITY_FAILURE"
   | "VALIDATION_RESULT_PROTOCOL_MISMATCH"
@@ -178,7 +179,7 @@ export async function finalizeValidationResultV1(
         "FORBIDDEN_OR_NOT_FOUND",
       );
       const protocol = validateProtocol(protocolRow);
-      await client.query("select pg_advisory_xact_lock(hashtext($1))", [
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
         protocolRow.research_validation_protocol_identity_id,
       ]);
 
@@ -288,7 +289,7 @@ export async function finalizeValidationResultV1(
       };
       const canonicalPayload = canonicalValidationResultHashPayloadV1(payload);
       const hashHex = hashValidationResultV1(payload);
-      if (existing) return replayExisting(existing, protocolRow, canonicalPayload, hashHex);
+      if (existing) return replayExisting(existing, protocolRow, payload, canonicalPayload, hashHex);
       const identityId = randomUUID();
 
       await client.query(
@@ -358,13 +359,20 @@ function validateProtocol(row: ProtocolRow): ValidationProtocolHashPayloadV1 & {
   ) {
     throw new FinalizeFailure("VALIDATION_PROTOCOL_LINEAGE_INVALID");
   }
-  const protocol = canonicalValidationProtocolHashPayloadV1(row.canonical_payload as ValidationProtocolHashPayloadV1) as ValidationProtocolHashPayloadV1 & {
-    folds: readonly { ordinal: string; trainingWindow: ValidationWindowV1; evaluationWindow: ValidationWindowV1 }[];
-  };
-  if (hashValidationProtocolV1(protocol) !== row.hash_hex) {
+  try {
+    const protocol = canonicalValidationProtocolHashPayloadV1(
+      row.canonical_payload as ValidationProtocolHashPayloadV1,
+    ) as ValidationProtocolHashPayloadV1 & {
+      folds: readonly { ordinal: string; trainingWindow: ValidationWindowV1; evaluationWindow: ValidationWindowV1 }[];
+    };
+    if (hashValidationProtocolV1(protocol) !== row.hash_hex) {
+      throw new FinalizeFailure("VALIDATION_PROTOCOL_LINEAGE_INVALID");
+    }
+    return protocol;
+  } catch (error) {
+    if (error instanceof FinalizeFailure) throw error;
     throw new FinalizeFailure("VALIDATION_PROTOCOL_LINEAGE_INVALID");
   }
-  return protocol;
 }
 
 async function validatePhase(
@@ -391,9 +399,14 @@ async function validatePhase(
   ) {
     throw new FinalizeFailure("VALIDATION_CHILD_RUN_INPUT_BINDING_INVALID");
   }
-  const runInputPayload = canonicalValidationRunInputHashPayloadV1(
-    runInput.canonical_payload as ValidationRunInputHashPayloadV1,
-  ) as ValidationRunInputHashPayloadV1;
+  let runInputPayload: ValidationRunInputHashPayloadV1;
+  try {
+    runInputPayload = canonicalValidationRunInputHashPayloadV1(
+      runInput.canonical_payload as ValidationRunInputHashPayloadV1,
+    ) as ValidationRunInputHashPayloadV1;
+  } catch {
+    throw new FinalizeFailure("VALIDATION_CHILD_RUN_INPUT_BINDING_INVALID");
+  }
   if (
     hashValidationRunInputV1(runInputPayload) !== runInput.hash_hex ||
     runInputPayload.validationProtocol.hashHex !== protocolRow.hash_hex ||
@@ -421,9 +434,14 @@ async function validatePhase(
   ) {
     throw new FinalizeFailure("VALIDATION_CHILD_RESULT_BINDING_INVALID");
   }
-  const childPayload = canonicalValidationChildResultHashPayloadV1(
-    child.canonical_payload as ValidationChildResultHashPayloadV1,
-  ) as ValidationChildResultHashPayloadV1;
+  let childPayload: ValidationChildResultHashPayloadV1;
+  try {
+    childPayload = canonicalValidationChildResultHashPayloadV1(
+      child.canonical_payload as ValidationChildResultHashPayloadV1,
+    ) as ValidationChildResultHashPayloadV1;
+  } catch {
+    throw new FinalizeFailure("VALIDATION_CHILD_RESULT_BINDING_INVALID");
+  }
   if (
     hashValidationChildResultV1(childPayload) !== child.hash_hex ||
     childPayload.validationRunInput.hashHex !== runInput.hash_hex
@@ -466,12 +484,18 @@ async function validatePhase(
     events.length !== 3 ||
     events[0]?.sequence !== 1 ||
     events[0]?.event_type !== "REGISTERED" ||
+    events[0]?.previous_event_type !== null ||
     events[1]?.sequence !== 2 ||
     events[1]?.event_type !== "STARTED" ||
+    events[1]?.previous_event_type !== "REGISTERED" ||
     events[2]?.sequence !== 3 ||
-    events[2]?.event_type !== "SUCCEEDED"
+    events[2]?.previous_event_type !== "STARTED" ||
+    (events[2]?.event_type !== "SUCCEEDED" && events[2]?.event_type !== "FAILED")
   ) {
     throw new FinalizeFailure("VALIDATION_CHILD_BACKING_RUN_INVALID");
+  }
+  if (events[2]?.event_type !== "SUCCEEDED") {
+    throw new FinalizeFailure("VALIDATION_CHILD_RUN_NOT_SUCCEEDED");
   }
 
   await verifyArtifact(client, backingRun.research_validation_execution_run_id, child.execution_trace_artifact_id, "EXECUTION_TRACE", childPayload.executionTrace);
@@ -528,17 +552,21 @@ async function verifyArtifact(
 function replayExisting(
   row: AggregateRow,
   protocolRow: ProtocolRow,
+  expectedPayload: ValidationResultHashPayloadV1,
   expectedCanonicalPayload: unknown,
   expectedHashHex: string,
 ): FinalizeValidationResultV1Result {
+  if (row.research_validation_protocol_identity_id !== protocolRow.research_validation_protocol_identity_id) {
+    throw new FinalizeFailure("VALIDATION_RESULT_PROTOCOL_MISMATCH");
+  }
   if (
-    row.research_validation_protocol_identity_id !== protocolRow.research_validation_protocol_identity_id ||
     row.hash_algorithm !== "SHA-256" ||
     row.hash_domain !== "SYNTRAKE:VALIDATION_RESULT:V1" ||
     row.hash_version !== "SYNTRAKE_SHA256_V1"
   ) {
     throw new FinalizeFailure("VALIDATION_RESULT_CONFLICT");
   }
+
   let payload: ValidationResultHashPayloadV1;
   try {
     payload = canonicalValidationResultHashPayloadV1(
@@ -547,6 +575,16 @@ function replayExisting(
   } catch {
     throw new FinalizeFailure("VALIDATION_RESULT_CONFLICT");
   }
+
+  if (payload.validationProtocol.hashHex !== protocolRow.hash_hex) {
+    throw new FinalizeFailure("VALIDATION_RESULT_PROTOCOL_MISMATCH");
+  }
+  if (payload.subjectExperiment.hashHex !== expectedPayload.subjectExperiment.hashHex) {
+    throw new FinalizeFailure("VALIDATION_RESULT_EXPERIMENT_MISMATCH");
+  }
+  if (payload.validationMode !== expectedPayload.validationMode) {
+    throw new FinalizeFailure("VALIDATION_RESULT_MODE_MISMATCH");
+  }
   if (
     hashValidationResultV1(payload) !== row.hash_hex ||
     row.hash_hex !== expectedHashHex ||
@@ -554,6 +592,7 @@ function replayExisting(
   ) {
     throw new FinalizeFailure("VALIDATION_RESULT_CONFLICT");
   }
+
   return {
     ok: true,
     replayed: true,
