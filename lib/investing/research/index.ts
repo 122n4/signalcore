@@ -224,6 +224,14 @@ export {
 } from "./validationExecution";
 
 export {
+  canonicalValidationResultBytesV1,
+  canonicalValidationResultHashPayloadV1,
+  hashValidationResultV1,
+  type ValidationAggregateFoldV1,
+  type ValidationResultHashPayloadV1,
+} from "./validationAggregate";
+
+export {
   admitExperimentBaselineV1,
   admitExperimentVariantV1,
   assertExperimentHashingEnabledV1,
