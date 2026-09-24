@@ -33,13 +33,19 @@ authority for PUBLIC/anon/authenticated/service_role, and no Security Advisor
 finding in schema `investing`. Performance Advisor debt is recorded separately
 and is non-blocking for this acceptance gate.
 
+Historical design-freeze language note: sections below preserve the normative
+requirements frozen before implementation. Where those sections use words such
+as "future" or "proposed", they describe the state/requirement at design-freeze
+time; they are not a current deferral. Current implementation and Production
+truth are stated explicitly above and in "Acceptance And Production State".
+
 ## Purpose
 
 RL-3A already admits deterministic Validation Protocol planning. RL-3B already
 executes and persists deterministic fold/phase child execution for exact
 Validation Protocol folds.
 
-The remaining RL-3 gap is aggregate validation closure:
+At design-freeze time, the remaining RL-3 gap was aggregate validation closure:
 
 - a scientific aggregate Validation Result identity;
 - immutable persistence for that aggregate;
@@ -51,7 +57,9 @@ The remaining RL-3 gap is aggregate validation closure:
 - PostgreSQL 17 rehearsal;
 - canonical integrity proof.
 
-This candidate freezes that contract. It does not implement it.
+This contract froze those requirements before implementation. The separately
+implemented and audited RL-3C closure now satisfies them; this document does not
+rewrite that historical sequence.
 
 ## Already Accepted Authority
 
@@ -86,7 +94,7 @@ RL-3B already owns:
 RL-3C must consume those accepted authorities. It must not create a second child
 execution model or weaken the accepted V1 historical execution semantics.
 
-## Proposed Scientific Domain
+## Scientific Domain
 
 The accepted aggregate domain is:
 
@@ -104,7 +112,7 @@ At initial design-freeze time this domain was proposed but not activated. That
 historical limitation is now superseded by the accepted RL-3C implementation
 and current canonical hash-domain/runtime authority.
 
-The future hash preimage must be:
+The accepted hash preimage is:
 
 ```text
 SYNTRAKE:VALIDATION_RESULT:V1
@@ -310,13 +318,14 @@ concurrent divergent payloads
 => no partial rows
 ```
 
-A future implementation may use row locks, advisory locks, unique constraints
-plus transactions or another audited mechanism. This contract freezes behavior,
-not the mechanism.
+At design-freeze time, implementation mechanism was intentionally left open
+among row locks, advisory locks, unique constraints plus transactions or another
+audited mechanism. The accepted implementation uses audited transactional
+serialization while preserving the behavior frozen here.
 
-## Proposed Persistence Contract
+## Persistence Contract
 
-The future relation name is:
+The accepted relation name is:
 
 ```text
 investing.research_validation_results_scientific_identities
@@ -325,7 +334,7 @@ investing.research_validation_results_scientific_identities
 This name follows the existing accepted scientific identity table pattern and
 distinguishes aggregate Validation Result from RL-3B child results.
 
-The future relation must contain at minimum:
+The accepted relation contains at minimum:
 
 ```text
 research_validation_result_identity_id
@@ -410,7 +419,7 @@ Mandatory database properties:
 - no authenticated grant;
 - no broad `investing_app` update/delete grant.
 
-The future implementation must prove exact logical uniqueness without allowing a
+The accepted implementation proves exact logical uniqueness without allowing a
 divergent aggregate for the same Protocol to overwrite or hide the accepted
 identity.
 
@@ -449,13 +458,14 @@ Any account scope or `USER_PORTFOLIO` request fails closed.
 
 ## Passport RL-3 Projection
 
-RL-3C must supersede the current Passport state:
+At design-freeze time, RL-3C was required to supersede the then-current
+Passport state:
 
 ```text
 validation.availability = DEFERRED_RL3
 ```
 
-only for the scopes actually accepted by RL-3:
+only for the scopes accepted by RL-3:
 
 ```text
 TENANT_SCOPE / PURE_RESEARCH
@@ -582,7 +592,7 @@ episodes = []
 reason = RL3_PURE_RESEARCH_TENANT_SCOPE_ONLY
 ```
 
-The future Passport `validation` projection must reconstruct each validation
+The accepted Passport `validation` projection reconstructs each validation
 episode with:
 
 - Validation Protocol;
@@ -646,7 +656,7 @@ Evidence Ledger scientific identity.
 
 ## Integrity Failure Codes
 
-The future implementation must expose machine-readable failures that preserve
+The implementation contract requires machine-readable failures that preserve
 material distinctions. At minimum:
 
 - `VALIDATION_PROTOCOL_LINEAGE_INVALID`;
@@ -671,7 +681,8 @@ different failures into a generic `INVALID`.
 
 ## PostgreSQL 17 Rehearsal Contract
 
-The future implementation closure must prove on PostgreSQL 17:
+The accepted implementation closure was required to prove, and its dedicated
+rehearsals did prove, on PostgreSQL 17:
 
 - fresh migration replay;
 - owner = `investing_owner`;
