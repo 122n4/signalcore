@@ -342,15 +342,23 @@ maybeDescribe("I5 RL-3C Validation Aggregate real PG17 rehearsal", () => {
       [ids.protocol],
     );
     expect(visible.rows[0]!.count).toBe("1");
+
+    await client.query("savepoint denied_insert");
     await expect(
       insertAggregateAsApp("99000000-0000-4000-8000-0000000003c2", h("B")),
     ).rejects.toThrow(/row-level security|policy/iu);
+    await client.query("rollback to savepoint denied_insert");
+    await client.query("release savepoint denied_insert");
+
+    await client.query("savepoint denied_update");
     await expect(
       client.query(
         "update investing.research_validation_results_scientific_identities set hash_hex = hash_hex where research_validation_protocol_identity_id = $1",
         [ids.protocol],
       ),
     ).rejects.toThrow(/permission denied/iu);
+    await client.query("rollback to savepoint denied_update");
+    await client.query("release savepoint denied_update");
     await client.query("rollback");
 
     await client.query("begin");
