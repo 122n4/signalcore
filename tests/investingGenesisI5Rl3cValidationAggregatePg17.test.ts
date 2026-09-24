@@ -188,7 +188,7 @@ async function seedAuthorityParents() {
   `, [ids.protocol, ids.tenant, ids.principal, ids.membership, ids.investigation, ids.experiment, h("4")]);
 }
 
-async function insertAggregateAsApp(identityId = ids.aggregate, hashHex = h("A")) {
+async function insertAggregateAsApp(identityId: string = ids.aggregate, hashHex: string = h("A")) {
   return client.query(
     `insert into investing.research_validation_results_scientific_identities (
       research_validation_result_identity_id, tenant_id, principal_id, tenant_membership_id,
