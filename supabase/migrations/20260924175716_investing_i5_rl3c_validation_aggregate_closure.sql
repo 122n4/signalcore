@@ -12,7 +12,35 @@ end $$;
 
 set local role investing_owner;
 
-create table if not exists investing.research_validation_results_scientific_identities (
+do $
+declare
+  v_owner text;
+  v_rls boolean;
+  v_force_rls boolean;
+begin
+  if to_regclass('investing.research_validation_results_scientific_identities') is not null then
+    raise exception 'I5 RL-3C prestate violation: aggregate Validation Result relation already exists';
+  end if;
+
+  if to_regclass('investing.research_validation_protocols_scientific_identities') is null
+     or to_regclass('investing.research_validation_child_results_scientific_identities') is null
+     or to_regclass('investing.research_validation_execution_runs') is null
+     or to_regclass('investing.research_validation_execution_run_events') is null
+     or to_regclass('investing.research_validation_result_artifacts') is null then
+    raise exception 'I5 RL-3C prestate violation: accepted RL-3B predecessor surface is incomplete';
+  end if;
+
+  select pg_get_userbyid(c.relowner), c.relrowsecurity, c.relforcerowsecurity
+  into v_owner, v_rls, v_force_rls
+  from pg_class c
+  where c.oid = 'investing.research_validation_protocols_scientific_identities'::regclass;
+
+  if v_owner <> 'investing_owner' or not v_rls or not v_force_rls then
+    raise exception 'I5 RL-3C prestate violation: RL-3B Protocol relation authority/RLS drift';
+  end if;
+end $;
+
+create table investing.research_validation_results_scientific_identities (
   research_validation_result_identity_id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
   principal_id uuid not null,
@@ -58,7 +86,7 @@ create table if not exists investing.research_validation_results_scientific_iden
   unique (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex)
 );
 
-create index if not exists research_validation_results_passport_idx
+create index research_validation_results_passport_idx
   on investing.research_validation_results_scientific_identities (
     research_investigation_id,
     tenant_id,
@@ -309,5 +337,70 @@ using (
   and principal_id::text = current_setting('syntrake.investing.principal_id', true)
   and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
 );
+
+do $
+declare
+  v_owner text;
+  v_rls boolean;
+  v_force_rls boolean;
+  v_bad_grants integer;
+  v_app_select integer;
+  v_app_insert integer;
+  v_policy_count integer;
+begin
+  select pg_get_userbyid(c.relowner), c.relrowsecurity, c.relforcerowsecurity
+  into v_owner, v_rls, v_force_rls
+  from pg_class c
+  where c.oid = 'investing.research_validation_results_scientific_identities'::regclass;
+
+  if v_owner <> 'investing_owner' or not v_rls or not v_force_rls then
+    raise exception 'I5 RL-3C poststate violation: aggregate relation authority/RLS mismatch';
+  end if;
+
+  select count(*)::integer into v_bad_grants
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and table_name = 'research_validation_results_scientific_identities'
+    and (
+      lower(grantee) in ('public', 'anon', 'authenticated', 'service_role')
+      or (grantee = 'investing_app' and privilege_type not in ('SELECT', 'INSERT'))
+    );
+
+  if v_bad_grants <> 0 then
+    raise exception 'I5 RL-3C poststate violation: forbidden aggregate relation grant';
+  end if;
+
+  select count(*)::integer into v_app_select
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and table_name = 'research_validation_results_scientific_identities'
+    and grantee = 'investing_app'
+    and privilege_type = 'SELECT';
+
+  select count(*)::integer into v_app_insert
+  from information_schema.role_table_grants
+  where table_schema = 'investing'
+    and table_name = 'research_validation_results_scientific_identities'
+    and grantee = 'investing_app'
+    and privilege_type = 'INSERT';
+
+  if v_app_select <> 1 or v_app_insert <> 1 then
+    raise exception 'I5 RL-3C poststate violation: expected exact investing_app SELECT+INSERT grants';
+  end if;
+
+  select count(*)::integer into v_policy_count
+  from pg_policies
+  where schemaname = 'investing'
+    and tablename = 'research_validation_results_scientific_identities'
+    and policyname in (
+      'research_validation_finalize_result_select',
+      'research_validation_finalize_result_insert',
+      'research_passport_validation_results_select'
+    );
+
+  if v_policy_count <> 3 then
+    raise exception 'I5 RL-3C poststate violation: aggregate relation policy set incomplete';
+  end if;
+end $;
 
 commit;
