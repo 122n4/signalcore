@@ -458,7 +458,7 @@ I5 Research Execution Closure acceptance evidence:
 - Production Supabase mutation:
   `NONE`.
 - Production migration application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 
 `I5 RESEARCH EXECUTION CLOSURE = CURRENT_ACCEPTED / UNNUMBERED`.
 
@@ -499,7 +499,7 @@ I5 RL-1 Evidence Object Scientific Closure acceptance evidence:
 - Production Supabase mutation:
   `NONE`.
 - Production migration application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 - Permanent A-number:
   `NOT ASSIGNED`.
 - Independent auditor verdict:
@@ -546,11 +546,11 @@ I5 RL-2 Evidence Ledger and Passport acceptance evidence:
 - Production Supabase mutation:
   `NONE`.
 - Production migration application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 - Cumulative compatibility repair production application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 - Production RL-2 migration application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 - Accepted RL-2 migration:
   `20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql`.
 - Permanent A-number:
@@ -647,11 +647,7 @@ I5 RL-3B Validation Child Execution acceptance evidence:
 - Vercel merged-main deployment:
   `SUCCESS`.
 - Production Supabase:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
-- Production migration:
-  `20260923090000_investing_i5_rl3b_validation_child_execution.sql`.
-- Post-apply independent audit:
-  `PASS`.
+  `NOT TOUCHED`.
 - Independent auditor verdict:
   `PASS`.
 - Permanent A-number:
@@ -962,7 +958,7 @@ Experiment Scientific Closure acceptance evidence:
 - Permanent A-number:
   `NOT ASSIGNED`.
 - Production Supabase migration application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 
 `EXPERIMENT SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED`.
 
@@ -1004,7 +1000,7 @@ Dataset & Run Scientific Closure acceptance evidence:
 - Permanent A-number:
   `NOT ASSIGNED`.
 - Production Supabase migration application:
-  `APPLIED IN A4_TO_RL-3B PRODUCTION CATCH-UP`.
+  `NOT PERFORMED`.
 
 `DATASET & RUN SCIENTIFIC CLOSURE = CURRENT_ACCEPTED / SCIENTIFIC_CLOSURE / UNNUMBERED`.
 
