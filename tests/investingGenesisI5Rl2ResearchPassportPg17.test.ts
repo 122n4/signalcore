@@ -20,6 +20,7 @@ const oldRl2Migration = "supabase/migrations/20260920160000_investing_i5_rl2_evi
 const rl2Migration = "supabase/migrations/20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql";
 const rl3bMigration = "supabase/migrations/20260923090000_investing_i5_rl3b_validation_child_execution.sql";
 const rl3cMigration = "supabase/migrations/20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql";
+const rl3cAdvisorRemediationMigration = "supabase/migrations/20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql";
 const productionResidualSha256 = "5833faf5ca3ab62250f460c1e35ede4b30e20caa58ba87c7b34a4563eb615248";
 const migrations = [
   "supabase/migrations/20260825120000_investing_genesis_i2_authority_materialization.sql",
@@ -42,6 +43,7 @@ const migrations = [
   rl2Migration,
   rl3bMigration,
   rl3cMigration,
+  rl3cAdvisorRemediationMigration,
 ] as const;
 
 let pool: Pool;
