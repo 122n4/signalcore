@@ -29,8 +29,10 @@ import { type ResearchDatasetMaterialProviderV1 } from "./datasetMaterial";
 import {
   admitValidationProtocolV1,
   deriveValidationPhaseResearchIrV1,
+  deriveValidationPhaseResearchIrV2,
   hashValidationProtocolV1,
   sliceValidationDatasetSeriesPrefixV1,
+  sliceValidationDatasetSeriesPrefixV2,
   type ValidationProtocolCandidateV1,
   type ValidationProtocolHashPayloadV1,
   type ValidationWindowV1,
@@ -388,7 +390,9 @@ async function buildValidationRunInput(
   const fold = prepared.protocol.folds.find((entry) => entry.ordinal === context.foldOrdinal);
   if (!fold) return { ok: false as const, code: "VALIDATION_FOLD_NOT_FOUND" as const };
   const phaseWindow: ValidationWindowV1 = context.phase === "TRAINING" ? fold.trainingWindow : fold.evaluationWindow;
-  const phaseResearchIr = deriveValidationPhaseResearchIrV1(prepared.subjectResearchIr, phaseWindow);
+  const phaseResearchIr = prepared.protocol.engineVersion === "ENGINE_V20260926"
+    ? deriveValidationPhaseResearchIrV2(prepared.subjectResearchIr, phaseWindow)
+    : deriveValidationPhaseResearchIrV1(prepared.subjectResearchIr, phaseWindow);
   const sourceMaterials: Buffer[] = [];
   const slices = [];
   for (const series of prepared.sourceDatasetSeries) {
@@ -396,7 +400,9 @@ async function buildValidationRunInput(
     const bytes = await provider.loadSeriesContent(ref);
     if (!bytes) return { ok: false as const, code: "DATASET_MATERIAL_NOT_FOUND" as const };
     sourceMaterials.push(bytes);
-    slices.push(sliceValidationDatasetSeriesPrefixV1(series, bytes, phaseWindow.endDate));
+    slices.push(prepared.protocol.engineVersion === "ENGINE_V20260926"
+      ? sliceValidationDatasetSeriesPrefixV2(series, bytes, phaseWindow.endDate)
+      : sliceValidationDatasetSeriesPrefixV1(series, bytes, phaseWindow.endDate));
   }
   const phaseDatasetSeries = slices.map((slice) => slice.series);
   const phaseDatasetSnapshot = canonicalDatasetSnapshotHashPayloadV1({

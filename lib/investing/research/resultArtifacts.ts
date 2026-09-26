@@ -21,8 +21,8 @@ export type ResultHashPayloadV1 = Readonly<{
   schemaVersion: "RESULT_HASH_PAYLOAD_V1";
   runInput: HashRefV1;
   engineId: "HISTORICAL_EXECUTION_ADAPTER";
-  engineVersion: "ENGINE_V20260918";
-  executionModelClass: "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1";
+  engineVersion: "ENGINE_V20260918" | "ENGINE_V20260926";
+  executionModelClass: "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1" | "NEXT_SESSION_ADJUSTED_OHLCV_RESEARCH_V2";
   valuationCurrency: "USD";
   testPeriod: Readonly<{ startDate: string; endDate: string }>;
   startingNav: string;
@@ -80,19 +80,18 @@ export function canonicalResultHashPayloadV1(input: ResultHashPayloadV1): Canoni
 
 export function canonicalExecutionResultFieldsV1(input: ExecutionResultFieldsV1): ExecutionResultFieldsV1 {
   if (input.engineId !== "HISTORICAL_EXECUTION_ADAPTER") throw new Error("RESULT_ENGINE_INVALID");
-  if (input.engineVersion !== "ENGINE_V20260918") throw new Error("RESULT_ENGINE_INVALID");
-  if (input.executionModelClass !== "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1") throw new Error("RESULT_EXECUTION_MODEL_INVALID");
   if (input.valuationCurrency !== "USD") throw new Error("RESULT_VALUATION_CURRENCY_INVALID");
+  const branch = resultBranch(input);
   assertPlainObject(input.testPeriod, new Set(["startDate", "endDate"]));
   assertDate(input.testPeriod.startDate);
   assertDate(input.testPeriod.endDate);
-  assertMoney(input.startingNav);
-  assertMoney(input.endingNav);
-  assertMoney(input.terminalCash);
-  const executionTrace = canonicalArtifactDescriptor(input.executionTrace, "RESEARCH_EXECUTION_TRACE_V1");
-  const valuationSeries = canonicalArtifactDescriptor(input.valuationSeries, "RESEARCH_VALUATION_SERIES_V1");
+  assertMoney(input.startingNav, branch.moneyScale);
+  assertMoney(input.endingNav, branch.moneyScale);
+  assertMoney(input.terminalCash, branch.moneyScale);
+  const executionTrace = canonicalArtifactDescriptor(input.executionTrace, branch.traceSchema);
+  const valuationSeries = canonicalArtifactDescriptor(input.valuationSeries, branch.valuationSchema);
   const metricResultSet = canonicalArtifactDescriptor(input.metricResultSet, "METRIC_RESULT_SET_V1");
-  const benchmark = input.benchmark === null ? null : canonicalArtifactDescriptor(input.benchmark, "RESEARCH_BENCHMARK_SERIES_V1");
+  const benchmark = input.benchmark === null ? null : canonicalArtifactDescriptor(input.benchmark, branch.benchmarkSchema);
   return {
     engineId: input.engineId,
     engineVersion: input.engineVersion,
@@ -107,6 +106,28 @@ export function canonicalExecutionResultFieldsV1(input: ExecutionResultFieldsV1)
     metricResultSet,
     benchmark,
   };
+}
+
+function resultBranch(input: ExecutionResultFieldsV1) {
+  if (input.engineVersion === "ENGINE_V20260918") {
+    if (input.executionModelClass !== "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1") throw new Error("RESULT_EXECUTION_MODEL_INVALID");
+    return {
+      moneyScale: 16,
+      traceSchema: "RESEARCH_EXECUTION_TRACE_V1",
+      valuationSchema: "RESEARCH_VALUATION_SERIES_V1",
+      benchmarkSchema: "RESEARCH_BENCHMARK_SERIES_V1",
+    };
+  }
+  if (input.engineVersion === "ENGINE_V20260926") {
+    if (input.executionModelClass !== "NEXT_SESSION_ADJUSTED_OHLCV_RESEARCH_V2") throw new Error("RESULT_EXECUTION_MODEL_INVALID");
+    return {
+      moneyScale: 24,
+      traceSchema: "RESEARCH_EXECUTION_TRACE_V2",
+      valuationSchema: "RESEARCH_VALUATION_SERIES_V2",
+      benchmarkSchema: "RESEARCH_BENCHMARK_SERIES_V2",
+    };
+  }
+  throw new Error("RESULT_ENGINE_INVALID");
 }
 
 export function canonicalResultBytesV1(input: ResultHashPayloadV1): Buffer {
@@ -149,8 +170,9 @@ function assertDate(value: string): void {
   if (typeof value !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/u.test(value)) throw new Error("RESULT_DATE_INVALID");
 }
 
-function assertMoney(value: string): void {
-  if (typeof value !== "string" || !/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,16})?$/u.test(value) || /^-0(?:\.0+)?$/u.test(value)) {
+function assertMoney(value: string, maxScale: number): void {
+  const pattern = new RegExp(`^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,${maxScale}})?$`, "u");
+  if (typeof value !== "string" || !pattern.test(value) || /^-0(?:\.0+)?$/u.test(value)) {
     throw new Error("RESULT_MONEY_INVALID");
   }
 }

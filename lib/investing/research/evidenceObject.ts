@@ -28,7 +28,7 @@ export type ResearchExecutionEvidenceContentV1 = Readonly<{
   metricRequestSet: HashRefV1;
   executionConfig: HashRefV1;
   engineId: "HISTORICAL_EXECUTION_ADAPTER";
-  engineVersion: "ENGINE_V20260918";
+  engineVersion: "ENGINE_V20260918" | "ENGINE_V20260926";
   resultArtifacts: Readonly<{
     executionTrace: ResearchArtifactDescriptorV1;
     valuationSeries: ResearchArtifactDescriptorV1;

@@ -107,6 +107,11 @@ export function renderMoneyOutputV1(value: ExactRationalV1): string {
   return renderCanonicalDecimalV1(roundHalfEvenRationalToScaleV1(value, 16));
 }
 
+export function renderMoneyOutputV2(value: ExactRationalV1): string {
+  const scale = finiteDecimalScaleV1(value, 24);
+  return renderCanonicalDecimalV1(truncateRationalToScaleV1(value, scale));
+}
+
 export function renderQuantityOutputV1(value: ExactRationalV1): string {
   return renderCanonicalDecimalV1(truncateRationalToScaleV1(value, 8));
 }
@@ -124,4 +129,22 @@ function gcd(left: bigint, right: bigint): bigint {
 
 function abs(value: bigint) {
   return value < 0n ? -value : value;
+}
+
+function finiteDecimalScaleV1(value: ExactRationalV1, maxScale: number): number {
+  const reduced = reduceRationalV1(value);
+  let denominator = reduced.denominator;
+  let twos = 0;
+  let fives = 0;
+  while (denominator % 2n === 0n) {
+    denominator /= 2n;
+    twos += 1;
+  }
+  while (denominator % 5n === 0n) {
+    denominator /= 5n;
+    fives += 1;
+  }
+  const scale = Math.max(twos, fives);
+  if (denominator !== 1n || scale > maxScale) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  return scale;
 }

@@ -33,7 +33,7 @@ type ValueCategoryV1 = "DECIMAL_PRICE" | "DECIMAL_RETURN_RATIO" | "INTEGER_VOLUM
 type FieldContractV1 = Readonly<{
   fieldId: DataFieldRefV1["fieldId"];
   valueCategory: ValueCategoryV1;
-  fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1";
+  fieldVersion: DataFieldRefV1["fieldVersion"];
 }>;
 
 const dataFieldContractsV1 = {
@@ -42,6 +42,20 @@ const dataFieldContractsV1 = {
   VOLUME: { fieldId: "VOLUME", valueCategory: "INTEGER_VOLUME", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" },
   MOMENTUM_12M: { fieldId: "MOMENTUM_12M", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" },
   OBSERVATION_DATE: { fieldId: "OBSERVATION_DATE", valueCategory: "DATE", fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" },
+} as const satisfies Record<string, FieldContractV1>;
+
+export const researchIrFieldContractsV2 = {
+  TOTAL_RETURN: { fieldId: "TOTAL_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  MOMENTUM_12M: { fieldId: "MOMENTUM_12M", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  OPEN_TO_CLOSE_RETURN: { fieldId: "OPEN_TO_CLOSE_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  INTRADAY_RANGE_RATIO: { fieldId: "INTRADAY_RANGE_RATIO", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  CLOSE_TO_SMA_20_RETURN: { fieldId: "CLOSE_TO_SMA_20_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  CLOSE_TO_SMA_50_RETURN: { fieldId: "CLOSE_TO_SMA_50_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  CLOSE_TO_SMA_200_RETURN: { fieldId: "CLOSE_TO_SMA_200_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  CLOSE_TO_ROLLING_HIGH_20_RETURN: { fieldId: "CLOSE_TO_ROLLING_HIGH_20_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  CLOSE_TO_ROLLING_LOW_20_RETURN: { fieldId: "CLOSE_TO_ROLLING_LOW_20_RETURN", valueCategory: "DECIMAL_RETURN_RATIO", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  VOLUME: { fieldId: "VOLUME", valueCategory: "INTEGER_VOLUME", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
+  OBSERVATION_DATE: { fieldId: "OBSERVATION_DATE", valueCategory: "DATE", fieldVersion: "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" },
 } as const satisfies Record<string, FieldContractV1>;
 
 export type ResearchIrV1 = Readonly<{
@@ -62,8 +76,20 @@ export type UniverseNodeV1 = Readonly<{
 
 export type DataFieldRefV1 = Readonly<{
   type: "DATA_FIELD_REF";
-  fieldId: "ADJUSTED_CLOSE" | "TOTAL_RETURN" | "VOLUME" | "MOMENTUM_12M" | "OBSERVATION_DATE";
-  fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1";
+  fieldId:
+    | "ADJUSTED_CLOSE"
+    | "TOTAL_RETURN"
+    | "VOLUME"
+    | "MOMENTUM_12M"
+    | "OBSERVATION_DATE"
+    | "OPEN_TO_CLOSE_RETURN"
+    | "INTRADAY_RANGE_RATIO"
+    | "CLOSE_TO_SMA_20_RETURN"
+    | "CLOSE_TO_SMA_50_RETURN"
+    | "CLOSE_TO_SMA_200_RETURN"
+    | "CLOSE_TO_ROLLING_HIGH_20_RETURN"
+    | "CLOSE_TO_ROLLING_LOW_20_RETURN";
+  fieldVersion: "I5A_RESEARCH_IR_FIELD_CONTRACT_V1" | "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2";
 }>;
 
 export type CanonicalLiteralV1 =
@@ -307,8 +333,9 @@ function canonicalDataFieldRefV1(input: DataFieldRefV1): CanonicalJsonValue {
 function canonicalDataFieldRefWithCategoryV1(input: DataFieldRefV1) {
   assertExactKeys(input, new Set(["type", "fieldId", "fieldVersion"]));
   if (input.type !== "DATA_FIELD_REF") throw new Error("unsupported comparable operand");
-  if (!Object.hasOwn(dataFieldContractsV1, input.fieldId)) throw new Error("unknown DataFieldRefV1 fieldId");
-  const contract = dataFieldContractsV1[input.fieldId];
+  const registry = input.fieldVersion === "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2" ? researchIrFieldContractsV2 : dataFieldContractsV1;
+  if (!Object.hasOwn(registry, input.fieldId)) throw new Error("unknown DataFieldRefV1 fieldId");
+  const contract = registry[input.fieldId as keyof typeof registry];
   if (input.fieldVersion !== contract.fieldVersion) throw new Error("DataFieldRefV1 fieldVersion mismatch");
   return {
     payload: { type: "DATA_FIELD_REF", fieldId: contract.fieldId, fieldVersion: contract.fieldVersion },

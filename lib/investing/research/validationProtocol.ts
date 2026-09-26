@@ -11,7 +11,7 @@ import {
   type CanonicalSha256HexV1,
   type HashRefV1,
 } from "./canonical";
-import { isXnysSessionV1, nextXnysSessionV1, xnysSessionsInRangeV1 } from "./calendars";
+import { isXnysSessionV1, isXnysSessionV2, nextXnysSessionV1, nextXnysSessionV2, xnysSessionsInRangeV1, xnysSessionsInRangeV2 } from "./calendars";
 import {
   canonicalDatasetSeriesHashPayloadV1,
   canonicalDatasetSnapshotHashPayloadV1,
@@ -25,6 +25,7 @@ import {
 import {
   canonicalDatasetSeriesMaterialBytesV1,
   verifyDatasetSeriesMaterialV1,
+  verifyDatasetSeriesMaterialV2,
   type DatasetSeriesObservationV1,
 } from "./datasetMaterial";
 import { canonicalResearchIrPayloadV1, type ResearchIrV1 } from "./researchIr";
@@ -55,7 +56,7 @@ export type ValidationFoldV1 = Readonly<{
 export type ValidationProtocolHashPayloadV1 = Readonly<{
   schemaVersion: "VALIDATION_PROTOCOL_HASH_PAYLOAD_V1";
   methodology: "VALIDATION_METHODOLOGY_V1";
-  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1";
+  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1" | "EXACT_XNYS_SESSION_BOUNDARIES_V2";
   missingDataSemantics: "INHERIT_EXECUTION_CONFIG_EXACT_V1";
   sourceMaterialPolicy: "PREFIX_TO_PHASE_END_NO_FUTURE_DATA_V1";
   subjectExperiment: HashRefV1;
@@ -137,13 +138,23 @@ type CanonicalExecutionConfigPayloadV1 = ExecutionConfigHashPayloadV1;
 
 const acceptedEngineIdV1 = "HISTORICAL_EXECUTION_ADAPTER";
 const acceptedEngineVersionV1 = "ENGINE_V20260918";
+const acceptedEngineVersionV2 = "ENGINE_V20260926";
 const acceptedMetricRegistryVersionV1 = "METRIC_REGISTRY_V20260918";
+
+type ValidationCalendarProfileV1 = Readonly<{
+  engineVersion: "ENGINE_V20260918" | "ENGINE_V20260926";
+  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1" | "EXACT_XNYS_SESSION_BOUNDARIES_V2";
+  isSession: (date: string) => boolean;
+  nextSession: (date: string) => string | null;
+  sessionsInRange: (start: string, end: string) => readonly string[];
+  verifyMaterial: (series: DatasetSeriesHashPayloadV1, bytes: Buffer) => { observations: readonly DatasetSeriesObservationV1[] };
+}>;
 
 export function canonicalValidationProtocolHashPayloadV1(input: ValidationProtocolHashPayloadV1): CanonicalJsonValue {
   assertClosedPlainObject(input, payloadKeys);
   if (input.schemaVersion !== "VALIDATION_PROTOCOL_HASH_PAYLOAD_V1") throw new Error("invalid ValidationProtocol schemaVersion");
   if (input.methodology !== "VALIDATION_METHODOLOGY_V1") throw new Error("unsupported Validation methodology");
-  if (input.boundaryPolicy !== "EXACT_XNYS_SESSION_BOUNDARIES_V1") throw new Error("unsupported Validation boundary policy");
+  const profile = validationCalendarProfileForBoundary(input.boundaryPolicy);
   if (input.missingDataSemantics !== "INHERIT_EXECUTION_CONFIG_EXACT_V1") throw new Error("unsupported Validation missing-data semantics");
   if (input.sourceMaterialPolicy !== "PREFIX_TO_PHASE_END_NO_FUTURE_DATA_V1") throw new Error("unsupported Validation source material policy");
   if (!validationModes.has(input.validationMode)) throw new Error("unsupported Validation mode");
@@ -159,7 +170,7 @@ export function canonicalValidationProtocolHashPayloadV1(input: ValidationProtoc
   const executionConfig = hashRefV1(input.executionConfig);
   assertHashRefDomainV1(executionConfig, "SYNTRAKE:EXECUTION_CONFIG:V1");
 
-  const folds = canonicalFoldsV1(input.validationMode, input.folds);
+  const folds = canonicalFoldsV1(input.validationMode, input.folds, profile);
   return {
     schemaVersion: input.schemaVersion,
     methodology: input.methodology,
@@ -190,7 +201,7 @@ export function hashValidationProtocolV1(input: ValidationProtocolHashPayloadV1)
 export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1): AdmittedValidationProtocolV1 {
   const protocol = canonicalValidationProtocolHashPayloadV1(input.protocol) as CanonicalValidationProtocolPayloadV1;
   if (protocol.engineId !== acceptedEngineIdV1) throw new Error("VALIDATION_ENGINE_ID_UNSUPPORTED");
-  if (protocol.engineVersion !== acceptedEngineVersionV1) throw new Error("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
+  validationCalendarProfile(protocol.engineVersion, protocol.boundaryPolicy);
   if (protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1) {
     throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
   }
@@ -242,6 +253,14 @@ export function deriveValidationPhaseResearchIrV1(subjectResearchIr: ResearchIrV
   return derived;
 }
 
+export function deriveValidationPhaseResearchIrV2(subjectResearchIr: ResearchIrV1, phaseWindow: ValidationWindowV1): ResearchIrV1 {
+  const canonicalSubject = canonicalResearchIrPayloadV1(subjectResearchIr) as CanonicalResearchIrPayloadV1;
+  const window = canonicalWindowForProfile(phaseWindow, validationCalendarProfile("ENGINE_V20260926", "EXACT_XNYS_SESSION_BOUNDARIES_V2"));
+  const derived = { ...canonicalSubject, testPeriod: { startDate: window.startDate, endDate: window.endDate } } as ResearchIrV1;
+  assertOnlyResearchIrTestPeriodChangedV1(canonicalSubject, derived);
+  return derived;
+}
+
 export function assertOnlyResearchIrTestPeriodChangedV1(subjectResearchIr: ResearchIrV1, derivedResearchIr: ResearchIrV1): void {
   const subject = canonicalResearchIrPayloadV1(subjectResearchIr);
   const derived = canonicalResearchIrPayloadV1(derivedResearchIr);
@@ -277,6 +296,19 @@ export function sliceValidationDatasetSeriesPrefixV1(
   return Object.freeze({ series, bytes, observations });
 }
 
+export function sliceValidationDatasetSeriesPrefixV2(
+  sourceSeries: DatasetSeriesHashPayloadV1,
+  sourceBytes: Buffer,
+  phaseEndDate: string,
+): DatasetSeriesPrefixSliceV1 {
+  return sliceValidationDatasetSeriesPrefixForProfile(
+    sourceSeries,
+    sourceBytes,
+    phaseEndDate,
+    validationCalendarProfile("ENGINE_V20260926", "EXACT_XNYS_SESSION_BOUNDARIES_V2"),
+  );
+}
+
 export function assertExecutionConfigBoundToValidationProtocolV1(
   protocol: ValidationProtocolHashPayloadV1,
   executionConfig: ExecutionConfigHashPayloadV1,
@@ -298,33 +330,37 @@ function assertCanonicalExecutionConfigBoundToValidationProtocolV1(
   }
 }
 
-function canonicalFoldsV1(mode: ValidationModeV1, input: readonly ValidationFoldV1[]): CanonicalValidationFoldV1[] {
+function canonicalFoldsV1(mode: ValidationModeV1, input: readonly ValidationFoldV1[], profile: ValidationCalendarProfileV1): CanonicalValidationFoldV1[] {
   if (!Array.isArray(input)) throw new Error("Validation folds must be an ORDERED_SEQUENCE array");
   if (mode === "CHRONOLOGICAL_HOLDOUT" || mode === "IS_OOS_SPLIT") {
     if (input.length !== 1) throw new Error("Validation mode requires exactly one fold");
   } else if (input.length < 2) {
     throw new Error("Walk-forward validation requires at least two folds");
   }
-  const folds = input.map(canonicalFoldV1);
+  const folds = input.map((fold) => canonicalFoldV1(fold, profile));
   validateOrdinals(folds);
-  validateModeInvariants(mode, folds);
+  validateModeInvariants(mode, folds, profile);
   return folds;
 }
 
-function canonicalFoldV1(input: ValidationFoldV1): CanonicalValidationFoldV1 {
+function canonicalFoldV1(input: ValidationFoldV1, profile: ValidationCalendarProfileV1): CanonicalValidationFoldV1 {
   assertClosedPlainObject(input, foldKeys);
   const ordinal = canonicalIntegerV1(input.ordinal, { min: "0", allowNegative: false });
-  const trainingWindow = canonicalWindowV1(input.trainingWindow);
-  const evaluationWindow = canonicalWindowV1(input.evaluationWindow);
+  const trainingWindow = canonicalWindowForProfile(input.trainingWindow, profile);
+  const evaluationWindow = canonicalWindowForProfile(input.evaluationWindow, profile);
   if (trainingWindow.endDate >= evaluationWindow.startDate) throw new Error("VALIDATION_TRAIN_EVAL_OVERLAP");
   return { ordinal, trainingWindow, evaluationWindow };
 }
 
 function canonicalWindowV1(input: ValidationWindowV1): ValidationWindowV1 {
+  return canonicalWindowForProfile(input, validationCalendarProfile("ENGINE_V20260918", "EXACT_XNYS_SESSION_BOUNDARIES_V1"));
+}
+
+function canonicalWindowForProfile(input: ValidationWindowV1, profile: ValidationCalendarProfileV1): ValidationWindowV1 {
   assertClosedPlainObject(input, windowKeys);
   const startDate = canonicalDateV1(input.startDate);
   const endDate = canonicalDateV1(input.endDate);
-  if (!isXnysSessionV1(startDate) || !isXnysSessionV1(endDate)) throw new Error("VALIDATION_WINDOW_BOUNDARY_NOT_XNYS_SESSION");
+  if (!profile.isSession(startDate) || !profile.isSession(endDate)) throw new Error("VALIDATION_WINDOW_BOUNDARY_NOT_XNYS_SESSION");
   if (startDate > endDate) throw new Error("VALIDATION_WINDOW_REVERSED");
   return { startDate, endDate };
 }
@@ -338,46 +374,46 @@ function validateOrdinals(folds: readonly CanonicalValidationFoldV1[]): void {
   });
 }
 
-function validateModeInvariants(mode: ValidationModeV1, folds: readonly CanonicalValidationFoldV1[]): void {
+function validateModeInvariants(mode: ValidationModeV1, folds: readonly CanonicalValidationFoldV1[], profile: ValidationCalendarProfileV1): void {
   if (mode === "IS_OOS_SPLIT") {
-    assertContiguous(folds[0]!);
+    assertContiguous(folds[0]!, profile);
     return;
   }
   if (mode === "ROLLING_WALK_FORWARD") {
-    const trainSize = sessionCount(folds[0]!.trainingWindow);
-    const evalSize = sessionCount(folds[0]!.evaluationWindow);
+    const trainSize = sessionCount(folds[0]!.trainingWindow, profile);
+    const evalSize = sessionCount(folds[0]!.evaluationWindow, profile);
     assertNonOverlappingEvaluations(folds);
     for (const fold of folds) {
-      if (sessionCount(fold.trainingWindow) !== trainSize) throw new Error("VALIDATION_ROLLING_TRAINING_SIZE_DRIFT");
-      if (sessionCount(fold.evaluationWindow) !== evalSize) throw new Error("VALIDATION_ROLLING_EVALUATION_SIZE_DRIFT");
+      if (sessionCount(fold.trainingWindow, profile) !== trainSize) throw new Error("VALIDATION_ROLLING_TRAINING_SIZE_DRIFT");
+      if (sessionCount(fold.evaluationWindow, profile) !== evalSize) throw new Error("VALIDATION_ROLLING_EVALUATION_SIZE_DRIFT");
     }
-    validateWalkForwardSequence(folds);
+    validateWalkForwardSequence(folds, profile);
     return;
   }
   if (mode === "EXPANDING_WALK_FORWARD") {
     const trainStart = folds[0]!.trainingWindow.startDate;
-    const evalSize = sessionCount(folds[0]!.evaluationWindow);
+    const evalSize = sessionCount(folds[0]!.evaluationWindow, profile);
     assertNonOverlappingEvaluations(folds);
     for (const fold of folds) {
       if (fold.trainingWindow.startDate !== trainStart) throw new Error("VALIDATION_EXPANDING_TRAIN_START_DRIFT");
-      if (sessionCount(fold.evaluationWindow) !== evalSize) throw new Error("VALIDATION_EXPANDING_EVALUATION_SIZE_DRIFT");
+      if (sessionCount(fold.evaluationWindow, profile) !== evalSize) throw new Error("VALIDATION_EXPANDING_EVALUATION_SIZE_DRIFT");
     }
-    validateWalkForwardSequence(folds);
+    validateWalkForwardSequence(folds, profile);
   }
 }
 
-function assertContiguous(fold: ValidationFoldV1): void {
-  if (nextXnysSessionV1(fold.trainingWindow.endDate) !== fold.evaluationWindow.startDate) {
+function assertContiguous(fold: ValidationFoldV1, profile: ValidationCalendarProfileV1): void {
+  if (profile.nextSession(fold.trainingWindow.endDate) !== fold.evaluationWindow.startDate) {
     throw new Error("VALIDATION_OOS_NOT_CONTIGUOUS");
   }
 }
 
-function validateWalkForwardSequence(folds: readonly ValidationFoldV1[]): void {
+function validateWalkForwardSequence(folds: readonly ValidationFoldV1[], profile: ValidationCalendarProfileV1): void {
   for (let index = 1; index < folds.length; index += 1) {
     const previous = folds[index - 1]!;
     const current = folds[index]!;
     if (current.trainingWindow.endDate !== previous.evaluationWindow.endDate) throw new Error("VALIDATION_WALK_FORWARD_TRAIN_END_DRIFT");
-    assertContiguous(current);
+    assertContiguous(current, profile);
   }
 }
 
@@ -389,8 +425,69 @@ function assertNonOverlappingEvaluations(folds: readonly ValidationFoldV1[]): vo
   }
 }
 
-function sessionCount(window: ValidationWindowV1): number {
-  return xnysSessionsInRangeV1(window.startDate, window.endDate).length;
+function sessionCount(window: ValidationWindowV1, profile: ValidationCalendarProfileV1): number {
+  return profile.sessionsInRange(window.startDate, window.endDate).length;
+}
+
+function validationCalendarProfile(engineVersion: string, boundaryPolicy: string): ValidationCalendarProfileV1 {
+  if (engineVersion === acceptedEngineVersionV1 && boundaryPolicy === "EXACT_XNYS_SESSION_BOUNDARIES_V1") {
+    return {
+      engineVersion,
+      boundaryPolicy,
+      isSession: isXnysSessionV1,
+      nextSession: nextXnysSessionV1,
+      sessionsInRange: xnysSessionsInRangeV1,
+      verifyMaterial: verifyDatasetSeriesMaterialV1,
+    };
+  }
+  if (engineVersion === acceptedEngineVersionV2 && boundaryPolicy === "EXACT_XNYS_SESSION_BOUNDARIES_V2") {
+    return {
+      engineVersion,
+      boundaryPolicy,
+      isSession: isXnysSessionV2,
+      nextSession: nextXnysSessionV2,
+      sessionsInRange: xnysSessionsInRangeV2,
+      verifyMaterial: verifyDatasetSeriesMaterialV2,
+    };
+  }
+  if (engineVersion !== acceptedEngineVersionV1 && engineVersion !== acceptedEngineVersionV2) throw new Error("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
+  throw new Error("VALIDATION_BOUNDARY_POLICY_UNSUPPORTED");
+}
+
+function validationCalendarProfileForBoundary(boundaryPolicy: string): ValidationCalendarProfileV1 {
+  if (boundaryPolicy === "EXACT_XNYS_SESSION_BOUNDARIES_V1") {
+    return validationCalendarProfile("ENGINE_V20260918", boundaryPolicy);
+  }
+  if (boundaryPolicy === "EXACT_XNYS_SESSION_BOUNDARIES_V2") {
+    return validationCalendarProfile("ENGINE_V20260926", boundaryPolicy);
+  }
+  throw new Error("VALIDATION_BOUNDARY_POLICY_UNSUPPORTED");
+}
+
+function sliceValidationDatasetSeriesPrefixForProfile(
+  sourceSeries: DatasetSeriesHashPayloadV1,
+  sourceBytes: Buffer,
+  phaseEndDate: string,
+  profile: ValidationCalendarProfileV1,
+): DatasetSeriesPrefixSliceV1 {
+  const canonicalSource = canonicalDatasetSeriesHashPayloadV1(sourceSeries) as CanonicalDatasetSeriesPayloadV1;
+  const verified = profile.verifyMaterial(canonicalSource, sourceBytes);
+  const endDate = canonicalDateV1(phaseEndDate);
+  if (!profile.isSession(endDate)) throw new Error("VALIDATION_PHASE_END_NOT_XNYS_SESSION");
+  if (endDate > canonicalSource.coverageEnd) throw new Error("VALIDATION_PHASE_END_OUTSIDE_SOURCE_COVERAGE");
+  const observations = verified.observations.filter((observation) => observation.date <= endDate);
+  if (observations.length === 0) throw new Error("VALIDATION_PREFIX_EMPTY");
+  if (observations.some((observation) => observation.date > endDate)) throw new Error("VALIDATION_PREFIX_LOOKAHEAD");
+  if (observations.at(-1)!.date !== endDate) throw new Error("VALIDATION_PHASE_END_MATERIAL_MISSING");
+  const bytes = canonicalDatasetSeriesMaterialBytesV1(observations);
+  const series: DatasetSeriesHashPayloadV1 = {
+    ...canonicalSource,
+    coverageEnd: observations.at(-1)!.date,
+    observationCount: String(observations.length),
+    contentSha256: sha256HexV1(bytes),
+  };
+  profile.verifyMaterial(series, bytes);
+  return Object.freeze({ series, bytes, observations });
 }
 
 function ref(hashDomain: HashRefV1["hashDomain"], hashHex: CanonicalSha256HexV1): HashRefV1 {

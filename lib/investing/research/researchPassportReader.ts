@@ -893,9 +893,24 @@ function validateIntegrity(input: {
     if (!result || result.run_input_identity_id !== evidence.run_input_identity_id) {
       return "EVIDENCE_RESULT_BINDING_INVALID";
     }
+    if (!evidenceContentMatchesResultEngine(evidence, result)) return "EVIDENCE_RESULT_BINDING_INVALID";
   }
 
   return null;
+}
+
+function evidenceContentMatchesResultEngine(evidence: EvidenceRow, result: ResultRow): boolean {
+  if (evidence.content_utf8 === null) return true;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(evidence.content_utf8);
+  } catch {
+    return true;
+  }
+  if (!isRecord(parsed)) return true;
+  if (typeof parsed.engineId === "string" && parsed.engineId !== result.engine_id) return false;
+  if (typeof parsed.engineVersion === "string" && parsed.engineVersion !== result.engine_version) return false;
+  return true;
 }
 
 function hasPredecessorCycle(

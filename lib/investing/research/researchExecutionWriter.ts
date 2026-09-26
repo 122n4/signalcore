@@ -30,9 +30,11 @@ import { canonicalResearchIrPayloadV1, hashResearchIrV1, type ResearchIrV1 } fro
 import {
   type ResearchDatasetMaterialProviderV1,
   verifyDatasetSeriesMaterialV1,
+  verifyDatasetSeriesMaterialV2,
   type VerifiedDatasetSeriesMaterialV1,
 } from "./datasetMaterial";
-import { admitHistoricalBacktestV1, executeHistoricalBacktestV1, type ResearchExecutionFailureCodeV1 } from "./historicalExecutionEngine";
+import { admitHistoricalBacktestV1, executeHistoricalBacktestV1, type ResearchExecutionFailureCodeV1, type ResearchExecutionSuccessV1 } from "./historicalExecutionEngine";
+import { executeHistoricalBacktestV2, validateHistoricalKernelProfileV2, type ResearchExecutionFailureCodeV2, type ResearchExecutionSuccessV2 } from "./historicalExecutionEngineV2";
 import {
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -50,7 +52,7 @@ export type ExecuteResearchRunInputV1 = Readonly<{
 
 export type ExecuteResearchRunResultV1 =
   | Readonly<{ ok: true; researchExecutionRunId: string; resultHashHex: string; resultIdentityId: string }>
-  | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 | "FORBIDDEN_OR_NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "UNAVAILABLE" | "OPERATIONAL_EXECUTION_FAILURE" }>;
+  | Readonly<{ ok: false; code: ResearchExecutionFailureCodeV1 | ResearchExecutionFailureCodeV2 | "FORBIDDEN_OR_NOT_FOUND" | "CONFLICT" | "INTERNAL_ERROR" | "UNAVAILABLE" | "OPERATIONAL_EXECUTION_FAILURE" }>;
 
 type PreparedExecution = Readonly<{
   runInputIdentityId: string;
@@ -80,28 +82,13 @@ export async function executeResearchRunV1(
 
     const materials = await loadAndVerifyMaterials(prepared.value, input.datasetMaterialProvider);
     if (materials.ok === false) return { ok: false, code: materials.code };
-    const admission = admitHistoricalBacktestV1({
-      runInput: prepared.value.runInput,
-      runInputHash: prepared.value.runInputHash,
-      researchIr: prepared.value.researchIr,
-      datasetSeries: prepared.value.datasetSeries,
-      executionConfig: prepared.value.executionConfig,
-      metricRequestSet: prepared.value.metricRequestSet,
-    });
+    const admission = admitPreparedBacktest(prepared.value);
     if (admission.ok === false) return admission;
 
     const registered = await registerStartedRun(input.authorizedContext, prepared.value, database);
     runId = registered.researchExecutionRunId;
 
-    const engine = executeHistoricalBacktestV1({
-      runInput: prepared.value.runInput,
-      runInputHash: prepared.value.runInputHash,
-      researchIr: prepared.value.researchIr,
-      datasetSeries: prepared.value.datasetSeries,
-      executionConfig: prepared.value.executionConfig,
-      metricRequestSet: prepared.value.metricRequestSet,
-      materials: materials.value,
-    });
+    const engine = executePreparedBacktest(prepared.value, materials.value);
     if (engine.ok === false) {
       await finalizeFailure(input.authorizedContext, runId, engine.code, database);
       return engine;
@@ -113,6 +100,84 @@ export async function executeResearchRunV1(
     if (runId) await finalizeFailure(input.authorizedContext, runId, code === "UNAVAILABLE" ? "OPERATIONAL_EXECUTION_FAILURE" : code, database).catch(() => undefined);
     return { ok: false, code };
   }
+}
+
+function admitPreparedBacktest(prepared: PreparedExecution): { ok: true } | { ok: false; code: ResearchExecutionFailureCodeV1 | ResearchExecutionFailureCodeV2 } {
+  if (prepared.runInput.engineVersion === "ENGINE_V20260918") {
+    return admitHistoricalBacktestV1({
+      runInput: prepared.runInput,
+      runInputHash: prepared.runInputHash,
+      researchIr: prepared.researchIr,
+      datasetSeries: prepared.datasetSeries,
+      executionConfig: prepared.executionConfig,
+      metricRequestSet: prepared.metricRequestSet,
+    });
+  }
+  if (prepared.runInput.engineVersion === "ENGINE_V20260926") {
+    try {
+      validateEngineV2RunInput(prepared.runInput);
+      validateHistoricalKernelProfileV2({
+        researchIr: prepared.researchIr,
+        datasetSeries: prepared.datasetSeries,
+        executionConfig: prepared.executionConfig,
+        metricRequestSet: prepared.metricRequestSet,
+      });
+      return { ok: true };
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "NUMERIC_INVARIANT_VIOLATION";
+      return { ok: false, code: isV2FailureCode(code) ? code : "NUMERIC_INVARIANT_VIOLATION" };
+    }
+  }
+  return { ok: false, code: "UNSUPPORTED_ENGINE" };
+}
+
+function executePreparedBacktest(prepared: PreparedExecution, materials: readonly VerifiedDatasetSeriesMaterialV1[]) {
+  if (prepared.runInput.engineVersion === "ENGINE_V20260918") {
+    return executeHistoricalBacktestV1({
+      runInput: prepared.runInput,
+      runInputHash: prepared.runInputHash,
+      researchIr: prepared.researchIr,
+      datasetSeries: prepared.datasetSeries,
+      executionConfig: prepared.executionConfig,
+      metricRequestSet: prepared.metricRequestSet,
+      materials,
+    });
+  }
+  if (prepared.runInput.engineVersion === "ENGINE_V20260926") {
+    return executeHistoricalBacktestV2({
+      runInput: prepared.runInput,
+      runInputHash: prepared.runInputHash,
+      researchIr: prepared.researchIr,
+      datasetSeries: prepared.datasetSeries,
+      executionConfig: prepared.executionConfig,
+      metricRequestSet: prepared.metricRequestSet,
+      materials,
+    });
+  }
+  return { ok: false as const, code: "UNSUPPORTED_ENGINE" as const };
+}
+
+function validateEngineV2RunInput(runInput: RunInputHashPayloadV1): void {
+  if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || runInput.engineVersion !== "ENGINE_V20260926") throw new Error("UNSUPPORTED_ENGINE");
+  if (runInput.runType !== "HISTORICAL_BACKTEST" || runInput.researchEnvironment !== "HISTORICAL_BACKTEST" || runInput.researchSourceContext !== "PURE_RESEARCH" || runInput.accountResearchContext !== undefined) {
+    throw new Error("UNSUPPORTED_RUN_PROFILE");
+  }
+  if (runInput.deterministicSeed !== undefined) throw new Error("UNSUPPORTED_V2_DETERMINISTIC_SEED");
+  const policies = [...runInput.materialPolicies].sort((a, b) => a.policyId.localeCompare(b.policyId));
+  if (policies.length !== 2 || policies[0]?.policyId !== "DATASET_SNAPSHOT" || policies[0]?.policyVersion !== "DATASET_SNAPSHOT_POLICY_V1" || policies[1]?.policyId !== "EXECUTION_CONFIG" || policies[1]?.policyVersion !== "EXECUTION_CONFIG_HASH_PAYLOAD_V1") {
+    throw new Error("UNSUPPORTED_V2_MATERIAL_POLICIES");
+  }
+}
+
+function isV2FailureCode(value: string): value is ResearchExecutionFailureCodeV2 {
+  return [
+    "UNSUPPORTED_RUN_PROFILE", "UNSUPPORTED_ENGINE", "UNSUPPORTED_EXECUTION_CONFIG", "UNSUPPORTED_IR_PROFILE", "UNSUPPORTED_V2_FIELD",
+    "UNSUPPORTED_V2_FIELD_VERSION", "UNSUPPORTED_V2_DETERMINISTIC_SEED", "UNSUPPORTED_V2_MATERIAL_POLICIES", "UNSUPPORTED_V2_METRIC_REQUEST_SET",
+    "CALENDAR_OUT_OF_RANGE", "NO_ELIGIBLE_SESSIONS", "DATASET_MATERIAL_NOT_FOUND", "DATASET_MATERIAL_HASH_MISMATCH", "DATASET_MATERIAL_SCHEMA_INVALID",
+    "DATASET_MATERIAL_COUNT_MISMATCH", "DATASET_MATERIAL_COVERAGE_MISMATCH", "OHLC_INVARIANT_VIOLATION", "VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE",
+    "MISSING_REQUIRED_EXECUTION_OPEN", "MISSING_REQUIRED_VALUATION_CLOSE", "MISSING_REQUIRED_BENCHMARK_CLOSE", "NUMERIC_INVARIANT_VIOLATION",
+    "ACCOUNTING_INVARIANT_VIOLATION", "RESULT_ARTIFACT_LIMIT_EXCEEDED",
+  ].includes(value);
 }
 
 async function prepareExecution(input: ExecuteResearchRunInputV1, database: InvestingAuthorityDatabase) {
@@ -185,7 +250,7 @@ async function loadOrMaterializeResearchIr(client: InvestingAuthorityTransaction
 
 async function loadAndVerifyMaterials(prepared: PreparedExecution, provider: ResearchDatasetMaterialProviderV1): Promise<
   | { ok: true; value: VerifiedDatasetSeriesMaterialV1[] }
-  | { ok: false; code: ResearchExecutionFailureCodeV1 }
+  | { ok: false; code: ResearchExecutionFailureCodeV1 | ResearchExecutionFailureCodeV2 }
 > {
   const verified: VerifiedDatasetSeriesMaterialV1[] = [];
   const snapshotRefs = new Set(prepared.datasetSnapshot.series.map((ref) => ref.hashHex));
@@ -195,9 +260,9 @@ async function loadAndVerifyMaterials(prepared: PreparedExecution, provider: Res
     const bytes = await provider.loadSeriesContent(hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:DATASET_SERIES:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex }));
     if (!bytes) return { ok: false as const, code: "DATASET_MATERIAL_NOT_FOUND" as const };
     try {
-      verified.push(verifyDatasetSeriesMaterialV1(series, bytes));
+      verified.push(prepared.runInput.engineVersion === "ENGINE_V20260926" ? verifyDatasetSeriesMaterialV2(series, bytes) : verifyDatasetSeriesMaterialV1(series, bytes));
     } catch (error) {
-      const code: ResearchExecutionFailureCodeV1 = error instanceof Error && isDatasetMaterialCode(error.message) ? error.message : "DATASET_MATERIAL_SCHEMA_INVALID";
+      const code = error instanceof Error && (isDatasetMaterialCode(error.message) || isV2FailureCode(error.message)) ? error.message : "DATASET_MATERIAL_SCHEMA_INVALID";
       return { ok: false as const, code };
     }
   }
@@ -226,7 +291,7 @@ async function finalizeSuccess(
   context: AuthorizedResearchExecutionContext,
   runId: string,
   prepared: PreparedExecution,
-  execution: Extract<ReturnType<typeof executeHistoricalBacktestV1>, { ok: true }>,
+  execution: ResearchExecutionSuccessV1 | ResearchExecutionSuccessV2,
   database: InvestingAuthorityDatabase,
 ): Promise<ExecuteResearchRunResultV1> {
   return withTransaction(database, async (client) => {
@@ -262,7 +327,7 @@ async function finalizeSuccess(
   });
 }
 
-async function finalizeFailure(context: AuthorizedResearchExecutionContext, runId: string, code: ResearchExecutionFailureCodeV1 | "CONFLICT" | "OPERATIONAL_EXECUTION_FAILURE", database: InvestingAuthorityDatabase) {
+async function finalizeFailure(context: AuthorizedResearchExecutionContext, runId: string, code: ResearchExecutionFailureCodeV1 | ResearchExecutionFailureCodeV2 | "CONFLICT" | "OPERATIONAL_EXECUTION_FAILURE", database: InvestingAuthorityDatabase) {
   await withTransaction(database, async (client) => {
     await setExecutionContext(client, context);
     await insertRunEvent(client, context, runId, 3, "FAILED", null, code);

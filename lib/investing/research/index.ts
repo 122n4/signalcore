@@ -125,6 +125,7 @@ export {
   roundHalfEvenRationalToScaleV1,
   renderCanonicalDecimalV1,
   renderMoneyOutputV1,
+  renderMoneyOutputV2,
   renderQuantityOutputV1,
   renderRatioOutputV1,
   type ExactDecimalV1,
@@ -147,11 +148,23 @@ export {
   verifyXnysTradingCalendarArtifactV1,
   xnysTradingCalendarArtifactSha256V1,
   xnysTradingCalendarV1,
+  isXnysSessionV2,
+  nextXnysSessionV2,
+  previousXnysSessionV2,
+  latestXnysSessionOnOrBeforeV2,
+  rebalanceSessionsV2,
+  verifyXnysTradingCalendarArtifactV2,
+  xnysTradingCalendarArtifactSha256V2,
+  xnysTradingCalendarV2,
 } from "./calendars";
 
 export {
   canonicalDatasetSeriesMaterialBytesV1,
   verifyDatasetSeriesMaterialV1,
+  verifyDatasetSeriesMaterialV2,
+  assertOhlcInvariantsV2,
+  engineV2ProviderProfiles,
+  providerProfileForEngineV2,
   InMemoryResearchDatasetMaterialProviderV1,
   type DatasetSeriesObservationV1,
   type ResearchDatasetMaterialProviderV1,
@@ -165,8 +178,10 @@ export {
   canonicalValidationProtocolBytesV1,
   canonicalValidationProtocolHashPayloadV1,
   deriveValidationPhaseResearchIrV1,
+  deriveValidationPhaseResearchIrV2,
   hashValidationProtocolV1,
   sliceValidationDatasetSeriesPrefixV1,
+  sliceValidationDatasetSeriesPrefixV2,
   type AdmittedValidationProtocolV1,
   type DatasetSeriesPrefixSliceV1,
   type ValidationProtocolCandidateV1,
@@ -177,6 +192,7 @@ export {
 } from "./validationProtocol";
 
 export {
+  artifactDescriptorV1,
   canonicalResultBytesV1,
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -204,6 +220,16 @@ export {
   type ResearchExecutionResultV1,
   type ResearchExecutionSuccessV1,
 } from "./historicalExecutionEngine";
+
+export {
+  executeHistoricalBacktestV2,
+  executeHistoricalKernelV2,
+  validateHistoricalKernelProfileV2,
+  type HistoricalKernelInputV2,
+  type ResearchExecutionFailureCodeV2,
+  type ResearchExecutionResultV2,
+  type ResearchExecutionSuccessV2,
+} from "./historicalExecutionEngineV2";
 
 export {
   admitValidationRunInputV1,
