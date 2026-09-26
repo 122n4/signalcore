@@ -1,18 +1,26 @@
-CANDIDATE / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE / UNNUMBERED
-
 # I5 RL-4 Research Engine V2 Design Freeze V1
 
-Status: `CANDIDATE / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE / UNNUMBERED`
+Status: CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED
+
+Classification: CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE / UNNUMBERED
+
+Permanent A-number: NOT ASSIGNED
 
 Canonical predecessor:
 `ff464e51444e438c2ae90c4bd17cfa08b7fdb3ab`
 
 Production mutation:
-`NONE / FORBIDDEN BY THIS SLICE`
+`NONE`
 
-This document freezes the RL-4 Research Engine V2 design. It does not implement
-runtime behavior, does not add persistence, does not create a migration, does
-not apply anything to Supabase, and does not declare RL-4 accepted.
+This document freezes and accepts the RL-4 Research Engine V2 design contract.
+This acceptance is design-only:
+
+```text
+runtime implementation = NOT ACCEPTED BY RL-4
+persistence implementation = NOT ACCEPTED BY RL-4
+migration = NONE
+Production mutation = NONE
+```
 
 ## Constitutional Boundaries
 
@@ -1333,5 +1341,69 @@ same V2 scientific inputs produce same RunInput hash
 unused identity-only variation cannot create alternate admitted V2 RunInput
 ```
 
-This document freezes design only. It is not runtime implementation, not
-database application, not Production application, and not RL-4 acceptance.
+## Accepted Provenance
+
+canonical predecessor:
+`ff464e51444e438c2ae90c4bd17cfa08b7fdb3ab`
+
+final independently audited technical candidate:
+`bc35a4d0c041ff87ad8a6a2cdc27dcfc79b7bc0e`
+
+PR:
+`#96`
+
+accepted merge/main anchor:
+`e5b447942bf4811140cb427fa1e660541d7b636f`
+
+CI:
+`36264589426 - SUCCESS`
+
+verify job:
+`108466719880 - SUCCESS`
+
+dependency-audit job:
+`108466719995 - SUCCESS`
+
+full suite:
+`227 passed / 18 skipped files`
+
+tests:
+`1292 passed / 48 skipped`
+
+lint:
+`0 errors / 3 existing warnings`
+
+TypeScript:
+`PASS`
+
+build:
+`PASS`
+
+dependency audit:
+`PASS`
+
+Vercel candidate:
+`SUCCESS`
+
+Vercel merged main:
+`SUCCESS`
+
+PG17:
+`NOT REQUIRED / DESIGN-ONLY`
+
+Production Supabase mutation:
+`NONE`
+
+Production migration:
+`NONE`
+
+Permanent A-number:
+`NOT ASSIGNED`
+
+Independent auditor verdict:
+`PASS`
+
+```text
+I5 RL-4 RESEARCH ENGINE V2 DESIGN FREEZE =
+CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED
+```

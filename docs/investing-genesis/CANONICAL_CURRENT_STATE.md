@@ -101,6 +101,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-3A Validation Protocol Foundation (unnumbered) | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` |
 | I5 RL-3B Validation Child Execution (unnumbered) | `I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md` |
 | I5 RL-3C Validation Aggregate Closure (unnumbered) | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-4 Research Engine V2 Design Freeze (unnumbered) | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -411,7 +412,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-5_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -735,6 +736,70 @@ I5 RL-3C Validation Aggregate Closure acceptance evidence:
 
 `I5 RL-3 VALIDATION PROTOCOL V1 = CURRENT_ACCEPTED / UNNUMBERED`.
 
+## I5 RL-4 Research Engine V2 Design Freeze (unnumbered)
+
+RL-4 runtime/progression state:
+
+- design: `YES`.
+- implementation: `NO`.
+- state: `CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE`.
+- permanent A-number: `NONE`.
+
+I5 RL-4 Research Engine V2 Design Freeze acceptance evidence:
+
+- canonical predecessor:
+  `ff464e51444e438c2ae90c4bd17cfa08b7fdb3ab`.
+- technical candidate:
+  `bc35a4d0c041ff87ad8a6a2cdc27dcfc79b7bc0e`.
+- PR:
+  `#96`.
+- accepted main:
+  `e5b447942bf4811140cb427fa1e660541d7b636f`.
+- CI:
+  `36264589426 - SUCCESS`.
+- verify job:
+  `108466719880 - SUCCESS`.
+- dependency-audit job:
+  `108466719995 - SUCCESS`.
+- full suite:
+  `227 passed / 18 skipped files`.
+- tests:
+  `1292 passed / 48 skipped`.
+- lint:
+  `0 errors / 3 existing warnings`.
+- TypeScript:
+  `PASS`.
+- build:
+  `PASS`.
+- dependency audit:
+  `PASS`.
+- Vercel candidate:
+  `SUCCESS`.
+- Vercel merged main:
+  `SUCCESS`.
+- PG17:
+  `NOT REQUIRED / DESIGN-ONLY`.
+- Production mutation:
+  `NONE`.
+- Production migration:
+  `NONE`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+- Independent auditor verdict:
+  `PASS`.
+
+Historical `ENGINE_V20260918` remains immutable.
+
+`ENGINE_V20260926` is DESIGN-FROZEN only.
+
+RL-5 implementation has not yet been accepted.
+
+No RL-4 migration exists.
+
+No RL-4 Production mutation occurred.
+
+`I5 RL-4 RESEARCH ENGINE V2 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
+
 ## Production Supabase Migration State
 
 Production Supabase migration state:
@@ -745,7 +810,7 @@ Production Supabase migration state:
 - Migration ledger:
   `97 versions`.
 - Canonical Git main:
-  `be8c65d2edffc0ab6136da8c415cfa12cb1c177e`.
+  `e5b447942bf4811140cb427fa1e660541d7b636f`.
 - A4 -> RL-3B production application:
   `PASSED`.
 - RL-3C production application:
@@ -813,8 +878,9 @@ Current production closure is:
 - `RL-3C Git/Production alignment = PASS`.
 - `RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
 
-This production state does not accept RL-4+, promotion/robustness, Blind Truth,
-Paper, Live, Core or any permanent A-number.
+This production state records RL-4 design accepted in Git, but RL-4 runtime and
+persistence are not applied to Production. It does not accept RL-5+,
+promotion/robustness, Blind Truth, Paper, Live, Core or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -842,6 +908,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-3A Validation Protocol Foundation / unnumbered | YES | YES | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` + Validation Protocol runtime/tests + architecture boundaries + CI; no persistence, migration, RLS or SQL | CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED | CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION | NONE |
 | RL-3B Validation Child Execution / unnumbered | YES | YES | owner contract + runtime + writer/service + migration + authority/runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION | NONE |
 | RL-3C Validation Aggregate Closure / unnumbered | YES | YES | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` + Validation Result runtime/finalizer + Passport/Evidence Ledger projection + migration + PG17 physical/finalizer/cumulative rehearsals + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE | NONE |
+| RL-4 Research Engine V2 Design Freeze / unnumbered | NO | YES | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` + static contract tests + independent design audit + CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED | CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE | NONE |
 
 RL-1 runtime/progression state:
 
@@ -878,6 +945,13 @@ RL-3C runtime/progression state:
 - implementation: `YES`.
 - state: `CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE`.
 - Production: `APPLIED`.
+- permanent A-number: `NONE`.
+
+RL-4 runtime/progression state:
+
+- design: `YES`.
+- implementation: `NO`.
+- state: `CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE`.
 - permanent A-number: `NONE`.
 
 RL-3 Validation Protocol V1 progression state:

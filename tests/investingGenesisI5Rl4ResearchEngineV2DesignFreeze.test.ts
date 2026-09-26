@@ -33,20 +33,30 @@ function expectAllNormalized(source: string, values: readonly string[]): void {
 }
 
 describe("I5 RL-4 Research Engine V2 design freeze", () => {
-  it("is a candidate-only design freeze with no production or acceptance claim", () => {
-    expect(rl4.startsWith("CANDIDATE / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE / UNNUMBERED")).toBe(true);
+  it("is the accepted RL-4 design freeze without accepting runtime or production changes", () => {
+    expect(rl4.startsWith("# I5 RL-4 Research Engine V2 Design Freeze V1")).toBe(true);
     expectAll(rl4, [
+      "Status: CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED",
+      "Classification: CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE / UNNUMBERED",
+      "Permanent A-number: NOT ASSIGNED",
       "Canonical predecessor:\n`ff464e51444e438c2ae90c4bd17cfa08b7fdb3ab`",
-      "Production mutation:\n`NONE / FORBIDDEN BY THIS SLICE`",
+      "Production mutation:\n`NONE`",
+      "bc35a4d0c041ff87ad8a6a2cdc27dcfc79b7bc0e",
+      "#96",
+      "e5b447942bf4811140cb427fa1e660541d7b636f",
+      "36264589426 - SUCCESS",
+      "108466719880 - SUCCESS",
+      "108466719995 - SUCCESS",
+      "Independent auditor verdict:\n`PASS`",
+      "I5 RL-4 RESEARCH ENGINE V2 DESIGN FREEZE =\nCURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED",
     ]);
     expectAllNormalized(rl4, [
-      "does not implement runtime behavior",
-      "does not add persistence",
-      "does not create a migration",
-      "does not apply anything to Supabase",
-      "does not declare RL-4 accepted",
+      "This document freezes and accepts the RL-4 Research Engine V2 design contract.",
+      "runtime implementation = NOT ACCEPTED BY RL-4",
+      "persistence implementation = NOT ACCEPTED BY RL-4",
+      "migration = NONE",
+      "Production mutation = NONE",
     ]);
-    expect(rl4).not.toContain("CURRENT_ACCEPTED / RL-4");
     expect(rl4).not.toContain("RL-4 = CURRENT_ACCEPTED");
   });
 
