@@ -1,6 +1,7 @@
 import { canonicalDatasetSeriesHashPayloadV1, type DatasetSeriesHashPayloadV1 } from "./executionMaterials";
 import { i5ResearchInternalCanonicalJsonBytesV1, sha256HexV1, type HashRefV1 } from "./canonical";
-import { isXnysSessionV1 } from "./calendars";
+import { isXnysSessionV1, isXnysSessionV2 } from "./calendars";
+import { compareRationalV1, decimalStringToRationalV1 } from "./exactRational";
 
 export type DatasetSeriesObservationV1 = Readonly<{ date: string; value: string }>;
 
@@ -57,6 +58,104 @@ export function verifyDatasetSeriesMaterialV1(series: DatasetSeriesHashPayloadV1
   return Object.freeze({ series, observations, byDate });
 }
 
+export type EngineV2ProviderProfile = Readonly<{
+  providerDatasetId: string;
+  providerDatasetVersion: string;
+  fixture: true;
+  ohlcAdjustmentMethodology: "SYNTHETIC_ADJUSTED_OHLC_TEST_FIXTURE";
+  ohlcAdjustmentMethodologyVersion: "V20260926";
+  commonOhlcAdjustmentBasis: true;
+  volumeSemantic: "POINT_IN_TIME_REPORTED_SESSION_VOLUME";
+  volumeState: "RAW_REPORTED";
+  volumePointInTimeSafe: true;
+}>;
+
+export const engineV2ProviderProfiles: readonly EngineV2ProviderProfile[] = Object.freeze([
+  Object.freeze({
+    providerDatasetId: "SYNTRAKE_RL5_TEST_OHLCV",
+    providerDatasetVersion: "V20260926",
+    fixture: true,
+    ohlcAdjustmentMethodology: "SYNTHETIC_ADJUSTED_OHLC_TEST_FIXTURE",
+    ohlcAdjustmentMethodologyVersion: "V20260926",
+    commonOhlcAdjustmentBasis: true,
+    volumeSemantic: "POINT_IN_TIME_REPORTED_SESSION_VOLUME",
+    volumeState: "RAW_REPORTED",
+    volumePointInTimeSafe: true,
+  }),
+]);
+
+export function providerProfileForEngineV2(series: DatasetSeriesHashPayloadV1): EngineV2ProviderProfile {
+  const profile = engineV2ProviderProfiles.find((entry) =>
+    entry.providerDatasetId === series.providerDatasetId && entry.providerDatasetVersion === series.providerDatasetVersion);
+  if (!profile) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  return profile;
+}
+
+export function verifyDatasetSeriesMaterialV2(series: DatasetSeriesHashPayloadV1, bytes: Buffer): VerifiedDatasetSeriesMaterialV1 {
+  const verified = verifyDatasetSeriesMaterialWithValidator(series, bytes, validateFieldMaterialV2);
+  assertOhlcInvariantsV2([verified]);
+  return verified;
+}
+
+export function assertOhlcInvariantsV2(materials: readonly VerifiedDatasetSeriesMaterialV1[]): void {
+  const groups = new Map<string, Record<string, string>>();
+  for (const material of materials) {
+    if (!["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"].includes(material.series.fieldId)) continue;
+    for (const observation of material.observations) {
+      const key = `${material.series.instrumentId}\n${observation.date}`;
+      const group = groups.get(key) ?? {};
+      group[material.series.fieldId] = observation.value;
+      groups.set(key, group);
+    }
+  }
+  for (const group of groups.values()) {
+    if (!group.ADJUSTED_OPEN || !group.ADJUSTED_HIGH || !group.ADJUSTED_LOW || !group.ADJUSTED_CLOSE) continue;
+    const open = decimalStringToRationalV1(group.ADJUSTED_OPEN);
+    const high = decimalStringToRationalV1(group.ADJUSTED_HIGH);
+    const low = decimalStringToRationalV1(group.ADJUSTED_LOW);
+    const close = decimalStringToRationalV1(group.ADJUSTED_CLOSE);
+    if (
+      compareRationalV1(high, open) < 0 ||
+      compareRationalV1(high, close) < 0 ||
+      compareRationalV1(low, open) > 0 ||
+      compareRationalV1(low, close) > 0 ||
+      compareRationalV1(high, low) < 0
+    ) throw new Error("OHLC_INVARIANT_VIOLATION");
+  }
+}
+
+function verifyDatasetSeriesMaterialWithValidator(
+  series: DatasetSeriesHashPayloadV1,
+  bytes: Buffer,
+  validator: (series: DatasetSeriesHashPayloadV1, observation: DatasetSeriesObservationV1) => void,
+): VerifiedDatasetSeriesMaterialV1 {
+  canonicalDatasetSeriesHashPayloadV1(series);
+  if (bytes.length === 0 || bytes[bytes.length - 1] !== 0x0a) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  if (bytes.includes(0x0d) || (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf)) {
+    throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  }
+  const actualSha = sha256HexV1(bytes);
+  if (actualSha !== series.contentSha256) throw new Error("DATASET_MATERIAL_HASH_MISMATCH");
+  const lines = bytes.toString("utf8").split("\n");
+  lines.pop();
+  const observations = lines.map(parseObservationLine);
+  const canonical = canonicalDatasetSeriesMaterialBytesV1(observations);
+  if (!canonical.equals(bytes)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  if (String(observations.length) !== series.observationCount) throw new Error("DATASET_MATERIAL_COUNT_MISMATCH");
+  if (observations[0]?.date !== series.coverageStart || observations.at(-1)?.date !== series.coverageEnd) {
+    throw new Error("DATASET_MATERIAL_COVERAGE_MISMATCH");
+  }
+  let previous = "";
+  const byDate = new Map<string, string>();
+  for (const observation of observations) {
+    if (observation.date <= previous || byDate.has(observation.date)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    validator(series, observation);
+    previous = observation.date;
+    byDate.set(observation.date, observation.value);
+  }
+  return Object.freeze({ series, observations, byDate });
+}
+
 function parseObservationLine(line: string): DatasetSeriesObservationV1 {
   let parsed: unknown;
   try {
@@ -85,6 +184,31 @@ function validateFieldMaterial(series: DatasetSeriesHashPayloadV1, observation: 
     return;
   }
   if (series.fieldId === "VOLUME") {
+    if (!/^(?:0|[1-9][0-9]*)$/u.test(observation.value)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    return;
+  }
+  throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+}
+
+function validateFieldMaterialV2(series: DatasetSeriesHashPayloadV1, observation: DatasetSeriesObservationV1): void {
+  const profile = providerProfileForEngineV2(series);
+  if (series.frequency !== "DAILY" || series.timezone !== "America/New_York" || series.calendar !== "XNYS_TRADING_CALENDAR_V2") {
+    throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  }
+  if (!isXnysSessionV2(observation.date)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  if (["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"].includes(series.fieldId)) {
+    if (series.fieldVersion !== "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2" || series.currency !== "USD") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    if (!profile.commonOhlcAdjustmentBasis) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    if (!/^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$/u.test(observation.value) || /^0(?:\.0+)?$/u.test(observation.value)) {
+      throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    }
+    return;
+  }
+  if (series.fieldId === "VOLUME") {
+    if (series.fieldVersion !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2" || series.currency !== "NONE") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    if (!profile.volumePointInTimeSafe || profile.volumeSemantic !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME") {
+      throw new Error("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
+    }
     if (!/^(?:0|[1-9][0-9]*)$/u.test(observation.value)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
     return;
   }

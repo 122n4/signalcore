@@ -423,6 +423,86 @@ describe("I5 RL-2 Research Passport projection", () => {
     expect(JSON.stringify(result.passport).toLowerCase()).not.toContain("rejection");
   });
 
+  it("reconstructs a V2 Research Passport evidence chain without a new Passport schema", async () => {
+    const { store } = wire();
+    store.runInputRows[0] = {
+      ...store.runInputRows[0]!,
+      engine_version: "ENGINE_V20260926",
+      canonical_payload: { schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1", engineVersion: "ENGINE_V20260926" },
+    };
+    store.runRows = store.runRows.map((row) => ({ ...row, engine_version: "ENGINE_V20260926" }));
+    store.resultRows[0] = {
+      ...store.resultRows[0]!,
+      engine_version: "ENGINE_V20260926",
+      canonical_payload: {
+        schemaVersion: "RESULT_HASH_PAYLOAD_V1",
+        engineId: "HISTORICAL_EXECUTION_ADAPTER",
+        engineVersion: "ENGINE_V20260926",
+        executionTrace: { artifactSchemaVersion: "RESEARCH_EXECUTION_TRACE_V2" },
+        valuationSeries: { artifactSchemaVersion: "RESEARCH_VALUATION_SERIES_V2" },
+        metricResultSet: { artifactSchemaVersion: "METRIC_RESULT_SET_V1" },
+        benchmark: { artifactSchemaVersion: "RESEARCH_BENCHMARK_SERIES_V2" },
+      } as unknown as (typeof store.resultRows)[number]["canonical_payload"],
+    };
+    store.resultRows[0].benchmark_artifact_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeee224";
+    store.artifactRows = [
+      { ...artifact(ids.trace, "EXECUTION_TRACE"), artifact_schema_version: "RESEARCH_EXECUTION_TRACE_V2" },
+      { ...artifact(ids.valuation, "VALUATION_SERIES"), artifact_schema_version: "RESEARCH_VALUATION_SERIES_V2" },
+      { ...artifact(ids.metrics, "METRIC_RESULT_SET"), artifact_schema_version: "METRIC_RESULT_SET_V1" },
+      { ...artifact("eeeeeeee-eeee-4eee-8eee-eeeeeeeee224", "BENCHMARK_SERIES"), artifact_schema_version: "RESEARCH_BENCHMARK_SERIES_V2" },
+    ];
+    store.evidenceRows[0] = {
+      ...store.evidenceRows[0]!,
+      descriptor_kind: "RESEARCH_EXECUTION_EVIDENCE",
+      descriptor_artifact_schema_version: "RESEARCH_EXECUTION_EVIDENCE_V1",
+      descriptor_format: "CANONICAL_JSON_UTF8_V1",
+      content_utf8: JSON.stringify({
+        schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1",
+        engineId: "HISTORICAL_EXECUTION_ADAPTER",
+        engineVersion: "ENGINE_V20260926",
+      }),
+    };
+
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl5-v2-passport",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected V2 passport read to succeed");
+    expect(result.passport.schemaVersion).toBe("RESEARCH_PASSPORT_V1");
+    expect(result.passport.runInputs[0]?.engineVersion).toBe("ENGINE_V20260926");
+    expect(result.passport.results[0]?.engineVersion).toBe("ENGINE_V20260926");
+    expect(result.passport.executionRuns[0]?.engineVersion).toBe("ENGINE_V20260926");
+    expect(result.passport.results[0]?.artifacts.map((entry) => entry.artifactSchemaVersion).sort()).toEqual([
+      "METRIC_RESULT_SET_V1",
+      "RESEARCH_BENCHMARK_SERIES_V2",
+      "RESEARCH_EXECUTION_TRACE_V2",
+      "RESEARCH_VALUATION_SERIES_V2",
+    ]);
+    expect(result.passport.evidence[0]?.acceptedContent.availability).toBe("INLINE");
+    expect(result.passport.ledger.map((event) => event.eventKind)).toContain("EVIDENCE_AVAILABLE");
+  });
+
+  it("rejects inline V2 Evidence engine mismatch", async () => {
+    const { store } = wire();
+    store.runInputRows[0] = { ...store.runInputRows[0]!, engine_version: "ENGINE_V20260926" };
+    store.runRows = store.runRows.map((row) => ({ ...row, engine_version: "ENGINE_V20260926" }));
+    store.resultRows[0] = { ...store.resultRows[0]!, engine_version: "ENGINE_V20260926" };
+    store.evidenceRows[0] = {
+      ...store.evidenceRows[0]!,
+      content_utf8: JSON.stringify({
+        schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1",
+        engineId: "HISTORICAL_EXECUTION_ADAPTER",
+        engineVersion: "ENGINE_V20260918",
+      }),
+    };
+    const result = await readResearchPassportServiceV1({
+      researchInvestigationId: ids.investigation,
+      correlationId: "corr-rl5-v2-passport-mismatch",
+    });
+    expect(result).toMatchObject({ ok: false, code: "EVIDENCE_RESULT_BINDING_INVALID" });
+  });
+
   it("fails closed when material predecessor lineage crosses roots", async () => {
     const { store } = wire();
     store.materialRows[1] = {

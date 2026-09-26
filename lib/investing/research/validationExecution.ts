@@ -22,6 +22,7 @@ import {
   type MetricRequestSetHashPayloadV1,
 } from "./executionMaterials";
 import { executeHistoricalKernelV1, type HistoricalKernelInputV1 } from "./historicalExecutionEngine";
+import { executeHistoricalKernelV2, type HistoricalKernelInputV2 } from "./historicalExecutionEngineV2";
 import { canonicalResearchIrPayloadV1, hashResearchIrV1, type ResearchIrV1 } from "./researchIr";
 import {
   canonicalExecutionResultFieldsV1,
@@ -32,12 +33,14 @@ import {
   admitValidationProtocolV1,
   assertOnlyResearchIrTestPeriodChangedV1,
   deriveValidationPhaseResearchIrV1,
+  deriveValidationPhaseResearchIrV2,
   sliceValidationDatasetSeriesPrefixV1,
+  sliceValidationDatasetSeriesPrefixV2,
   type ValidationProtocolCandidateV1,
   type ValidationProtocolHashPayloadV1,
   type ValidationWindowV1,
 } from "./validationProtocol";
-import { verifyDatasetSeriesMaterialV1, type DatasetSeriesObservationV1, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
+import { verifyDatasetSeriesMaterialV1, verifyDatasetSeriesMaterialV2, type DatasetSeriesObservationV1, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
 
 export type ValidationPhaseV1 = "TRAINING" | "EVALUATION";
 
@@ -63,8 +66,8 @@ export type ValidationChildResultHashPayloadV1 = Readonly<{
   schemaVersion: "VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V1";
   validationRunInput: HashRefV1;
   engineId: "HISTORICAL_EXECUTION_ADAPTER";
-  engineVersion: "ENGINE_V20260918";
-  executionModelClass: "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1";
+  engineVersion: "ENGINE_V20260918" | "ENGINE_V20260926";
+  executionModelClass: "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1" | "NEXT_SESSION_ADJUSTED_OHLCV_RESEARCH_V2";
   valuationCurrency: "USD";
   testPeriod: ValidationWindowV1;
   startingNav: string;
@@ -252,7 +255,9 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
 
   const subjectResearchIr = canonicalResearchIrPayloadV1(input.subjectResearchIrPayload) as ResearchIrV1;
   const phaseResearchIr = canonicalResearchIrPayloadV1(input.phaseResearchIrPayload) as ResearchIrV1;
-  const expectedPhaseIr = deriveValidationPhaseResearchIrV1(subjectResearchIr, expectedWindow);
+  const expectedPhaseIr = runInput.engineVersion === "ENGINE_V20260926"
+    ? deriveValidationPhaseResearchIrV2(subjectResearchIr, expectedWindow)
+    : deriveValidationPhaseResearchIrV1(subjectResearchIr, expectedWindow);
   assertOnlyResearchIrTestPeriodChangedV1(subjectResearchIr, phaseResearchIr);
   if (!canonicalBytesEqual(expectedPhaseIr, phaseResearchIr)) throw new Error("VALIDATION_PHASE_RESEARCH_IR_MISMATCH");
   assertSameRef(runInput.phaseResearchIr, ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(phaseResearchIr)), "phase Research IR");
@@ -264,7 +269,9 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
 
   if (input.sourceDatasetSeriesPayloads.length !== input.sourceMaterials.length) throw new Error("VALIDATION_SOURCE_MATERIAL_COUNT_MISMATCH");
   const sliced = sourceDatasetSeries.map((series, index) =>
-    sliceValidationDatasetSeriesPrefixV1(series, input.sourceMaterials[index]!, expectedWindow.endDate));
+    runInput.engineVersion === "ENGINE_V20260926"
+      ? sliceValidationDatasetSeriesPrefixV2(series, input.sourceMaterials[index]!, expectedWindow.endDate)
+      : sliceValidationDatasetSeriesPrefixV1(series, input.sourceMaterials[index]!, expectedWindow.endDate));
   const slicedSeries = sliced.map((slice) => slice.series);
   const phaseDatasetSeries = input.phaseDatasetSeriesPayloads.map((series) => canonicalDatasetSeriesHashPayloadV1(series) as DatasetSeriesHashPayloadV1);
   assertSamePayloadSet(slicedSeries, phaseDatasetSeries, "VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
@@ -274,13 +281,20 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
 
   const metricRequestSet = canonicalMetricRequestSetHashPayloadV1(input.metricRequestSetPayload) as MetricRequestSetHashPayloadV1;
   const executionConfig = canonicalExecutionConfigHashPayloadV1(input.executionConfigPayload) as ExecutionConfigHashPayloadV1;
-  if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || runInput.engineVersion !== "ENGINE_V20260918") throw new Error("VALIDATION_RUN_INPUT_ENGINE_UNSUPPORTED");
+  if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || (runInput.engineVersion !== "ENGINE_V20260918" && runInput.engineVersion !== "ENGINE_V20260926")) throw new Error("VALIDATION_RUN_INPUT_ENGINE_UNSUPPORTED");
   if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
   if (metricRequestSet.metricRegistryVersion !== runInput.metricRegistryVersion) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_MISMATCH");
   if (executionConfig.engineCompatibilityVersion !== runInput.engineVersion) throw new Error("VALIDATION_RUN_INPUT_EXECUTION_CONFIG_MISMATCH");
+  if (runInput.engineVersion === "ENGINE_V20260926") {
+    assertV2MetricRequestSet(metricRequestSet);
+    assertV2PhaseDatasetSeries(phaseDatasetSeries);
+    assertV2ResearchIrFields(phaseResearchIr);
+  }
 
   const frozenRunInput = deepFreezeCanonicalJsonV1(runInput);
-  const phaseMaterials = sliced.map((slice) => freezeVerifiedDatasetSeriesMaterialV1(verifyDatasetSeriesMaterialV1(slice.series, slice.bytes)));
+  const phaseMaterials = sliced.map((slice) => freezeVerifiedDatasetSeriesMaterialV1(
+    runInput.engineVersion === "ENGINE_V20260926" ? verifyDatasetSeriesMaterialV2(slice.series, slice.bytes) : verifyDatasetSeriesMaterialV1(slice.series, slice.bytes),
+  ));
   const admitted = Object.freeze({
     validationRunInput: frozenRunInput,
     validationRunInputHash: Object.freeze(ref("SYNTRAKE:VALIDATION_RUN_INPUT:V1", hashCanonicalOwnerPayloadV1("SYNTRAKE:VALIDATION_RUN_INPUT:V1", frozenRunInput))),
@@ -321,14 +335,23 @@ export function executeValidationChildBacktestV1(input: ValidationChildExecution
     return { ok: false, code: "VALIDATION_RUN_INPUT_NOT_ADMITTED" };
   }
   const runInput = input.admittedRunInput.validationRunInput as ValidationRunInputHashPayloadV1;
-  const kernelInput: HistoricalKernelInputV1 = {
-    researchIr: input.admittedRunInput.phaseResearchIr,
-    datasetSeries: input.admittedRunInput.phaseDatasetSeries,
-    executionConfig: input.admittedRunInput.executionConfig,
-    metricRequestSet: input.admittedRunInput.metricRequestSet,
-    materials: input.admittedRunInput.phaseMaterials,
-  };
-  const kernel = executeHistoricalKernelV1(kernelInput);
+  const kernel = runInput.engineVersion === "ENGINE_V20260926"
+    ? executeHistoricalKernelV2({
+      researchIr: input.admittedRunInput.phaseResearchIr,
+      datasetSeries: input.admittedRunInput.phaseDatasetSeries,
+      executionConfig: input.admittedRunInput.executionConfig,
+      metricRequestSet: input.admittedRunInput.metricRequestSet,
+      materials: input.admittedRunInput.phaseMaterials,
+    } satisfies HistoricalKernelInputV2)
+    : runInput.engineVersion === "ENGINE_V20260918"
+      ? executeHistoricalKernelV1({
+        researchIr: input.admittedRunInput.phaseResearchIr,
+        datasetSeries: input.admittedRunInput.phaseDatasetSeries,
+        executionConfig: input.admittedRunInput.executionConfig,
+        metricRequestSet: input.admittedRunInput.metricRequestSet,
+        materials: input.admittedRunInput.phaseMaterials,
+      } satisfies HistoricalKernelInputV1)
+      : { ok: false as const, code: "VALIDATION_RUN_INPUT_ENGINE_UNSUPPORTED" };
   if (kernel.ok === false) return kernel;
   if (
     kernel.resultFields.testPeriod.startDate !== runInput.phaseWindow.startDate ||
@@ -405,6 +428,49 @@ function assertSamePayloadSet(
 
 function canonicalBytesEqual(left: CanonicalJsonValue, right: CanonicalJsonValue): boolean {
   return i5ResearchInternalCanonicalJsonBytesV1(left).equals(i5ResearchInternalCanonicalJsonBytesV1(right));
+}
+
+function assertV2MetricRequestSet(metricRequestSet: MetricRequestSetHashPayloadV1): void {
+  const requests = [...metricRequestSet.requests].sort((left, right) => left.metricId.localeCompare(right.metricId));
+  if (
+    metricRequestSet.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" ||
+    requests.length !== 2 ||
+    requests[0]?.metricId !== "MAX_DRAWDOWN" ||
+    requests[0]?.metricVersion !== "METRIC_V1" ||
+    requests[1]?.metricId !== "TOTAL_RETURN" ||
+    requests[1]?.metricVersion !== "METRIC_V1"
+  ) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+}
+
+function assertV2PhaseDatasetSeries(series: readonly DatasetSeriesHashPayloadV1[]): void {
+  for (const payload of series) {
+    if (payload.frequency !== "DAILY" || payload.timezone !== "America/New_York" || payload.calendar !== "XNYS_TRADING_CALENDAR_V2") {
+      throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
+    }
+    if (["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"].includes(payload.fieldId)) {
+      if (payload.fieldVersion !== "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2" || payload.currency !== "USD") throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
+    } else if (payload.fieldId === "VOLUME") {
+      if (payload.fieldVersion !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2" || payload.currency !== "NONE") throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
+    } else {
+      throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
+    }
+  }
+}
+
+function assertV2ResearchIrFields(ir: ResearchIrV1): void {
+  const visit = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.type === "DATA_FIELD_REF") {
+      if (record.fieldVersion !== "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2") throw new Error("UNSUPPORTED_V2_FIELD_VERSION");
+    }
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(ir.pipeline);
 }
 
 function deepFreezeCanonicalJsonV1<T extends CanonicalJsonValue>(value: T): T {
