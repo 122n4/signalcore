@@ -678,8 +678,16 @@ I5 RL-3C Validation Aggregate Closure acceptance evidence:
   `cbe9165e1d89e45d6bda9af281200c31d25f950b`.
 - PR:
   `#90`.
-- Accepted rebase merge / canonical main:
+- Accepted rebase merge for the original RL-3C implementation:
   `e1721482b0ba2b9a67b3d8751778ba2695e3e751`.
+- Post-apply advisor-remediation source candidate:
+  `80671f349d38405393476a0978ce6e7f015cfea1`.
+- Canonical integration candidate:
+  `bbe2a01a61bf23865fea3c1107dd91d0a6c06dde`.
+- Canonical integration PR:
+  `#94`.
+- Current canonical main after accepted rebase integration:
+  `be8c65d2edffc0ab6136da8c415cfa12cb1c177e`.
 - Candidate verify:
   `107782658280 - SUCCESS`.
 - Candidate dependency-audit:
@@ -702,12 +710,24 @@ I5 RL-3C Validation Aggregate Closure acceptance evidence:
   `20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`.
 - Production migration application:
   `PASSED`.
-- Post-apply independent audit:
+- Original RL-3C post-apply independent audit:
   `PASSED`.
-- Security Advisor finding in schema `investing`:
+- Post-apply advisor remediation migration:
+  `20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql`.
+- Remediation Production application:
+  `PASSED`.
+- Remediation independent rehearsal and Production post-apply audit:
+  `PASSED`.
+- Security Advisor RL-3C findings:
   `NONE`.
-- Performance Advisor debt:
-  `PRESENT / NON-BLOCKING`.
+- Remediated RL-3C `auth_rls_initplan` findings:
+  `0`.
+- Validation-specific `multiple_permissive_policies` findings:
+  `0`.
+- Remaining aggregate Performance Advisor INFO:
+  `NON-BLOCKING` — protocol-authority FK has no dedicated redundant 8-column
+  covering index; Passport and authority-tuple indexes may report unused until
+  real workload uses them.
 - Permanent A-number:
   `NOT ASSIGNED`.
 
@@ -721,9 +741,11 @@ Production Supabase migration state:
 `CURRENT THROUGH RL-3C`.
 
 - Latest:
-  `20260924175716 investing_i5_rl3c_validation_aggregate_closure`.
+  `20260925044248 investing_i5_rl3c_postapply_advisor_remediation`.
 - Migration ledger:
-  `96 versions`.
+  `97 versions`.
+- Canonical Git main:
+  `be8c65d2edffc0ab6136da8c415cfa12cb1c177e`.
 - A4 -> RL-3B production application:
   `PASSED`.
 - RL-3C production application:
@@ -754,10 +776,12 @@ Production Supabase migration state:
   `NONE`.
 - Performance Advisor debt:
   `PRESENT / NON-BLOCKING`.
-  Current Investing performance findings include unindexed foreign keys,
-  `auth_rls_initplan`, unused indexes and multiple permissive policies. They
-  are tracked as a separate future hardening/performance slice and are not to be
-  corrected ad hoc in Production.
+  The RL-3C remediation removed the targeted RL-3C initPlan warnings and
+  validation-specific multiple-permissive-policy warnings. Broader historical
+  Investing performance findings remain outside this slice. Aggregate RL-3C
+  residual INFO is limited to the intentionally non-created redundant
+  protocol-authority covering index and currently-unused Passport/authority
+  indexes. These findings must not be corrected ad hoc in Production.
 
 Applied Production migration batch through RL-3C:
 
@@ -772,6 +796,7 @@ Applied Production migration batch through RL-3C:
 20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql
 20260923090000_investing_i5_rl3b_validation_child_execution.sql
 20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql
+20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql
 ```
 
 Historical production closure remains:
@@ -784,6 +809,8 @@ Current production closure is:
 - `RL-3C = CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE / UNNUMBERED`.
 - `RL-3C Production migration = APPLIED`.
 - `RL-3C post-apply audit = PASSED`.
+- `RL-3C advisor remediation = APPLIED / AUDITED / CANONICAL`.
+- `RL-3C Git/Production alignment = PASS`.
 - `RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
 
 This production state does not accept RL-4+, promotion/robustness, Blind Truth,

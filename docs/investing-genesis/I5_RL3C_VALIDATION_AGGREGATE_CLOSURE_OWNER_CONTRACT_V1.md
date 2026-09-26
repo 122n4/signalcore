@@ -14,24 +14,32 @@ Validation Protocol V1. At that time it was design-only and did not itself
 implement runtime, activate a hash domain, create a migration, alter Supabase,
 change authority runtime/RLS or declare RL-3 accepted.
 
-That historical design state is preserved. The current accepted implementation
-is now canonical in Git at
+That historical design state is preserved. The original accepted RL-3C
+implementation entered canonical Git at
 `e1721482b0ba2b9a67b3d8751778ba2695e3e751`, from independently audited
 candidate `cbe9165e1d89e45d6bda9af281200c31d25f950b` via PR `#90`.
-The canonical implementation activates
+The implementation activates
 `SYNTRAKE:VALIDATION_RESULT:V1 = OWNER_PAYLOAD_EXACT`, implements aggregate
 finalization, Passport validation projection, Evidence Ledger validation
 events, append-only persistence/RLS and PostgreSQL 17 rehearsals.
 
-Supabase Production now contains exact canonical migration
-`20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`.
-Post-apply independent audit confirms 96 migration versions with exact latest
-`20260924175716 investing_i5_rl3c_validation_aggregate_closure`, owner
+A separately audited post-apply advisor remediation was produced from source
+candidate `80671f349d38405393476a0978ce6e7f015cfea1`, integrated byte-for-byte
+through PR `#94`, and is current in canonical Git at
+`be8c65d2edffc0ab6136da8c415cfa12cb1c177e`.
+
+Supabase Production contains both exact canonical RL-3C migrations:
+`20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql` and
+`20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql`.
+Independent post-apply audit confirms 97 migration versions with exact latest
+`20260925044248 investing_i5_rl3c_postapply_advisor_remediation`, owner
 `investing_owner`, RLS + FORCE RLS, authority-preserving foreign keys,
 append-only enforcement, `investing_app` SELECT+INSERT only, zero relation
-authority for PUBLIC/anon/authenticated/service_role, and no Security Advisor
-finding in schema `investing`. Performance Advisor debt is recorded separately
-and is non-blocking for this acceptance gate.
+authority for PUBLIC/anon/authenticated/service_role, and no RL-3C Security
+Advisor finding. The remediation removes the targeted RL-3C initPlan warnings
+and validation-specific multiple-permissive-policy warnings. Remaining
+aggregate advisor INFO is non-blocking and does not justify a redundant
+8-column protocol-authority covering index or ad hoc Production changes.
 
 Historical design-freeze language note: sections below preserve the normative
 requirements frozen before implementation. Where those sections use words such
@@ -811,20 +819,31 @@ historical truth and remains true for the design-freeze event itself.
 Current canonical state is separately:
 
 - RL-3C implementation: `CURRENT_ACCEPTED`;
-- canonical main: `e1721482b0ba2b9a67b3d8751778ba2695e3e751`;
+- original implementation canonical main:
+  `e1721482b0ba2b9a67b3d8751778ba2695e3e751`;
 - accepted implementation candidate:
   `cbe9165e1d89e45d6bda9af281200c31d25f950b`;
-- PR: `#90`;
+- original implementation PR: `#90`;
+- post-apply advisor-remediation source candidate:
+  `80671f349d38405393476a0978ce6e7f015cfea1`;
+- remediation canonical integration PR: `#94`;
+- current canonical main:
+  `be8c65d2edffc0ab6136da8c415cfa12cb1c177e`;
 - `SYNTRAKE:VALIDATION_RESULT:V1 = OWNER_PAYLOAD_EXACT`;
-- migration:
+- original RL-3C migration:
   `20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql`;
-- Supabase Production migration ledger: `96 versions`;
+- advisor-remediation migration:
+  `20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql`;
+- Supabase Production migration ledger: `97 versions`;
 - Supabase Production latest:
-  `20260924175716 investing_i5_rl3c_validation_aggregate_closure`;
+  `20260925044248 investing_i5_rl3c_postapply_advisor_remediation`;
 - RL-3C Production migration: `APPLIED`;
+- RL-3C advisor remediation: `APPLIED / AUDITED / CANONICAL`;
 - RL-3C independent post-apply audit: `PASSED`;
-- Security Advisor finding in schema `investing`: `NONE`;
-- Performance Advisor debt: `PRESENT / NON-BLOCKING`;
+- Security Advisor RL-3C findings: `NONE`;
+- remediated RL-3C `auth_rls_initplan` findings: `0`;
+- validation-specific `multiple_permissive_policies` findings: `0`;
+- remaining aggregate Performance Advisor INFO: `NON-BLOCKING`;
 - RL-3 current state:
   `CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
 
