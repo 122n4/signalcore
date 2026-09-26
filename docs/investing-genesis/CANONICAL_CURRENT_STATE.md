@@ -809,8 +809,12 @@ Production Supabase migration state:
   `20260925044248 investing_i5_rl3c_postapply_advisor_remediation`.
 - Migration ledger:
   `97 versions`.
-- Canonical Git main:
+- RL-4 design accepted merge/main anchor:
   `e5b447942bf4811140cb427fa1e660541d7b636f`.
+  This SHA is the immutable Git anchor at which PR #96 placed the independently
+  audited RL-4 design on main. It is not a claim that repository HEAD remains
+  permanently equal to this SHA. Current repository HEAD is verified from GitHub
+  when operationally required.
 - A4 -> RL-3B production application:
   `PASSED`.
 - RL-3C production application:
