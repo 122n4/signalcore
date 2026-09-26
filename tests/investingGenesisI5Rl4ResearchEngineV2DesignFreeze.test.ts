@@ -108,13 +108,30 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "SYNTRAKE:VALIDATION_PROTOCOL:V1",
       "SYNTRAKE:VALIDATION_RUN_INPUT:V1",
       "SYNTRAKE:VALIDATION_CHILD_RESULT:V1",
+      "SYNTRAKE:EVIDENCE_OBJECT:V1",
+      "RESEARCH_EXECUTION_EVIDENCE_V1",
+      "EVIDENCE_CONTENT_DESCRIPTOR_V1",
+      "RESEARCH_EXECUTION_EVIDENCE",
+      "CANONICAL_JSON_UTF8_V1",
+      "Result",
+      "-> Evidence",
+      "-> SUCCEEDED",
+      "Evidence.engineVersion",
+      "ENGINE_V20260926",
+      "RESEARCH_PASSPORT_V1",
     ]);
     expectAllNormalized(rl4, [
       "Existing domains must not be version-bumped casually:",
       "If owner-payload shape must change, STOP",
+      "A successful Research Execution cannot commit `SUCCEEDED` without Evidence.",
+      "No new Evidence hash domain is required.",
+      "Schema-version labels describe payload shape, not engine generation.",
+      "must match both RunInput and Result exactly.",
     ]);
     expect(rl4).not.toContain("SYNTRAKE:RESULT:V2");
     expect(rl4).not.toContain("SYNTRAKE:VALIDATION_RESULT:V2");
+    expect(rl4).not.toContain("SYNTRAKE:EVIDENCE_OBJECT:V2");
+    expect(rl4).not.toContain("SYNTRAKE:RESEARCH_IR:V2");
   });
 
   it("freezes the V2 data contract, field registry, transforms, and strict missing behavior", () => {
@@ -133,6 +150,12 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "corporateActionPolicy = SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2",
       "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2",
       "The initial ENGINE_V20260926 executable signal registry contains exactly:",
+      "I5A_RESEARCH_IR_FIELD_CONTRACT_V1",
+      "SYNTRAKE:RESEARCH_IR:V1",
+      "UNSUPPORTED_V2_FIELD_VERSION",
+      "POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2",
+      "VOLUME material is NOT admissible for Engine V2 signal evaluation",
+      "VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE",
       "TOTAL_RETURN(t) = ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(previous eligible XNYS session) - 1",
       "OPEN_TO_CLOSE_RETURN(t) = ADJUSTED_CLOSE(t) / ADJUSTED_OPEN(t) - 1",
       "INTRADAY_RANGE_RATIO(t) = (ADJUSTED_HIGH(t) - ADJUSTED_LOW(t)) / ADJUSTED_CLOSE(t)",
@@ -154,6 +177,16 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "No other Engine V2 signal field is admitted by RL-4.",
       "Adding another field ID or field methodology requires a separately reviewed contract/version change.",
       "Raw market data fields remain verified market-data/execution/valuation/transform inputs and are not direct unrestricted V2 Research IR signal fields:",
+      "ENGINE_V20260918 accepts only the historical V1 executable field contract:",
+      "ENGINE_V20260926 accepts only:",
+      "Engine V2 must reject a V1 fieldVersion even where the fieldId has the same textual name.",
+      "This ensures V2 methodology, V2 calendar semantics, V2 material semantics, and V2 field semantics cannot be silently mixed with V1.",
+      "A V2 Experiment must bind the exact V2 Research IR hash.",
+      "not retroactively adjusted using a corporate action whose effective date is after the observation session",
+      "Do not silently substitute adjusted volume.",
+      "Do not reverse-engineer volume from prices.",
+      "Do not use future split information.",
+      "A Research IR requiring VOLUME while no admissible V2 VOLUME series exists must fail closed.",
     ]);
     expect(rl4).not.toContain("The V2 executable signal registry contains at least:");
   });
@@ -209,6 +242,14 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "ROUND_HALF_EVEN",
       "desired_target_quantity = truncate_toward_zero(desired_target_notional / reference_open, 8 decimals)",
       "lambda = available_cash / total_desired_buy_requirement",
+      "RESEARCH_EXACT_RATIONAL_TRACE_V1",
+      "numerator",
+      "denominator",
+      "gcd(abs(numerator), denominator) = 1",
+      "denominator > 0",
+      "denominator = \"1\"",
+      "decimal approximation = forbidden",
+      "scaleFactor:",
       "NAV = cash + sum(position_quantity * valuation_close)",
       "BENCHMARK_NORMALIZED_ADJUSTED_CLOSE_V2",
       "benchmark_value(D0) = starting_capital",
@@ -218,6 +259,9 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "Missing OPEN required to calculate pre-trade NAV for any currently held position fails closed.",
       "Missing OPEN required for any instrument whose target/order must be calculated fails closed.",
       "No CLOSE substitution is allowed.",
+      "The exact rational `lambda` used to derive final quantities must be the exact same rational serialized into the trace.",
+      "Do not serialize only a rounded 18-decimal approximation.",
+      "`RESEARCH_RATIO_OUTPUT_V1` remains appropriate for metric/ratio output where its accepted rounding semantics apply, but not for exact buying-power control evidence.",
     ]);
   });
 
@@ -271,6 +315,19 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "calendar = XNYS_TRADING_CALENDAR_V2",
       "calendarSessionPolicy = XNYS_OPEN_CLOSE_SESSION_V2",
       "boundaryPolicy = EXACT_XNYS_SESSION_BOUNDARIES_V2",
+      "valuationPolicy =",
+      "USD_ADJUSTED_CLOSE_MARK_V2",
+      "engineCompatibilityVersion =",
+      "ENGINE_V20260926",
+      "schemaVersion =",
+      "EXECUTION_CONFIG_HASH_PAYLOAD_V1",
+      "CLOSED_COST_POLICY_SET_V2",
+      "CLOSED_SLIPPAGE_POLICY_SET_V2",
+      "UNSUPPORTED_EXECUTION_CONFIG",
+      "COMMISSION_FEES_ZERO_V1 -> 0 bps",
+      "COMMISSION_FEES_NOTIONAL_25_BPS_V1 -> 25 bps",
+      "SLIPPAGE_ZERO_RESEARCH_V1 -> 0 bps",
+      "SLIPPAGE_SPREAD_ADVERSE_50_BPS_V1 -> 50 bps",
       "XNYS_TRADING_CALENDAR_V2",
       "EXACT_XNYS_SESSION_BOUNDARIES_V1",
       "leave `XNYS_TRADING_CALENDAR_V1` untouched",
@@ -315,6 +372,8 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "Engine V2 validation must not derive folds/session boundaries using V1 calendar helpers or artifacts.",
       "Any overlap drift requires STOP and independent review.",
       "No validation payload shape change is required merely for this because `boundaryPolicy` is already part of the existing scientific owner payload.",
+      "No other ExecutionConfig token combination is admitted for `ENGINE_V20260926`.",
+      "portfolio valuation occurs at verified V2 ADJUSTED_CLOSE for the exact admitted XNYS_TRADING_CALENDAR_V2 session using RESEARCH_MONEY_OUTPUT_V2",
       "RL-5 must not bypass these constraints or persist V2 using false V1 engine metadata.",
       "The future additive migration must widen exact admissible engine versions to the closed set:",
       "No UPDATE of historical scientific rows is allowed.",
@@ -350,6 +409,19 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "V1/V2 coexistence",
       "PG17 when persistence changes",
       "real investing_app authority when persistence changes",
+      "V2 Evidence deterministic construction",
+      "V2 successful Run requires Evidence before SUCCEEDED",
+      "V2 Passport Run/Result/Evidence reconstruction",
+      "point-in-time VOLUME provenance rejection",
+      "exact rational buying-power lambda trace encoding",
+      "complete ExecutionConfig V2 admission matrix",
+      "V1 fieldVersion rejected by Engine V2",
+      "V2 fieldVersion rejected by Engine V1",
+      "V2 Result -> V2 Evidence = PASS",
+      "V2 Evidence deterministic hash = PASS",
+      "V2 SUCCEEDED without Evidence = IMPOSSIBLE",
+      "V1 Evidence bytes/hash unchanged = PASS",
+      "Research Passport reconstructs V2 Run/Result/Evidence = PASS",
     ]);
   });
 });

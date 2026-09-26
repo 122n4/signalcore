@@ -99,11 +99,85 @@ SYNTRAKE:RESULT:V1
 SYNTRAKE:VALIDATION_PROTOCOL:V1
 SYNTRAKE:VALIDATION_RUN_INPUT:V1
 SYNTRAKE:VALIDATION_CHILD_RESULT:V1
+SYNTRAKE:EVIDENCE_OBJECT:V1
 ```
 
 Existing payloads bind engine version and hash refs. RL-5 may widen closed
 admission vocabularies only as RL-4 authorizes. If owner-payload shape must
 change, STOP and require a separate contract/hash-domain decision.
+
+Successful Research Execution must close the existing Evidence chain. The
+accepted execution-success path is:
+
+```text
+persist/reuse Result artifacts
+-> persist/reuse Result
+-> construct/persist Evidence
+-> append SUCCEEDED
+-> COMMIT
+```
+
+A successful Research Execution cannot commit `SUCCEEDED` without Evidence. No
+bypass is permitted. V2 successful finalization remains:
+
+```text
+Result
+-> Evidence
+-> SUCCEEDED
+```
+
+No new Evidence hash domain is required. Existing Evidence content shape is
+sufficient because it already binds Result, RunInput, ResearchSpec, Research IR,
+Experiment, DatasetSnapshot, DatasetSeries, Metric Registry, MetricRequestSet,
+ExecutionConfig, engine ID/version, and Result artifact descriptors.
+
+Schema-version labels describe payload shape, not engine generation. Engine V2
+continues to use:
+
+```text
+evidence domain =
+SYNTRAKE:EVIDENCE_OBJECT:V1
+
+descriptor schema =
+EVIDENCE_CONTENT_DESCRIPTOR_V1
+
+descriptor kind =
+RESEARCH_EXECUTION_EVIDENCE
+
+evidence content schema =
+RESEARCH_EXECUTION_EVIDENCE_V1
+
+descriptor artifactSchemaVersion =
+RESEARCH_EXECUTION_EVIDENCE_V1
+
+format =
+CANONICAL_JSON_UTF8_V1
+```
+
+RL-5 must widen Evidence runtime admission to the closed engine-version set:
+
+```text
+ENGINE_V20260918
+ENGINE_V20260926
+```
+
+while preserving exact V1 Evidence bytes/hashes. For V2:
+
+```text
+Evidence.engineId
+=
+HISTORICAL_EXECUTION_ADAPTER
+
+Evidence.engineVersion
+=
+ENGINE_V20260926
+```
+
+must match both RunInput and Result exactly. The existing Evidence PostgreSQL
+table does not require a new engine-version constraint solely for this change
+because it stores exact Evidence content bytes and binds Result/RunInput via FK
+rather than an `engine_version` column. `RESEARCH_PASSPORT_V1` does not need a
+new schema solely because Engine V2 exists.
 
 ## Market Data Profile V2
 
@@ -204,6 +278,114 @@ ADJUSTED_LOW
 ADJUSTED_CLOSE
 ```
 
+Engine admission is version-strict even though the Research IR scientific domain
+remains:
+
+```text
+SYNTRAKE:RESEARCH_IR:V1
+```
+
+```text
+ENGINE_V20260918
+accepts only the historical V1 executable field contract:
+
+I5A_RESEARCH_IR_FIELD_CONTRACT_V1
+```
+
+```text
+ENGINE_V20260926
+accepts only:
+
+I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2
+```
+
+for executable signal field references. Engine V2 must reject a V1 fieldVersion
+even where the fieldId has the same textual name.
+
+Example:
+
+```text
+TOTAL_RETURN /
+I5A_RESEARCH_IR_FIELD_CONTRACT_V1
+
+is NOT executable under ENGINE_V20260926.
+```
+
+Engine V2 requires:
+
+```text
+TOTAL_RETURN /
+I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2
+```
+
+The same rule applies to:
+
+```text
+MOMENTUM_12M
+VOLUME
+OBSERVATION_DATE
+```
+
+and all other V2 signal fields. Stable rejection:
+
+```text
+UNSUPPORTED_V2_FIELD_VERSION
+```
+
+This ensures V2 methodology, V2 calendar semantics, V2 material semantics, and
+V2 field semantics cannot be silently mixed with V1. A V2 Experiment must bind
+the exact V2 Research IR hash. A V2 RunInput must bind that same Research IR
+through the existing:
+
+```text
+SYNTRAKE:RESEARCH_IR:V1
+```
+
+hash domain. No new Research IR hash domain is required merely because field
+vocabulary/version changed.
+
+`VOLUME` has exact point-in-time-safe V2 semantics:
+
+```text
+fieldId = VOLUME
+fieldVersion = I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2
+
+semantic =
+POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2
+```
+
+Admitted VOLUME must be:
+
+```text
+non-negative canonical integer
+daily session volume
+known for that session
+point-in-time safe
+not synthetically inferred
+not retroactively adjusted using a corporate action
+whose effective date is after the observation session
+```
+
+The provider/data provenance must prove whether volume is raw/reported or
+adjusted. If the provider cannot prove point-in-time-safe volume semantics:
+
+```text
+VOLUME material is NOT admissible for Engine V2 signal evaluation
+```
+
+Do not silently substitute adjusted volume. Do not reverse-engineer volume from
+prices. Do not use future split information. A Research IR requiring VOLUME
+while no admissible V2 VOLUME series exists must fail closed.
+
+Stable failure:
+
+```text
+VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE
+```
+
+This does not require every Engine V2 run to use VOLUME. It only governs runs
+whose Research IR actually references VOLUME.
+
 ## Exact Transform Semantics
 
 ```text
@@ -246,9 +428,103 @@ UNSUPPORTED_V2_FIELD
 UNSUPPORTED_V2_FIELD_VERSION
 NUMERIC_INVARIANT_VIOLATION
 ACCOUNTING_INVARIANT_VIOLATION
+UNSUPPORTED_EXECUTION_CONFIG
 ```
 
 Substituting CLOSE for a missing OPEN is forbidden.
+
+## ExecutionConfig V2 Matrix
+
+The complete Engine V2 admissible ExecutionConfig matrix is:
+
+```text
+schemaVersion =
+EXECUTION_CONFIG_HASH_PAYLOAD_V1
+
+engineCompatibilityVersion =
+ENGINE_V20260926
+
+missingDataPolicy =
+MISSING_DATA_STRICT_RESEARCH_V2
+
+fxPolicy =
+FX_USD_IDENTITY_V1
+
+costsPolicy =
+one exact token from CLOSED_COST_POLICY_SET_V2
+
+slippagePolicy =
+one exact token from CLOSED_SLIPPAGE_POLICY_SET_V2
+
+fillPolicy =
+NEXT_SESSION_OPEN_V1
+
+corporateActionPolicy =
+SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2
+
+calendarSessionPolicy =
+XNYS_OPEN_CLOSE_SESSION_V2
+
+valuationPolicy =
+USD_ADJUSTED_CLOSE_MARK_V2
+```
+
+`CLOSED_COST_POLICY_SET_V2` is exactly:
+
+```text
+COMMISSION_FEES_ZERO_V1
+COMMISSION_FEES_NOTIONAL_1_BPS_V1
+COMMISSION_FEES_NOTIONAL_5_BPS_V1
+COMMISSION_FEES_NOTIONAL_10_BPS_V1
+COMMISSION_FEES_NOTIONAL_25_BPS_V1
+```
+
+Exact mapping:
+
+```text
+COMMISSION_FEES_ZERO_V1 -> 0 bps
+COMMISSION_FEES_NOTIONAL_1_BPS_V1 -> 1 bps
+COMMISSION_FEES_NOTIONAL_5_BPS_V1 -> 5 bps
+COMMISSION_FEES_NOTIONAL_10_BPS_V1 -> 10 bps
+COMMISSION_FEES_NOTIONAL_25_BPS_V1 -> 25 bps
+```
+
+`CLOSED_SLIPPAGE_POLICY_SET_V2` is exactly:
+
+```text
+SLIPPAGE_ZERO_RESEARCH_V1
+SLIPPAGE_SPREAD_ADVERSE_1_BPS_V1
+SLIPPAGE_SPREAD_ADVERSE_5_BPS_V1
+SLIPPAGE_SPREAD_ADVERSE_10_BPS_V1
+SLIPPAGE_SPREAD_ADVERSE_25_BPS_V1
+SLIPPAGE_SPREAD_ADVERSE_50_BPS_V1
+```
+
+Exact mapping:
+
+```text
+SLIPPAGE_ZERO_RESEARCH_V1 -> 0 bps
+SLIPPAGE_SPREAD_ADVERSE_1_BPS_V1 -> 1 bps
+SLIPPAGE_SPREAD_ADVERSE_5_BPS_V1 -> 5 bps
+SLIPPAGE_SPREAD_ADVERSE_10_BPS_V1 -> 10 bps
+SLIPPAGE_SPREAD_ADVERSE_25_BPS_V1 -> 25 bps
+SLIPPAGE_SPREAD_ADVERSE_50_BPS_V1 -> 50 bps
+```
+
+No other ExecutionConfig token combination is admitted for
+`ENGINE_V20260926`. Unknown or cross-version combinations fail closed:
+
+```text
+UNSUPPORTED_EXECUTION_CONFIG
+```
+
+`USD_ADJUSTED_CLOSE_MARK_V2` means:
+
+```text
+portfolio valuation occurs at verified V2 ADJUSTED_CLOSE
+for the exact admitted XNYS_TRADING_CALENDAR_V2 session
+using RESEARCH_MONEY_OUTPUT_V2
+```
 
 ## Next-Session Fill Policy
 
@@ -534,6 +810,58 @@ canonical instrumentId byte lexical order. Preserve residual cash. Cash must
 never be negative. The trace must include the scaling event and factor. No
 preferential discretionary ordering is allowed.
 
+The buying-power scale factor `lambda` may be a non-terminating rational. The
+execution trace is scientific content-addressed evidence, so its encoding is:
+
+```text
+RESEARCH_EXACT_RATIONAL_TRACE_V1
+```
+
+Canonical representation:
+
+```text
+{
+  numerator: "<canonical signed base-10 integer>",
+  denominator: "<canonical positive base-10 integer>"
+}
+```
+
+Rules:
+
+```text
+denominator > 0
+
+gcd(abs(numerator), denominator) = 1
+
+zero is represented only as:
+numerator = "0"
+denominator = "1"
+
+negative denominator = forbidden
+
+leading zeros = forbidden except literal "0"
+
+negative zero = forbidden
+
+decimal approximation = forbidden
+
+exponent notation = forbidden
+```
+
+The buying-power scaling event must contain:
+
+```text
+scaleFactor:
+RESEARCH_EXACT_RATIONAL_TRACE_V1
+```
+
+The exact rational `lambda` used to derive final quantities must be the exact
+same rational serialized into the trace. Do not serialize only a rounded
+18-decimal approximation. `RESEARCH_RATIO_OUTPUT_V1` remains appropriate for
+metric/ratio output where its accepted rounding semantics apply, but not for
+exact buying-power control evidence. No new scientific hash domain is required;
+this is V2 trace-schema semantics.
+
 ## Accounting Invariants
 
 ```text
@@ -792,6 +1120,19 @@ V2 validation execution
 V1/V2 coexistence
 PG17 when persistence changes
 real investing_app authority when persistence changes
+V2 Evidence deterministic construction
+V2 successful Run requires Evidence before SUCCEEDED
+V2 Passport Run/Result/Evidence reconstruction
+point-in-time VOLUME provenance rejection
+exact rational buying-power lambda trace encoding
+complete ExecutionConfig V2 admission matrix
+V1 fieldVersion rejected by Engine V2
+V2 fieldVersion rejected by Engine V1
+V2 Result -> V2 Evidence = PASS
+V2 Evidence deterministic hash = PASS
+V2 SUCCEEDED without Evidence = IMPOSSIBLE
+V1 Evidence bytes/hash unchanged = PASS
+Research Passport reconstructs V2 Run/Result/Evidence = PASS
 ```
 
 This document freezes design only. It is not runtime implementation, not
