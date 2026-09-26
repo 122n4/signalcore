@@ -338,15 +338,22 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("107782658459 - SUCCESS");
     expect(state).toContain("107782658690 - SUCCESS");
     expect(state).toContain("`CURRENT THROUGH RL-3C`");
+    expect(state).toContain("80671f349d38405393476a0978ce6e7f015cfea1");
+    expect(state).toContain("#94");
+    expect(state).toContain("be8c65d2edffc0ab6136da8c415cfa12cb1c177e");
     expect(state).toContain(
-      "`20260924175716 investing_i5_rl3c_validation_aggregate_closure`",
+      "`20260925044248 investing_i5_rl3c_postapply_advisor_remediation`",
     );
-    expect(state).toContain("`96 versions`");
+    expect(state).toContain("`97 versions`");
     expect(state).toContain("`RL-3C Production migration = APPLIED`");
     expect(state).toContain("`RL-3C post-apply audit = PASSED`");
+    expect(state).toContain("`RL-3C advisor remediation = APPLIED / AUDITED / CANONICAL`");
+    expect(state).toContain("`RL-3C Git/Production alignment = PASS`");
     expect(state).toContain("`RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`");
-    expect(state).toContain("Security Advisor finding in schema `investing`:");
+    expect(state).toContain("Security Advisor RL-3C findings:");
     expect(state).toContain("`NONE`");
+    expect(state).toContain("Remediated RL-3C `auth_rls_initplan` findings:");
+    expect(state).toContain("Validation-specific `multiple_permissive_policies` findings:");
     expect(state).toContain("Performance Advisor debt:");
     expect(state).toContain("`PRESENT / NON-BLOCKING`");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
