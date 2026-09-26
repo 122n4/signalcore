@@ -28,6 +28,7 @@ const migrations = [
   "supabase/migrations/20260922192229_investing_i5_rl2_evidence_ledger_passport_read.sql",
   "supabase/migrations/20260923090000_investing_i5_rl3b_validation_child_execution.sql",
   "supabase/migrations/20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql",
+  "supabase/migrations/20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql",
 ] as const;
 
 const ids = {
