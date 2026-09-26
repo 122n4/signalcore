@@ -132,6 +132,75 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
     expect(rl4).not.toContain("SYNTRAKE:VALIDATION_RESULT:V2");
     expect(rl4).not.toContain("SYNTRAKE:EVIDENCE_OBJECT:V2");
     expect(rl4).not.toContain("SYNTRAKE:RESEARCH_IR:V2");
+    expect(rl4).not.toContain("SYNTRAKE:RUN_INPUT:V2");
+    expect(rl4).not.toContain("SYNTRAKE:DATASET_SNAPSHOT:V2");
+    expect(rl4).not.toContain("SYNTRAKE:METRIC_REQUEST_SET:V2");
+    expect(rl4).not.toContain("SYNTRAKE:EXECUTION_CONFIG:V2");
+  });
+
+  it("freezes the complete Engine V2 RunInput scientific envelope", () => {
+    expectAll(rl4, [
+      "deterministicSeed = ABSENT",
+      "UNSUPPORTED_V2_DETERMINISTIC_SEED",
+      "EXACT_V2_MATERIAL_POLICY_SET",
+      "DATASET_SNAPSHOT",
+      "DATASET_SNAPSHOT_POLICY_V1",
+      "EXECUTION_CONFIG",
+      "EXECUTION_CONFIG_HASH_PAYLOAD_V1",
+      "UNSUPPORTED_V2_MATERIAL_POLICIES",
+      "DATASET_SNAPSHOT_HASH_PAYLOAD_V1",
+      "METRIC_REQUEST_SET_HASH_PAYLOAD_V1",
+      "METRIC_REGISTRY_V20260918",
+      "TOTAL_RETURN / METRIC_V1",
+      "MAX_DRAWDOWN / METRIC_V1",
+      "UNSUPPORTED_V2_METRIC_REQUEST_SET",
+      "RUN_INPUT_HASH_PAYLOAD_V1",
+      "runType =",
+      "HISTORICAL_BACKTEST",
+      "researchSourceContext =",
+      "PURE_RESEARCH",
+      "accountResearchContext =",
+      "ABSENT",
+      "engineVersion =",
+      "ENGINE_V20260926",
+      "materialPolicies =",
+      "researchSpec =",
+      "SYNTRAKE:RESEARCH_SPEC:V1",
+      "researchIr =",
+      "SYNTRAKE:RESEARCH_IR:V1",
+      "experiment =",
+      "SYNTRAKE:EXPERIMENT:V1",
+      "datasetSnapshot =",
+      "SYNTRAKE:DATASET_SNAPSHOT:V1",
+      "metricRequestSet =",
+      "SYNTRAKE:METRIC_REQUEST_SET:V1",
+      "executionConfig =",
+      "SYNTRAKE:EXECUTION_CONFIG:V1",
+      "RunInput.researchIr",
+      "Experiment.researchIr",
+      "RunInput.engineVersion",
+      "ExecutionConfig.engineCompatibilityVersion",
+      "RunInput.metricRegistryVersion",
+      "MetricRequestSet.metricRegistryVersion",
+    ]);
+    expectAllNormalized(rl4, [
+      "For `ENGINE_V20260926`, a RunInput containing `deterministicSeed` is not admitted.",
+      "Allowing an arbitrary unused seed would create multiple scientific RunInput identities for identical deterministic behavior.",
+      "materialPolicies = exactly:",
+      "No additional material policy is admitted for `ENGINE_V20260926`.",
+      "Missing, extra, duplicate, or differently-versioned material policies fail closed:",
+      "V2 calendar identity remains bound by DatasetSeries and ExecutionConfig.",
+      "No other snapshot policy is admitted by RL-4.",
+      "Every exact DatasetSeries HashRef used by the V2 run must belong to the exact DatasetSnapshot.",
+      "No new DatasetSnapshot hash domain is introduced.",
+      "with exactly these two requests:",
+      "No additional metric request is admitted for the RL-5 Engine V2 closure.",
+      "No missing metric is admitted.",
+      "RL-4 must not pre-authorize them.",
+      "DatasetSnapshot exact membership must equal the proven DatasetSeries set.",
+      "No mix-and-match scientific components are admitted.",
+      "Same V2 scientific inputs must produce the same RunInput hash; unused identity-only variation cannot create an alternate admitted V2 RunInput.",
+    ]);
   });
 
   it("freezes the V2 data contract, field registry, transforms, and strict missing behavior", () => {
@@ -422,6 +491,16 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "V2 SUCCEEDED without Evidence = IMPOSSIBLE",
       "V1 Evidence bytes/hash unchanged = PASS",
       "Research Passport reconstructs V2 Run/Result/Evidence = PASS",
+      "V2 RunInput deterministicSeed absent",
+      "V2 exact materialPolicies admitted",
+      "missing/extra/wrong material policy rejected",
+      "V2 DatasetSnapshot policy exact",
+      "V2 MetricRequestSet exactly TOTAL_RETURN + MAX_DRAWDOWN",
+      "extra metric rejected before RL-6",
+      "missing metric rejected before RL-6",
+      "cross-object V2 RunInput identity bindings proven",
+      "same V2 scientific inputs produce same RunInput hash",
+      "unused identity-only variation cannot create alternate admitted V2 RunInput",
     ]);
   });
 });

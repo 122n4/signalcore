@@ -179,6 +179,194 @@ because it stores exact Evidence content bytes and binds Result/RunInput via FK
 rather than an `engine_version` column. `RESEARCH_PASSPORT_V1` does not need a
 new schema solely because Engine V2 exists.
 
+## RunInput V2 Scientific Envelope
+
+Engine V2 is deterministic and has no stochastic execution behavior.
+
+```text
+deterministicSeed = ABSENT
+```
+
+For `ENGINE_V20260926`, a RunInput containing `deterministicSeed` is not
+admitted. Stable rejection:
+
+```text
+UNSUPPORTED_V2_DETERMINISTIC_SEED
+```
+
+No Engine V2 behavior defined by RL-4 consumes a seed. Allowing an arbitrary
+unused seed would create multiple scientific RunInput identities for identical
+deterministic behavior. Future stochastic functionality requires a separately
+reviewed contract/version.
+
+Exact material policy set:
+
+```text
+EXACT_V2_MATERIAL_POLICY_SET
+
+materialPolicies = exactly:
+
+DATASET_SNAPSHOT /
+DATASET_SNAPSHOT_POLICY_V1
+
+EXECUTION_CONFIG /
+EXECUTION_CONFIG_HASH_PAYLOAD_V1
+```
+
+Canonical semantic representation:
+
+```text
+[
+  {
+    policyId: "DATASET_SNAPSHOT",
+    policyVersion: "DATASET_SNAPSHOT_POLICY_V1"
+  },
+  {
+    policyId: "EXECUTION_CONFIG",
+    policyVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1"
+  }
+]
+```
+
+Canonical hashing may retain the existing deterministic lexical ordering rules.
+No additional material policy is admitted for `ENGINE_V20260926`. Missing,
+extra, duplicate, or differently-versioned material policies fail closed:
+
+```text
+UNSUPPORTED_V2_MATERIAL_POLICIES
+```
+
+RL-4 does not introduce a new material policy merely to restate information
+already scientifically bound by DatasetSeries, DatasetSnapshot, or
+ExecutionConfig. V2 calendar identity remains bound by DatasetSeries and
+ExecutionConfig.
+
+Engine V2 DatasetSnapshot shape:
+
+```text
+schemaVersion =
+DATASET_SNAPSHOT_HASH_PAYLOAD_V1
+
+snapshotPolicy =
+DATASET_SNAPSHOT_POLICY_V1
+```
+
+No other snapshot policy is admitted by RL-4. Every exact DatasetSeries HashRef
+used by the V2 run must belong to the exact DatasetSnapshot.
+
+The existing domain remains:
+
+```text
+SYNTRAKE:DATASET_SNAPSHOT:V1
+```
+
+No new DatasetSnapshot hash domain is introduced.
+
+Until RL-6, Engine V2 must use exactly:
+
+```text
+schemaVersion =
+METRIC_REQUEST_SET_HASH_PAYLOAD_V1
+
+metricRegistryVersion =
+METRIC_REGISTRY_V20260918
+```
+
+with exactly these two requests:
+
+```text
+TOTAL_RETURN / METRIC_V1
+MAX_DRAWDOWN / METRIC_V1
+```
+
+No additional metric request is admitted for the RL-5 Engine V2 closure. No
+missing metric is admitted. Order in supplied input is not scientific because
+canonical MetricRequestSet ordering remains deterministic. Stable rejection:
+
+```text
+UNSUPPORTED_V2_METRIC_REQUEST_SET
+```
+
+RL-6 may later define Metric Registry V2 and new requests under its own
+contract. RL-4 must not pre-authorize them.
+
+The complete accepted RL-5 Engine V2 RunInput profile is:
+
+```text
+schemaVersion =
+RUN_INPUT_HASH_PAYLOAD_V1
+
+runType =
+HISTORICAL_BACKTEST
+
+researchEnvironment =
+HISTORICAL_BACKTEST
+
+researchSourceContext =
+PURE_RESEARCH
+
+accountResearchContext =
+ABSENT
+
+engineId =
+HISTORICAL_EXECUTION_ADAPTER
+
+engineVersion =
+ENGINE_V20260926
+
+metricRegistryVersion =
+METRIC_REGISTRY_V20260918
+
+deterministicSeed =
+ABSENT
+
+materialPolicies =
+EXACT_V2_MATERIAL_POLICY_SET
+```
+
+Exact nested scientific domains:
+
+```text
+researchSpec =
+SYNTRAKE:RESEARCH_SPEC:V1
+
+researchIr =
+SYNTRAKE:RESEARCH_IR:V1
+
+experiment =
+SYNTRAKE:EXPERIMENT:V1
+
+datasetSnapshot =
+SYNTRAKE:DATASET_SNAPSHOT:V1
+
+metricRequestSet =
+SYNTRAKE:METRIC_REQUEST_SET:V1
+
+executionConfig =
+SYNTRAKE:EXECUTION_CONFIG:V1
+```
+
+Cross-object requirements:
+
+```text
+RunInput.researchIr
+=
+Experiment.researchIr
+
+RunInput.engineVersion
+=
+ExecutionConfig.engineCompatibilityVersion
+
+RunInput.metricRegistryVersion
+=
+MetricRequestSet.metricRegistryVersion
+```
+
+DatasetSnapshot exact membership must equal the proven DatasetSeries set. No
+mix-and-match scientific components are admitted. Same V2 scientific inputs must
+produce the same RunInput hash; unused identity-only variation cannot create an
+alternate admitted V2 RunInput.
+
 ## Market Data Profile V2
 
 Daily verified material:
@@ -1133,6 +1321,16 @@ V2 Evidence deterministic hash = PASS
 V2 SUCCEEDED without Evidence = IMPOSSIBLE
 V1 Evidence bytes/hash unchanged = PASS
 Research Passport reconstructs V2 Run/Result/Evidence = PASS
+V2 RunInput deterministicSeed absent
+V2 exact materialPolicies admitted
+missing/extra/wrong material policy rejected
+V2 DatasetSnapshot policy exact
+V2 MetricRequestSet exactly TOTAL_RETURN + MAX_DRAWDOWN
+extra metric rejected before RL-6
+missing metric rejected before RL-6
+cross-object V2 RunInput identity bindings proven
+same V2 scientific inputs produce same RunInput hash
+unused identity-only variation cannot create alternate admitted V2 RunInput
 ```
 
 This document freezes design only. It is not runtime implementation, not
