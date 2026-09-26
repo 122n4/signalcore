@@ -341,7 +341,11 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("`CURRENT THROUGH RL-3C`");
     expect(state).toContain("80671f349d38405393476a0978ce6e7f015cfea1");
     expect(state).toContain("#94");
+    expect(state).toContain("RL-4 design accepted merge/main anchor:");
     expect(state).toContain("e5b447942bf4811140cb427fa1e660541d7b636f");
+    expect(state).toContain("This SHA is the immutable Git anchor at which PR #96 placed the independently");
+    expect(state).toContain("Current repository HEAD is verified from GitHub");
+    expect(state).not.toContain("Canonical Git main:");
     expect(state).toContain(
       "`20260925044248 investing_i5_rl3c_postapply_advisor_remediation`",
     );
