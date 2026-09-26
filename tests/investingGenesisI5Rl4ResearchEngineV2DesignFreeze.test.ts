@@ -82,6 +82,8 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
     const rl4PreservedV1Tokens = [
       ...v1ContractTokens,
       "SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1",
+      "XNYS_TRADING_CALENDAR_V1",
+      "EXACT_XNYS_SESSION_BOUNDARIES_V1",
     ] as const;
 
     expectAll(v1Engine, v1ContractTokens);
@@ -130,6 +132,7 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "HIGH >= LOW",
       "corporateActionPolicy = SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2",
       "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2",
+      "The initial ENGINE_V20260926 executable signal registry contains exactly:",
       "TOTAL_RETURN(t) = ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(previous eligible XNYS session) - 1",
       "OPEN_TO_CLOSE_RETURN(t) = ADJUSTED_CLOSE(t) / ADJUSTED_OPEN(t) - 1",
       "INTRADAY_RANGE_RATIO(t) = (ADJUSTED_HIGH(t) - ADJUSTED_LOW(t)) / ADJUSTED_CLOSE(t)",
@@ -147,14 +150,52 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "ACCOUNTING_INVARIANT_VIOLATION",
       "Substituting CLOSE for a missing OPEN is forbidden.",
     ]);
+    expectAllNormalized(rl4, [
+      "No other Engine V2 signal field is admitted by RL-4.",
+      "Adding another field ID or field methodology requires a separately reviewed contract/version change.",
+      "Raw market data fields remain verified market-data/execution/valuation/transform inputs and are not direct unrestricted V2 Research IR signal fields:",
+    ]);
+    expect(rl4).not.toContain("The V2 executable signal registry contains at least:");
   });
 
   it("freezes next-session fills, costs, slippage, exact arithmetic, accounting, and benchmark policy", () => {
     expectAll(rl4, [
       "fillPolicy = NEXT_SESSION_OPEN_V1",
-      "read current session verified ADJUSTED_OPEN",
-      "value at current session verified ADJUSTED_CLOSE",
-      "create target intent for next eligible session OPEN",
+      "pre_trade_open_nav",
+      "cash_before_trading",
+      "sum(current_quantity * reference_open)",
+      "reference_price = verified ADJUSTED_OPEN",
+      "effective_buy_price",
+      "= reference_price * (1 + slippage_bps / 10000)",
+      "effective_sell_price",
+      "= reference_price * (1 - slippage_bps / 10000)",
+      "gross_fill_notional",
+      "= quantity * effective_fill_price",
+      "explicit_fee",
+      "= gross_fill_notional * fee_bps / 10000",
+      "SELL:",
+      "cash_after",
+      "= cash_before",
+      "  + gross_fill_notional",
+      "  - explicit_fee",
+      "BUY:",
+      "  - gross_fill_notional",
+      "post_quantity = pre_quantity - fill_quantity",
+      "post_quantity = pre_quantity + fill_quantity",
+      "slippage_cost",
+      "abs(quantity * (effective_fill_price - reference_price))",
+      "Slippage MUST NOT be debited from cash separately",
+      "Explicit fee is debited exactly once.",
+      "load verified OPEN required for pre-trade state and target map",
+      "calculate common pre-trade OPEN NAV",
+      "derive complete sell/reduction set",
+      "mutate cash exactly",
+      "freeze available post-sell cash",
+      "calculate desired buy requirements using effective BUY prices + fees",
+      "derive final truncated BUY quantities",
+      "assert cash >= 0 and accounting invariants",
+      "value at verified CLOSE",
+      "create next-session OPEN intent when applicable",
       "COMMISSION_FEES_ZERO_V1",
       "COMMISSION_FEES_NOTIONAL_25_BPS_V1",
       "explicit_fee = gross_fill_notional * fee_bps / 10000",
@@ -173,6 +214,50 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "benchmark_value(D0) = starting_capital",
       "benchmark_value(t) = starting_capital * ADJUSTED_CLOSE(t) / ADJUSTED_CLOSE(D0)",
     ]);
+    expectAllNormalized(rl4, [
+      "Missing OPEN required to calculate pre-trade NAV for any currently held position fails closed.",
+      "Missing OPEN required for any instrument whose target/order must be calculated fails closed.",
+      "No CLOSE substitution is allowed.",
+    ]);
+  });
+
+  it("freezes exact V2 money output serialization without changing V1 money", () => {
+    expectAll(rl4, [
+      "RESEARCH_MONEY_OUTPUT_V2",
+      "input = exact finite decimal/rational that is mathematically representable",
+      "output = exact canonical decimal string",
+      "max scale = 24",
+      "rounding = NONE",
+      "trailing fractional zeros = removed canonically",
+      "negative zero = forbidden",
+      "exponent notation = forbidden",
+      "locale formatting = forbidden",
+      "NUMERIC_INVARIANT_VIOLATION",
+      "Result startingNav",
+      "Result endingNav",
+      "Result terminalCash",
+      "valuation cash",
+      "valuation marketValue",
+      "valuation NAV",
+      "valuation cumulativeExplicitFees",
+      "valuation cumulativeSlippageCost",
+      "fill referencePrice",
+      "fill effectiveFillPrice",
+      "fill grossFillNotional",
+      "fill explicitFee",
+      "fill slippageCost",
+      "fill cashBefore",
+      "fill cashAfter",
+      "max scale = 8",
+      "TOWARD_ZERO",
+      "RESEARCH_RATIO_OUTPUT_V1",
+      "ROUND_HALF_EVEN",
+    ]);
+    expectAllNormalized(rl4, [
+      "If an economic value would require more than scale 24:",
+      "The engine must not silently round it.",
+      "V1 money remains unchanged at its historical V1 semantics.",
+    ]);
   });
 
   it("keeps USD/XNYS scope, result/validation compatibility, persistence gating, and no arbitrary code", () => {
@@ -180,8 +265,25 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "fxPolicy = FX_USD_IDENTITY_V1",
       "valuationCurrency = USD",
       "startingCapital.currency = USD",
+      "datasetSeries.calendar = XNYS_TRADING_CALENDAR_V2",
+      "frequency = DAILY",
+      "timezone = America/New_York",
+      "calendar = XNYS_TRADING_CALENDAR_V2",
       "calendarSessionPolicy = XNYS_OPEN_CLOSE_SESSION_V2",
+      "boundaryPolicy = EXACT_XNYS_SESSION_BOUNDARIES_V2",
+      "XNYS_TRADING_CALENDAR_V2",
+      "EXACT_XNYS_SESSION_BOUNDARIES_V1",
       "leave `XNYS_TRADING_CALENDAR_V1` untouched",
+      "artifact/version identity",
+      "coverageStart",
+      "coverageEnd",
+      "ordered exact session set",
+      "content SHA-256",
+      "generator version",
+      "source library versions",
+      "independent cross-check evidence",
+      "V2 session membership/order",
+      "V1 session membership/order",
       "RESEARCH_EXECUTION_TRACE_V2",
       "RESEARCH_VALUATION_SERIES_V2",
       "RESEARCH_BENCHMARK_SERIES_V2",
@@ -190,6 +292,14 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "MAX_DRAWDOWN / METRIC_V1",
       "METRIC_RESULT_SET_V1",
       "Current PostgreSQL persistence constraints admit only `ENGINE_V20260918`.",
+      "RL-5 REQUIRES an additive PostgreSQL migration",
+      "investing.research_execution_runs",
+      "investing.research_results_scientific_identities",
+      "investing.research_validation_run_inputs_scientific_identities",
+      "investing.research_validation_execution_runs",
+      "investing.research_validation_child_results_scientific_identities",
+      "ENGINE_V20260926",
+      "HISTORICAL_EXECUTION_ADAPTER",
       "arbitrary JavaScript",
       "TypeScript",
       "Python",
@@ -202,9 +312,18 @@ describe("I5 RL-4 Research Engine V2 design freeze", () => {
       "arbitrary indicator code",
     ]);
     expectAllNormalized(rl4, [
-      "Production application is a separate explicit gate.",
+      "Engine V2 validation must not derive folds/session boundaries using V1 calendar helpers or artifacts.",
+      "Any overlap drift requires STOP and independent review.",
+      "No validation payload shape change is required merely for this because `boundaryPolicy` is already part of the existing scientific owner payload.",
+      "RL-5 must not bypass these constraints or persist V2 using false V1 engine metadata.",
+      "The future additive migration must widen exact admissible engine versions to the closed set:",
+      "No UPDATE of historical scientific rows is allowed.",
+      "No migration-history repair is allowed.",
+      "No Production application is authorized by RL-4.",
+      "RL-5 migration rehearsal/application remains a separate gate.",
       "arbitrary optimizer code",
     ]);
+    expect(rl4).not.toContain("may need an additive migration");
   });
 
   it("keeps RL-4 out-of-scope boundaries and records the RL-5 implementation bar", () => {

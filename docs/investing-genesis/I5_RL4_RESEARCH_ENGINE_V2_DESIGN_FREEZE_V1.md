@@ -54,6 +54,8 @@ executionModelClass = SYNTHETIC_ADJUSTED_CLOSE_RESEARCH_V1
 fillPolicy = CLOSE_TO_CLOSE_V1
 costsPolicy = COSTS_ZERO_RESEARCH_V1
 slippagePolicy = SLIPPAGE_ZERO_RESEARCH_V1
+calendar = XNYS_TRADING_CALENDAR_V1
+boundaryPolicy = EXACT_XNYS_SESSION_BOUNDARIES_V1
 ```
 
 RL-5 must prove V1 scientific goldens are byte-identical. RL-4 authorizes no
@@ -171,7 +173,7 @@ RL-4 does not replace the V1 registry. It freezes this new field version:
 I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2
 ```
 
-The V2 executable signal registry contains at least:
+The initial ENGINE_V20260926 executable signal registry contains exactly:
 
 ```text
 TOTAL_RETURN
@@ -187,8 +189,20 @@ VOLUME
 OBSERVATION_DATE
 ```
 
+No other Engine V2 signal field is admitted by RL-4. Adding another field ID or
+field methodology requires a separately reviewed contract/version change.
 Arbitrary user-defined transform params are out of scope for RL-4. Window sizes
 are part of immutable field ID/methodology.
+
+Raw market data fields remain verified market-data/execution/valuation/transform
+inputs and are not direct unrestricted V2 Research IR signal fields:
+
+```text
+ADJUSTED_OPEN
+ADJUSTED_HIGH
+ADJUSTED_LOW
+ADJUSTED_CLOSE
+```
 
 ## Exact Transform Semantics
 
@@ -243,23 +257,108 @@ fillPolicy = NEXT_SESSION_OPEN_V1
 ```
 
 A signal using session D close information may not fill at D. It may first
-execute at the next eligible XNYS session OPEN. The exact event order is:
+execute at the next eligible XNYS session OPEN.
 
-1. resolve pending target intent created earlier
-2. read current session verified ADJUSTED_OPEN
-3. compute common pre-trade open NAV
-4. compute complete desired target map
-5. execute reductions/sells
-6. determine exact post-sell cash
-7. execute increases/buys under deterministic buying-power rule
-8. apply adverse slippage/spread and explicit fees
-9. update simulated cash/positions
-10. value at current session verified ADJUSTED_CLOSE
-11. publish current session OHLCV as newly available signal info
-12. derive registered V2 signal fields
-13. evaluate Research IR
-14. if rebalance, create target intent for next eligible session OPEN
-15. emit deterministic trace
+The pre-trade open NAV is:
+
+```text
+pre_trade_open_nav
+=
+cash_before_trading
++
+sum(current_quantity * reference_open)
+```
+
+Target quantities are derived from `pre_trade_open_nav` and reference OPEN.
+Missing OPEN required to calculate pre-trade NAV for any currently held position
+fails closed. Missing OPEN required for any instrument whose target/order must
+be calculated fails closed. No CLOSE substitution is allowed.
+
+For every fill:
+
+```text
+reference_price = verified ADJUSTED_OPEN
+
+effective_buy_price
+= reference_price * (1 + slippage_bps / 10000)
+
+effective_sell_price
+= reference_price * (1 - slippage_bps / 10000)
+
+gross_fill_notional
+= quantity * effective_fill_price
+
+explicit_fee
+= gross_fill_notional * fee_bps / 10000
+```
+
+Exact cash mutation:
+
+```text
+SELL:
+cash_after
+= cash_before
+  + gross_fill_notional
+  - explicit_fee
+
+BUY:
+cash_after
+= cash_before
+  - gross_fill_notional
+  - explicit_fee
+```
+
+Position mutation:
+
+```text
+SELL:
+post_quantity = pre_quantity - fill_quantity
+
+BUY:
+post_quantity = pre_quantity + fill_quantity
+```
+
+`slippage_cost` is an auditable derived value:
+
+```text
+slippage_cost
+=
+abs(quantity * (effective_fill_price - reference_price))
+```
+
+Slippage MUST NOT be debited from cash separately because it is already
+represented by `effective_fill_price`. Explicit fee is debited exactly once.
+
+The corrected deterministic event ordering is equivalent to:
+
+1. resolve earlier target intent
+2. load verified OPEN required for pre-trade state and target map
+3. calculate common pre-trade OPEN NAV
+4. calculate complete desired target map using reference OPEN
+5. derive complete sell/reduction set
+6. for each sell in canonical instrument order:
+   a. derive effective sell price
+   b. derive gross notional
+   c. derive fee/slippage evidence
+   d. mutate position
+   e. mutate cash exactly
+7. freeze available post-sell cash
+8. calculate desired buy requirements using effective BUY prices + fees
+9. if required, calculate common buying-power lambda
+10. derive final truncated BUY quantities
+11. for each buy in canonical instrument order:
+    a. derive effective buy price
+    b. derive gross notional
+    c. derive fee/slippage evidence
+    d. mutate position
+    e. mutate cash exactly
+12. assert cash >= 0 and accounting invariants
+13. value at verified CLOSE
+14. publish current-session OHLCV
+15. derive V2 signal fields
+16. evaluate Research IR
+17. create next-session OPEN intent when applicable
+18. emit deterministic trace
 
 No D+1 data may influence a signal created at D. If a next-session fill would
 fall beyond the test period, it must not execute.
@@ -330,9 +429,72 @@ max scale = 24
 no intermediate rounding
 ```
 
+V2 Result/artifact bytes use one exact serialization rule:
+
+```text
+RESEARCH_MONEY_OUTPUT_V2
+
+input = exact finite decimal/rational that is mathematically representable
+        with decimal scale <= 24
+
+output = exact canonical decimal string
+
+max scale = 24
+
+rounding = NONE
+
+trailing fractional zeros = removed canonically
+
+negative zero = forbidden
+
+exponent notation = forbidden
+
+locale formatting = forbidden
+```
+
+The V2 economic model is bounded so admitted serialized monetary truth must be
+exactly representable within scale 24. If an economic value would require more
+than scale 24:
+
+```text
+NUMERIC_INVARIANT_VIOLATION
+```
+
+The engine must not silently round it.
+
+`RESEARCH_MONEY_OUTPUT_V2` is used for at least:
+
+```text
+Result startingNav
+Result endingNav
+Result terminalCash
+
+valuation cash
+valuation marketValue
+valuation NAV
+valuation cumulativeExplicitFees
+valuation cumulativeSlippageCost
+
+fill referencePrice
+fill effectiveFillPrice
+fill grossFillNotional
+fill explicitFee
+fill slippageCost
+fill cashBefore
+fill cashAfter
+```
+
+Quantity remains governed by the accepted quantity policy:
+
+```text
+max scale = 8
+TOWARD_ZERO
+```
+
 V2 scientific money serialization may admit max scale 24. RL-5 may widen
-Result/Validation monetary admission to scale 24 only for Engine V2. V1 remains
-max scale 16 and byte-identical.
+Result/Validation monetary admission to scale 24 only for Engine V2. V1 money
+remains unchanged at its historical V1 semantics. V1 remains max scale 16 and
+byte-identical.
 
 Ratio output:
 
@@ -417,15 +579,66 @@ No non-USD conversion is allowed. Required FX conversion fails closed.
 
 ## Calendar And Session
 
+For admitted Engine V2 DatasetSeries:
+
+```text
+datasetSeries.calendar = XNYS_TRADING_CALENDAR_V2
+frequency = DAILY
+timezone = America/New_York
+calendar = XNYS_TRADING_CALENDAR_V2
+```
+
 ```text
 calendarSessionPolicy = XNYS_OPEN_CLOSE_SESSION_V2
 ```
 
+V2 validation uses:
+
+```text
+boundaryPolicy = EXACT_XNYS_SESSION_BOUNDARIES_V2
+XNYS_TRADING_CALENDAR_V2
+```
+
+Engine V2 validation must not derive folds/session boundaries using V1 calendar
+helpers or artifacts. Existing V1 validation keeps:
+
+```text
+EXACT_XNYS_SESSION_BOUNDARIES_V1
+```
+
+No validation payload shape change is required merely for this because
+`boundaryPolicy` is already part of the existing scientific owner payload.
+
 RL-5 must introduce/check a pinned immutable XNYS calendar artifact. It must
-leave `XNYS_TRADING_CALENDAR_V1` untouched. The artifact must include coverage
-start/end, session list, SHA-256, generator/library versions, and cross-check.
-Out-of-range sessions fail closed. OPEN and CLOSE are logical phases of one
-daily session. RL-4 does not authorize an intraday bar engine.
+leave `XNYS_TRADING_CALENDAR_V1` untouched. The new V2 calendar artifact must be
+immutable and content-addressed/pinned. RL-5 must freeze and test:
+
+```text
+artifact/version identity
+coverageStart
+coverageEnd
+ordered exact session set
+content SHA-256
+generator version
+source library versions
+independent cross-check evidence
+```
+
+Compatibility law:
+
+For every session date inside the overlapping coverage of
+`XNYS_TRADING_CALENDAR_V1` and `XNYS_TRADING_CALENDAR_V2`:
+
+```text
+V2 session membership/order
+=
+V1 session membership/order
+```
+
+Any overlap drift requires STOP and independent review.
+`XNYS_TRADING_CALENDAR_V1` remains immutable. Out-of-range sessions fail closed.
+OPEN and CLOSE are logical phases of one daily session. RL-4 does not authorize
+an intraday bar engine.
 
 ## Result And Artifact Compatibility
 
@@ -474,11 +687,42 @@ validation engine. V1 validation remains byte-identical.
 
 ## Persistence
 
-Current PostgreSQL persistence constraints admit only `ENGINE_V20260918`. RL-5
-may need an additive migration for exact V2 tokens. Such a migration must
-preserve V1 rows, reproducibility, RLS, FORCE RLS, append-only behavior, and
-authority. It must not rewrite historical hashes or payloads. Production
-application is a separate explicit gate.
+Current PostgreSQL persistence constraints admit only `ENGINE_V20260918`.
+RL-5 REQUIRES an additive PostgreSQL migration if RL-5 closes durable V2
+execution and V2 validation as required by the accepted implementation bar.
+
+Independent schema audit proves V1-only `engine_version` constraints currently
+exist on at least:
+
+```text
+investing.research_execution_runs
+investing.research_results_scientific_identities
+investing.research_validation_run_inputs_scientific_identities
+investing.research_validation_execution_runs
+investing.research_validation_child_results_scientific_identities
+```
+
+RL-5 must not bypass these constraints or persist V2 using false V1 engine
+metadata. The future additive migration must widen exact admissible engine
+versions to the closed set:
+
+```text
+ENGINE_V20260918
+ENGINE_V20260926
+```
+
+with engine ID remaining:
+
+```text
+HISTORICAL_EXECUTION_ADAPTER
+```
+
+It must preserve V1 historical rows, V1 canonical payload bytes, V1 hashes, V1
+Results, V1 Validation identities, RLS, FORCE RLS, authority tuples,
+append-only guarantees, grants, and operation/capability boundaries. No UPDATE
+of historical scientific rows is allowed. No migration-history repair is
+allowed. No Production application is authorized by RL-4. RL-5 migration
+rehearsal/application remains a separate gate.
 
 ## No Arbitrary User Code
 
