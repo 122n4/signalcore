@@ -19,6 +19,7 @@ const v2Fields = new Set([
   "VOLUME",
   "OBSERVATION_DATE",
 ]);
+const universeMaterialFieldsV2 = ["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE", "VOLUME"] as const;
 
 export function assertEngineV1ResearchIrFieldContract(ir: ResearchIrV1): void {
   visitResearchIrFields(ir, (field) => {
@@ -93,23 +94,22 @@ export function assertEngineV2RunInputProfile(runInput: RunInputHashPayloadV1): 
 export function assertEngineV2DatasetSeriesSet(
   ir: ResearchIrV1,
   series: readonly DatasetSeriesHashPayloadV1[],
-  options: { requireVolumeIfReferenced: boolean } = { requireVolumeIfReferenced: true },
 ): void {
   assertNoDuplicateDatasetSeries(series);
   assertNoDuplicateDatasetSemanticKeys(series);
-  const instruments = [...ir.universe.instrumentIds].sort();
-  const byKey = new Map(series.map((payload) => [semanticKey(payload), payload]));
-  for (const instrumentId of instruments) {
-    for (const fieldId of ["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"]) {
-      const payload = byKey.get(`${instrumentId}\n${fieldId}`);
-      if (!payload) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
-      assertDatasetSeriesV2(payload);
-    }
-    const volume = byKey.get(`${instrumentId}\nVOLUME`);
-    if (volume) assertVolumeProviderPitSafe(volume);
-    else if (options.requireVolumeIfReferenced && researchIrReferencesVolume(ir)) throw new Error("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
-  }
   for (const payload of series) assertDatasetSeriesV2(payload);
+
+  const required = requiredDatasetSeriesSemanticKeysV2(ir);
+  const byKey = new Map(series.map((payload) => [semanticKey(payload), payload]));
+  for (const key of required) {
+    if (!byKey.has(key)) {
+      if (key.endsWith("\nVOLUME")) throw new Error("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
+      throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    }
+  }
+  for (const key of byKey.keys()) {
+    if (!required.has(key)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+  }
 }
 
 export function assertEngineV2MaterialBinding(input: {
@@ -200,6 +200,18 @@ function assertNoDuplicateDatasetSemanticKeys(series: readonly DatasetSeriesHash
 
 function semanticKey(series: DatasetSeriesHashPayloadV1): string {
   return `${series.instrumentId}\n${series.fieldId}`;
+}
+
+function requiredDatasetSeriesSemanticKeysV2(ir: ResearchIrV1): Set<string> {
+  const required = new Set<string>();
+  const universe = new Set(ir.universe.instrumentIds);
+  for (const instrumentId of [...universe].sort()) {
+    for (const fieldId of universeMaterialFieldsV2) required.add(`${instrumentId}\n${fieldId}`);
+  }
+  if (ir.benchmark.benchmark === "INSTRUMENT" && !universe.has(ir.benchmark.instrumentId)) {
+    required.add(`${ir.benchmark.instrumentId}\nADJUSTED_CLOSE`);
+  }
+  return required;
 }
 
 function visitResearchIrFields(ir: ResearchIrV1, visitor: (field: DataFieldRefV1) => void): void {

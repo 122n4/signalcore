@@ -146,6 +146,7 @@ describe("I5 RL-5 Engine V2 implementation closure", () => {
       verifyDatasetSeriesMaterialV2(series("ADJUSTED_HIGH", [{ date: "2020-01-02", value: "9" }]), bytes("ADJUSTED_HIGH", [{ date: "2020-01-02", value: "9" }])),
       verifyDatasetSeriesMaterialV2(series("ADJUSTED_LOW", [{ date: "2020-01-02", value: "8" }]), bytes("ADJUSTED_LOW", [{ date: "2020-01-02", value: "8" }])),
       verifyDatasetSeriesMaterialV2(series("ADJUSTED_CLOSE", [{ date: "2020-01-02", value: "10" }]), bytes("ADJUSTED_CLOSE", [{ date: "2020-01-02", value: "10" }])),
+      verifyDatasetSeriesMaterialV2(series("VOLUME", [{ date: "2020-01-02", value: "1000" }]), bytes("VOLUME", [{ date: "2020-01-02", value: "1000" }])),
     ];
     const result = executeHistoricalKernelV2({
       researchIr: researchIrV2,

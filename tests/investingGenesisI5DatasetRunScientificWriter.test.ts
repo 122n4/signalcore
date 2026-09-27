@@ -5,7 +5,10 @@ import type { InvestingAuthorityTransactionClient } from "../lib/investing/autho
 import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
 import {
   canonicalDatasetSeriesHashPayloadV1,
+  hashExecutionConfigV1,
   hashDatasetSeriesV1,
+  type ExecutionConfigHashPayloadV1,
+  type RunInputHashPayloadV1,
 } from "../lib/investing/research";
 import { createScientificRunInputV1 } from "../lib/investing/research/runInputScientificWriter";
 import {
@@ -151,6 +154,34 @@ describe("I5 Dataset/Run scientific writer", () => {
       researchExperimentId: "91000000-0000-4000-8000-000000000071",
       candidate: scientificRunInputCandidateV1(),
     })).toEqual({ ok: false, code: "VALIDATION_ERROR" });
+    expect(client.calls).toHaveLength(0);
+  });
+
+  it("rejects unknown engine scientific RunInput before durable identity creation", async () => {
+    const candidate = scientificRunInputCandidateV1();
+    const executionConfig = { ...candidate.executionConfig, engineCompatibilityVersion: "ENGINE_UNKNOWN" } as ExecutionConfigHashPayloadV1;
+    const invalid = {
+      ...candidate,
+      executionConfig,
+      runInput: {
+        ...candidate.runInput,
+        engineVersion: "ENGINE_UNKNOWN",
+        executionConfig: {
+          hashAlgorithm: "SHA-256",
+          hashDomain: "SYNTRAKE:EXECUTION_CONFIG:V1",
+          hashVersion: "SYNTRAKE_SHA256_V1",
+          hashHex: hashExecutionConfigV1(executionConfig),
+        },
+      } as RunInputHashPayloadV1,
+    };
+    const client = new FakeClient();
+    useClient(client);
+    await expect(createScientificRunInputV1({
+      authorizedContext: context as never,
+      researchExperimentId: "91000000-0000-4000-8000-000000000071",
+      candidate: invalid,
+    })).resolves.toEqual({ ok: false, code: "VALIDATION_ERROR" });
+    expect(getInvestingAuthorityDatabase).not.toHaveBeenCalled();
     expect(client.calls).toHaveLength(0);
   });
 

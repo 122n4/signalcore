@@ -66,8 +66,13 @@ export function admitScientificRunInputV1(input: ScientificRunInputCandidateV1):
   if (input.runInput.researchSourceContext === "USER_PORTFOLIO") {
     throw new Error("USER_PORTFOLIO RunInput remains fail-closed until AccountResearchContext owner contract exists");
   }
-  if (input.runInput.engineVersion === "ENGINE_V20260918") assertEngineV1ResearchIrFieldContract(input.researchIr);
-  if (input.runInput.engineVersion === "ENGINE_V20260926") assertEngineV2ScientificCandidate(input);
+  if (input.runInput.engineVersion === "ENGINE_V20260918") {
+    assertEngineV1ResearchIrFieldContract(input.researchIr);
+  } else if (input.runInput.engineVersion === "ENGINE_V20260926") {
+    assertEngineV2ScientificCandidate(input);
+  } else {
+    throw new Error("UNSUPPORTED_ENGINE");
+  }
 
   const runInputHash = hashRunInputV1(input.runInput);
   return Object.freeze({ runInput: input.runInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", runInputHash) });

@@ -15,10 +15,10 @@ RL-5 acceptance:
 `NOT ACCEPTED`
 
 Previous independently audited candidate:
-`0a8696c06a8956fcd6e726991281c3d50c6d8ce1`
+`5814d92dc4735bd409ebeb4987d7e03337bd6a54`
 
 Independent audit verdict:
-`BLOCKED - SCIENTIFIC ADMISSION / V1-V2 ISOLATION CORRECTION REQUIRED`
+`BLOCKED - CLOSED ENGINE ADMISSION / DATASET INSTRUMENT SCOPE`
 
 Candidate publication:
 `ESTABLISHED BY GIT HISTORY / NOT AN ACCEPTANCE SIGNAL`
@@ -193,6 +193,25 @@ OBSERVATION_DATE separate DatasetSeries:
 ```text
 NO
 ```
+
+Exact V2 scientific material-scope law:
+
+```text
+Universe instrument material profile = exact OHLCV per universe instrument
+VOLUME presence != VOLUME signal use
+OBSERVATION_DATE = derived from verified session date, no DatasetSeries
+Benchmark NONE = no benchmark-only instrument material
+Benchmark inside universe = universe profile is sufficient
+Benchmark outside universe = exact ADJUSTED_CLOSE only
+Unrelated DatasetSeries = not admissible
+Duplicate DatasetSeries hash = not admissible
+Duplicate (instrumentId, fieldId) = not admissible
+DatasetSnapshot membership = exact DatasetSeries payload set
+```
+
+VOLUME may be present as verified daily scientific market-data material even
+when the Research IR does not evaluate VOLUME as a signal. Signal evaluation
+remains conditional on the Research IR.
 
 ## Provider Provenance Registry
 
@@ -413,7 +432,9 @@ Scientific isolation correction:
 ```text
 ENGINE_V20260918 executable Research IR fields must use I5A_RESEARCH_IR_FIELD_CONTRACT_V1
 ENGINE_V20260926 executable Research IR fields must use I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2
+scientific RunInput engineVersion admission is closed to ENGINE_V20260918 and ENGINE_V20260926
 duplicate DatasetSeries semantic keys (instrumentId, fieldId) fail closed
+V2 scientific DatasetSeries set must match the exact instrument/material scope
 V2 kernel materials must exactly bind to DatasetSeries payloads
 VOLUME provenance absence/unknown provider fails as VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE
 ```
@@ -471,16 +492,14 @@ NOT APPLIED
 git diff --check = PASS
 npx tsc --noEmit = PASS
 npm run test -- --reporter=dot = PASS
-  Test Files 230 passed / 18 skipped
-  Tests 1304 passed / 48 skipped
+  Test Files 231 passed / 18 skipped
+  Tests 1316 passed / 48 skipped
 npm run lint = PASS
   0 errors / 3 pre-existing warnings in tests/investingGenesisI5Rl3cValidationPassport.test.ts
 npm run build = PASS with in-process dummy NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   Existing Turbopack dynamic filesystem tracing warning remains
 npm run audit:prod = PASS / 0 vulnerabilities
-npx vitest run PG17 targeted set --reporter=dot = PASS
-  Test Files 6 passed / 1 skipped
-  Tests 6 passed / 17 skipped
+npx vitest run PG17 targeted set --reporter=dot = NOT RUN IN THIS CORRECTION / PENDING EXTERNAL DATABASE URLS
 REAL PG17 REHEARSAL = PENDING INDEPENDENT EXTERNAL GATE
 ```
 
@@ -503,7 +522,7 @@ git diff --check have all been executed.
 Remaining external acceptance gates:
 
 ```text
-independent correction review = NOT RECORDED
+independent correction review = NOT RECORDED FOR THIS ADDITIVE CORRECTION
 Production migration apply = NOT APPLIED
 post-apply PG17 audit = NOT RUN
 canonical state update = NOT PERFORMED

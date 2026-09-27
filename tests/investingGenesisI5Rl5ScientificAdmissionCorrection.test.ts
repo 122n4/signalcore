@@ -17,6 +17,7 @@ import {
   hashResearchSpecV1,
   hashValidationProtocolV1,
   sha256HexV1,
+  sliceValidationDatasetSeriesPrefixV2,
   verifyDatasetSeriesMaterialV1,
   verifyDatasetSeriesMaterialV2,
   type DatasetSeriesHashPayloadV1,
@@ -65,6 +66,12 @@ const v2Metrics: MetricRequestSetHashPayloadV1 = {
 };
 
 describe("I5 RL-5 scientific admission correction", () => {
+  it("rejects unknown scientific engine versions without a fall-through admission path", () => {
+    expect(() => admitScientificRunInputV1(unknownEngineCandidate())).toThrow("UNSUPPORTED_ENGINE");
+    expect(() => admitScientificRunInputV1(scientificRunInputCandidateV1())).not.toThrow();
+    expect(() => admitScientificRunInputV1(v2Fixture().scientific)).not.toThrow();
+  });
+
   it("rejects V2 Research IR field contracts on V1 RunInput and V1 execution", () => {
     const ir = v1IrWithFieldVersion("I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2");
     const experiment = experimentFor(ir);
@@ -142,12 +149,75 @@ describe("I5 RL-5 scientific admission correction", () => {
     }
   });
 
-  it("uses the stable VOLUME provenance failure only when VOLUME is referenced", () => {
-    const noVolume = v2Fixture({ includeVolume: false, ir: v2Ir(false) });
-    expect(admitScientificRunInputV1(noVolume.scientific).runInputHash.hashDomain).toBe("SYNTRAKE:RUN_INPUT:V1");
+  it("requires the exact universe OHLCV profile and rejects unrelated instruments", () => {
+    const fixture = v2Fixture();
+    expect(admitScientificRunInputV1(fixture.scientific).runInputHash.hashDomain).toBe("SYNTRAKE:RUN_INPUT:V1");
+    for (const missing of ["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"]) {
+      expect(() => admitScientificRunInputV1(scientificCandidateV2({
+        series: fixture.series.filter((payload) => payload.fieldId !== missing),
+      }))).toThrow("DATASET_MATERIAL_SCHEMA_INVALID");
+    }
+    expect(() => admitScientificRunInputV1(scientificCandidateV2({ includeVolume: false, ir: v2Ir(false) }))).toThrow("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
+    expect(() => admitScientificRunInputV1(scientificCandidateV2({
+      series: [...fixture.series, seriesV2("ADJUSTED_CLOSE", "CCC")],
+    }))).toThrow("DATASET_MATERIAL_SCHEMA_INVALID");
+    expect(() => admitScientificRunInputV1(scientificCandidateV2({
+      series: [...fixture.series, { ...seriesV2("ADJUSTED_CLOSE"), providerDatasetId: "SYNTRAKE_RL5_TEST_OHLCV_DUPLICATE" }],
+    }))).toThrow("DATASET_MATERIAL_SCHEMA_INVALID");
+  });
+
+  it("keeps stable VOLUME provenance while requiring universe VOLUME material", () => {
     expect(() => admitScientificRunInputV1(scientificCandidateV2({ includeVolume: false, ir: v2Ir(true) }))).toThrow("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
     expect(() => admitScientificRunInputV1(scientificCandidateV2({ seriesPatch: (payload) => payload.fieldId === "VOLUME" ? { ...payload, providerDatasetId: "UNKNOWN_PROVIDER" } : payload, ir: v2Ir(true) }))).toThrow("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
     expect(() => admitScientificRunInputV1(scientificCandidateV2({ ir: v2Ir(true) }))).not.toThrow();
+  });
+
+  it("admits only benchmark-close material for a benchmark outside the universe", () => {
+    const ir = v2Ir(false, "BENCH");
+    const exact = v2Fixture({ ir, series: [...v2Fixture({ ir }).series, seriesV2("ADJUSTED_CLOSE", "BENCH")] });
+    expect(() => admitScientificRunInputV1(exact.scientific)).not.toThrow();
+    expect(() => admitScientificRunInputV1(scientificCandidateV2({ ir }))).toThrow("DATASET_MATERIAL_SCHEMA_INVALID");
+    for (const fieldId of ["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "VOLUME"]) {
+      expect(() => admitScientificRunInputV1(scientificCandidateV2({
+        ir,
+        series: [...exact.series, seriesV2(fieldId, "BENCH")],
+      }))).toThrow("DATASET_MATERIAL_SCHEMA_INVALID");
+    }
+    expect(() => admitScientificRunInputV1(scientificCandidateV2({ ir: { ...v2Ir(false), benchmark: { type: "BENCHMARK", benchmark: "NONE" } } }))).not.toThrow();
+  });
+
+  it("enforces exact DatasetSnapshot membership and Validation V2 source material scope", () => {
+    const fixture = v2Fixture();
+    const snapshot = snapshotFor([...fixture.series, seriesV2("ADJUSTED_CLOSE", "CCC")]);
+    expect(() => admitScientificRunInputV1({
+      ...fixture.scientific,
+      runInput: {
+        ...fixture.runInput,
+        datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(snapshot)),
+      },
+      datasetSnapshot: snapshot,
+    })).toThrow("DatasetSnapshot DatasetSeries proof mismatch");
+
+    const sourceSeries = [...fixture.series, seriesV2("ADJUSTED_CLOSE", "CCC")];
+    const candidate = protocolCandidate({ sourceSeries });
+    const sourceMaterials = sourceSeries.map((payload) => canonicalDatasetSeriesMaterialBytesV1(observationsV2(payload.fieldId)));
+    const phaseSeries = sourceSeries.map((payload, index) => sliceValidationDatasetSeriesPrefixV2(payload, sourceMaterials[index]!, candidate.protocol.folds[0]!.trainingWindow.endDate).series);
+    const phaseSnapshot = snapshotFor(phaseSeries);
+    const phaseResearchIr = { ...candidate.subjectResearchIrPayload, testPeriod: candidate.protocol.folds[0]!.trainingWindow };
+    const validationRunInput = {
+      ...validationRunInputFor(candidate),
+      phaseResearchIr: ref("SYNTRAKE:RESEARCH_IR:V1", hashResearchIrV1(phaseResearchIr)),
+      phaseDatasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(phaseSnapshot)),
+    };
+    expect(() => admitValidationRunInputV1({
+      validationProtocolCandidate: candidate,
+      validationRunInput,
+      phaseResearchIrPayload: phaseResearchIr,
+      phaseDatasetSeriesPayloads: phaseSeries,
+      phaseDatasetSnapshotPayload: phaseSnapshot,
+      sourceDatasetSeriesPayloads: sourceSeries,
+      sourceMaterials,
+    })).toThrow("DATASET_MATERIAL_SCHEMA_INVALID");
   });
 
   it("rejects invalid V2 Validation RunInput before child execution can be admitted", () => {
@@ -191,7 +261,7 @@ function v2Fixture(options: { config?: ExecutionConfigHashPayloadV1; series?: re
   return { ir, series, snapshot, experiment, runInput, materials, scientific, protocol: protocolFor(ir, snapshot, config), kernel: { researchIr: ir, datasetSeries: series, executionConfig: config, metricRequestSet: v2Metrics, materials } };
 }
 
-function v2Ir(volume: boolean): ResearchIrV1 {
+function v2Ir(volume: boolean, benchmarkInstrumentId = "AAA"): ResearchIrV1 {
   return {
     schemaVersion: "RESEARCH_IR_HASH_PAYLOAD_V1",
     irVersion: "RESEARCH_IR_V1",
@@ -202,7 +272,7 @@ function v2Ir(volume: boolean): ResearchIrV1 {
       { type: "WEIGHT", method: "FIXED_TARGETS", targets: [{ instrumentId: "AAA", weight: "1" }] },
       { type: "REBALANCE", schedule: "DAILY" },
     ],
-    benchmark: { type: "BENCHMARK", benchmark: "INSTRUMENT", instrumentId: "AAA" },
+    benchmark: { type: "BENCHMARK", benchmark: "INSTRUMENT", instrumentId: benchmarkInstrumentId },
     testPeriod: { startDate: "2020-01-02", endDate: "2020-01-06" },
     valuationCurrency: "USD",
     startingCapital: { amount: "1000", currency: "USD", origin: "SIMULATED" },
@@ -269,6 +339,17 @@ function runInputV2(ir: ResearchIrV1, experiment: ExperimentBaselineCandidateV1,
       { policyId: "EXECUTION_CONFIG", policyVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1" },
     ],
   };
+}
+
+function unknownEngineCandidate() {
+  const fixture = v2Fixture();
+  const config = { ...fixture.scientific.executionConfig, engineCompatibilityVersion: "ENGINE_UNKNOWN" } as ExecutionConfigHashPayloadV1;
+  const runInput = {
+    ...fixture.runInput,
+    engineVersion: "ENGINE_UNKNOWN",
+    executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", hashExecutionConfigV1(config)),
+  } as RunInputHashPayloadV1;
+  return { ...fixture.scientific, runInput, executionConfig: config };
 }
 
 function protocolFor(ir: ResearchIrV1, snapshot: DatasetSnapshotHashPayloadV1, config: ExecutionConfigHashPayloadV1): ValidationProtocolHashPayloadV1 {
