@@ -16,6 +16,8 @@ import {
   hashResultV1,
   hashRefV1,
   artifactDescriptorV1,
+  certifiedRationalPowerMinusOneOutputV2,
+  certifiedSqrtRatioOutputV2,
   sha256HexV1,
   verifyDatasetSeriesMaterialV2,
   type DatasetSnapshotHashPayloadV1,
@@ -78,6 +80,14 @@ describe("I5 RL-6 Metric Registry V2", () => {
       ...metricRequestSetV2,
       requests: [{ metricId: "TOTAL_RETURN", metricVersion: "METRIC_V2" }],
     })).toThrow("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+    expect(() => assertEngineV2MetricRequestSet({
+      ...metricRequestSetV2,
+      requests: metricRegistryV2Requests.map((request, index) => index === 3 ? { ...request, metricId: "UNKNOWN_METRIC" } : request),
+    })).toThrow("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+    expect(() => assertEngineV2MetricRequestSet({
+      ...metricRequestSetV2,
+      requests: metricRegistryV2Requests.map((request, index) => index === 3 ? { ...request, metricVersion: "METRIC_V999" } : request),
+    })).toThrow("UNSUPPORTED_V2_METRIC_REQUEST_SET");
   });
 
   it("computes every V2 metric with deterministic available/unavailable records", () => {
@@ -136,6 +146,8 @@ describe("I5 RL-6 Metric Registry V2", () => {
     expect(byId(records, "TRACKING_ERROR")).toMatchObject({ status: "UNAVAILABLE", reason: "BENCHMARK_UNAVAILABLE" });
     expect(byId(records, "SORTINO_RATIO")).toMatchObject({ status: "UNAVAILABLE", reason: "NO_DOWNSIDE_OBSERVATIONS" });
     expect(byId(records, "CALMAR_RATIO")).toMatchObject({ status: "UNAVAILABLE", reason: "ZERO_DENOMINATOR" });
+    expect(byId(records, "ANNUALIZED_VOLATILITY")).toMatchObject({ status: "AVAILABLE", value: "0" });
+    expect(byId(records, "SHARPE_RATIO")).toMatchObject({ status: "UNAVAILABLE", reason: "ZERO_DENOMINATOR" });
     for (const benchmark of [
       [
         { sessionDate: "2020-01-02", valueExact: r("1000") },
@@ -237,19 +249,43 @@ describe("I5 RL-6 Metric Registry V2", () => {
     expect(byId(records, "MAX_DRAWDOWN_RECOVERY")).toMatchObject({ value: "1" });
   });
 
-  it("keeps root and rational-power half-even boundary outputs deterministic", () => {
-    const flat = [
-      valuation("2020-01-02", "1000", "0"),
-      valuation("2020-01-03", "1000", "0"),
-      valuation("2020-01-06", "1000", "0"),
-    ];
+  it("resets drawdown peak anchors on equal highs", () => {
     const records = metricResultRecordsV2({
-      valuations: flat,
+      valuations: [
+        valuation("2020-01-02", "1000", "0"),
+        valuation("2020-01-03", "1000", "0"),
+        valuation("2020-01-06", "900", "0"),
+        valuation("2020-01-07", "1000", "0"),
+      ],
       fills: [],
       benchmark: [],
     });
-    expect(byId(records, "ANNUALIZED_VOLATILITY")).toMatchObject({ status: "AVAILABLE", value: "0" });
-    expect(byId(records, "CAGR")).toMatchObject({ status: "AVAILABLE", value: "0" });
+    expect(byId(records, "MAX_DRAWDOWN")).toMatchObject({ value: "0.1" });
+    expect(byId(records, "MAX_DRAWDOWN_DURATION")).toMatchObject({ value: "2" });
+    expect(byId(records, "MAX_DRAWDOWN_RECOVERY")).toMatchObject({ value: "1" });
+  });
+
+  it("keeps certified sqrt and rational-power half-even boundary outputs deterministic", () => {
+    expect(certifiedSqrtRatioOutputV2(squareRatio(halfEvenBoundary(100000000000000000n, 0n, 40))).value).toBe("0.1");
+    expect(certifiedSqrtRatioOutputV2(squareRatio(halfEvenBoundary(100000000000000000n, -1n, 40))).value).toBe("0.1");
+    expect(certifiedSqrtRatioOutputV2(squareRatio(halfEvenBoundary(100000000000000000n, 1n, 40))).value).toBe("0.100000000000000001");
+    expect(certifiedSqrtRatioOutputV2(squareRatio(halfEvenBoundary(100000000000000001n, 0n, 40))).value).toBe("0.100000000000000002");
+    expect(certifiedRationalPowerMinusOneOutputV2(squareRatio(addRationalsForTest(oneRatio(), halfEvenBoundary(100000000000000000n, -1n, 40))), 1n, 2n).value).toBe("0.1");
+    expect(certifiedRationalPowerMinusOneOutputV2(squareRatio(addRationalsForTest(oneRatio(), halfEvenBoundary(100000000000000000n, 1n, 40))), 1n, 2n).value).toBe("0.100000000000000001");
+  });
+
+  it("keeps exactly one downside observation truthfully unavailable", () => {
+    const records = metricResultRecordsV2({
+      valuations: [
+        valuation("2020-01-02", "1000", "0"),
+        valuation("2020-01-03", "990", "0"),
+        valuation("2020-01-06", "1000", "0"),
+      ],
+      fills: [],
+      benchmark: [],
+    });
+    expect(byId(records, "DOWNSIDE_DEVIATION")).toMatchObject({ status: "UNAVAILABLE", reason: "INSUFFICIENT_DOWNSIDE_OBSERVATIONS" });
+    expect(byId(records, "SORTINO_RATIO")).toMatchObject({ status: "UNAVAILABLE", reason: "INSUFFICIENT_DOWNSIDE_OBSERVATIONS" });
   });
 
   it("handles unrecovered drawdown and invalid CAGR domains explicitly", () => {
@@ -282,19 +318,28 @@ describe("I5 RL-6 Metric Registry V2", () => {
       metricRequestSet: metricRequestSetV2,
       materials,
     };
+    const reversedMetricRequestSet = {
+      ...metricRequestSetV2,
+      requests: [...metricRegistryV2Requests].reverse(),
+    };
+    expect(hashMetricRequestSetV1(metricRequestSetV2)).toBe(hashMetricRequestSetV1(reversedMetricRequestSet));
     const first = executeHistoricalKernelV2(input);
     const second = executeHistoricalKernelV2(input);
+    const reversed = executeHistoricalKernelV2({ ...input, metricRequestSet: reversedMetricRequestSet });
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
-    if (!first.ok || !second.ok) return;
+    expect(reversed.ok).toBe(true);
+    if (!first.ok || !second.ok || !reversed.ok) return;
     expect(first.resultFields.metricResultSet.artifactSchemaVersion).toBe("METRIC_RESULT_SET_V2");
     expect(first.resultFields.metricResultSet.recordCount).toBe(String(metricRegistryV2Requests.length));
     expect(first.artifacts.metricResultSetBytes.equals(second.artifacts.metricResultSetBytes)).toBe(true);
     expect(sha256HexV1(first.artifacts.metricResultSetBytes)).toBe(sha256HexV1(second.artifacts.metricResultSetBytes));
+    expect(first.artifacts.metricResultSetBytes.equals(reversed.artifacts.metricResultSetBytes)).toBe(true);
+    expect(sha256HexV1(first.artifacts.metricResultSetBytes)).toBe(sha256HexV1(reversed.artifacts.metricResultSetBytes));
     const metricLines = first.artifacts.metricResultSetBytes.toString("utf8").trim().split("\n").map((line) => JSON.parse(line));
     expect(byId(metricLines, "TRADE_COUNT")).toMatchObject({ status: "AVAILABLE", value: "1" });
     expect(byId(metricLines, "REBALANCE_COUNT")).toMatchObject({ status: "AVAILABLE", value: "1" });
-  });
+  }, 15000);
 });
 
 function valuation(sessionDate: string, nav: string, marketValue: string) {
@@ -311,6 +356,36 @@ function valuation(sessionDate: string, nav: string, marketValue: string) {
 
 function r(value: string): ExactRationalV1 {
   return value === "0" ? integerToRationalV1(0n) : decimalStringToRationalV1(value);
+}
+
+function oneRatio(): ExactRationalV1 {
+  return integerToRationalV1(1n);
+}
+
+function halfEvenBoundary(retainedUnits: bigint, offsetUnits: bigint, offsetScale: number): ExactRationalV1 {
+  const boundary = {
+    numerator: 2n * retainedUnits + 1n,
+    denominator: 2n * 10n ** 18n,
+  };
+  const offset = {
+    numerator: offsetUnits,
+    denominator: 10n ** BigInt(offsetScale),
+  };
+  return addRationalsForTest(boundary, offset);
+}
+
+function squareRatio(value: ExactRationalV1): ExactRationalV1 {
+  return {
+    numerator: value.numerator * value.numerator,
+    denominator: value.denominator * value.denominator,
+  };
+}
+
+function addRationalsForTest(left: ExactRationalV1, right: ExactRationalV1): ExactRationalV1 {
+  return {
+    numerator: left.numerator * right.denominator + right.numerator * left.denominator,
+    denominator: left.denominator * right.denominator,
+  };
 }
 
 function byId(records: readonly unknown[], metricId: string): Record<string, unknown> {

@@ -236,6 +236,8 @@ export {
   metricRegistryV2Requests,
   metricRegistryVersionV2,
   metricResultRecordsV2,
+  certifiedRationalPowerMinusOneOutputV2,
+  certifiedSqrtRatioOutputV2,
   type MetricBenchmarkRecordV2,
   type MetricFillRecordV2,
   type MetricResultContextV2,

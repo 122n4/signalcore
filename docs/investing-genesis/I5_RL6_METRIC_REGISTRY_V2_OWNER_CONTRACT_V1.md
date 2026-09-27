@@ -84,9 +84,9 @@ outputs serialize as canonical decimal integers.
 | `MAX_DRAWDOWN_DURATION` | `METRIC_V2` | sessions count | duration of the maximum-depth drawdown episode | no drawdown -> available `0` |
 | `MAX_DRAWDOWN_RECOVERY` | `METRIC_V2` | sessions count | sessions from selected episode trough to first recovery at or above episode peak | unrecovered selected episode -> `UNRECOVERED_DRAWDOWN`; no drawdown -> available `0` |
 | `ANNUALIZED_VOLATILITY` | `METRIC_V2` | ratio | sample standard deviation of all session returns times `sqrt(252)` | fewer than 2 returns -> `INSUFFICIENT_OBSERVATIONS`; non-positive NAV -> `NON_POSITIVE_NAV` |
-| `DOWNSIDE_DEVIATION` | `METRIC_V2` | ratio | sample standard deviation around MAR `0` using downside observations only, annualized by `sqrt(252)` | fewer than 2 downside returns -> `NO_DOWNSIDE_OBSERVATIONS`; non-positive NAV -> `NON_POSITIVE_NAV` |
+| `DOWNSIDE_DEVIATION` | `METRIC_V2` | ratio | sample standard deviation around MAR `0` using downside observations only, annualized by `sqrt(252)` | zero downside returns -> `NO_DOWNSIDE_OBSERVATIONS`; exactly one downside return -> `INSUFFICIENT_DOWNSIDE_OBSERVATIONS`; non-positive NAV -> `NON_POSITIVE_NAV` |
 | `SHARPE_RATIO` | `METRIC_V2` | ratio | `(mean(r_t) * sqrt(252)) / sample_stddev(r_t)` with risk-free session return `0` | zero denominator -> `ZERO_DENOMINATOR`; insufficient returns -> `INSUFFICIENT_OBSERVATIONS` |
-| `SORTINO_RATIO` | `METRIC_V2` | ratio | `(mean(r_t) * sqrt(252)) / downside_deviation_unannualized`; MAR `0`; downside denominator is downside observations minus one | fewer than 2 downside observations -> `NO_DOWNSIDE_OBSERVATIONS`; zero denominator -> `ZERO_DENOMINATOR` |
+| `SORTINO_RATIO` | `METRIC_V2` | ratio | `(mean(r_t) * sqrt(252)) / downside_deviation_unannualized`; MAR `0`; downside denominator is downside observations minus one | zero downside observations -> `NO_DOWNSIDE_OBSERVATIONS`; exactly one downside observation -> `INSUFFICIENT_DOWNSIDE_OBSERVATIONS`; zero denominator -> `ZERO_DENOMINATOR` |
 | `CALMAR_RATIO` | `METRIC_V2` | ratio | exact internal `CAGR / MAX_DRAWDOWN`, before CAGR output rounding | max drawdown zero -> `ZERO_DENOMINATOR`; invalid CAGR -> `INVALID_CAGR_DOMAIN` |
 | `TURNOVER` | `METRIC_V2` | ratio | total-period turnover = `sum(abs executed gross fill notional) / average(NAV over valuation sessions)` | average NAV zero -> `ZERO_DENOMINATOR` |
 | `AVERAGE_GROSS_EXPOSURE` | `METRIC_V2` | ratio | average `market_value / NAV` over valuation sessions | non-positive NAV -> `NON_POSITIVE_NAV` |
@@ -102,11 +102,14 @@ the accepted Engine V2 execution path. It does not replay strategy logic and
 does not reconstruct trades from NAV.
 
 All material metric arithmetic uses exact rational arithmetic and deterministic
-BigInt root/power helpers. Irrational operations use adaptive precision:
-independent lower-precision and higher-precision computations must produce the
-same final 18-decimal half-even serialized output, otherwise the candidate
-fails closed with numeric invariant failure. The scientific truth path does not
-use JavaScript binary floating-point, `Math.sqrt` or `Math.pow`.
+BigInt root/power helpers. Irrational operations use adaptive certified
+rational intervals: each square root, rational power, and composed ratio
+calculation increases decimal precision deterministically until the exact lower
+and upper rational bounds both serialize to the same 18-decimal half-even
+`RESEARCH_RATIO_OUTPUT_V1` value. If the interval cannot certify the output
+within the explicit safe precision limit, the candidate fails closed with
+numeric invariant failure. The scientific truth path does not use JavaScript
+binary floating-point, `Math.sqrt` or `Math.pow`.
 
 Ratio outputs use:
 
@@ -148,6 +151,7 @@ UNRECOVERED_DRAWDOWN
 BENCHMARK_UNAVAILABLE
 NON_POSITIVE_NAV
 INVALID_CAGR_DOMAIN
+INSUFFICIENT_DOWNSIDE_OBSERVATIONS
 NO_DOWNSIDE_OBSERVATIONS
 ```
 

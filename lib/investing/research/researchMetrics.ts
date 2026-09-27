@@ -4,7 +4,6 @@ import {
   divideRationalV1,
   integerToRationalV1,
   multiplyRationalV1,
-  renderRatioOutputFromScaledIntegerV1,
   renderRatioOutputV1,
   subtractRationalV1,
   type ExactRationalV1,
@@ -84,6 +83,7 @@ type MetricUnavailableReasonV2 =
   | "BENCHMARK_UNAVAILABLE"
   | "NON_POSITIVE_NAV"
   | "INVALID_CAGR_DOMAIN"
+  | "INSUFFICIENT_DOWNSIDE_OBSERVATIONS"
   | "NO_DOWNSIDE_OBSERVATIONS";
 
 type DrawdownEpisode = Readonly<{
@@ -95,8 +95,9 @@ type DrawdownEpisode = Readonly<{
 const zero = integerToRationalV1(0n);
 const one = integerToRationalV1(1n);
 const tradingSessionsPerYear = integerToRationalV1(252n);
-const ratioScale = 72;
-const scaledOne = 10n ** BigInt(ratioScale);
+const certificationStartScale = 36;
+const certificationStepScale = 18;
+const certificationMaxScale = 216;
 
 export function metricResultRecordsV2(input: MetricResultContextV2): readonly CanonicalJsonValue[] {
   if (input.valuations.length < 1) throw new Error("NO_VALUATIONS");
@@ -228,20 +229,21 @@ function averageGrossExposure(valuations: readonly (ValuationRecordV1 & { market
   return availableRatio("AVERAGE_GROSS_EXPOSURE", divideRationalV1(sumRationalsV1(exposure), integerToRationalV1(BigInt(exposure.length))));
 }
 
-function cagrMetric(valuations: readonly ValuationRecordV1[]): Readonly<{ record: CanonicalJsonValue; scaledValue: bigint | null }> {
+function cagrMetric(valuations: readonly ValuationRecordV1[]): Readonly<{ record: CanonicalJsonValue; interval: RationalIntervalV1 | null }> {
   const start = valuations[0]!;
   const end = valuations.at(-1)!;
   const days = civilDayNumber(end.sessionDate) - civilDayNumber(start.sessionDate);
-  if (days <= 0n) return { record: unavailable("CAGR", "INSUFFICIENT_OBSERVATIONS"), scaledValue: null };
-  if (compareRationalV1(start.navExact, zero) <= 0 || compareRationalV1(end.navExact, zero) <= 0) return { record: unavailable("CAGR", "INVALID_CAGR_DOMAIN"), scaledValue: null };
+  if (days <= 0n) return { record: unavailable("CAGR", "INSUFFICIENT_OBSERVATIONS"), interval: null };
+  if (compareRationalV1(start.navExact, zero) <= 0 || compareRationalV1(end.navExact, zero) <= 0) return { record: unavailable("CAGR", "INVALID_CAGR_DOMAIN"), interval: null };
   const growth = divideRationalV1(end.navExact, start.navExact);
-  const scaledValue = stablePowRationalScaled(growth, 365n, days);
-  return { record: metricRecord("CAGR", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(scaledValue, ratioScale) }), scaledValue };
+  const certified = certifiedRationalPowerMinusOneOutputV2(growth, 365n, days);
+  return { record: metricRecord("CAGR", { status: "AVAILABLE", value: certified.value }), interval: certified.interval };
 }
 
 function volatilityMetric(metricId: "ANNUALIZED_VOLATILITY" | "DOWNSIDE_DEVIATION", returns: readonly ExactRationalV1[], downsideOnly: boolean): CanonicalJsonValue {
   const sample = downsideOnly ? returns.filter((value) => compareRationalV1(value, zero) < 0) : returns;
-  if (sample.length < 2) return unavailable(metricId, downsideOnly ? "NO_DOWNSIDE_OBSERVATIONS" : "INSUFFICIENT_OBSERVATIONS");
+  if (sample.length === 0) return unavailable(metricId, downsideOnly ? "NO_DOWNSIDE_OBSERVATIONS" : "INSUFFICIENT_OBSERVATIONS");
+  if (sample.length < 2) return unavailable(metricId, downsideOnly ? "INSUFFICIENT_DOWNSIDE_OBSERVATIONS" : "INSUFFICIENT_OBSERVATIONS");
   const mean = downsideOnly ? zero : divideRationalV1(sumRationalsV1(sample), integerToRationalV1(BigInt(sample.length)));
   const squared = sample.map((value) => {
     const diff = subtractRationalV1(value, mean);
@@ -249,7 +251,7 @@ function volatilityMetric(metricId: "ANNUALIZED_VOLATILITY" | "DOWNSIDE_DEVIATIO
   });
   const variance = divideRationalV1(sumRationalsV1(squared), integerToRationalV1(BigInt(sample.length - 1)));
   const annualized = multiplyRationalV1(variance, tradingSessionsPerYear);
-  return metricRecord(metricId, { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(stableSqrtRationalScaled(annualized), ratioScale) });
+  return metricRecord(metricId, { status: "AVAILABLE", value: certifiedSqrtRatioOutputV2(annualized).value });
 }
 
 function sharpeMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue {
@@ -257,22 +259,27 @@ function sharpeMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue {
   const mean = divideRationalV1(sumRationalsV1(returns), integerToRationalV1(BigInt(returns.length)));
   const vol = volatilityExact(returns);
   if (compareRationalV1(vol, zero) === 0) return unavailable("SHARPE_RATIO", "ZERO_DENOMINATOR");
-  return metricRecord("SHARPE_RATIO", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(divideScaled(multiplyScaled(rationalToScaled(mean), stableSqrtRationalScaled(tradingSessionsPerYear)), stableSqrtRationalScaled(vol)), ratioScale) });
+  return metricRecord("SHARPE_RATIO", { status: "AVAILABLE", value: certifiedAnnualizedMeanRatioOutput(mean, vol) });
 }
 
 function sortinoMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue {
   const downside = returns.filter((value) => compareRationalV1(value, zero) < 0);
-  if (returns.length < 2 || downside.length < 2) return unavailable("SORTINO_RATIO", downside.length < 2 ? "NO_DOWNSIDE_OBSERVATIONS" : "INSUFFICIENT_OBSERVATIONS");
+  if (returns.length < 2) return unavailable("SORTINO_RATIO", "INSUFFICIENT_OBSERVATIONS");
+  if (downside.length === 0) return unavailable("SORTINO_RATIO", "NO_DOWNSIDE_OBSERVATIONS");
+  if (downside.length < 2) return unavailable("SORTINO_RATIO", "INSUFFICIENT_DOWNSIDE_OBSERVATIONS");
   const mean = divideRationalV1(sumRationalsV1(returns), integerToRationalV1(BigInt(returns.length)));
   const downsideDeviation = downsideDeviationExact(downside);
   if (compareRationalV1(downsideDeviation, zero) === 0) return unavailable("SORTINO_RATIO", "ZERO_DENOMINATOR");
-  return metricRecord("SORTINO_RATIO", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(divideScaled(multiplyScaled(rationalToScaled(mean), stableSqrtRationalScaled(tradingSessionsPerYear)), stableSqrtRationalScaled(downsideDeviation)), ratioScale) });
+  return metricRecord("SORTINO_RATIO", { status: "AVAILABLE", value: certifiedAnnualizedMeanRatioOutput(mean, downsideDeviation) });
 }
 
-function calmarMetric(cagr: Readonly<{ record: CanonicalJsonValue; scaledValue: bigint | null }>, maxDrawdown: ExactRationalV1): CanonicalJsonValue {
-  if (!isAvailableMetric(cagr.record) || cagr.scaledValue === null) return unavailable("CALMAR_RATIO", "INVALID_CAGR_DOMAIN");
+function calmarMetric(cagr: Readonly<{ record: CanonicalJsonValue; interval: RationalIntervalV1 | null }>, maxDrawdown: ExactRationalV1): CanonicalJsonValue {
+  if (!isAvailableMetric(cagr.record) || cagr.interval === null) return unavailable("CALMAR_RATIO", "INVALID_CAGR_DOMAIN");
   if (compareRationalV1(maxDrawdown, zero) === 0) return unavailable("CALMAR_RATIO", "ZERO_DENOMINATOR");
-  return availableRatio("CALMAR_RATIO", divideRationalV1({ numerator: cagr.scaledValue, denominator: scaledOne }, maxDrawdown));
+  return metricRecord("CALMAR_RATIO", { status: "AVAILABLE", value: certifyIntervalOutput({
+    lower: divideRationalV1(cagr.interval.lower, maxDrawdown),
+    upper: divideRationalV1(cagr.interval.upper, maxDrawdown),
+  }) });
 }
 
 function benchmarkRelativeReturn(benchmark: readonly MetricBenchmarkRecordV2[] | null, ending: ExactRationalV1, starting: ExactRationalV1): CanonicalJsonValue {
@@ -297,7 +304,7 @@ function trackingErrorMetric(returns: readonly ExactRationalV1[], benchmarkRetur
   if (returns.length !== benchmarkReturns.length || returns.length < 2) return unavailable("TRACKING_ERROR", "INSUFFICIENT_OBSERVATIONS");
   const active = returns.map((value, index) => subtractRationalV1(value, benchmarkReturns[index]!));
   const variance = volatilityExact(active);
-  return metricRecord("TRACKING_ERROR", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(stableSqrtRationalScaled(multiplyRationalV1(variance, tradingSessionsPerYear)), ratioScale) });
+  return metricRecord("TRACKING_ERROR", { status: "AVAILABLE", value: certifiedSqrtRatioOutputV2(multiplyRationalV1(variance, tradingSessionsPerYear)).value });
 }
 
 function volatilityExact(values: readonly ExactRationalV1[]): ExactRationalV1 {
@@ -314,55 +321,125 @@ function downsideDeviationExact(values: readonly ExactRationalV1[]): ExactRation
   return divideRationalV1(sumRationalsV1(squared), integerToRationalV1(BigInt(values.length - 1)));
 }
 
-function stableSqrtRationalScaled(value: ExactRationalV1): bigint {
-  return stableScaled((scale) => sqrtRationalAtScale(value, scale));
+type RationalIntervalV1 = Readonly<{ lower: ExactRationalV1; upper: ExactRationalV1 }>;
+
+export function certifiedSqrtRatioOutputV2(value: ExactRationalV1): Readonly<{ value: string; interval: RationalIntervalV1 }> {
+  if (value.numerator < 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  for (let scale = certificationStartScale; scale <= certificationMaxScale; scale += certificationStepScale) {
+    const factor = 10n ** BigInt(scale);
+    const rootFloor = sqrtFloor((value.numerator * factor * factor) / value.denominator);
+    const isExact = rootFloor * rootFloor * value.denominator === value.numerator * factor * factor;
+    const interval = normalizeInterval({
+      lower: { numerator: rootFloor, denominator: factor },
+      upper: { numerator: isExact ? rootFloor : rootFloor + 1n, denominator: factor },
+    });
+    const certified = tryCertifyIntervalOutput(interval);
+    if (certified) return { value: certified, interval };
+  }
+  throw new Error("NUMERIC_INVARIANT_VIOLATION");
 }
 
-function sqrtRationalAtScale(value: ExactRationalV1, scale: number): bigint {
+export function certifiedRationalPowerMinusOneOutputV2(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): Readonly<{ value: string; interval: RationalIntervalV1 }> {
+  if (base.numerator <= 0n || exponentNumerator <= 0n || exponentDenominator <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  for (let scale = certificationStartScale; scale <= certificationMaxScale; scale += certificationStepScale) {
+    const interval = rationalPowerMinusOneInterval(base, exponentNumerator, exponentDenominator, scale);
+    const certified = tryCertifyIntervalOutput(interval);
+    if (certified) return { value: certified, interval };
+  }
+  throw new Error("NUMERIC_INVARIANT_VIOLATION");
+}
+
+function rationalPowerMinusOneInterval(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint, scale: number): RationalIntervalV1 {
+  const factor = 10n ** BigInt(scale);
+  const rootFloor = nthRootAtScale(base, exponentDenominator, scale);
+  const isExact = bigintPower(rootFloor, exponentDenominator) * base.denominator === base.numerator * bigintPower(factor, exponentDenominator);
+  const lowerRoot = { numerator: rootFloor, denominator: factor };
+  const upperRoot = { numerator: isExact ? rootFloor : rootFloor + 1n, denominator: factor };
+  return normalizeInterval({
+    lower: subtractRationalV1(rationalPowerExact(lowerRoot, exponentNumerator), one),
+    upper: subtractRationalV1(rationalPowerExact(upperRoot, exponentNumerator), one),
+  });
+}
+
+function certifiedAnnualizedMeanRatioOutput(mean: ExactRationalV1, denominatorVariance: ExactRationalV1): string {
+  for (let scale = certificationStartScale; scale <= certificationMaxScale; scale += certificationStepScale) {
+    const numeratorRoot = sqrtIntervalAtScale(tradingSessionsPerYear, scale);
+    const denominatorRoot = sqrtIntervalAtScale(denominatorVariance, scale);
+    const candidates = [
+      divideRationalV1(multiplyRationalV1(mean, numeratorRoot.lower), denominatorRoot.lower),
+      divideRationalV1(multiplyRationalV1(mean, numeratorRoot.lower), denominatorRoot.upper),
+      divideRationalV1(multiplyRationalV1(mean, numeratorRoot.upper), denominatorRoot.lower),
+      divideRationalV1(multiplyRationalV1(mean, numeratorRoot.upper), denominatorRoot.upper),
+    ];
+    const interval = normalizeInterval({
+      lower: minRational(candidates),
+      upper: maxRational(candidates),
+    });
+    const certified = tryCertifyIntervalOutput(interval);
+    if (certified) return certified;
+  }
+  throw new Error("NUMERIC_INVARIANT_VIOLATION");
+}
+
+function sqrtIntervalAtScale(value: ExactRationalV1, scale: number): RationalIntervalV1 {
   if (value.numerator < 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
   const factor = 10n ** BigInt(scale);
-  return sqrtFloor((value.numerator * factor * factor) / value.denominator);
+  const rootFloor = sqrtFloor((value.numerator * factor * factor) / value.denominator);
+  const isExact = rootFloor * rootFloor * value.denominator === value.numerator * factor * factor;
+  return normalizeInterval({
+    lower: { numerator: rootFloor, denominator: factor },
+    upper: { numerator: isExact ? rootFloor : rootFloor + 1n, denominator: factor },
+  });
 }
 
-function rationalToScaled(value: ExactRationalV1): bigint {
-  return (value.numerator * scaledOne) / value.denominator;
+function rationalPowerExact(base: ExactRationalV1, exponent: bigint): ExactRationalV1 {
+  return {
+    numerator: bigintPower(base.numerator, exponent),
+    denominator: bigintPower(base.denominator, exponent),
+  };
 }
 
-function multiplyScaled(left: bigint, right: bigint): bigint {
-  return (left * right) / scaledOne;
+function certifyIntervalOutput(interval: RationalIntervalV1): string {
+  const certified = tryCertifyIntervalOutput(normalizeInterval(interval));
+  if (!certified) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  return certified;
 }
 
-function divideScaled(left: bigint, right: bigint): bigint {
-  if (right === 0n) throw new Error("DIVIDE_BY_ZERO");
-  return (left * scaledOne) / right;
+function tryCertifyIntervalOutput(interval: RationalIntervalV1): string | null {
+  const lower = renderRatioOutputV1(interval.lower);
+  const upper = renderRatioOutputV1(interval.upper);
+  return lower === upper ? lower : null;
 }
 
-function stablePowRationalScaled(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): bigint {
-  return stableScaled((scale) => powRationalAtScale(base, exponentNumerator, exponentDenominator, scale));
+function normalizeInterval(interval: RationalIntervalV1): RationalIntervalV1 {
+  return compareRationalV1(interval.lower, interval.upper) <= 0
+    ? interval
+    : { lower: interval.upper, upper: interval.lower };
 }
 
-function powRationalAtScale(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint, scale: number): bigint {
-  const factor = 10n ** BigInt(scale);
-  const root = nthRootAtScale(base, exponentDenominator, scale);
-  let result = factor;
-  for (let index = 0n; index < exponentNumerator; index += 1n) result = (result * root) / factor;
-  return result - factor;
+function minRational(values: readonly ExactRationalV1[]): ExactRationalV1 {
+  return values.reduce((minimum, value) => compareRationalV1(value, minimum) < 0 ? value : minimum, values[0]!);
+}
+
+function maxRational(values: readonly ExactRationalV1[]): ExactRationalV1 {
+  return values.reduce((maximum, value) => compareRationalV1(value, maximum) > 0 ? value : maximum, values[0]!);
 }
 
 function nthRootAtScale(value: ExactRationalV1, n: bigint, scale: number): bigint {
   if (value.numerator <= 0n || n <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
   const factor = 10n ** BigInt(scale);
-  const scaled = (value.numerator * factor) / value.denominator;
+  const target = value.numerator * bigintPower(factor, n);
+  const denominator = value.denominator;
   let low = 0n;
-  let high = scaled > factor ? scaled : factor;
-  const multiplyAtScale = (left: bigint, right: bigint) => (left * right) / factor;
+  let high = factor;
   const comparePower = (base: bigint): -1 | 0 | 1 => {
-    let result = factor;
+    let result = 1n;
     for (let index = 0n; index < n; index += 1n) {
-      result = multiplyAtScale(result, base);
-      if (result > scaled) return 1;
+      result *= base;
+      if (result * denominator > target) return 1;
     }
-    return result === scaled ? 0 : -1;
+    const left = result * denominator;
+    return left === target ? 0 : left < target ? -1 : 1;
   };
   while (comparePower(high) < 0) high *= 2n;
   while (low + 1n < high) {
@@ -373,21 +450,10 @@ function nthRootAtScale(value: ExactRationalV1, n: bigint, scale: number): bigin
   return low;
 }
 
-function stableScaled(compute: (scale: number) => bigint): bigint {
-  const firstScale = 54;
-  const secondScale = 72;
-  const first = rescale(compute(firstScale), firstScale, ratioScale);
-  const second = rescale(compute(secondScale), secondScale, ratioScale);
-  if (renderRatioOutputFromScaledIntegerV1(first, ratioScale) !== renderRatioOutputFromScaledIntegerV1(second, ratioScale)) {
-    throw new Error("NUMERIC_INVARIANT_VIOLATION");
-  }
-  return second;
-}
-
-function rescale(value: bigint, fromScale: number, toScale: number): bigint {
-  if (fromScale === toScale) return value;
-  if (fromScale > toScale) return value / (10n ** BigInt(fromScale - toScale));
-  return value * (10n ** BigInt(toScale - fromScale));
+function bigintPower(base: bigint, exponent: bigint): bigint {
+  let result = 1n;
+  for (let index = 0n; index < exponent; index += 1n) result *= base;
+  return result;
 }
 
 function sqrtFloor(value: bigint): bigint {
