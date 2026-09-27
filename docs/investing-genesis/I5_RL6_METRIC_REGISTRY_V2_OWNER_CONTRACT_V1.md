@@ -149,7 +149,7 @@ rational intervals: each square root, rational power, and composed ratio
 calculation increases decimal precision deterministically until the exact lower
 and upper rational bounds both serialize to the same 18-decimal half-even
 `RESEARCH_RATIO_OUTPUT_V1` value. If the interval cannot certify the output
-within the explicit safe precision limit, the candidate fails closed with
+within the explicit safe precision limit, the implementation fails closed with
 numeric invariant failure. The scientific truth path does not use JavaScript
 binary floating-point, `Math.sqrt` or `Math.pow`.
 
