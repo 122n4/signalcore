@@ -102,6 +102,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-3B Validation Child Execution (unnumbered) | `I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md` |
 | I5 RL-3C Validation Aggregate Closure (unnumbered) | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-4 Research Engine V2 Design Freeze (unnumbered) | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` |
+| I5 RL-5 Research Engine V2 Implementation Closure (unnumbered) | `I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -412,7 +413,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-5_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -790,9 +791,9 @@ I5 RL-4 Research Engine V2 Design Freeze acceptance evidence:
 
 Historical `ENGINE_V20260918` remains immutable.
 
-`ENGINE_V20260926` is DESIGN-FROZEN only.
+RL-4 froze the `ENGINE_V20260926` design.
 
-RL-5 implementation has not yet been accepted.
+RL-5 subsequently implemented and accepted `ENGINE_V20260926`.
 
 No RL-4 migration exists.
 
@@ -800,21 +801,81 @@ No RL-4 Production mutation occurred.
 
 `I5 RL-4 RESEARCH ENGINE V2 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
 
+## I5 RL-5 Research Engine V2 Implementation Closure (unnumbered)
+
+RL-5 runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- Production: `APPLIED`.
+- state: `CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE`.
+- permanent A-number: `NONE`.
+
+I5 RL-5 Research Engine V2 Implementation Closure acceptance evidence:
+
+- canonical predecessor:
+  `4f0e0a18571ee7f556c528d3ea619feefc7bfef0`.
+- final technical candidate:
+  `beb86c2b0096d6d7089284597dd73def2f945b5a`.
+- PR:
+  `#98`.
+- accepted implementation merge/main anchor:
+  `76ca5d50e907cd07c7400f5fbba61e8dae1ad530`.
+- CI:
+  `36302315798 - SUCCESS`.
+- verify:
+  `108572132426 - SUCCESS`.
+- dependency audit:
+  `108572132338 - SUCCESS`.
+- PG17 CI:
+  `36302315795 - SUCCESS`.
+- real dedicated RL-5 PG17 rehearsal:
+  `PASS / PostgreSQL 17.6 / disposable Supabase branch`.
+- Vercel candidate:
+  `READY`.
+- Vercel merged main:
+  `READY`.
+- Production migration:
+  `20260926201750_investing_i5_rl5_engine_v2_admission`.
+- Production post-apply:
+  `PASS`.
+- Production migration ledger:
+  `98 versions`.
+- migration history alignment:
+  `PASS`.
+- independent auditor:
+  `PASS`.
+
+Migration history alignment evidence:
+
+- Supabase MCP initially recorded applied migration history version:
+  `20260927073226`.
+- Canonical Git migration version:
+  `20260926201750`.
+- Explicitly authorized repair changed only
+  `supabase_migrations.schema_migrations.version` from `20260927073226` to
+  `20260926201750`.
+- Schema was not reapplied, migration SQL was not rerun and no
+  business/financial data changed.
+- Post-repair canonical history row `20260926201750`: `exactly 1`.
+- Incorrect history row `20260927073226`: `0`.
+
+`I5 RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+
 ## Production Supabase Migration State
 
 Production Supabase migration state:
-`CURRENT THROUGH RL-3C`.
+`CURRENT THROUGH RL-5`.
 
 - Latest:
-  `20260925044248 investing_i5_rl3c_postapply_advisor_remediation`.
+  `20260926201750 investing_i5_rl5_engine_v2_admission`.
 - Migration ledger:
-  `97 versions`.
-- RL-4 design accepted merge/main anchor:
-  `e5b447942bf4811140cb427fa1e660541d7b636f`.
-  This SHA is the immutable Git anchor at which PR #96 placed the independently
-  audited RL-4 design on main. It is not a claim that repository HEAD remains
-  permanently equal to this SHA. Current repository HEAD is verified from GitHub
-  when operationally required.
+  `98 versions`.
+- RL-5 implementation accepted merge/main anchor:
+  `76ca5d50e907cd07c7400f5fbba61e8dae1ad530`.
+  This SHA is the immutable Git anchor where PR #98 placed the independently
+  audited RL-5 implementation on main. It is not a claim that repository HEAD
+  will forever equal this SHA.
 - A4 -> RL-3B production application:
   `PASSED`.
 - RL-3C production application:
@@ -852,7 +913,7 @@ Production Supabase migration state:
   protocol-authority covering index and currently-unused Passport/authority
   indexes. These findings must not be corrected ad hoc in Production.
 
-Applied Production migration batch through RL-3C:
+Applied Production migration batch through RL-5:
 
 ```text
 20260915150000_investing_i5_experiment_baseline_persistence.sql
@@ -866,6 +927,7 @@ Applied Production migration batch through RL-3C:
 20260923090000_investing_i5_rl3b_validation_child_execution.sql
 20260924175716_investing_i5_rl3c_validation_aggregate_closure.sql
 20260925044248_investing_i5_rl3c_postapply_advisor_remediation.sql
+20260926201750_investing_i5_rl5_engine_v2_admission.sql
 ```
 
 Historical production closure remains:
@@ -881,10 +943,15 @@ Current production closure is:
 - `RL-3C advisor remediation = APPLIED / AUDITED / CANONICAL`.
 - `RL-3C Git/Production alignment = PASS`.
 - `RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
+- `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+- `RL-5 Production migration = APPLIED`.
+- `RL-5 post-apply audit = PASSED`.
+- `RL-5 Git/Production alignment = PASS`.
+- `RL-5 migration-history alignment = PASS`.
 
-This production state records RL-4 design accepted in Git, but RL-4 runtime and
-persistence are not applied to Production. It does not accept RL-5+,
-promotion/robustness, Blind Truth, Paper, Live, Core or any permanent A-number.
+This production state records RL-5 accepted in Git and applied in Production.
+It does not accept RL-6+, promotion/robustness, Blind Truth, Paper, Live, Core
+or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -913,6 +980,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-3B Validation Child Execution / unnumbered | YES | YES | owner contract + runtime + writer/service + migration + authority/runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION | NONE |
 | RL-3C Validation Aggregate Closure / unnumbered | YES | YES | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` + Validation Result runtime/finalizer + Passport/Evidence Ledger projection + migration + PG17 physical/finalizer/cumulative rehearsals + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE | NONE |
 | RL-4 Research Engine V2 Design Freeze / unnumbered | NO | YES | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` + static contract tests + independent design audit + CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED | CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE | NONE |
+| RL-5 Research Engine V2 Implementation Closure / unnumbered | YES | YES | RL-5 owner contract + Engine V2 runtime + scientific admission + Validation V2 + V2 goldens + migration + independent implementation audit + real PostgreSQL 17 rehearsal + PR/CI + Vercel + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE | NONE |
 
 RL-1 runtime/progression state:
 
@@ -956,6 +1024,14 @@ RL-4 runtime/progression state:
 - design: `YES`.
 - implementation: `NO`.
 - state: `CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE`.
+- permanent A-number: `NONE`.
+
+RL-5 runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- Production: `APPLIED`.
+- state: `CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE`.
 - permanent A-number: `NONE`.
 
 RL-3 Validation Protocol V1 progression state:

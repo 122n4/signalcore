@@ -1,27 +1,36 @@
 # I5 RL-5 Research Engine V2 Implementation Closure Owner Contract V1
 
-Status: CANDIDATE / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED
+
+Classification:
+`CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`
+
+Permanent A-number:
+`NOT ASSIGNED`
 
 Canonical predecessor:
 `4f0e0a18571ee7f556c528d3ea619feefc7bfef0`
 
 Production mutation:
-`NONE`
+`APPLIED ONLY AS THE ACCEPTED RL-5 ENGINE-VERSION CONSTRAINT MIGRATION`
 
 Production migration:
-`NOT APPLIED`
+`APPLIED / 20260926201750_investing_i5_rl5_engine_v2_admission`
 
 RL-5 acceptance:
-`NOT ACCEPTED`
+`CURRENT_ACCEPTED`
 
 Previous independently audited candidate:
-`5814d92dc4735bd409ebeb4987d7e03337bd6a54`
+`beb86c2b0096d6d7089284597dd73def2f945b5a`
 
 Independent audit verdict:
-`BLOCKED - CLOSED ENGINE ADMISSION / DATASET INSTRUMENT SCOPE`
+`PASS`
 
 Candidate publication:
-`ESTABLISHED BY GIT HISTORY / NOT AN ACCEPTANCE SIGNAL`
+`ACCEPTED BY PR #98 REBASE MERGE ON MAIN`
+
+Accepted implementation merge/main anchor:
+`76ca5d50e907cd07c7400f5fbba61e8dae1ad530`
 
 ## Engine Identity
 
@@ -483,7 +492,140 @@ NONE
 Production:
 
 ```text
-NOT APPLIED
+APPLIED
+```
+
+Production post-apply audit:
+
+```text
+PASS
+```
+
+Migration history alignment:
+
+```text
+PASS
+```
+
+Production PostgreSQL:
+
+```text
+17.6
+```
+
+Production migration ledger:
+
+```text
+98 versions
+latest = 20260926201750_investing_i5_rl5_engine_v2_admission
+```
+
+Migration history repair:
+
+```text
+Supabase MCP initially recorded the applied RL-5 migration under generated
+remote history version 20260927073226_investing_i5_rl5_engine_v2_admission
+while the canonical Git migration version is
+20260926201750_investing_i5_rl5_engine_v2_admission.
+
+After explicit user authorization, migration-history bookkeeping was repaired
+in a fail-closed transaction by changing only
+supabase_migrations.schema_migrations.version from 20260927073226 to
+20260926201750.
+
+The schema was NOT reapplied.
+The migration SQL was NOT rerun.
+No business/financial data changed.
+
+Post-repair proof:
+canonical history row 20260926201750 = exactly 1
+incorrect row 20260927073226 = 0
+Production migration count = 98
+latest = 20260926201750_investing_i5_rl5_engine_v2_admission
+```
+
+Production post-apply security audit:
+
+```text
+five engine-version constraints validate exactly ENGINE_V20260918 and ENGINE_V20260926
+owners = investing_owner
+RLS = true
+FORCE RLS = true
+forbidden grants to PUBLIC / anon / authenticated / service_role = 0
+security surface fingerprint before RL-5 = b8ebd837700183e92d218f8f5342b6fc
+security surface fingerprint after RL-5 = b8ebd837700183e92d218f8f5342b6fc
+security surface unchanged by RL-5 constraint widening
+```
+
+## Accepted Provenance / Acceptance Evidence
+
+```text
+canonical implementation predecessor = 4f0e0a18571ee7f556c528d3ea619feefc7bfef0
+final independently audited RL-5 candidate = beb86c2b0096d6d7089284597dd73def2f945b5a
+implementation PR = #98
+implementation accepted merge/main anchor = 76ca5d50e907cd07c7400f5fbba61e8dae1ad530
+implementation diff = 3 commits / 26 files
+independent implementation audit = PASS
+independent real RL-5 PostgreSQL rehearsal = PASS
+real rehearsal database = Supabase disposable branch / PostgreSQL 17.6
+disposable rehearsal branch = DELETED AND VERIFIED ABSENT
+```
+
+Real RL-5 PostgreSQL rehearsal proved:
+
+```text
+exact candidate migration applied
+all five engine-version constraints validated
+ENGINE_V20260918 accepted
+ENGINE_V20260926 accepted
+ENGINE_UNKNOWN rejected by exact five constraints
+replay failed closed against non-V1 prestate
+owners preserved
+RLS preserved
+FORCE RLS preserved
+forbidden grants = 0
+Validation triggers preserved
+no probe rows remained
+no temporary grants remained
+```
+
+Implementation CI:
+
+```text
+CI run = 36302315798 - SUCCESS
+verify job = 108572132426 - SUCCESS
+dependency-audit job = 108572132338 - SUCCESS
+Test Files = 231 passed / 18 skipped
+Tests = 1316 passed / 48 skipped
+Lint = 0 errors / 3 pre-existing warnings
+TypeScript = PASS
+Build = PASS
+Dependency audit = 0 vulnerabilities
+```
+
+PG17 CI:
+
+```text
+PG17 CI run = 36302315795 - SUCCESS
+investing-pg17-reconciliation = 108572132294 - SUCCESS
+investing-cumulative-compatibility-pg17 = 108572132486 - SUCCESS
+```
+
+Truth note:
+
+```text
+Repository PG17 CI workflows cover the established cumulative PostgreSQL
+compatibility chain through RL-3C. They do NOT independently replace the
+dedicated real RL-5 migration rehearsal. The authoritative RL-5 migration
+physical proof is the separate real Supabase PostgreSQL 17.6 disposable-branch
+rehearsal recorded above.
+```
+
+Vercel:
+
+```text
+candidate preview deployment = dpl_A42vkG1D8SHucQ5MQs3JPgWQJToU / READY / beb86c2b0096d6d7089284597dd73def2f945b5a
+merged-main Production deployment = dpl_GYP8dMcVa1SR3JVD78WM21hGs34v / READY / 76ca5d50e907cd07c7400f5fbba61e8dae1ad530
 ```
 
 ## Verification Performed
@@ -499,17 +641,19 @@ npm run lint = PASS
 npm run build = PASS with in-process dummy NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   Existing Turbopack dynamic filesystem tracing warning remains
 npm run audit:prod = PASS / 0 vulnerabilities
-npx vitest run PG17 targeted set --reporter=dot = NOT RUN IN THIS CORRECTION / PENDING EXTERNAL DATABASE URLS
-REAL PG17 REHEARSAL = PENDING INDEPENDENT EXTERNAL GATE
+npx vitest run PG17 targeted set --reporter=dot = NOT THE RL-5 PHYSICAL PROOF
+Real dedicated RL-5 PostgreSQL 17.6 rehearsal = PASS
+Production post-apply audit = PASS
+Migration history alignment = PASS
 ```
 
 PG17 real database note:
 
 ```text
-The PG17-targeted test command completed successfully, but most physical database
-checks skipped in this environment because the suite's PG17 connection gates were
-not satisfied. Production migration remains NOT APPLIED.
-This is not a Production verification of the RL-5 migration.
+The repository PG17 CI workflows are retained as cumulative compatibility
+evidence, but the authoritative RL-5 physical migration proof is the separate
+real Supabase PostgreSQL 17.6 disposable-branch rehearsal. Production migration
+application and post-apply audit are recorded above.
 ```
 
 ## Closure State
@@ -522,18 +666,18 @@ git diff --check have all been executed.
 Remaining external acceptance gates:
 
 ```text
-independent correction review = NOT RECORDED FOR THIS ADDITIVE CORRECTION
-Production migration apply = NOT APPLIED
-post-apply PG17 audit = NOT RUN
-canonical state update = NOT PERFORMED
-candidate publication = ESTABLISHED BY GIT HISTORY / NOT AN ACCEPTANCE SIGNAL
+canonical state acceptance-sync review = THIS CANDIDATE
+RL-6 implementation = NOT STARTED
 ```
 
 Final state:
 
 ```text
-RL-5 = NOT ACCEPTED
-Production = NOT APPLIED
-REAL PG17 REHEARSAL = PENDING INDEPENDENT EXTERNAL GATE
-Supabase Production changed = NO
+RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED
+Production migration = APPLIED
+Production post-apply audit = PASS
+Migration history alignment = PASS
+Real RL-5 PG17 rehearsal = PASS
+Independent auditor verdict = PASS
+REAL_PROVIDER_EXECUTION = UNAVAILABLE
 ```
