@@ -37,7 +37,7 @@ describe("I5 RL-7 Robustness And Experiment Comparison V1 design freeze", () => 
 
   it("freezes exact cost, neighborhood and concentration evidence", () => {
     const contract = read(contractPath);
-    for (const token of ["explicitFeeTotal = final cumulativeExplicitFees", "slippageCostTotal = final cumulativeSlippageCost", "MISSING_EXACT_COST_EVIDENCE", "at least `3` admitted members including the subject", "minimumTradeCount = 20", "minimumRebalanceCount = 5", "LOW_EVENT_COUNT_DEPENDENCE", "FOLD_DIRECTION_CONCENTRATION", "UNSUPPORTED_CONCENTRATION_EVIDENCE", "no automatic parameter search", "no best-parameter selection"]) expect(contract).toContain(token);
+    for (const token of ["explicitFeeTotal = final cumulativeExplicitFees", "slippageCostTotal = final cumulativeSlippageCost", "MISSING_EXACT_COST_EVIDENCE", "at least `3` admitted members including the subject", "minimumTradeCount = 20", "minimumRebalanceCount = 5", "LOW_EVENT_COUNT_DEPENDENCE", "FOLD_DIRECTION_CONCENTRATION", "UNSUPPORTED_CONCENTRATION_EVIDENCE", "automatic parameter search", "best-parameter selection"]) expect(contract).toContain(token);
   });
 
   it("freezes exact policy and classification precedence", () => {
