@@ -24,8 +24,8 @@ describe("I5 RL-7 robustness classification", () => {
   });
 
   it("requires three folds, three neighborhood members and required metric evidence", () => {
-    expect(classifyRobustnessV1(valid({ completeFoldCount: 2 })).classification).toBe("ROBUSTNESS_INSUFFICIENT_EVIDENCE");
-    expect(classifyRobustnessV1(valid({ neighborhoodMemberCount: 2 })).classification).toBe("ROBUSTNESS_INSUFFICIENT_EVIDENCE");
+    expect(classifyRobustnessV1(valid({ completeFoldCount: 2, nonDegradedFoldCount: 2 })).classification).toBe("ROBUSTNESS_INSUFFICIENT_EVIDENCE");
+    expect(classifyRobustnessV1(valid({ neighborhoodMemberCount: 2, improvedOrEqualMemberCount: 2 })).classification).toBe("ROBUSTNESS_INSUFFICIENT_EVIDENCE");
     expect(classifyRobustnessV1(valid({ requiredMetricAvailable: false })).classification).toBe("ROBUSTNESS_INSUFFICIENT_EVIDENCE");
   });
 
