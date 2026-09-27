@@ -430,6 +430,12 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("Production post-apply audit = PASS");
     expect(contract).toContain("Migration history alignment = PASS");
     expect(contract).toContain("REAL_PROVIDER_EXECUTION = UNAVAILABLE");
+    expect(contract).toContain("No accepted historical migration is edited.");
+    expect(contract).toContain("Production mutation is limited to\nthe accepted RL-5 engine-version constraint migration recorded below.");
+    expect(contract).not.toContain("No accepted historical migration is edited. No Production mutation is performed.");
+    expect(contract).not.toContain("RL-5 = NOT ACCEPTED");
+    expect(contract).not.toContain("Production = NOT APPLIED");
+    expect(contract).not.toContain("REAL PG17 REHEARSAL = PENDING INDEPENDENT EXTERNAL GATE");
 
     expect(state).toContain("I5 RL-5 Research Engine V2 Implementation Closure (unnumbered)");
     expect(state).toContain("I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");

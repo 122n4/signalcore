@@ -76,7 +76,8 @@ artifact, V1 Result artifact schemas, V1 Evidence hash domain, V1 Validation
 boundary policy, and V1 Research Execution/Validation/Passport behavior covered
 by the full repository test suite.
 
-No accepted historical migration is edited. No Production mutation is performed.
+No accepted historical migration is edited. Production mutation is limited to
+the accepted RL-5 engine-version constraint migration recorded below.
 
 ## RunInput V2 Profile
 
