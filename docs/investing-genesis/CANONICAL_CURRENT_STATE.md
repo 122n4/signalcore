@@ -103,6 +103,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-3C Validation Aggregate Closure (unnumbered) | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-4 Research Engine V2 Design Freeze (unnumbered) | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` |
 | I5 RL-5 Research Engine V2 Implementation Closure (unnumbered) | `I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-6 Metric Registry V2 (unnumbered) | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -222,6 +223,15 @@ freeze/master evidence still relies on its narrow classifications.
   Together with accepted RL-3A and RL-3B it closes
   `RL-3_VALIDATION_PROTOCOL_V1`; it does not introduce promotion/robustness,
   Blind Truth, Engine V2, Paper, Live, Core or a permanent A-number.
+- I5 RL-6 Metric Registry V2:
+  `CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`. This accepted
+  slice adds the immutable `METRIC_REGISTRY_V20260927` and
+  `METRIC_RESULT_SET_V2` measurement surface for accepted Engine V2 Results
+  while preserving the historical V1 registry and `METRIC_RESULT_SET_V1`.
+  It establishes deterministic certified arithmetic, V1/V2 registry-result
+  artifact binding, benchmark alignment, request-order identity and Validation
+  V2 compatibility. It required no database migration and caused no Supabase
+  Production mutation.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -413,7 +423,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -862,6 +872,67 @@ Migration history alignment evidence:
 
 `I5 RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 
+## I5 RL-6 Metric Registry V2 (unnumbered)
+
+RL-6 runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- Production DB mutation: `NONE`.
+- state: `CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2`.
+- permanent A-number: `NONE`.
+
+I5 RL-6 Metric Registry V2 acceptance evidence:
+
+- canonical implementation predecessor:
+  `58ddae5171e8a8422e120fcc676d7c66d9162371`.
+- final technical candidate:
+  `068d7b2c1af06883c2053a2db76f6e7d1245e00a`.
+- implementation PR:
+  `#102`.
+- accepted implementation merge/main anchor:
+  `b8e09a852848945e1c90b9e2c0339db07cd51bda`.
+- candidate/merge tree:
+  `31202650d0b5d59d4db9fbb8f1d584211ccb4cb6`.
+- tree equality:
+  `PASS`.
+- CI:
+  `36334965243 / #1255 / SUCCESS`.
+- verify:
+  `108663950624 - SUCCESS`.
+- dependency-audit:
+  `108663950543 - SUCCESS`.
+- Vercel candidate:
+  `READY`.
+- Vercel merged-main Production:
+  `READY`.
+- independent auditor verdict:
+  `PASS`.
+- Production migration:
+  `NONE`.
+- Supabase Production mutation:
+  `NONE`.
+- Permanent A-number:
+  `NOT ASSIGNED`.
+
+Accepted RL-6 invariants:
+
+- `METRIC_REGISTRY_V20260918` and `METRIC_RESULT_SET_V1` remain immutable V1
+  truth.
+- `METRIC_REGISTRY_V20260927` and `METRIC_RESULT_SET_V2` are accepted for
+  Engine V2 Result measurement.
+- Engine V1/V2 separation is preserved.
+- Metric outputs use deterministic certified arithmetic and exact interval
+  certification for irrational roots/powers and composed ratios.
+- Benchmark-relative metrics fail closed on count/date/order misalignment.
+- Registry -> Result artifact -> Evidence binding is enforced.
+- Validation V2 compatibility is accepted.
+- RL-6 does not introduce Paper, Live, Capital Kernel, Product API/UI or RL-7
+  authority.
+- No RL-6 database migration was required or applied.
+
+`I5 RL-6 METRIC REGISTRY V2 = CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`.
+
 ## Production Supabase Migration State
 
 Production Supabase migration state:
@@ -948,10 +1019,15 @@ Current production closure is:
 - `RL-5 post-apply audit = PASSED`.
 - `RL-5 Git/Production alignment = PASS`.
 - `RL-5 migration-history alignment = PASS`.
+- `RL-6 = CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`.
+- `RL-6 Production migration = NONE`.
+- `RL-6 Supabase Production mutation = NONE`.
 
 This production state records RL-5 accepted in Git and applied in Production.
-It does not accept RL-6+, promotion/robustness, Blind Truth, Paper, Live, Core
-or any permanent A-number.
+RL-6 is accepted in Git and required no database migration; therefore the
+Production Supabase migration state remains `CURRENT THROUGH RL-5`. It does
+not accept RL-7+, promotion/robustness, Blind Truth, Paper, Live, Core or any
+permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -981,6 +1057,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-3C Validation Aggregate Closure / unnumbered | YES | YES | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` + Validation Result runtime/finalizer + Passport/Evidence Ledger projection + migration + PG17 physical/finalizer/cumulative rehearsals + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE | NONE |
 | RL-4 Research Engine V2 Design Freeze / unnumbered | NO | YES | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` + static contract tests + independent design audit + CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED | CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE | NONE |
 | RL-5 Research Engine V2 Implementation Closure / unnumbered | YES | YES | RL-5 owner contract + Engine V2 runtime + scientific admission + Validation V2 + V2 goldens + migration + independent implementation audit + real PostgreSQL 17 rehearsal + PR/CI + Vercel + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE | NONE |
+| RL-6 Metric Registry V2 / unnumbered | YES | YES | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` + Metric Registry V2 runtime + certified arithmetic + V2 metric goldens + Validation V2 compatibility + PR/CI + Vercel + independent audit | CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED | CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 | NONE |
 
 RL-1 runtime/progression state:
 
@@ -1032,6 +1109,14 @@ RL-5 runtime/progression state:
 - implementation: `YES`.
 - Production: `APPLIED`.
 - state: `CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE`.
+- permanent A-number: `NONE`.
+
+RL-6 runtime/progression state:
+
+- design: `YES`.
+- implementation: `YES`.
+- Production DB mutation: `NONE`.
+- state: `CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2`.
 - permanent A-number: `NONE`.
 
 RL-3 Validation Protocol V1 progression state:
