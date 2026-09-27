@@ -1,11 +1,11 @@
 # I5 RL-6 Metric Registry V2 Owner Contract V1
 
-Status: CANDIDATE OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED
 
 Classification:
-`CANDIDATE / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`
+`CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`
 
-Canonical predecessor:
+Canonical implementation predecessor:
 `58ddae5171e8a8422e120fcc676d7c66d9162371`
 
 Production mutation:
@@ -15,7 +15,49 @@ Supabase Production:
 `UNCHANGED`
 
 RL-6 acceptance:
-`NOT ACCEPTED`
+`CURRENT_ACCEPTED`
+
+Final technical candidate:
+`068d7b2c1af06883c2053a2db76f6e7d1245e00a`
+
+Implementation PR:
+`#102`
+
+Accepted implementation merge/main anchor:
+`b8e09a852848945e1c90b9e2c0339db07cd51bda`
+
+Candidate/merge tree:
+`31202650d0b5d59d4db9fbb8f1d584211ccb4cb6`
+
+Tree equality:
+`PASS`
+
+CI:
+`36334965243 / #1255 / SUCCESS`
+
+Verify:
+`108663950624 - SUCCESS`
+
+Dependency-audit:
+`108663950543 - SUCCESS`
+
+Vercel candidate:
+`READY`
+
+Vercel merged-main Production:
+`READY`
+
+Independent auditor verdict:
+`PASS`
+
+Production migration:
+`NONE`
+
+Supabase Production mutation:
+`NONE`
+
+Permanent A-number:
+`NOT ASSIGNED`
 
 ## Purpose
 
@@ -31,7 +73,7 @@ MAX_DRAWDOWN / METRIC_V1
 METRIC_RESULT_SET_V1
 ```
 
-RL-6 candidate registry:
+RL-6 accepted registry:
 
 ```text
 METRIC_REGISTRY_V20260927
@@ -152,7 +194,7 @@ Invalid CAGR domains are unavailable, not zero.
 `UNAVAILABLE` is explicit and distinct from mathematical zero. Structural
 integrity failures throw/fail closed and are not serialized as unavailable.
 
-RL-6 candidate reasons include:
+RL-6 accepted reasons include:
 
 ```text
 INSUFFICIENT_OBSERVATIONS
@@ -251,7 +293,7 @@ slicing and child scientific identity remain unchanged.
 
 ## Persistence
 
-No database migration is required by this candidate. Existing persistence stores
+No database migration is required by this accepted RL-6 slice. Existing persistence stores
 the metric registry version as data in accepted scientific identity rows and the
 Result artifact descriptor stores the metric result set schema.
 
@@ -261,10 +303,10 @@ Historical migrations changed:
 NO
 ```
 
-Production migration applied:
+Production migration:
 
 ```text
-NO
+NONE
 ```
 
 ## Boundaries
@@ -279,7 +321,53 @@ LAB != PAPER
 INVESTING != TRADING
 ```
 
-## Candidate Evidence
+## Accepted Provenance
 
-This candidate is not self-accepted. It requires independent audit before any
-acceptance sync or merge.
+Canonical implementation predecessor:
+`58ddae5171e8a8422e120fcc676d7c66d9162371`
+
+Final technical candidate:
+`068d7b2c1af06883c2053a2db76f6e7d1245e00a`
+
+Implementation PR:
+`#102`
+
+Accepted implementation merge/main anchor:
+`b8e09a852848945e1c90b9e2c0339db07cd51bda`
+
+Candidate/merge tree:
+`31202650d0b5d59d4db9fbb8f1d584211ccb4cb6`
+
+Tree equality:
+`PASS`
+
+CI:
+`36334965243 / #1255 / SUCCESS`
+
+Verify:
+`108663950624 - SUCCESS`
+
+Dependency-audit:
+`108663950543 - SUCCESS`
+
+Vercel candidate:
+`READY`
+
+Vercel merged-main Production:
+`READY`
+
+Independent auditor verdict:
+`PASS`
+
+Production migration:
+`NONE`
+
+Supabase Production mutation:
+`NONE`
+
+Permanent A-number:
+`NOT ASSIGNED`
+
+This acceptance sync records independent implementation / PR / CI audit PASS.
+It does not assign a permanent A-number and does not claim any RL-6 database
+migration or Supabase Production mutation.

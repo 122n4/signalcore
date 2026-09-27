@@ -50,6 +50,7 @@ const requiredCurrentDocs = [
   "I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md",
   "I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md",
   "I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md",
+  "I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
@@ -133,7 +134,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -171,7 +172,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("RESEARCH_EXECUTION_EVIDENCE_V1");
     expect(hash).toContain("Generic or arbitrary raw Evidence hashing is not a sanctioned");
     expect(hash).toContain("Arbitrary raw Evidence objects remain outside the public hashing boundary");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -218,7 +219,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Permanent A-number:");
     expect(state).toContain("NOT ASSIGNED");
     expect(state).toContain("I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("Research Lab is not yet backend-complete");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
     expect(row).toContain("| YES | YES |");
@@ -265,7 +266,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Independent auditor verdict:");
     expect(state).toContain("PASS");
     expect(state).toContain("I5 RL-3A VALIDATION PROTOCOL FOUNDATION V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION");
@@ -366,7 +367,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Validation-specific `multiple_permissive_policies` findings:");
     expect(state).toContain("Performance Advisor debt:");
     expect(state).toContain("`PRESENT / NON-BLOCKING`");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED");
@@ -405,7 +406,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("RL-5 subsequently implemented and accepted `ENGINE_V20260926`.");
     expect(state).toContain("No RL-4 migration exists.");
     expect(state).toContain("No RL-4 Production mutation occurred.");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| NO | YES |");
@@ -458,12 +459,59 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("20260927073226");
     expect(state).toContain("Post-repair canonical history row `20260926201750`: `exactly 1`");
     expect(state).toContain("Incorrect history row `20260927073226`: `0`");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-5_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE");
+    expect(row).toContain("| NONE |");
+  });
+
+  it("records accepted RL-6 Metric Registry V2 without database migration or backend closure", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md");
+    const row = tableRow(state, "RL-6 Metric Registry V2 / unnumbered");
+
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED");
+    expect(contract).toContain("068d7b2c1af06883c2053a2db76f6e7d1245e00a");
+    expect(contract).toContain("#102");
+    expect(contract).toContain("b8e09a852848945e1c90b9e2c0339db07cd51bda");
+    expect(contract).toContain("31202650d0b5d59d4db9fbb8f1d584211ccb4cb6");
+    expect(contract).toContain("Tree equality:\n`PASS`");
+    expect(contract).toContain("36334965243 / #1255 / SUCCESS");
+    expect(contract).toContain("108663950624 - SUCCESS");
+    expect(contract).toContain("108663950543 - SUCCESS");
+    expect(contract).toContain("Independent auditor verdict:\n`PASS`");
+    expect(contract).toContain("Production migration:\n`NONE`");
+    expect(contract).toContain("Supabase Production mutation:\n`NONE`");
+    expect(contract).toContain("Permanent A-number:\n`NOT ASSIGNED`");
+
+    expect(state).toContain("I5 RL-6 Metric Registry V2 (unnumbered)");
+    expect(state).toContain("I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("I5 RL-6 Metric Registry V2 acceptance evidence:");
+    expect(state).toContain("068d7b2c1af06883c2053a2db76f6e7d1245e00a");
+    expect(state).toContain("#102");
+    expect(state).toContain("b8e09a852848945e1c90b9e2c0339db07cd51bda");
+    expect(state).toContain("31202650d0b5d59d4db9fbb8f1d584211ccb4cb6");
+    expect(state).toContain("36334965243 / #1255 / SUCCESS");
+    expect(state).toContain("108663950624 - SUCCESS");
+    expect(state).toContain("108663950543 - SUCCESS");
+    expect(state).toContain("independent auditor verdict:");
+    expect(state).toContain("Production migration:\n  `NONE`");
+    expect(state).toContain("Supabase Production mutation:\n  `NONE`");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
+    expect(state).toContain("Production Supabase migration state:\n`CURRENT THROUGH RL-5`.");
+    expect(state).toContain("RL-6 Production migration = NONE");
+    expect(state).toContain("RL-6 Supabase Production mutation = NONE");
+    expect(state).toContain("RL-6 is accepted in Git and required no database migration");
+
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2");
     expect(row).toContain("| NONE |");
   });
 
