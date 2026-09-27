@@ -111,6 +111,13 @@ within the explicit safe precision limit, the candidate fails closed with
 numeric invariant failure. The scientific truth path does not use JavaScript
 binary floating-point, `Math.sqrt` or `Math.pow`.
 
+Rational powers reduce the exponent before root/power work. For example,
+`365 / 3650` is evaluated as `1 / 10`. BigInt exponentiation uses deterministic
+exponentiation-by-squaring, and nth-root comparison uses bounded exact power
+comparison that stops once the target inequality is decided. This preserves the
+same certified lower/upper interval law while avoiding exponent-count linear
+loops in the scientific path.
+
 Ratio outputs use:
 
 ```text

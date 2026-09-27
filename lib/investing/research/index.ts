@@ -238,6 +238,7 @@ export {
   metricResultRecordsV2,
   certifiedRationalPowerMinusOneOutputV2,
   certifiedSqrtRatioOutputV2,
+  reduceRationalPowerExponentV2,
   type MetricBenchmarkRecordV2,
   type MetricFillRecordV2,
   type MetricResultContextV2,

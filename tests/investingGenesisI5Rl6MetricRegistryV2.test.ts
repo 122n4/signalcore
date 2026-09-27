@@ -18,6 +18,7 @@ import {
   artifactDescriptorV1,
   certifiedRationalPowerMinusOneOutputV2,
   certifiedSqrtRatioOutputV2,
+  reduceRationalPowerExponentV2,
   sha256HexV1,
   verifyDatasetSeriesMaterialV2,
   type DatasetSnapshotHashPayloadV1,
@@ -273,6 +274,25 @@ describe("I5 RL-6 Metric Registry V2", () => {
     expect(certifiedRationalPowerMinusOneOutputV2(squareRatio(addRationalsForTest(oneRatio(), halfEvenBoundary(100000000000000000n, -1n, 40))), 1n, 2n).value).toBe("0.1");
     expect(certifiedRationalPowerMinusOneOutputV2(squareRatio(addRationalsForTest(oneRatio(), halfEvenBoundary(100000000000000000n, 1n, 40))), 1n, 2n).value).toBe("0.100000000000000001");
   });
+
+  it("reduces CAGR exponents and keeps long-horizon rational powers deterministic", () => {
+    expect(reduceRationalPowerExponentV2(365n, 3650n)).toEqual({ numerator: 1n, denominator: 10n });
+    const horizons = [
+      { days: 365n, expectedExponent: { numerator: 1n, denominator: 1n } },
+      { days: 1825n, expectedExponent: { numerator: 1n, denominator: 5n } },
+      { days: 3650n, expectedExponent: { numerator: 1n, denominator: 10n } },
+      { days: 14600n, expectedExponent: { numerator: 1n, denominator: 40n } },
+    ];
+    const growth = r("2.5");
+    for (const horizon of horizons) {
+      expect(reduceRationalPowerExponentV2(365n, horizon.days)).toEqual(horizon.expectedExponent);
+      const first = certifiedRationalPowerMinusOneOutputV2(growth, 365n, horizon.days);
+      const second = certifiedRationalPowerMinusOneOutputV2(growth, 365n, horizon.days);
+      const reduced = certifiedRationalPowerMinusOneOutputV2(growth, horizon.expectedExponent.numerator, horizon.expectedExponent.denominator);
+      expect(first.value).toBe(second.value);
+      expect(first.value).toBe(reduced.value);
+    }
+  }, 20000);
 
   it("keeps exactly one downside observation truthfully unavailable", () => {
     const records = metricResultRecordsV2({

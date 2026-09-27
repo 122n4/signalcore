@@ -341,12 +341,19 @@ export function certifiedSqrtRatioOutputV2(value: ExactRationalV1): Readonly<{ v
 
 export function certifiedRationalPowerMinusOneOutputV2(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): Readonly<{ value: string; interval: RationalIntervalV1 }> {
   if (base.numerator <= 0n || exponentNumerator <= 0n || exponentDenominator <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  const exponent = reduceRationalPowerExponentV2(exponentNumerator, exponentDenominator);
   for (let scale = certificationStartScale; scale <= certificationMaxScale; scale += certificationStepScale) {
-    const interval = rationalPowerMinusOneInterval(base, exponentNumerator, exponentDenominator, scale);
+    const interval = rationalPowerMinusOneInterval(base, exponent.numerator, exponent.denominator, scale);
     const certified = tryCertifyIntervalOutput(interval);
     if (certified) return { value: certified, interval };
   }
   throw new Error("NUMERIC_INVARIANT_VIOLATION");
+}
+
+export function reduceRationalPowerExponentV2(numerator: bigint, denominator: bigint): Readonly<{ numerator: bigint; denominator: bigint }> {
+  if (numerator <= 0n || denominator <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  const divisor = gcdBigint(numerator, denominator);
+  return { numerator: numerator / divisor, denominator: denominator / divisor };
 }
 
 function rationalPowerMinusOneInterval(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint, scale: number): RationalIntervalV1 {
@@ -433,11 +440,9 @@ function nthRootAtScale(value: ExactRationalV1, n: bigint, scale: number): bigin
   let low = 0n;
   let high = factor;
   const comparePower = (base: bigint): -1 | 0 | 1 => {
-    let result = 1n;
-    for (let index = 0n; index < n; index += 1n) {
-      result *= base;
-      if (result * denominator > target) return 1;
-    }
+    const cap = target / denominator + 1n;
+    const result = bigintPowerCapped(base, n, cap);
+    if (result >= cap) return 1;
     const left = result * denominator;
     return left === target ? 0 : left < target ? -1 : 1;
   };
@@ -452,8 +457,48 @@ function nthRootAtScale(value: ExactRationalV1, n: bigint, scale: number): bigin
 
 function bigintPower(base: bigint, exponent: bigint): bigint {
   let result = 1n;
-  for (let index = 0n; index < exponent; index += 1n) result *= base;
+  let power = base;
+  let remaining = exponent;
+  while (remaining > 0n) {
+    if (remaining % 2n === 1n) result *= power;
+    remaining /= 2n;
+    if (remaining > 0n) power *= power;
+  }
   return result;
+}
+
+function bigintPowerCapped(base: bigint, exponent: bigint, cap: bigint): bigint {
+  let result = 1n;
+  let power = base;
+  let remaining = exponent;
+  while (remaining > 0n) {
+    if (remaining % 2n === 1n) {
+      result = multiplyCapped(result, power, cap);
+      if (result >= cap) return cap;
+    }
+    remaining /= 2n;
+    if (remaining > 0n) {
+      power = multiplyCapped(power, power, cap);
+      if (power >= cap && remaining > 0n) power = cap;
+    }
+  }
+  return result;
+}
+
+function multiplyCapped(left: bigint, right: bigint, cap: bigint): bigint {
+  if (left === 0n || right === 0n) return 0n;
+  return left > cap / right ? cap : left * right;
+}
+
+function gcdBigint(left: bigint, right: bigint): bigint {
+  let a = left < 0n ? -left : left;
+  let b = right < 0n ? -right : right;
+  while (b !== 0n) {
+    const t = b;
+    b = a % b;
+    a = t;
+  }
+  return a === 0n ? 1n : a;
 }
 
 function sqrtFloor(value: bigint): bigint {
