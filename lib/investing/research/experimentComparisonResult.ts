@@ -1,0 +1,79 @@
+import {
+  hashRefV1,
+  assertHashRefDomainV1,
+  type CanonicalJsonValue,
+  type HashRefV1,
+} from "./canonical";
+import type { ExactMetricDeltaV1 } from "./experimentComparisonEvidence";
+import type { RobustnessClassificationV1, ComparisonFailClosedErrorV1, RobustnessDiagnosticV1 } from "./experimentComparisonClassification";
+
+export type ParameterDeltaV1 = Readonly<{
+  kind: "COMPARE_LITERAL_VALUE_DELTA" | "TAKE_COUNT_DELTA" | "FIXED_TARGET_WEIGHT_DELTA" | "REBALANCE_SCHEDULE_DELTA";
+  expressionPath: string;
+  pipelineOperationIndex: string;
+  referenceValue: string;
+  subjectValue: string;
+}>;
+export type ScientificInputDeltaV1 = Readonly<{ field: string; referenceValue: string; subjectValue: string }>;
+export type ValidationEvidenceV1 = Readonly<{ completeFoldCount: string; degradedFoldCount: string; nonDegradedFoldCount: string; aggregateOosOrientedDeltaSign: "-1" | "0" | "1" }>;
+export type CostEvidenceV1 = Readonly<{ state: "AVAILABLE"; explicitFeeTotalReference: string; explicitFeeTotalSubject: string; slippageCostTotalReference: string; slippageCostTotalSubject: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "MISSING_EXACT_COST_EVIDENCE" }>;
+export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; degradedMemberCount: string; improvedOrEqualMemberCount: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD" }>;
+export type ConcentrationEvidenceV1 = Readonly<{ state: "AVAILABLE"; tradeCount: string; rebalanceCount: string; foldDirectionConcentration: boolean }> | Readonly<{ state: "UNAVAILABLE"; reason: "UNSUPPORTED_CONCENTRATION_EVIDENCE" }>;
+
+export type ExperimentComparisonResultV1 = Readonly<{
+  schemaVersion: "EXPERIMENT_COMPARISON_RESULT_V1";
+  protocol: HashRefV1;
+  parameterDeltas: readonly ParameterDeltaV1[];
+  scientificInputDelta: readonly ScientificInputDeltaV1[];
+  metricDeltas: readonly ExactMetricDeltaV1[];
+  validationEvidence: ValidationEvidenceV1;
+  costEvidence: CostEvidenceV1;
+  neighborhoodEvidence: NeighborhoodEvidenceV1;
+  concentrationEvidence: ConcentrationEvidenceV1;
+  diagnostics: readonly RobustnessDiagnosticV1[];
+  classification: RobustnessClassificationV1 | null;
+  failure: ComparisonFailClosedErrorV1 | null;
+}>;
+
+const resultKeys = new Set(["schemaVersion","protocol","parameterDeltas","scientificInputDelta","metricDeltas","validationEvidence","costEvidence","neighborhoodEvidence","concentrationEvidence","diagnostics","classification","failure"]);
+
+export function canonicalExperimentComparisonResultV1(input: ExperimentComparisonResultV1): CanonicalJsonValue {
+  assertClosed(input, resultKeys, "ExperimentComparisonResult");
+  if (input.schemaVersion !== "EXPERIMENT_COMPARISON_RESULT_V1") throw new Error("COMPARISON_RESULT_SCHEMA_INVALID");
+  const protocol = hashRefV1(input.protocol); assertHashRefDomainV1(protocol, "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1");
+  if (input.failure !== null && input.classification !== null) throw new Error("FAILURE_REQUIRES_NULL_CLASSIFICATION");
+  if (input.failure === null && input.classification === null) throw new Error("SUCCESS_REQUIRES_CLASSIFICATION");
+  const parameterDeltas = canonicalParameterDeltas(input.parameterDeltas);
+  const scientificInputDelta = canonicalScientificInputDelta(input.scientificInputDelta);
+  const metricDeltas = canonicalMetricDeltas(input.metricDeltas);
+  const diagnostics = canonicalStrings(input.diagnostics, "DIAGNOSTICS") as readonly RobustnessDiagnosticV1[];
+  return {
+    schemaVersion: input.schemaVersion, protocol, parameterDeltas, scientificInputDelta, metricDeltas,
+    validationEvidence: canonicalRecord(input.validationEvidence), costEvidence: canonicalRecord(input.costEvidence),
+    neighborhoodEvidence: canonicalRecord(input.neighborhoodEvidence), concentrationEvidence: canonicalRecord(input.concentrationEvidence),
+    diagnostics, classification: input.classification, failure: input.failure,
+  } as CanonicalJsonValue;
+}
+
+function canonicalParameterDeltas(input: readonly ParameterDeltaV1[]): readonly CanonicalJsonValue[] {
+  if (!Array.isArray(input)) throw new Error("PARAMETER_DELTAS_NOT_ARRAY");
+  const copy = input.map((x) => ({...x}));
+  copy.sort((a,b) => byteCompare(`${a.expressionPath}\u0000${a.pipelineOperationIndex}\u0000${a.kind}`, `${b.expressionPath}\u0000${b.pipelineOperationIndex}\u0000${b.kind}`));
+  return Object.freeze(copy as CanonicalJsonValue[]);
+}
+function canonicalScientificInputDelta(input: readonly ScientificInputDeltaV1[]): readonly CanonicalJsonValue[] {
+  if (!Array.isArray(input)) throw new Error("SCIENTIFIC_INPUT_DELTA_NOT_ARRAY");
+  const copy = input.map((x) => ({...x})); copy.sort((a,b)=>byteCompare(a.field,b.field));
+  for(let i=1;i<copy.length;i+=1) if(copy[i-1]!.field===copy[i]!.field) throw new Error("SCIENTIFIC_INPUT_DELTA_DUPLICATE_FIELD");
+  return Object.freeze(copy as CanonicalJsonValue[]);
+}
+function canonicalMetricDeltas(input: readonly ExactMetricDeltaV1[]): readonly CanonicalJsonValue[] {
+  if (!Array.isArray(input)) throw new Error("METRIC_DELTAS_NOT_ARRAY");
+  const copy = input.map((x)=>({...x})); copy.sort((a,b)=>byteCompare(a.metricId,b.metricId));
+  for(let i=1;i<copy.length;i+=1) if(copy[i-1]!.metricId===copy[i]!.metricId) throw new Error("METRIC_DELTAS_DUPLICATE_METRIC");
+  return Object.freeze(copy as unknown as CanonicalJsonValue[]);
+}
+function canonicalStrings(input: readonly string[], label:string): readonly string[] { if(!Array.isArray(input)) throw new Error(label+"_NOT_ARRAY"); const copy=[...input].sort(byteCompare); if(new Set(copy).size!==copy.length) throw new Error(label+"_DUPLICATE"); return Object.freeze(copy); }
+function canonicalRecord(input: object): CanonicalJsonValue { if(input===null||Array.isArray(input)||Object.getPrototypeOf(input)!==Object.prototype) throw new Error("EVIDENCE_RECORD_INVALID"); return {...input} as CanonicalJsonValue; }
+function byteCompare(a:string,b:string):number{return Buffer.from(a,"utf8").compare(Buffer.from(b,"utf8"));}
+function assertClosed(value:unknown,allowed:ReadonlySet<string>,label:string):void{if(value===null||typeof value!=="object"||Array.isArray(value)||Object.getPrototypeOf(value)!==Object.prototype)throw new Error(label+" must be a plain object");const r=value as Record<string,unknown>;for(const key of Object.keys(r)){if(!allowed.has(key))throw new Error(label+" contains unknown key: "+key);if(r[key]===undefined)throw new Error(label+" contains undefined: "+key);}for(const key of allowed)if(!Object.hasOwn(r,key))throw new Error(label+" missing key: "+key);}
