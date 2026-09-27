@@ -25,7 +25,10 @@ describe("I5 RL-6 Metric Registry V2 design freeze candidate", () => {
       "Migration:\nNONE IN THIS DESIGN SLICE",
       "RL-6 design = CANDIDATE",
       "RL-6 implementation = NOT STARTED BY THIS DESIGN COMMIT",
+      "Vercel Production/configuration mutation = NO",
+      "candidate Vercel preview deployment = ALLOWED CI/GIT-INTEGRATION SIDE EFFECT",
     ]);
+    expect(contract).not.toContain("Vercel mutation = NO");
     expect(contract).not.toContain("CURRENT_ACCEPTED / RL-6");
   });
 

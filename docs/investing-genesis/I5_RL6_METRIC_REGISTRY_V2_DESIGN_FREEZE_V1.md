@@ -439,9 +439,13 @@ This design slice performs:
 runtime change = NO
 migration change = NO
 Supabase change = NO
-Production change = NO
-Vercel mutation = NO
+Production database change = NO
+Vercel Production/configuration mutation = NO
+candidate Vercel preview deployment = ALLOWED CI/GIT-INTEGRATION SIDE EFFECT
 ~~~
+
+The candidate preview deployment does not make RL-6 accepted and does not
+authorize a Production deployment.
 
 Implementation must prove whether any persistence constraint needs an additive
 migration. No historical migration may be edited.
