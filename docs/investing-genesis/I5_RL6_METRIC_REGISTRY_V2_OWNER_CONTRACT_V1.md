@@ -69,6 +69,32 @@ TRACKING_ERROR / METRIC_V2
 Requests are canonicalized by the existing MetricRequestSet canonical ordering.
 Duplicate, missing, unknown or cross-version requests fail closed.
 
+## Metric Methodology
+
+All metrics consume ordered Engine V2 valuation sessions unless stated
+otherwise. `r_t` means `NAV_t / NAV_(t-1) - 1` using exact rational NAV.
+Outputs with unit `ratio` serialize with `RESEARCH_RATIO_OUTPUT_V1`; count
+outputs serialize as canonical decimal integers.
+
+| Metric | Version | Unit | Formula / method | Unavailable / fail-closed |
+| --- | --- | --- | --- | --- |
+| `TOTAL_RETURN` | `METRIC_V2` | ratio | `ending_nav / starting_nav - 1` | starting NAV zero -> `ZERO_DENOMINATOR` |
+| `MAX_DRAWDOWN` | `METRIC_V2` | ratio magnitude | max `(peak - NAV_t) / peak` over ordered valuation NAV | no drawdown -> available `0` |
+| `CAGR` | `METRIC_V2` | ratio | `(ending_nav / starting_nav) ^ (365 / elapsed_civil_days) - 1` | non-positive endpoint NAV -> `INVALID_CAGR_DOMAIN`; zero elapsed days -> `INSUFFICIENT_OBSERVATIONS` |
+| `MAX_DRAWDOWN_DURATION` | `METRIC_V2` | sessions count | duration of the maximum-depth drawdown episode | no drawdown -> available `0` |
+| `MAX_DRAWDOWN_RECOVERY` | `METRIC_V2` | sessions count | sessions from selected episode trough to first recovery at or above episode peak | unrecovered selected episode -> `UNRECOVERED_DRAWDOWN`; no drawdown -> available `0` |
+| `ANNUALIZED_VOLATILITY` | `METRIC_V2` | ratio | sample standard deviation of all session returns times `sqrt(252)` | fewer than 2 returns -> `INSUFFICIENT_OBSERVATIONS`; non-positive NAV -> `NON_POSITIVE_NAV` |
+| `DOWNSIDE_DEVIATION` | `METRIC_V2` | ratio | sample standard deviation around MAR `0` using downside observations only, annualized by `sqrt(252)` | fewer than 2 downside returns -> `NO_DOWNSIDE_OBSERVATIONS`; non-positive NAV -> `NON_POSITIVE_NAV` |
+| `SHARPE_RATIO` | `METRIC_V2` | ratio | `(mean(r_t) * sqrt(252)) / sample_stddev(r_t)` with risk-free session return `0` | zero denominator -> `ZERO_DENOMINATOR`; insufficient returns -> `INSUFFICIENT_OBSERVATIONS` |
+| `SORTINO_RATIO` | `METRIC_V2` | ratio | `(mean(r_t) * sqrt(252)) / downside_deviation_unannualized`; MAR `0`; downside denominator is downside observations minus one | fewer than 2 downside observations -> `NO_DOWNSIDE_OBSERVATIONS`; zero denominator -> `ZERO_DENOMINATOR` |
+| `CALMAR_RATIO` | `METRIC_V2` | ratio | exact internal `CAGR / MAX_DRAWDOWN`, before CAGR output rounding | max drawdown zero -> `ZERO_DENOMINATOR`; invalid CAGR -> `INVALID_CAGR_DOMAIN` |
+| `TURNOVER` | `METRIC_V2` | ratio | total-period turnover = `sum(abs executed gross fill notional) / average(NAV over valuation sessions)` | average NAV zero -> `ZERO_DENOMINATOR` |
+| `AVERAGE_GROSS_EXPOSURE` | `METRIC_V2` | ratio | average `market_value / NAV` over valuation sessions | non-positive NAV -> `NON_POSITIVE_NAV` |
+| `TRADE_COUNT` | `METRIC_V2` | count | count non-zero executed fills | zero fills -> available `0` |
+| `REBALANCE_COUNT` | `METRIC_V2` | count | count distinct target intents that generated at least one executed fill | zero fill-generating intents -> available `0` |
+| `BENCHMARK_RELATIVE_RETURN` | `METRIC_V2` | ratio | portfolio total return minus benchmark total return after exact benchmark-to-valuation alignment | no benchmark -> `BENCHMARK_UNAVAILABLE`; any count/date/order mismatch -> integrity failure |
+| `TRACKING_ERROR` | `METRIC_V2` | ratio | sample standard deviation of active returns times `sqrt(252)` after exact benchmark-to-valuation alignment | no benchmark -> `BENCHMARK_UNAVAILABLE`; fewer than 2 active returns -> `INSUFFICIENT_OBSERVATIONS`; any mismatch -> integrity failure |
+
 ## Arithmetic And Serialization
 
 Metric computation consumes exact valuation, fill and benchmark truth emitted by
@@ -76,8 +102,11 @@ the accepted Engine V2 execution path. It does not replay strategy logic and
 does not reconstruct trades from NAV.
 
 All material metric arithmetic uses exact rational arithmetic and deterministic
-BigInt root/power helpers. The scientific truth path does not use JavaScript
-binary floating-point, `Math.sqrt` or `Math.pow`.
+BigInt root/power helpers. Irrational operations use adaptive precision:
+independent lower-precision and higher-precision computations must produce the
+same final 18-decimal half-even serialized output, otherwise the candidate
+fails closed with numeric invariant failure. The scientific truth path does not
+use JavaScript binary floating-point, `Math.sqrt` or `Math.pow`.
 
 Ratio outputs use:
 
@@ -107,7 +136,8 @@ Invalid CAGR domains are unavailable, not zero.
 
 ## Missingness
 
-`UNAVAILABLE` is explicit and distinct from mathematical zero.
+`UNAVAILABLE` is explicit and distinct from mathematical zero. Structural
+integrity failures throw/fail closed and are not serialized as unavailable.
 
 RL-6 candidate reasons include:
 
@@ -121,8 +151,10 @@ INVALID_CAGR_DOMAIN
 NO_DOWNSIDE_OBSERVATIONS
 ```
 
-Benchmark absence produces unavailable benchmark metrics. Benchmark misalignment
-is an integrity failure and fails closed; it is not converted to unavailable.
+Benchmark absence produces unavailable benchmark metrics. Benchmark row-count
+mismatch, date mismatch or ordering mismatch is an integrity failure and fails
+closed before relative return or tracking error can read first/final benchmark
+values.
 
 ## Drawdown
 
@@ -133,17 +165,20 @@ reset the peak deterministically. A drawdown episode starts at the peak index
 before the first lower NAV, records the deepest trough, and recovers on the
 first later valuation whose NAV is greater than or equal to that episode peak.
 
-If the deepest selected episode is not recovered by the final valuation,
+`MAX_DRAWDOWN_DURATION` means duration of the maximum-depth drawdown episode,
+not the longest shallow drawdown. If the deepest selected episode is not recovered by the final valuation,
 `MAX_DRAWDOWN_RECOVERY` is unavailable with `UNRECOVERED_DRAWDOWN`.
 
 Tie-breaking for equal max drawdown magnitude prefers the longer duration.
 
 ## Turnover, Exposure And Counts
 
-`TURNOVER` derives from Engine V2 fill truth:
+`TURNOVER` derives from Engine V2 fill truth and normalizes by average NAV so
+inserting identical no-trade valuation observations at the same NAV does not
+change total-period turnover:
 
 ```text
-sum(abs executed gross fill notional) / sum(valuation NAV)
+sum(abs executed gross fill notional) / average(valuation NAV)
 ```
 
 `TRADE_COUNT` counts non-zero executed fills emitted by the engine.
@@ -159,6 +194,21 @@ average(market_value / NAV)
 
 Non-positive NAV makes exposure/risk metrics unavailable or invalid as defined
 by the metric record.
+
+## Registry To Artifact Binding
+
+The metric artifact schema is not self-authorizing. The exact RunInput registry
+version determines the required Result metric artifact schema:
+
+```text
+METRIC_REGISTRY_V20260918 -> METRIC_RESULT_SET_V1
+METRIC_REGISTRY_V20260927 -> METRIC_RESULT_SET_V2
+```
+
+Evidence construction validates this relation with both exact RunInput and
+Result payloads. Validation child execution validates the same relation against
+the admitted ValidationRunInput. Crossed V1/V2 registry-artifact pairs fail
+closed.
 
 ## Benchmark Metrics
 

@@ -193,6 +193,7 @@ export {
 
 export {
   artifactDescriptorV1,
+  assertMetricResultSetSchemaForRegistryV1,
   canonicalResultBytesV1,
   canonicalResultHashPayloadV1,
   hashResultV1,

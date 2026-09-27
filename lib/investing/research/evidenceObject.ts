@@ -13,7 +13,7 @@ import {
   type RunInputHashPayloadV1,
 } from "./canonical";
 import { hashDatasetSeriesV1, hashDatasetSnapshotV1, type DatasetSeriesHashPayloadV1, type DatasetSnapshotHashPayloadV1 } from "./executionMaterials";
-import { canonicalResultHashPayloadV1, hashResultV1, type ResearchArtifactDescriptorV1, type ResultHashPayloadV1 } from "./resultArtifacts";
+import { assertMetricResultSetSchemaForRegistryV1, canonicalResultHashPayloadV1, hashResultV1, type ResearchArtifactDescriptorV1, type ResultHashPayloadV1 } from "./resultArtifacts";
 
 export type ResearchExecutionEvidenceContentV1 = Readonly<{
   schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1";
@@ -71,6 +71,11 @@ export function constructResearchExecutionEvidenceObjectV1(
   if (resultPayload.runInput.hashHex !== expectedRunInput.hashHex) throw new Error("EVIDENCE_RESULT_RUN_INPUT_MISMATCH");
   if (runInput.engineId !== resultPayload.engineId || runInput.engineVersion !== resultPayload.engineVersion) {
     throw new Error("EVIDENCE_ENGINE_MISMATCH");
+  }
+  try {
+    assertMetricResultSetSchemaForRegistryV1(runInput.metricRegistryVersion, resultPayload.metricResultSet);
+  } catch {
+    throw new Error("EVIDENCE_METRIC_REGISTRY_ARTIFACT_SCHEMA_MISMATCH");
   }
 
   const datasetSnapshotHashHex = hashDatasetSnapshotV1(input.datasetSnapshotPayload);

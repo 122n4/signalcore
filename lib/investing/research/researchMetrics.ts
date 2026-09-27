@@ -95,7 +95,7 @@ type DrawdownEpisode = Readonly<{
 const zero = integerToRationalV1(0n);
 const one = integerToRationalV1(1n);
 const tradingSessionsPerYear = integerToRationalV1(252n);
-const ratioScale = 36;
+const ratioScale = 72;
 const scaledOne = 10n ** BigInt(ratioScale);
 
 export function metricResultRecordsV2(input: MetricResultContextV2): readonly CanonicalJsonValue[] {
@@ -122,8 +122,9 @@ export function metricResultRecordsV2(input: MetricResultContextV2): readonly Ca
   records.set("SHARPE_RATIO", returns ? sharpeMetric(returns) : unavailable("SHARPE_RATIO", "NON_POSITIVE_NAV"));
   records.set("SORTINO_RATIO", returns ? sortinoMetric(returns) : unavailable("SORTINO_RATIO", "NON_POSITIVE_NAV"));
   records.set("CALMAR_RATIO", calmarMetric(cagr, drawdown.maxDrawdown));
-  const benchmarkReturns = returns ? benchmarkSessionReturns(input.benchmark, valuations) : null;
-  records.set("BENCHMARK_RELATIVE_RETURN", benchmarkRelativeReturn(input.benchmark, ending, starting));
+  const alignedBenchmark = alignBenchmark(input.benchmark, valuations);
+  const benchmarkReturns = returns && alignedBenchmark ? sessionReturns(alignedBenchmark.map((record) => ({ sessionDate: record.sessionDate, cash: "", marketValue: "", nav: "", navExact: record.valueExact }))) : null;
+  records.set("BENCHMARK_RELATIVE_RETURN", benchmarkRelativeReturn(alignedBenchmark, ending, starting));
   records.set("TRACKING_ERROR", returns ? trackingErrorMetric(returns, benchmarkReturns) : unavailable("TRACKING_ERROR", "NON_POSITIVE_NAV"));
   return metricRegistryV2Requests.map((request) => records.get(request.metricId)!);
 }
@@ -214,8 +215,9 @@ function chooseDrawdown(left: DrawdownEpisode, right: DrawdownEpisode): Drawdown
 }
 
 function turnoverMetric(fills: readonly MetricFillRecordV2[], valuations: readonly ValuationRecordV1[]): CanonicalJsonValue {
-  const denominator = sumRationalsV1(valuations.map((valuation) => valuation.navExact));
-  if (compareRationalV1(denominator, zero) === 0) return unavailable("TURNOVER", "ZERO_DENOMINATOR");
+  const navSum = sumRationalsV1(valuations.map((valuation) => valuation.navExact));
+  if (compareRationalV1(navSum, zero) === 0) return unavailable("TURNOVER", "ZERO_DENOMINATOR");
+  const denominator = divideRationalV1(navSum, integerToRationalV1(BigInt(valuations.length)));
   const totalGross = sumRationalsV1(fills.map((fill) => fill.grossNotional));
   return availableRatio("TURNOVER", divideRationalV1(totalGross, denominator));
 }
@@ -233,7 +235,7 @@ function cagrMetric(valuations: readonly ValuationRecordV1[]): Readonly<{ record
   if (days <= 0n) return { record: unavailable("CAGR", "INSUFFICIENT_OBSERVATIONS"), scaledValue: null };
   if (compareRationalV1(start.navExact, zero) <= 0 || compareRationalV1(end.navExact, zero) <= 0) return { record: unavailable("CAGR", "INVALID_CAGR_DOMAIN"), scaledValue: null };
   const growth = divideRationalV1(end.navExact, start.navExact);
-  const scaledValue = powRationalScaled(growth, 365n, days) - scaledOne;
+  const scaledValue = stablePowRationalScaled(growth, 365n, days);
   return { record: metricRecord("CAGR", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(scaledValue, ratioScale) }), scaledValue };
 }
 
@@ -247,7 +249,7 @@ function volatilityMetric(metricId: "ANNUALIZED_VOLATILITY" | "DOWNSIDE_DEVIATIO
   });
   const variance = divideRationalV1(sumRationalsV1(squared), integerToRationalV1(BigInt(sample.length - 1)));
   const annualized = multiplyRationalV1(variance, tradingSessionsPerYear);
-  return metricRecord(metricId, { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(sqrtRationalScaled(annualized), ratioScale) });
+  return metricRecord(metricId, { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(stableSqrtRationalScaled(annualized), ratioScale) });
 }
 
 function sharpeMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue {
@@ -255,7 +257,7 @@ function sharpeMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue {
   const mean = divideRationalV1(sumRationalsV1(returns), integerToRationalV1(BigInt(returns.length)));
   const vol = volatilityExact(returns);
   if (compareRationalV1(vol, zero) === 0) return unavailable("SHARPE_RATIO", "ZERO_DENOMINATOR");
-  return metricRecord("SHARPE_RATIO", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(divideScaled(multiplyScaled(rationalToScaled(mean), sqrtRationalScaled(tradingSessionsPerYear)), sqrtRationalScaled(vol)), ratioScale) });
+  return metricRecord("SHARPE_RATIO", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(divideScaled(multiplyScaled(rationalToScaled(mean), stableSqrtRationalScaled(tradingSessionsPerYear)), stableSqrtRationalScaled(vol)), ratioScale) });
 }
 
 function sortinoMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue {
@@ -264,7 +266,7 @@ function sortinoMetric(returns: readonly ExactRationalV1[]): CanonicalJsonValue 
   const mean = divideRationalV1(sumRationalsV1(returns), integerToRationalV1(BigInt(returns.length)));
   const downsideDeviation = downsideDeviationExact(downside);
   if (compareRationalV1(downsideDeviation, zero) === 0) return unavailable("SORTINO_RATIO", "ZERO_DENOMINATOR");
-  return metricRecord("SORTINO_RATIO", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(divideScaled(multiplyScaled(rationalToScaled(mean), sqrtRationalScaled(tradingSessionsPerYear)), sqrtRationalScaled(downsideDeviation)), ratioScale) });
+  return metricRecord("SORTINO_RATIO", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(divideScaled(multiplyScaled(rationalToScaled(mean), stableSqrtRationalScaled(tradingSessionsPerYear)), stableSqrtRationalScaled(downsideDeviation)), ratioScale) });
 }
 
 function calmarMetric(cagr: Readonly<{ record: CanonicalJsonValue; scaledValue: bigint | null }>, maxDrawdown: ExactRationalV1): CanonicalJsonValue {
@@ -273,18 +275,21 @@ function calmarMetric(cagr: Readonly<{ record: CanonicalJsonValue; scaledValue: 
   return availableRatio("CALMAR_RATIO", divideRationalV1({ numerator: cagr.scaledValue, denominator: scaledOne }, maxDrawdown));
 }
 
-function benchmarkRelativeReturn(benchmark: readonly MetricBenchmarkRecordV2[], ending: ExactRationalV1, starting: ExactRationalV1): CanonicalJsonValue {
-  if (benchmark.length < 1) return unavailable("BENCHMARK_RELATIVE_RETURN", "BENCHMARK_UNAVAILABLE");
+function benchmarkRelativeReturn(benchmark: readonly MetricBenchmarkRecordV2[] | null, ending: ExactRationalV1, starting: ExactRationalV1): CanonicalJsonValue {
+  if (!benchmark || benchmark.length < 1) return unavailable("BENCHMARK_RELATIVE_RETURN", "BENCHMARK_UNAVAILABLE");
   if (compareRationalV1(starting, zero) === 0 || compareRationalV1(benchmark[0]!.valueExact, zero) === 0) return unavailable("BENCHMARK_RELATIVE_RETURN", "ZERO_DENOMINATOR");
   const portfolioReturn = subtractRationalV1(divideRationalV1(ending, starting), one);
   const benchmarkReturn = subtractRationalV1(divideRationalV1(benchmark.at(-1)!.valueExact, benchmark[0]!.valueExact), one);
   return availableRatio("BENCHMARK_RELATIVE_RETURN", subtractRationalV1(portfolioReturn, benchmarkReturn));
 }
 
-function benchmarkSessionReturns(benchmark: readonly MetricBenchmarkRecordV2[], valuations: readonly ValuationRecordV1[]): ExactRationalV1[] | null {
-  if (benchmark.length !== valuations.length) return null;
-  for (let index = 0; index < benchmark.length; index += 1) if (benchmark[index]!.sessionDate !== valuations[index]!.sessionDate) throw new Error("BENCHMARK_MISALIGNED");
-  return sessionReturns(benchmark.map((record) => ({ sessionDate: record.sessionDate, cash: "", marketValue: "", nav: "", navExact: record.valueExact })));
+function alignBenchmark(benchmark: readonly MetricBenchmarkRecordV2[], valuations: readonly ValuationRecordV1[]): readonly MetricBenchmarkRecordV2[] | null {
+  if (benchmark.length === 0) return null;
+  if (benchmark.length !== valuations.length) throw new Error("BENCHMARK_MISALIGNED");
+  for (let index = 0; index < benchmark.length; index += 1) {
+    if (benchmark[index]!.sessionDate !== valuations[index]!.sessionDate) throw new Error("BENCHMARK_MISALIGNED");
+  }
+  return benchmark;
 }
 
 function trackingErrorMetric(returns: readonly ExactRationalV1[], benchmarkReturns: readonly ExactRationalV1[] | null): CanonicalJsonValue {
@@ -292,7 +297,7 @@ function trackingErrorMetric(returns: readonly ExactRationalV1[], benchmarkRetur
   if (returns.length !== benchmarkReturns.length || returns.length < 2) return unavailable("TRACKING_ERROR", "INSUFFICIENT_OBSERVATIONS");
   const active = returns.map((value, index) => subtractRationalV1(value, benchmarkReturns[index]!));
   const variance = volatilityExact(active);
-  return metricRecord("TRACKING_ERROR", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(sqrtRationalScaled(multiplyRationalV1(variance, tradingSessionsPerYear)), ratioScale) });
+  return metricRecord("TRACKING_ERROR", { status: "AVAILABLE", value: renderRatioOutputFromScaledIntegerV1(stableSqrtRationalScaled(multiplyRationalV1(variance, tradingSessionsPerYear)), ratioScale) });
 }
 
 function volatilityExact(values: readonly ExactRationalV1[]): ExactRationalV1 {
@@ -309,9 +314,14 @@ function downsideDeviationExact(values: readonly ExactRationalV1[]): ExactRation
   return divideRationalV1(sumRationalsV1(squared), integerToRationalV1(BigInt(values.length - 1)));
 }
 
-function sqrtRationalScaled(value: ExactRationalV1): bigint {
+function stableSqrtRationalScaled(value: ExactRationalV1): bigint {
+  return stableScaled((scale) => sqrtRationalAtScale(value, scale));
+}
+
+function sqrtRationalAtScale(value: ExactRationalV1, scale: number): bigint {
   if (value.numerator < 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
-  return sqrtFloor((value.numerator * scaledOne * scaledOne) / value.denominator);
+  const factor = 10n ** BigInt(scale);
+  return sqrtFloor((value.numerator * factor * factor) / value.denominator);
 }
 
 function rationalToScaled(value: ExactRationalV1): bigint {
@@ -327,38 +337,57 @@ function divideScaled(left: bigint, right: bigint): bigint {
   return (left * scaledOne) / right;
 }
 
-function powRationalScaled(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): bigint {
-  const root = nthRootScaled(base, exponentDenominator);
-  return powScaled(root, exponentNumerator);
+function stablePowRationalScaled(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): bigint {
+  return stableScaled((scale) => powRationalAtScale(base, exponentNumerator, exponentDenominator, scale));
 }
 
-function nthRootScaled(value: ExactRationalV1, n: bigint): bigint {
+function powRationalAtScale(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint, scale: number): bigint {
+  const factor = 10n ** BigInt(scale);
+  const root = nthRootAtScale(base, exponentDenominator, scale);
+  let result = factor;
+  for (let index = 0n; index < exponentNumerator; index += 1n) result = (result * root) / factor;
+  return result - factor;
+}
+
+function nthRootAtScale(value: ExactRationalV1, n: bigint, scale: number): bigint {
   if (value.numerator <= 0n || n <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
-  const scaled = rationalToScaled(value);
+  const factor = 10n ** BigInt(scale);
+  const scaled = (value.numerator * factor) / value.denominator;
   let low = 0n;
-  let high = scaled > scaledOne ? scaled : scaledOne;
-  while (powScaledCompare(high, n, scaled) < 0) high *= 2n;
+  let high = scaled > factor ? scaled : factor;
+  const multiplyAtScale = (left: bigint, right: bigint) => (left * right) / factor;
+  const comparePower = (base: bigint): -1 | 0 | 1 => {
+    let result = factor;
+    for (let index = 0n; index < n; index += 1n) {
+      result = multiplyAtScale(result, base);
+      if (result > scaled) return 1;
+    }
+    return result === scaled ? 0 : -1;
+  };
+  while (comparePower(high) < 0) high *= 2n;
   while (low + 1n < high) {
     const mid = (low + high) / 2n;
-    if (powScaledCompare(mid, n, scaled) <= 0) low = mid;
+    if (comparePower(mid) <= 0) low = mid;
     else high = mid;
   }
   return low;
 }
 
-function powScaled(base: bigint, exponent: bigint): bigint {
-  let result = scaledOne;
-  for (let index = 0n; index < exponent; index += 1n) result = multiplyScaled(result, base);
-  return result;
+function stableScaled(compute: (scale: number) => bigint): bigint {
+  const firstScale = 54;
+  const secondScale = 72;
+  const first = rescale(compute(firstScale), firstScale, ratioScale);
+  const second = rescale(compute(secondScale), secondScale, ratioScale);
+  if (renderRatioOutputFromScaledIntegerV1(first, ratioScale) !== renderRatioOutputFromScaledIntegerV1(second, ratioScale)) {
+    throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  }
+  return second;
 }
 
-function powScaledCompare(base: bigint, exponent: bigint, target: bigint): -1 | 0 | 1 {
-  let result = scaledOne;
-  for (let index = 0n; index < exponent; index += 1n) {
-    result = multiplyScaled(result, base);
-    if (result > target) return 1;
-  }
-  return result === target ? 0 : -1;
+function rescale(value: bigint, fromScale: number, toScale: number): bigint {
+  if (fromScale === toScale) return value;
+  if (fromScale > toScale) return value / (10n ** BigInt(fromScale - toScale));
+  return value * (10n ** BigInt(toScale - fromScale));
 }
 
 function sqrtFloor(value: bigint): bigint {

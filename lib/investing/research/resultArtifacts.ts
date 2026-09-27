@@ -78,6 +78,15 @@ export function canonicalResultHashPayloadV1(input: ResultHashPayloadV1): Canoni
   };
 }
 
+export function assertMetricResultSetSchemaForRegistryV1(metricRegistryVersion: string, metricResultSet: ResearchArtifactDescriptorV1): void {
+  const expected = metricRegistryVersion === "METRIC_REGISTRY_V20260918"
+    ? "METRIC_RESULT_SET_V1"
+    : metricRegistryVersion === "METRIC_REGISTRY_V20260927"
+      ? "METRIC_RESULT_SET_V2"
+      : null;
+  if (expected === null || metricResultSet.artifactSchemaVersion !== expected) throw new Error("RESULT_METRIC_REGISTRY_ARTIFACT_SCHEMA_MISMATCH");
+}
+
 export function canonicalExecutionResultFieldsV1(input: ExecutionResultFieldsV1): ExecutionResultFieldsV1 {
   if (input.engineId !== "HISTORICAL_EXECUTION_ADAPTER") throw new Error("RESULT_ENGINE_INVALID");
   if (input.valuationCurrency !== "USD") throw new Error("RESULT_VALUATION_CURRENCY_INVALID");
