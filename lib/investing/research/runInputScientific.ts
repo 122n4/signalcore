@@ -18,6 +18,10 @@ import {
 import { hashExperimentV1, type ExperimentCandidateV1 } from "./experiment";
 import { hashResearchIrV1, type ResearchIrV1 } from "./researchIr";
 import { hashResearchSpecV1, type ResearchSpecCandidateInputV1 } from "./semantic";
+import {
+  assertEngineV1ResearchIrFieldContract,
+  assertEngineV2ScientificCandidate,
+} from "./engineV2ScientificProfile";
 
 export type ScientificRunInputCandidateV1 = Readonly<{
   runInput: RunInputHashPayloadV1;
@@ -62,43 +66,11 @@ export function admitScientificRunInputV1(input: ScientificRunInputCandidateV1):
   if (input.runInput.researchSourceContext === "USER_PORTFOLIO") {
     throw new Error("USER_PORTFOLIO RunInput remains fail-closed until AccountResearchContext owner contract exists");
   }
-  if (input.runInput.engineVersion === "ENGINE_V20260926") {
-    admitEngineV2ScientificRunInput(input);
-  }
+  if (input.runInput.engineVersion === "ENGINE_V20260918") assertEngineV1ResearchIrFieldContract(input.researchIr);
+  if (input.runInput.engineVersion === "ENGINE_V20260926") assertEngineV2ScientificCandidate(input);
 
   const runInputHash = hashRunInputV1(input.runInput);
   return Object.freeze({ runInput: input.runInput, runInputHash: ref("SYNTRAKE:RUN_INPUT:V1", runInputHash) });
-}
-
-function admitEngineV2ScientificRunInput(input: ScientificRunInputCandidateV1): void {
-  const runInput = input.runInput;
-  if (
-    runInput.schemaVersion !== "RUN_INPUT_HASH_PAYLOAD_V1" ||
-    runInput.runType !== "HISTORICAL_BACKTEST" ||
-    runInput.researchEnvironment !== "HISTORICAL_BACKTEST" ||
-    runInput.researchSourceContext !== "PURE_RESEARCH" ||
-    runInput.accountResearchContext !== undefined ||
-    runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" ||
-    runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918"
-  ) throw new Error("UNSUPPORTED_RUN_PROFILE");
-  if (runInput.deterministicSeed !== undefined) throw new Error("UNSUPPORTED_V2_DETERMINISTIC_SEED");
-  const policies = [...runInput.materialPolicies].sort((a, b) => a.policyId.localeCompare(b.policyId));
-  if (
-    policies.length !== 2 ||
-    policies[0]?.policyId !== "DATASET_SNAPSHOT" ||
-    policies[0]?.policyVersion !== "DATASET_SNAPSHOT_POLICY_V1" ||
-    policies[1]?.policyId !== "EXECUTION_CONFIG" ||
-    policies[1]?.policyVersion !== "EXECUTION_CONFIG_HASH_PAYLOAD_V1"
-  ) throw new Error("UNSUPPORTED_V2_MATERIAL_POLICIES");
-  const requests = [...input.metricRequestSet.requests].sort((a, b) => a.metricId.localeCompare(b.metricId));
-  if (
-    input.metricRequestSet.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" ||
-    requests.length !== 2 ||
-    requests[0]?.metricId !== "MAX_DRAWDOWN" ||
-    requests[0]?.metricVersion !== "METRIC_V1" ||
-    requests[1]?.metricId !== "TOTAL_RETURN" ||
-    requests[1]?.metricVersion !== "METRIC_V1"
-  ) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
 }
 
 export function admittedDatasetSeriesRefsV1(input: ScientificRunInputCandidateV1): readonly HashRefV1[] {

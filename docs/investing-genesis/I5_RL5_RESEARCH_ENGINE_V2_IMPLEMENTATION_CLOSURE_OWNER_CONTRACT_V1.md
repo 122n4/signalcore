@@ -14,6 +14,15 @@ Production migration:
 RL-5 acceptance:
 `NOT ACCEPTED`
 
+Previous independently audited candidate:
+`0a8696c06a8956fcd6e726991281c3d50c6d8ce1`
+
+Independent audit verdict:
+`BLOCKED - SCIENTIFIC ADMISSION / V1-V2 ISOLATION CORRECTION REQUIRED`
+
+Candidate publication:
+`ESTABLISHED BY GIT HISTORY / NOT AN ACCEPTANCE SIGNAL`
+
 ## Engine Identity
 
 Historical immutable profile:
@@ -213,6 +222,24 @@ Real provider provenance invented:
 NO
 ```
 
+REAL_PROVIDER_EXECUTION:
+
+```text
+UNAVAILABLE
+```
+
+Reason:
+
+```text
+no real providerDatasetId/providerDatasetVersion provenance profile is admitted
+under ENGINE_V20260926
+```
+
+The fixture-only provider registry does not authorize arbitrary real-provider
+market data execution under `ENGINE_V20260926`. Because admitted provider
+profiles are immutable scientific behavior, adding a real provider profile is a
+future engine-version decision, not a same-engineVersion promise.
+
 Unknown provider, mixed OHLC basis, OHLC invariant violation, and missing
 point-in-time volume provenance fail closed.
 
@@ -259,6 +286,14 @@ Generator versions:
 ```text
 exchange_calendars 4.11.1
 pandas_market_calendars 5.1.1
+```
+
+Generator enforcement:
+
+```text
+scripts/investing/generateXnysCalendarV2.py fails immediately when installed
+exchange_calendars or pandas_market_calendars versions differ from the recorded
+literal versions.
 ```
 
 Generator wall-clock dependency:
@@ -368,8 +403,19 @@ Validation V2 integration:
 V2 phase Research IR derivation changes only testPeriod
 V2 phase DatasetSeries slicing excludes future rows
 V2 child RunInput admission enforces the V2 material/field/metric matrix
+V2 child RunInput admission enforces the exact V2 ExecutionConfig matrix
 V2 child execution dispatches to historicalExecutionEngineV2
 Validation writer persists V1/V2 phases through the existing operation/capability path
+```
+
+Scientific isolation correction:
+
+```text
+ENGINE_V20260918 executable Research IR fields must use I5A_RESEARCH_IR_FIELD_CONTRACT_V1
+ENGINE_V20260926 executable Research IR fields must use I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2
+duplicate DatasetSeries semantic keys (instrumentId, fieldId) fail closed
+V2 kernel materials must exactly bind to DatasetSeries payloads
+VOLUME provenance absence/unknown provider fails as VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE
 ```
 
 ## Migration
@@ -457,11 +503,11 @@ git diff --check have all been executed.
 Remaining external acceptance gates:
 
 ```text
-independent review = NOT RECORDED
+independent correction review = NOT RECORDED
 Production migration apply = NOT APPLIED
 post-apply PG17 audit = NOT RUN
 canonical state update = NOT PERFORMED
-commit/push = NOT PERFORMED
+candidate publication = ESTABLISHED BY GIT HISTORY / NOT AN ACCEPTANCE SIGNAL
 ```
 
 Final state:

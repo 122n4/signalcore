@@ -8,6 +8,8 @@ import pandas_market_calendars
 
 START = "1980-01-01"
 END = "2035-12-31"
+EXPECTED_EXCHANGE_CALENDARS_VERSION = "4.11.1"
+EXPECTED_PANDAS_MARKET_CALENDARS_VERSION = "5.1.1"
 OUT = Path("lib/investing/research/calendars/XNYS_TRADING_CALENDAR_V2.json")
 
 
@@ -16,6 +18,15 @@ def iso_dates(values):
 
 
 def main():
+    if exchange_calendars.__version__ != EXPECTED_EXCHANGE_CALENDARS_VERSION:
+        raise SystemExit(
+            f"exchange_calendars version mismatch: expected {EXPECTED_EXCHANGE_CALENDARS_VERSION}, got {exchange_calendars.__version__}"
+        )
+    if pandas_market_calendars.__version__ != EXPECTED_PANDAS_MARKET_CALENDARS_VERSION:
+        raise SystemExit(
+            "pandas_market_calendars version mismatch: "
+            f"expected {EXPECTED_PANDAS_MARKET_CALENDARS_VERSION}, got {pandas_market_calendars.__version__}"
+        )
     exchange_calendar = exchange_calendars.get_calendar("XNYS", start=START, end=END)
     exchange_sessions = iso_dates(exchange_calendar.sessions)
 

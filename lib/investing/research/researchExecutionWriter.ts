@@ -35,6 +35,7 @@ import {
 } from "./datasetMaterial";
 import { admitHistoricalBacktestV1, executeHistoricalBacktestV1, type ResearchExecutionFailureCodeV1, type ResearchExecutionSuccessV1 } from "./historicalExecutionEngine";
 import { executeHistoricalBacktestV2, validateHistoricalKernelProfileV2, type ResearchExecutionFailureCodeV2, type ResearchExecutionSuccessV2 } from "./historicalExecutionEngineV2";
+import { assertEngineV2RunInputProfile } from "./engineV2ScientificProfile";
 import {
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -115,7 +116,7 @@ function admitPreparedBacktest(prepared: PreparedExecution): { ok: true } | { ok
   }
   if (prepared.runInput.engineVersion === "ENGINE_V20260926") {
     try {
-      validateEngineV2RunInput(prepared.runInput);
+      assertEngineV2RunInputProfile(prepared.runInput);
       validateHistoricalKernelProfileV2({
         researchIr: prepared.researchIr,
         datasetSeries: prepared.datasetSeries,
@@ -155,18 +156,6 @@ function executePreparedBacktest(prepared: PreparedExecution, materials: readonl
     });
   }
   return { ok: false as const, code: "UNSUPPORTED_ENGINE" as const };
-}
-
-function validateEngineV2RunInput(runInput: RunInputHashPayloadV1): void {
-  if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || runInput.engineVersion !== "ENGINE_V20260926") throw new Error("UNSUPPORTED_ENGINE");
-  if (runInput.runType !== "HISTORICAL_BACKTEST" || runInput.researchEnvironment !== "HISTORICAL_BACKTEST" || runInput.researchSourceContext !== "PURE_RESEARCH" || runInput.accountResearchContext !== undefined) {
-    throw new Error("UNSUPPORTED_RUN_PROFILE");
-  }
-  if (runInput.deterministicSeed !== undefined) throw new Error("UNSUPPORTED_V2_DETERMINISTIC_SEED");
-  const policies = [...runInput.materialPolicies].sort((a, b) => a.policyId.localeCompare(b.policyId));
-  if (policies.length !== 2 || policies[0]?.policyId !== "DATASET_SNAPSHOT" || policies[0]?.policyVersion !== "DATASET_SNAPSHOT_POLICY_V1" || policies[1]?.policyId !== "EXECUTION_CONFIG" || policies[1]?.policyVersion !== "EXECUTION_CONFIG_HASH_PAYLOAD_V1") {
-    throw new Error("UNSUPPORTED_V2_MATERIAL_POLICIES");
-  }
 }
 
 function isV2FailureCode(value: string): value is ResearchExecutionFailureCodeV2 {

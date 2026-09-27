@@ -232,6 +232,18 @@ export {
 } from "./historicalExecutionEngineV2";
 
 export {
+  assertEngineV1ResearchIrFieldContract,
+  assertEngineV2DatasetSeriesSet,
+  assertEngineV2ExecutionConfig,
+  assertEngineV2MaterialBinding,
+  assertEngineV2MetricRequestSet,
+  assertEngineV2ResearchIrFieldContract,
+  assertEngineV2RunInputProfile,
+  assertEngineV2ScientificCandidate,
+  researchIrReferencesVolume,
+} from "./engineV2ScientificProfile";
+
+export {
   admitValidationRunInputV1,
   canonicalValidationChildResultBytesV1,
   canonicalValidationChildResultHashPayloadV1,
