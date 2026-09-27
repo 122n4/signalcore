@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   assertEngineV2MetricRequestSet,
   canonicalDatasetSeriesMaterialBytesV1,
@@ -278,10 +280,11 @@ describe("I5 RL-6 Metric Registry V2", () => {
   it("reduces CAGR exponents and keeps long-horizon rational powers deterministic", () => {
     expect(reduceRationalPowerExponentV2(365n, 3650n)).toEqual({ numerator: 1n, denominator: 10n });
     const horizons = [
-      { days: 365n, expectedExponent: { numerator: 1n, denominator: 1n } },
-      { days: 1825n, expectedExponent: { numerator: 1n, denominator: 5n } },
-      { days: 3650n, expectedExponent: { numerator: 1n, denominator: 10n } },
-      { days: 14600n, expectedExponent: { numerator: 1n, denominator: 40n } },
+      { days: 366n, expectedExponent: { numerator: 365n, denominator: 366n } },
+      { days: 1826n, expectedExponent: { numerator: 365n, denominator: 1826n } },
+      { days: 3652n, expectedExponent: { numerator: 365n, denominator: 3652n } },
+      { days: 7305n, expectedExponent: { numerator: 73n, denominator: 1461n } },
+      { days: 14610n, expectedExponent: { numerator: 73n, denominator: 2922n } },
     ];
     const growth = r("2.5");
     for (const horizon of horizons) {
@@ -293,6 +296,16 @@ describe("I5 RL-6 Metric Registry V2", () => {
       expect(first.value).toBe(reduced.value);
     }
   }, 20000);
+
+  it("keeps rational-power implementation off exponent-count linear root loops", () => {
+    const source = readFileSync(join(process.cwd(), "lib/investing/research/researchMetrics.ts"), "utf8");
+    const rationalPowerSource = source.slice(source.indexOf("function rationalPowerMinusOneInterval"), source.indexOf("function sqrtFloor"));
+    expect(rationalPowerSource).not.toContain("while (low + 1n < high)");
+    expect(rationalPowerSource).not.toContain("for (let index = 0n; index < exponent");
+    expect(rationalPowerSource).not.toContain("for (let index = 0n; index < n");
+    expect(rationalPowerSource).toContain("integerNthRootFloor");
+    expect(rationalPowerSource).toContain("bigintPowerCapped");
+  });
 
   it("keeps exactly one downside observation truthfully unavailable", () => {
     const records = metricResultRecordsV2({

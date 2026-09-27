@@ -98,6 +98,10 @@ const tradingSessionsPerYear = integerToRationalV1(252n);
 const certificationStartScale = 36;
 const certificationStepScale = 18;
 const certificationMaxScale = 216;
+const rationalPowerCertificationStartScale = 19;
+const rationalPowerCertificationStepScale = 7;
+const rationalPowerCertificationMaxScale = 96;
+const rationalPowerCertificationCache = new Map<string, Readonly<{ value: string; interval: RationalIntervalV1 }>>();
 
 export function metricResultRecordsV2(input: MetricResultContextV2): readonly CanonicalJsonValue[] {
   if (input.valuations.length < 1) throw new Error("NO_VALUATIONS");
@@ -342,10 +346,17 @@ export function certifiedSqrtRatioOutputV2(value: ExactRationalV1): Readonly<{ v
 export function certifiedRationalPowerMinusOneOutputV2(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): Readonly<{ value: string; interval: RationalIntervalV1 }> {
   if (base.numerator <= 0n || exponentNumerator <= 0n || exponentDenominator <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
   const exponent = reduceRationalPowerExponentV2(exponentNumerator, exponentDenominator);
-  for (let scale = certificationStartScale; scale <= certificationMaxScale; scale += certificationStepScale) {
+  const cacheKey = `${base.numerator}/${base.denominator}:${exponent.numerator}/${exponent.denominator}`;
+  const cached = rationalPowerCertificationCache.get(cacheKey);
+  if (cached) return cached;
+  for (let scale = rationalPowerCertificationStartScale; scale <= rationalPowerCertificationMaxScale; scale += rationalPowerCertificationStepScale) {
     const interval = rationalPowerMinusOneInterval(base, exponent.numerator, exponent.denominator, scale);
     const certified = tryCertifyIntervalOutput(interval);
-    if (certified) return { value: certified, interval };
+    if (certified) {
+      const result = { value: certified, interval };
+      rationalPowerCertificationCache.set(cacheKey, result);
+      return result;
+    }
   }
   throw new Error("NUMERIC_INVARIANT_VIOLATION");
 }
@@ -359,7 +370,7 @@ export function reduceRationalPowerExponentV2(numerator: bigint, denominator: bi
 function rationalPowerMinusOneInterval(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint, scale: number): RationalIntervalV1 {
   const factor = 10n ** BigInt(scale);
   const rootFloor = nthRootAtScale(base, exponentDenominator, scale);
-  const isExact = bigintPower(rootFloor, exponentDenominator) * base.denominator === base.numerator * bigintPower(factor, exponentDenominator);
+  const isExact = exponentDenominator <= 128n && isNthRootExactAtScale(base, exponentDenominator, scale, rootFloor);
   const lowerRoot = { numerator: rootFloor, denominator: factor };
   const upperRoot = { numerator: isExact ? rootFloor : rootFloor + 1n, denominator: factor };
   return normalizeInterval({
@@ -435,24 +446,44 @@ function maxRational(values: readonly ExactRationalV1[]): ExactRationalV1 {
 function nthRootAtScale(value: ExactRationalV1, n: bigint, scale: number): bigint {
   if (value.numerator <= 0n || n <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
   const factor = 10n ** BigInt(scale);
-  const target = value.numerator * bigintPower(factor, n);
-  const denominator = value.denominator;
-  let low = 0n;
-  let high = factor;
-  const comparePower = (base: bigint): -1 | 0 | 1 => {
-    const cap = target / denominator + 1n;
-    const result = bigintPowerCapped(base, n, cap);
-    if (result >= cap) return 1;
-    const left = result * denominator;
-    return left === target ? 0 : left < target ? -1 : 1;
-  };
-  while (comparePower(high) < 0) high *= 2n;
-  while (low + 1n < high) {
-    const mid = (low + high) / 2n;
-    if (comparePower(mid) <= 0) low = mid;
-    else high = mid;
+  const target = (value.numerator * bigintPower(factor, n)) / value.denominator;
+  return integerNthRootFloor(target, n, nthRootInitialUpper(value, n, factor));
+}
+
+function nthRootInitialUpper(value: ExactRationalV1, n: bigint, factor: bigint): bigint {
+  if (compareRationalV1(value, one) <= 0) return factor;
+  const excess = subtractRationalV1(value, one);
+  return factor + ceilDiv(factor * excess.numerator, excess.denominator * n);
+}
+
+function isNthRootExactAtScale(value: ExactRationalV1, n: bigint, scale: number, root: bigint): boolean {
+  const factor = 10n ** BigInt(scale);
+  const scaledNumerator = value.numerator * bigintPower(factor, n);
+  if (scaledNumerator % value.denominator !== 0n) return false;
+  const target = scaledNumerator / value.denominator;
+  return bigintPowerCapped(root, n, target + 1n) === target;
+}
+
+function integerNthRootFloor(value: bigint, n: bigint, initialUpper?: bigint): bigint {
+  if (value < 0n || n <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  if (value < 2n || n === 1n) return value;
+  const bitLength = BigInt(value.toString(2).length);
+  let current = initialUpper && initialUpper > 0n ? initialUpper : 1n << ((bitLength + n - 1n) / n);
+  while (true) {
+    const divisor = bigintPowerCapped(current, n - 1n, value + 1n);
+    const quotient = divisor > value ? 0n : value / divisor;
+    const next = ((n - 1n) * current + quotient) / n;
+    if (next >= current) break;
+    current = next;
   }
-  return low;
+  while (bigintPowerCapped(current + 1n, n, value + 1n) <= value) current += 1n;
+  while (bigintPowerCapped(current, n, value + 1n) > value) current -= 1n;
+  return current;
+}
+
+function ceilDiv(numerator: bigint, denominator: bigint): bigint {
+  if (denominator <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
+  return numerator <= 0n ? numerator / denominator : (numerator + denominator - 1n) / denominator;
 }
 
 function bigintPower(base: bigint, exponent: bigint): bigint {

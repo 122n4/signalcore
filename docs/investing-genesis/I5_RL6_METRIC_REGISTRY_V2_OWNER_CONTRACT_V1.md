@@ -113,10 +113,11 @@ binary floating-point, `Math.sqrt` or `Math.pow`.
 
 Rational powers reduce the exponent before root/power work. For example,
 `365 / 3650` is evaluated as `1 / 10`. BigInt exponentiation uses deterministic
-exponentiation-by-squaring, and nth-root comparison uses bounded exact power
-comparison that stops once the target inequality is decided. This preserves the
-same certified lower/upper interval law while avoiding exponent-count linear
-loops in the scientific path.
+exponentiation-by-squaring. Nth-root floor calculation uses deterministic
+integer Newton iteration with an exact Bernoulli upper bound for large
+denominators, bounded exact power comparisons, and final floor correction. This
+preserves the same certified lower/upper interval law while avoiding
+exponent-count linear loops and binary-search root scans in the scientific path.
 
 Ratio outputs use:
 
