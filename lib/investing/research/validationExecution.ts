@@ -48,6 +48,7 @@ import {
   assertEngineV2MetricRequestSet,
   assertEngineV2ResearchIrFieldContract,
 } from "./engineV2ScientificProfile";
+import { metricRegistryVersionV2 } from "./researchMetrics";
 
 export type ValidationPhaseV1 = "TRAINING" | "EVALUATION";
 
@@ -289,7 +290,7 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
   const metricRequestSet = canonicalMetricRequestSetHashPayloadV1(input.metricRequestSetPayload) as MetricRequestSetHashPayloadV1;
   const executionConfig = canonicalExecutionConfigHashPayloadV1(input.executionConfigPayload) as ExecutionConfigHashPayloadV1;
   if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || (runInput.engineVersion !== "ENGINE_V20260918" && runInput.engineVersion !== "ENGINE_V20260926")) throw new Error("VALIDATION_RUN_INPUT_ENGINE_UNSUPPORTED");
-  if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
+  if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" && runInput.metricRegistryVersion !== metricRegistryVersionV2) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
   if (metricRequestSet.metricRegistryVersion !== runInput.metricRegistryVersion) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_MISMATCH");
   if (executionConfig.engineCompatibilityVersion !== runInput.engineVersion) throw new Error("VALIDATION_RUN_INPUT_EXECUTION_CONFIG_MISMATCH");
   if (runInput.engineVersion === "ENGINE_V20260926") {
@@ -298,6 +299,7 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
     assertEngineV2ResearchIrFieldContract(phaseResearchIr);
     assertEngineV2DatasetSeriesSet(phaseResearchIr, phaseDatasetSeries);
   } else {
+    if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
     assertEngineV1ResearchIrFieldContract(phaseResearchIr);
   }
 

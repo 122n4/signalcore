@@ -232,6 +232,15 @@ export {
 } from "./historicalExecutionEngineV2";
 
 export {
+  metricRegistryV2Requests,
+  metricRegistryVersionV2,
+  metricResultRecordsV2,
+  type MetricBenchmarkRecordV2,
+  type MetricFillRecordV2,
+  type MetricResultContextV2,
+} from "./researchMetrics";
+
+export {
   assertEngineV1ResearchIrFieldContract,
   assertEngineV2DatasetSeriesSet,
   assertEngineV2ExecutionConfig,

@@ -103,6 +103,10 @@ export function renderRatioOutputV1(value: ExactRationalV1): string {
   return renderCanonicalDecimalV1(roundHalfEvenRationalToScaleV1(value, 18));
 }
 
+export function renderRatioOutputFromScaledIntegerV1(value: bigint, scale: number): string {
+  return renderCanonicalDecimalV1(roundHalfEvenRationalToScaleV1({ numerator: value, denominator: 10n ** BigInt(scale) }, 18));
+}
+
 export function renderMoneyOutputV1(value: ExactRationalV1): string {
   return renderCanonicalDecimalV1(roundHalfEvenRationalToScaleV1(value, 16));
 }
