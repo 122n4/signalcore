@@ -135,6 +135,27 @@ Infinity, -Infinity and omission of the requested metric.
 True mathematical zero remains AVAILABLE. Missing or undefined truth must never
 be converted to zero.
 
+Exact unit mapping:
+
+~~~text
+TOTAL_RETURN = RATIO
+MAX_DRAWDOWN = RATIO
+CAGR = RATIO
+MAX_DRAWDOWN_DURATION = XNYS_SESSION_INTERVALS
+MAX_DRAWDOWN_RECOVERY = XNYS_SESSION_INTERVALS
+ANNUALIZED_VOLATILITY = RATIO
+DOWNSIDE_DEVIATION = RATIO
+SHARPE_RATIO = RATIO
+SORTINO_RATIO = RATIO
+CALMAR_RATIO = RATIO
+TURNOVER = RATIO
+AVERAGE_GROSS_EXPOSURE = RATIO
+TRADE_COUNT = COUNT
+REBALANCE_COUNT = COUNT
+BENCHMARK_RELATIVE_RETURN = RATIO
+TRACKING_ERROR = RATIO
+~~~
+
 ## 5. Arithmetic And Serialization
 
 All finite-decimal algebra uses exact rational arithmetic.
@@ -248,7 +269,7 @@ Insufficient data: UNAVAILABLE_INSUFFICIENT_OBSERVATIONS.
 
 ### DOWNSIDE_DEVIATION / METRIC_V1
 
-Require N >= 1.
+Require N >= 1. Otherwise: UNAVAILABLE_INSUFFICIENT_OBSERVATIONS.
 
 ~~~text
 downside_t = min(r_t, 0)
@@ -260,7 +281,7 @@ Denominator is all return observations, not only negative returns.
 
 ### SHARPE_RATIO / METRIC_V1
 
-Require N >= 2.
+Require N >= 2. Otherwise: UNAVAILABLE_INSUFFICIENT_OBSERVATIONS.
 
 ~~~text
 mean_excess_session_return = sum(r_t) / N
@@ -272,6 +293,8 @@ Exact zero volatility: UNAVAILABLE_ZERO_DENOMINATOR. Calculation uses underlying
 exact returns, not rounded serialized volatility.
 
 ### SORTINO_RATIO / METRIC_V1
+
+Require N >= 1. Otherwise: UNAVAILABLE_INSUFFICIENT_OBSERVATIONS.
 
 ~~~text
 mean_excess_over_mar = sum(r_t) / N

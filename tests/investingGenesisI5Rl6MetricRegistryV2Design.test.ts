@@ -70,6 +70,11 @@ describe("I5 RL-6 Metric Registry V2 design freeze candidate", () => {
       "UNAVAILABLE_NONPOSITIVE_NAV",
       "UNAVAILABLE_CAGR_DOMAIN",
       "Missing or undefined truth must never\nbe converted to zero.",
+      "MAX_DRAWDOWN_DURATION = XNYS_SESSION_INTERVALS",
+      "MAX_DRAWDOWN_RECOVERY = XNYS_SESSION_INTERVALS",
+      "TRADE_COUNT = COUNT",
+      "REBALANCE_COUNT = COUNT",
+      "TRACKING_ERROR = RATIO",
     ]);
   });
 
