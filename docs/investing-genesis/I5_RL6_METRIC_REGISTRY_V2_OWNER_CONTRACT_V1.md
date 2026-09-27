@@ -118,6 +118,8 @@ integer Newton iteration with an exact Bernoulli upper bound for large
 denominators, bounded exact power comparisons, and final floor correction. This
 preserves the same certified lower/upper interval law while avoiding
 exponent-count linear loops and binary-search root scans in the scientific path.
+Certified rational-power evaluation is stateless: no process-global cache of
+scientific input values or certified intervals participates in metric output.
 
 Ratio outputs use:
 

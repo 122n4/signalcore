@@ -101,7 +101,6 @@ const certificationMaxScale = 216;
 const rationalPowerCertificationStartScale = 19;
 const rationalPowerCertificationStepScale = 7;
 const rationalPowerCertificationMaxScale = 96;
-const rationalPowerCertificationCache = new Map<string, Readonly<{ value: string; interval: RationalIntervalV1 }>>();
 
 export function metricResultRecordsV2(input: MetricResultContextV2): readonly CanonicalJsonValue[] {
   if (input.valuations.length < 1) throw new Error("NO_VALUATIONS");
@@ -346,17 +345,10 @@ export function certifiedSqrtRatioOutputV2(value: ExactRationalV1): Readonly<{ v
 export function certifiedRationalPowerMinusOneOutputV2(base: ExactRationalV1, exponentNumerator: bigint, exponentDenominator: bigint): Readonly<{ value: string; interval: RationalIntervalV1 }> {
   if (base.numerator <= 0n || exponentNumerator <= 0n || exponentDenominator <= 0n) throw new Error("NUMERIC_INVARIANT_VIOLATION");
   const exponent = reduceRationalPowerExponentV2(exponentNumerator, exponentDenominator);
-  const cacheKey = `${base.numerator}/${base.denominator}:${exponent.numerator}/${exponent.denominator}`;
-  const cached = rationalPowerCertificationCache.get(cacheKey);
-  if (cached) return cached;
   for (let scale = rationalPowerCertificationStartScale; scale <= rationalPowerCertificationMaxScale; scale += rationalPowerCertificationStepScale) {
     const interval = rationalPowerMinusOneInterval(base, exponent.numerator, exponent.denominator, scale);
     const certified = tryCertifyIntervalOutput(interval);
-    if (certified) {
-      const result = { value: certified, interval };
-      rationalPowerCertificationCache.set(cacheKey, result);
-      return result;
-    }
+    if (certified) return { value: certified, interval };
   }
   throw new Error("NUMERIC_INVARIANT_VIOLATION");
 }

@@ -295,7 +295,24 @@ describe("I5 RL-6 Metric Registry V2", () => {
       expect(first.value).toBe(second.value);
       expect(first.value).toBe(reduced.value);
     }
-  }, 20000);
+  }, 60000);
+
+  it("derives rational-power certification independently of prior returned object mutation", () => {
+    const growth = r("2.5");
+    const first = certifiedRationalPowerMinusOneOutputV2(growth, 365n, 3652n);
+    expect(first.value).toBe("0.095903232345245637");
+    const unsafe = first as {
+      value: string;
+      interval: { lower: { numerator: bigint; denominator: bigint }; upper: { numerator: bigint; denominator: bigint } };
+    };
+    unsafe.value = "999";
+    unsafe.interval.lower.numerator = 999n;
+    unsafe.interval.upper.denominator = 1n;
+    const second = certifiedRationalPowerMinusOneOutputV2(growth, 365n, 3652n);
+    expect(second.value).toBe("0.095903232345245637");
+    expect(second.interval.lower.numerator).not.toBe(999n);
+    expect(second.interval.upper.denominator).not.toBe(1n);
+  });
 
   it("keeps rational-power implementation off exponent-count linear root loops", () => {
     const source = readFileSync(join(process.cwd(), "lib/investing/research/researchMetrics.ts"), "utf8");
