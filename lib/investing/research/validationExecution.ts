@@ -25,6 +25,7 @@ import { executeHistoricalKernelV1, type HistoricalKernelInputV1 } from "./histo
 import { executeHistoricalKernelV2, type HistoricalKernelInputV2 } from "./historicalExecutionEngineV2";
 import { canonicalResearchIrPayloadV1, hashResearchIrV1, type ResearchIrV1 } from "./researchIr";
 import {
+  assertMetricResultSetSchemaForRegistryV1,
   canonicalExecutionResultFieldsV1,
   type ResearchArtifactDescriptorV1,
 } from "./resultArtifacts";
@@ -48,6 +49,7 @@ import {
   assertEngineV2MetricRequestSet,
   assertEngineV2ResearchIrFieldContract,
 } from "./engineV2ScientificProfile";
+import { metricRegistryVersionV2 } from "./researchMetrics";
 
 export type ValidationPhaseV1 = "TRAINING" | "EVALUATION";
 
@@ -289,7 +291,7 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
   const metricRequestSet = canonicalMetricRequestSetHashPayloadV1(input.metricRequestSetPayload) as MetricRequestSetHashPayloadV1;
   const executionConfig = canonicalExecutionConfigHashPayloadV1(input.executionConfigPayload) as ExecutionConfigHashPayloadV1;
   if (runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || (runInput.engineVersion !== "ENGINE_V20260918" && runInput.engineVersion !== "ENGINE_V20260926")) throw new Error("VALIDATION_RUN_INPUT_ENGINE_UNSUPPORTED");
-  if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
+  if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" && runInput.metricRegistryVersion !== metricRegistryVersionV2) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
   if (metricRequestSet.metricRegistryVersion !== runInput.metricRegistryVersion) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_MISMATCH");
   if (executionConfig.engineCompatibilityVersion !== runInput.engineVersion) throw new Error("VALIDATION_RUN_INPUT_EXECUTION_CONFIG_MISMATCH");
   if (runInput.engineVersion === "ENGINE_V20260926") {
@@ -298,6 +300,7 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
     assertEngineV2ResearchIrFieldContract(phaseResearchIr);
     assertEngineV2DatasetSeriesSet(phaseResearchIr, phaseDatasetSeries);
   } else {
+    if (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918") throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_UNSUPPORTED");
     assertEngineV1ResearchIrFieldContract(phaseResearchIr);
   }
 
@@ -373,6 +376,11 @@ export function executeValidationChildBacktestV1(input: ValidationChildExecution
   }
   if (kernel.resultFields.engineId !== runInput.engineId || kernel.resultFields.engineVersion !== runInput.engineVersion) {
     return { ok: false, code: "VALIDATION_CHILD_RESULT_ENGINE_MISMATCH" };
+  }
+  try {
+    assertMetricResultSetSchemaForRegistryV1(runInput.metricRegistryVersion, kernel.resultFields.metricResultSet);
+  } catch {
+    return { ok: false, code: "VALIDATION_CHILD_RESULT_METRIC_REGISTRY_ARTIFACT_SCHEMA_MISMATCH" };
   }
   const childResultPayload: ValidationChildResultHashPayloadV1 = {
     schemaVersion: "VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V1",

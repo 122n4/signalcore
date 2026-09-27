@@ -193,6 +193,7 @@ export {
 
 export {
   artifactDescriptorV1,
+  assertMetricResultSetSchemaForRegistryV1,
   canonicalResultBytesV1,
   canonicalResultHashPayloadV1,
   hashResultV1,
@@ -230,6 +231,18 @@ export {
   type ResearchExecutionResultV2,
   type ResearchExecutionSuccessV2,
 } from "./historicalExecutionEngineV2";
+
+export {
+  metricRegistryV2Requests,
+  metricRegistryVersionV2,
+  metricResultRecordsV2,
+  certifiedRationalPowerMinusOneOutputV2,
+  certifiedSqrtRatioOutputV2,
+  reduceRationalPowerExponentV2,
+  type MetricBenchmarkRecordV2,
+  type MetricFillRecordV2,
+  type MetricResultContextV2,
+} from "./researchMetrics";
 
 export {
   assertEngineV1ResearchIrFieldContract,

@@ -78,6 +78,15 @@ export function canonicalResultHashPayloadV1(input: ResultHashPayloadV1): Canoni
   };
 }
 
+export function assertMetricResultSetSchemaForRegistryV1(metricRegistryVersion: string, metricResultSet: ResearchArtifactDescriptorV1): void {
+  const expected = metricRegistryVersion === "METRIC_REGISTRY_V20260918"
+    ? "METRIC_RESULT_SET_V1"
+    : metricRegistryVersion === "METRIC_REGISTRY_V20260927"
+      ? "METRIC_RESULT_SET_V2"
+      : null;
+  if (expected === null || metricResultSet.artifactSchemaVersion !== expected) throw new Error("RESULT_METRIC_REGISTRY_ARTIFACT_SCHEMA_MISMATCH");
+}
+
 export function canonicalExecutionResultFieldsV1(input: ExecutionResultFieldsV1): ExecutionResultFieldsV1 {
   if (input.engineId !== "HISTORICAL_EXECUTION_ADAPTER") throw new Error("RESULT_ENGINE_INVALID");
   if (input.valuationCurrency !== "USD") throw new Error("RESULT_VALUATION_CURRENCY_INVALID");
@@ -90,7 +99,7 @@ export function canonicalExecutionResultFieldsV1(input: ExecutionResultFieldsV1)
   assertMoney(input.terminalCash, branch.moneyScale);
   const executionTrace = canonicalArtifactDescriptor(input.executionTrace, branch.traceSchema);
   const valuationSeries = canonicalArtifactDescriptor(input.valuationSeries, branch.valuationSchema);
-  const metricResultSet = canonicalArtifactDescriptor(input.metricResultSet, "METRIC_RESULT_SET_V1");
+  const metricResultSet = canonicalArtifactDescriptor(input.metricResultSet, branch.metricSchema);
   const benchmark = input.benchmark === null ? null : canonicalArtifactDescriptor(input.benchmark, branch.benchmarkSchema);
   return {
     engineId: input.engineId,
@@ -115,6 +124,7 @@ function resultBranch(input: ExecutionResultFieldsV1) {
       moneyScale: 16,
       traceSchema: "RESEARCH_EXECUTION_TRACE_V1",
       valuationSchema: "RESEARCH_VALUATION_SERIES_V1",
+      metricSchema: "METRIC_RESULT_SET_V1",
       benchmarkSchema: "RESEARCH_BENCHMARK_SERIES_V1",
     };
   }
@@ -124,6 +134,7 @@ function resultBranch(input: ExecutionResultFieldsV1) {
       moneyScale: 24,
       traceSchema: "RESEARCH_EXECUTION_TRACE_V2",
       valuationSchema: "RESEARCH_VALUATION_SERIES_V2",
+      metricSchema: input.metricResultSet.artifactSchemaVersion === "METRIC_RESULT_SET_V2" ? "METRIC_RESULT_SET_V2" : "METRIC_RESULT_SET_V1",
       benchmarkSchema: "RESEARCH_BENCHMARK_SERIES_V2",
     };
   }

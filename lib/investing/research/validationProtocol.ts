@@ -41,6 +41,7 @@ import {
   assertEngineV2MetricRequestSet,
   assertEngineV2ResearchIrFieldContract,
 } from "./engineV2ScientificProfile";
+import { metricRegistryVersionV2 } from "./researchMetrics";
 
 export type ValidationModeV1 =
   | "CHRONOLOGICAL_HOLDOUT"
@@ -208,7 +209,7 @@ export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1):
   const protocol = canonicalValidationProtocolHashPayloadV1(input.protocol) as CanonicalValidationProtocolPayloadV1;
   if (protocol.engineId !== acceptedEngineIdV1) throw new Error("VALIDATION_ENGINE_ID_UNSUPPORTED");
   validationCalendarProfile(protocol.engineVersion, protocol.boundaryPolicy);
-  if (protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1) {
+  if (protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1 && protocol.metricRegistryVersion !== metricRegistryVersionV2) {
     throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
   }
 
@@ -240,6 +241,7 @@ export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1):
   }
   assertCanonicalExecutionConfigBoundToValidationProtocolV1(protocol, executionConfigPayload);
   if (protocol.engineVersion === acceptedEngineVersionV1) {
+    if (protocol.metricRegistryVersion !== acceptedMetricRegistryVersionV1) throw new Error("VALIDATION_METRIC_REGISTRY_VERSION_UNSUPPORTED");
     assertEngineV1ResearchIrFieldContract(researchIrPayload);
   } else if (protocol.engineVersion === acceptedEngineVersionV2) {
     if (protocol.boundaryPolicy !== "EXACT_XNYS_SESSION_BOUNDARIES_V2") throw new Error("VALIDATION_BOUNDARY_POLICY_UNSUPPORTED");

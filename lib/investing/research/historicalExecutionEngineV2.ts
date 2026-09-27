@@ -18,7 +18,7 @@ import {
 } from "./exactRational";
 import { type BooleanExpressionV1, type DataFieldRefV1, type ResearchIrV1, type ResearchOperationV1 } from "./index";
 import { canonicalJsonlArtifactBytesV1, artifactDescriptorV1, type ExecutionResultFieldsV1, type ResultHashPayloadV1 } from "./resultArtifacts";
-import { metricResultRecordsV1, type ValuationRecordV1 } from "./researchMetrics";
+import { metricRegistryVersionV2, metricResultRecordsV1, metricResultRecordsV2, type MetricFillRecordV2, type MetricBenchmarkRecordV2, type ValuationRecordV1 } from "./researchMetrics";
 import { type RunInputHashPayloadV1 } from "./canonical";
 import { assertOhlcInvariantsV2, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
 import {
@@ -131,8 +131,10 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
     let pending: Intent | null = null;
     let sequence = 0;
     const trace: CanonicalJsonValue[] = [];
-    const valuations: (ValuationRecordV1 & { cumulativeExplicitFees: string; cumulativeSlippageCost: string })[] = [];
+    const valuations: (ValuationRecordV1 & { marketValueExact: ExactRationalV1; cumulativeExplicitFees: string; cumulativeSlippageCost: string })[] = [];
     const benchmarkRecords: CanonicalJsonValue[] = [];
+    const benchmarkMetricRecords: MetricBenchmarkRecordV2[] = [];
+    const metricFills: MetricFillRecordV2[] = [];
     const benchmarkStartPrice = input.researchIr.benchmark.benchmark === "INSTRUMENT"
       ? getPrice(close, input.researchIr.benchmark.instrumentId, sessions[0]!, "MISSING_REQUIRED_BENCHMARK_CLOSE")
       : null;
@@ -143,6 +145,7 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
         cash = fill.cash;
         cumulativeExplicitFees = addRationalV1(cumulativeExplicitFees, fill.explicitFees);
         cumulativeSlippageCost = addRationalV1(cumulativeSlippageCost, fill.slippageCost);
+        for (const metricFill of fill.metricFills) metricFills.push(metricFill);
         for (const record of fill.records) trace.push({ ...(record as Record<string, CanonicalJsonValue>), sequence: String(sequence++) });
         pending = null;
       }
@@ -155,6 +158,7 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
         marketValue: renderMoneyOutputV2(marketValue),
         nav: renderMoneyOutputV2(currentNav),
         navExact: currentNav,
+        marketValueExact: marketValue,
         cumulativeExplicitFees: renderMoneyOutputV2(cumulativeExplicitFees),
         cumulativeSlippageCost: renderMoneyOutputV2(cumulativeSlippageCost),
       });
@@ -163,6 +167,7 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
         const benchmarkPrice = getPrice(close, (input.researchIr.benchmark as { instrumentId: string }).instrumentId, session, "MISSING_REQUIRED_BENCHMARK_CLOSE");
         const value = multiplyRationalV1(decimalStringToRationalV1(input.researchIr.startingCapital.amount), divideRationalV1(benchmarkPrice, benchmarkStartPrice));
         benchmarkRecords.push({ sessionDate: session, value: exactRationalTrace(value) });
+        benchmarkMetricRecords.push({ sessionDate: session, valueExact: value });
       }
 
       const evaluation = evaluatePipeline(input.researchIr.pipeline, instruments, positions, { open, high, low, close, volumes }, session);
@@ -203,7 +208,10 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
       cumulativeExplicitFees: valuation.cumulativeExplicitFees,
       cumulativeSlippageCost: valuation.cumulativeSlippageCost,
     }));
-    const metricRecords = metricResultRecordsV1(valuations);
+    const metricRecords = input.metricRequestSet.metricRegistryVersion === metricRegistryVersionV2
+      ? metricResultRecordsV2({ valuations, fills: metricFills, benchmark: benchmarkMetricRecords })
+      : metricResultRecordsV1(valuations);
+    const metricResultSetSchema = input.metricRequestSet.metricRegistryVersion === metricRegistryVersionV2 ? "METRIC_RESULT_SET_V2" : "METRIC_RESULT_SET_V1";
     const executionTraceBytes = canonicalJsonlArtifactBytesV1(trace);
     const valuationSeriesBytes = canonicalJsonlArtifactBytesV1(valuationRecords);
     const metricResultSetBytes = canonicalJsonlArtifactBytesV1(metricRecords);
@@ -225,7 +233,7 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
         terminalCash: valuations.at(-1)!.cash,
         executionTrace: artifactDescriptorV1("RESEARCH_EXECUTION_TRACE_V2", executionTraceBytes, trace.length),
         valuationSeries: artifactDescriptorV1("RESEARCH_VALUATION_SERIES_V2", valuationSeriesBytes, valuationRecords.length),
-        metricResultSet: artifactDescriptorV1("METRIC_RESULT_SET_V1", metricResultSetBytes, metricRecords.length),
+        metricResultSet: artifactDescriptorV1(metricResultSetSchema, metricResultSetBytes, metricRecords.length),
         benchmark: benchmarkSeriesBytes ? artifactDescriptorV1("RESEARCH_BENCHMARK_SERIES_V2", benchmarkSeriesBytes, benchmarkRecords.length) : null,
       },
     };
@@ -290,6 +298,7 @@ function executeIntent(intent: Intent, cash: ExactRationalV1, positions: Map<str
   let explicitFees = zero;
   let slippageCost = zero;
   const records: CanonicalJsonValue[] = [];
+  const metricFills: MetricFillRecordV2[] = [];
   const buyDeltas = new Map<string, ExactRationalV1>();
   for (const instrumentId of instruments) {
     const current = positions.get(instrumentId)?.quantity ?? zero;
@@ -303,6 +312,7 @@ function executeIntent(intent: Intent, cash: ExactRationalV1, positions: Map<str
       if (compareRationalV1(desired, zero) === 0) positions.delete(instrumentId);
       else positions.set(instrumentId, { quantity: desired });
       records.push(fill.record);
+      metricFills.push({ originatingTargetIntent: intent.sequence, grossNotional: fill.grossNotionalExact });
     } else if (compareRationalV1(delta, zero) > 0) {
       buyDeltas.set(instrumentId, delta);
     }
@@ -324,9 +334,10 @@ function executeIntent(intent: Intent, cash: ExactRationalV1, positions: Map<str
     slippageCost = addRationalV1(slippageCost, fill.slippageExact);
     positions.set(instrumentId, { quantity: desired });
     records.push(fill.record);
+    metricFills.push({ originatingTargetIntent: intent.sequence, grossNotional: fill.grossNotionalExact });
   }
   if (compareRationalV1(nextCash, zero) < 0) throw new Error("ACCOUNTING_INVARIANT_VIOLATION");
-  return { cash: nextCash, explicitFees, slippageCost, records };
+  return { cash: nextCash, explicitFees, slippageCost, records, metricFills };
 }
 
 function fillRecord(intent: string, instrumentId: string, side: "BUY" | "SELL", quantity: ExactRationalV1, preQuantity: ExactRationalV1, postQuantity: ExactRationalV1, cashBefore: ExactRationalV1, opens: Map<string, Map<string, ExactRationalV1>>, session: string, feeBps: bigint, slippageBps: bigint) {
@@ -340,6 +351,7 @@ function fillRecord(intent: string, instrumentId: string, side: "BUY" | "SELL", 
   return {
     cashAfterExact,
     feeExact,
+    grossNotionalExact: grossNotional,
     slippageExact,
     record: {
       type: "FILL",

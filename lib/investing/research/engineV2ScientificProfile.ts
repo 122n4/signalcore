@@ -2,6 +2,7 @@ import { hashDatasetSeriesV1, type DatasetSeriesHashPayloadV1, type DatasetSnaps
 import { providerProfileForEngineV2, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
 import { type BooleanExpressionV1, type DataFieldRefV1, type ResearchIrV1 } from "./index";
 import { type RunInputHashPayloadV1 } from "./canonical";
+import { metricRegistryV2Requests, metricRegistryVersionV2 } from "./researchMetrics";
 
 const v1FieldVersion = "I5A_RESEARCH_IR_FIELD_CONTRACT_V1";
 const v2FieldVersion = "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2";
@@ -60,13 +61,23 @@ export function assertEngineV2MetricRequestSet(metricRequestSet: MetricRequestSe
   const requests = [...metricRequestSet.requests].sort((left, right) => left.metricId.localeCompare(right.metricId));
   if (
     metricRequestSet.schemaVersion !== "METRIC_REQUEST_SET_HASH_PAYLOAD_V1" ||
-    metricRequestSet.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" ||
+    (metricRequestSet.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" && metricRequestSet.metricRegistryVersion !== metricRegistryVersionV2)
+  ) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+  if (metricRequestSet.metricRegistryVersion === "METRIC_REGISTRY_V20260918" && (
     requests.length !== 2 ||
     requests[0]?.metricId !== "MAX_DRAWDOWN" ||
     requests[0]?.metricVersion !== "METRIC_V1" ||
     requests[1]?.metricId !== "TOTAL_RETURN" ||
     requests[1]?.metricVersion !== "METRIC_V1"
-  ) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+  )) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+  if (metricRequestSet.metricRegistryVersion === metricRegistryVersionV2) {
+    if (requests.length !== metricRegistryV2Requests.length) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+    for (let index = 0; index < metricRegistryV2Requests.length; index += 1) {
+      if (requests[index]?.metricId !== metricRegistryV2Requests[index]!.metricId || requests[index]?.metricVersion !== metricRegistryV2Requests[index]!.metricVersion) {
+        throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
+      }
+    }
+  }
 }
 
 export function assertEngineV2RunInputProfile(runInput: RunInputHashPayloadV1): void {
@@ -78,7 +89,7 @@ export function assertEngineV2RunInputProfile(runInput: RunInputHashPayloadV1): 
     runInput.accountResearchContext !== undefined ||
     runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" ||
     runInput.engineVersion !== "ENGINE_V20260926" ||
-    runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918"
+    (runInput.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" && runInput.metricRegistryVersion !== metricRegistryVersionV2)
   ) throw new Error("UNSUPPORTED_RUN_PROFILE");
   if (runInput.deterministicSeed !== undefined) throw new Error("UNSUPPORTED_V2_DETERMINISTIC_SEED");
   const policies = [...runInput.materialPolicies].sort((left, right) => left.policyId.localeCompare(right.policyId));
