@@ -20,6 +20,7 @@ import { canonicalJsonlArtifactBytesV1, artifactDescriptorV1, type ExecutionResu
 import { metricResultRecordsV1, type ValuationRecordV1 } from "./researchMetrics";
 import { type RunInputHashPayloadV1 } from "./canonical";
 import { type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
+import { assertEngineV1ResearchIrFieldContract } from "./engineV2ScientificProfile";
 
 export type ResearchExecutionFailureCodeV1 =
   | "UNSUPPORTED_RUN_PROFILE"
@@ -268,6 +269,7 @@ function validateExecutableIr(ir: ResearchIrV1) {
   if (weights.length !== 1 || rebalances.length !== 1 || ir.pipeline.at(-1)?.type !== "REBALANCE") throw new Error("UNSUPPORTED_IR_PROFILE");
   const weightIndex = ir.pipeline.findIndex((operation) => operation.type === "WEIGHT");
   if (ir.pipeline.slice(weightIndex + 1, -1).length !== 0) throw new Error("UNSUPPORTED_IR_PROFILE");
+  assertEngineV1ResearchIrFieldContract(ir);
   return { weight: weights[0] as Extract<ResearchOperationV1, { type: "WEIGHT" }>, rebalance: rebalances[0] as Extract<ResearchOperationV1, { type: "REBALANCE" }> };
 }
 

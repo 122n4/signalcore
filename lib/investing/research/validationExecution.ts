@@ -41,6 +41,13 @@ import {
   type ValidationWindowV1,
 } from "./validationProtocol";
 import { verifyDatasetSeriesMaterialV1, verifyDatasetSeriesMaterialV2, type DatasetSeriesObservationV1, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
+import {
+  assertEngineV1ResearchIrFieldContract,
+  assertEngineV2DatasetSeriesSet,
+  assertEngineV2ExecutionConfig,
+  assertEngineV2MetricRequestSet,
+  assertEngineV2ResearchIrFieldContract,
+} from "./engineV2ScientificProfile";
 
 export type ValidationPhaseV1 = "TRAINING" | "EVALUATION";
 
@@ -286,9 +293,12 @@ export function admitValidationRunInputFromPersistedProtocolV1(input: PersistedV
   if (metricRequestSet.metricRegistryVersion !== runInput.metricRegistryVersion) throw new Error("VALIDATION_RUN_INPUT_METRIC_REGISTRY_MISMATCH");
   if (executionConfig.engineCompatibilityVersion !== runInput.engineVersion) throw new Error("VALIDATION_RUN_INPUT_EXECUTION_CONFIG_MISMATCH");
   if (runInput.engineVersion === "ENGINE_V20260926") {
-    assertV2MetricRequestSet(metricRequestSet);
-    assertV2PhaseDatasetSeries(phaseDatasetSeries);
-    assertV2ResearchIrFields(phaseResearchIr);
+    assertEngineV2MetricRequestSet(metricRequestSet);
+    assertEngineV2ExecutionConfig(executionConfig);
+    assertEngineV2ResearchIrFieldContract(phaseResearchIr);
+    assertEngineV2DatasetSeriesSet(phaseResearchIr, phaseDatasetSeries);
+  } else {
+    assertEngineV1ResearchIrFieldContract(phaseResearchIr);
   }
 
   const frozenRunInput = deepFreezeCanonicalJsonV1(runInput);
@@ -428,49 +438,6 @@ function assertSamePayloadSet(
 
 function canonicalBytesEqual(left: CanonicalJsonValue, right: CanonicalJsonValue): boolean {
   return i5ResearchInternalCanonicalJsonBytesV1(left).equals(i5ResearchInternalCanonicalJsonBytesV1(right));
-}
-
-function assertV2MetricRequestSet(metricRequestSet: MetricRequestSetHashPayloadV1): void {
-  const requests = [...metricRequestSet.requests].sort((left, right) => left.metricId.localeCompare(right.metricId));
-  if (
-    metricRequestSet.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" ||
-    requests.length !== 2 ||
-    requests[0]?.metricId !== "MAX_DRAWDOWN" ||
-    requests[0]?.metricVersion !== "METRIC_V1" ||
-    requests[1]?.metricId !== "TOTAL_RETURN" ||
-    requests[1]?.metricVersion !== "METRIC_V1"
-  ) throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
-}
-
-function assertV2PhaseDatasetSeries(series: readonly DatasetSeriesHashPayloadV1[]): void {
-  for (const payload of series) {
-    if (payload.frequency !== "DAILY" || payload.timezone !== "America/New_York" || payload.calendar !== "XNYS_TRADING_CALENDAR_V2") {
-      throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
-    }
-    if (["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"].includes(payload.fieldId)) {
-      if (payload.fieldVersion !== "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2" || payload.currency !== "USD") throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
-    } else if (payload.fieldId === "VOLUME") {
-      if (payload.fieldVersion !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2" || payload.currency !== "NONE") throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
-    } else {
-      throw new Error("VALIDATION_PHASE_DATASET_SERIES_MISMATCH");
-    }
-  }
-}
-
-function assertV2ResearchIrFields(ir: ResearchIrV1): void {
-  const visit = (value: unknown): void => {
-    if (value === null || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const entry of value) visit(entry);
-      return;
-    }
-    const record = value as Record<string, unknown>;
-    if (record.type === "DATA_FIELD_REF") {
-      if (record.fieldVersion !== "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2") throw new Error("UNSUPPORTED_V2_FIELD_VERSION");
-    }
-    for (const child of Object.values(record)) visit(child);
-  };
-  visit(ir.pipeline);
 }
 
 function deepFreezeCanonicalJsonV1<T extends CanonicalJsonValue>(value: T): T {

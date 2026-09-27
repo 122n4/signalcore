@@ -20,7 +20,17 @@ import { type BooleanExpressionV1, type DataFieldRefV1, type ResearchIrV1, type 
 import { canonicalJsonlArtifactBytesV1, artifactDescriptorV1, type ExecutionResultFieldsV1, type ResultHashPayloadV1 } from "./resultArtifacts";
 import { metricResultRecordsV1, type ValuationRecordV1 } from "./researchMetrics";
 import { type RunInputHashPayloadV1 } from "./canonical";
-import { assertOhlcInvariantsV2, providerProfileForEngineV2, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
+import { assertOhlcInvariantsV2, type VerifiedDatasetSeriesMaterialV1 } from "./datasetMaterial";
+import {
+  assertDatasetSeriesV2,
+  assertEngineV2ExecutionConfig,
+  assertEngineV2MaterialBinding,
+  assertEngineV2MetricRequestSet,
+  assertEngineV2ResearchIrFieldContract,
+  assertEngineV2RunInputProfile,
+  costPoliciesV2,
+  slippagePoliciesV2,
+} from "./engineV2ScientificProfile";
 
 export type ResearchExecutionFailureCodeV2 =
   | "UNSUPPORTED_RUN_PROFILE"
@@ -100,6 +110,7 @@ export function executeHistoricalBacktestV2(input: EngineInputV2): ResearchExecu
 export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Readonly<{ ok: true; artifacts: ResearchExecutionSuccessV2["artifacts"]; resultFields: ExecutionResultFieldsV1 } | { ok: false; code: ResearchExecutionFailureCodeV2 }> {
   try {
     validateHistoricalKernelProfileV2(input);
+    assertEngineV2MaterialBinding(input);
     assertOhlcInvariantsV2(input.materials);
     const sessions = xnysSessionsInRangeV2(input.researchIr.testPeriod.startDate, input.researchIr.testPeriod.endDate);
     if (sessions.length < 1) return { ok: false, code: "NO_ELIGIBLE_SESSIONS" };
@@ -111,8 +122,8 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
     const volumes = materialMap(input.materials, "VOLUME");
     const instruments = [...input.researchIr.universe.instrumentIds].sort(compareBytes);
     const rebalanceSignals = rebalanceSessionsV2(sessions, executable.rebalance.schedule);
-    const feeBps = policyBps(input.executionConfig.costsPolicy, costPolicies);
-    const slippageBps = policyBps(input.executionConfig.slippagePolicy, slippagePolicies);
+    const feeBps = policyBps(input.executionConfig.costsPolicy, costPoliciesV2);
+    const slippageBps = policyBps(input.executionConfig.slippagePolicy, slippagePoliciesV2);
     let cash = decimalStringToRationalV1(input.researchIr.startingCapital.amount);
     let cumulativeExplicitFees = zero;
     let cumulativeSlippageCost = zero;
@@ -224,57 +235,15 @@ export function executeHistoricalKernelV2(input: HistoricalKernelInputV2): Reado
 }
 
 export function validateHistoricalKernelProfileV2(input: Omit<HistoricalKernelInputV2, "materials"> & { materials?: readonly VerifiedDatasetSeriesMaterialV1[] }): void {
-  const config = input.executionConfig;
-  if (
-    config.engineCompatibilityVersion !== "ENGINE_V20260926" ||
-    config.missingDataPolicy !== "MISSING_DATA_STRICT_RESEARCH_V2" ||
-    config.fxPolicy !== "FX_USD_IDENTITY_V1" ||
-    !Object.hasOwn(costPolicies, config.costsPolicy) ||
-    !Object.hasOwn(slippagePolicies, config.slippagePolicy) ||
-    config.fillPolicy !== "NEXT_SESSION_OPEN_V1" ||
-    config.corporateActionPolicy !== "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2" ||
-    config.calendarSessionPolicy !== "XNYS_OPEN_CLOSE_SESSION_V2" ||
-    config.valuationPolicy !== "USD_ADJUSTED_CLOSE_MARK_V2"
-  ) throw new Error("UNSUPPORTED_EXECUTION_CONFIG");
-  validateMetricRequestSet(input.metricRequestSet);
-  for (const series of input.datasetSeries) validateDatasetSeriesV2(series);
+  assertEngineV2ExecutionConfig(input.executionConfig);
+  assertEngineV2MetricRequestSet(input.metricRequestSet);
+  for (const series of input.datasetSeries) assertDatasetSeriesV2(series);
   validateExecutableIrV2(input.researchIr);
 }
 
 function validateProfile(input: Omit<EngineInputV2, "materials">): void {
-  if (input.runInput.runType !== "HISTORICAL_BACKTEST" || input.runInput.researchEnvironment !== "HISTORICAL_BACKTEST" || input.runInput.researchSourceContext !== "PURE_RESEARCH" || input.runInput.accountResearchContext) throw new Error("UNSUPPORTED_RUN_PROFILE");
-  if (input.runInput.engineId !== "HISTORICAL_EXECUTION_ADAPTER" || input.runInput.engineVersion !== "ENGINE_V20260926") throw new Error("UNSUPPORTED_ENGINE");
-  if (input.runInput.deterministicSeed !== undefined) throw new Error("UNSUPPORTED_V2_DETERMINISTIC_SEED");
-  validateMaterialPolicies(input.runInput.materialPolicies);
+  assertEngineV2RunInputProfile(input.runInput);
   validateHistoricalKernelProfileV2(input);
-}
-
-function validateDatasetSeriesV2(series: DatasetSeriesHashPayloadV1): void {
-  providerProfileForEngineV2(series);
-  if (series.frequency !== "DAILY" || series.timezone !== "America/New_York" || series.calendar !== "XNYS_TRADING_CALENDAR_V2") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
-  if (["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"].includes(series.fieldId)) {
-    if (series.fieldVersion !== "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2" || series.currency !== "USD") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
-    return;
-  }
-  if (series.fieldId === "VOLUME") {
-    if (series.fieldVersion !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2" || series.currency !== "NONE") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
-    return;
-  }
-  throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
-}
-
-function validateMetricRequestSet(input: MetricRequestSetHashPayloadV1): void {
-  const requests = [...input.requests].sort((a, b) => a.metricId.localeCompare(b.metricId));
-  if (input.metricRegistryVersion !== "METRIC_REGISTRY_V20260918" || requests.length !== 2 || requests[0]?.metricId !== "MAX_DRAWDOWN" || requests[0]?.metricVersion !== "METRIC_V1" || requests[1]?.metricId !== "TOTAL_RETURN" || requests[1]?.metricVersion !== "METRIC_V1") {
-    throw new Error("UNSUPPORTED_V2_METRIC_REQUEST_SET");
-  }
-}
-
-function validateMaterialPolicies(policies: RunInputHashPayloadV1["materialPolicies"]): void {
-  const sorted = [...policies].sort((a, b) => a.policyId.localeCompare(b.policyId));
-  if (sorted.length !== 2 || sorted[0]?.policyId !== "DATASET_SNAPSHOT" || sorted[0]?.policyVersion !== "DATASET_SNAPSHOT_POLICY_V1" || sorted[1]?.policyId !== "EXECUTION_CONFIG" || sorted[1]?.policyVersion !== "EXECUTION_CONFIG_HASH_PAYLOAD_V1") {
-    throw new Error("UNSUPPORTED_V2_MATERIAL_POLICIES");
-  }
 }
 
 function validateExecutableIrV2(ir: ResearchIrV1) {
@@ -282,10 +251,7 @@ function validateExecutableIrV2(ir: ResearchIrV1) {
   const weights = ir.pipeline.filter((operation) => operation.type === "WEIGHT");
   const rebalances = ir.pipeline.filter((operation) => operation.type === "REBALANCE");
   if (weights.length !== 1 || rebalances.length !== 1 || ir.pipeline.at(-1)?.type !== "REBALANCE") throw new Error("UNSUPPORTED_IR_PROFILE");
-  visitFields(ir, (field) => {
-    if (field.fieldVersion !== "I5_RL4_RESEARCH_IR_FIELD_CONTRACT_V2") throw new Error("UNSUPPORTED_V2_FIELD_VERSION");
-    if (!v2Fields.has(field.fieldId)) throw new Error("UNSUPPORTED_V2_FIELD");
-  });
+  assertEngineV2ResearchIrFieldContract(ir);
   return { weight: weights[0] as Extract<ResearchOperationV1, { type: "WEIGHT" }>, rebalance: rebalances[0] as Extract<ResearchOperationV1, { type: "REBALANCE" }> };
 }
 
@@ -544,22 +510,6 @@ function literalValue(literal: { type: string; value?: unknown }): FieldRuntimeV
   return null;
 }
 
-function visitFields(ir: ResearchIrV1, visitor: (field: DataFieldRefV1) => void): void {
-  const visitExpr = (expr: BooleanExpressionV1): void => {
-    if (expr.type === "COMPARE") {
-      visitor(expr.left);
-      if ("fieldId" in expr.right) visitor(expr.right);
-    } else if (expr.type === "NOT") visitExpr(expr.clause);
-    else for (const clause of expr.clauses) visitExpr(clause);
-  };
-  for (const operation of ir.pipeline) {
-    if (operation.type === "FILTER") visitExpr(operation.predicate);
-    if (operation.type === "RANK") visitor(operation.field);
-    if (operation.type === "ENTER") visitExpr(operation.condition);
-    if (operation.type === "EXIT") visitExpr(operation.condition);
-  }
-}
-
 function weightsRecord(weights: ReadonlyMap<string, ExactRationalV1>, render: (value: ExactRationalV1) => string): CanonicalJsonValue {
   return [...weights.entries()].sort((a, b) => compareBytes(a[0], b[0])).map(([instrumentId, weight]) => ({ instrumentId, weight: render(weight) }));
 }
@@ -578,37 +528,6 @@ function policyBps(policy: string, registry: Readonly<Record<string, bigint>>) {
   if (value === undefined) throw new Error("UNSUPPORTED_EXECUTION_CONFIG");
   return value;
 }
-
-const costPolicies = {
-  COMMISSION_FEES_ZERO_V1: 0n,
-  COMMISSION_FEES_NOTIONAL_1_BPS_V1: 1n,
-  COMMISSION_FEES_NOTIONAL_5_BPS_V1: 5n,
-  COMMISSION_FEES_NOTIONAL_10_BPS_V1: 10n,
-  COMMISSION_FEES_NOTIONAL_25_BPS_V1: 25n,
-} as const;
-
-const slippagePolicies = {
-  SLIPPAGE_ZERO_RESEARCH_V1: 0n,
-  SLIPPAGE_SPREAD_ADVERSE_1_BPS_V1: 1n,
-  SLIPPAGE_SPREAD_ADVERSE_5_BPS_V1: 5n,
-  SLIPPAGE_SPREAD_ADVERSE_10_BPS_V1: 10n,
-  SLIPPAGE_SPREAD_ADVERSE_25_BPS_V1: 25n,
-  SLIPPAGE_SPREAD_ADVERSE_50_BPS_V1: 50n,
-} as const;
-
-const v2Fields = new Set([
-  "TOTAL_RETURN",
-  "MOMENTUM_12M",
-  "OPEN_TO_CLOSE_RETURN",
-  "INTRADAY_RANGE_RATIO",
-  "CLOSE_TO_SMA_20_RETURN",
-  "CLOSE_TO_SMA_50_RETURN",
-  "CLOSE_TO_SMA_200_RETURN",
-  "CLOSE_TO_ROLLING_HIGH_20_RETURN",
-  "CLOSE_TO_ROLLING_LOW_20_RETURN",
-  "VOLUME",
-  "OBSERVATION_DATE",
-]);
 
 function compareBytes(left: string, right: string) {
   return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));

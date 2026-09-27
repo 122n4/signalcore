@@ -191,12 +191,12 @@ function validateFieldMaterial(series: DatasetSeriesHashPayloadV1, observation: 
 }
 
 function validateFieldMaterialV2(series: DatasetSeriesHashPayloadV1, observation: DatasetSeriesObservationV1): void {
-  const profile = providerProfileForEngineV2(series);
   if (series.frequency !== "DAILY" || series.timezone !== "America/New_York" || series.calendar !== "XNYS_TRADING_CALENDAR_V2") {
     throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
   }
   if (!isXnysSessionV2(observation.date)) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
   if (["ADJUSTED_OPEN", "ADJUSTED_HIGH", "ADJUSTED_LOW", "ADJUSTED_CLOSE"].includes(series.fieldId)) {
+    const profile = providerProfileForEngineV2(series);
     if (series.fieldVersion !== "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2" || series.currency !== "USD") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
     if (!profile.commonOhlcAdjustmentBasis) throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
     if (!/^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$/u.test(observation.value) || /^0(?:\.0+)?$/u.test(observation.value)) {
@@ -206,6 +206,12 @@ function validateFieldMaterialV2(series: DatasetSeriesHashPayloadV1, observation
   }
   if (series.fieldId === "VOLUME") {
     if (series.fieldVersion !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME_V2" || series.currency !== "NONE") throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
+    let profile: EngineV2ProviderProfile;
+    try {
+      profile = providerProfileForEngineV2(series);
+    } catch {
+      throw new Error("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
+    }
     if (!profile.volumePointInTimeSafe || profile.volumeSemantic !== "POINT_IN_TIME_REPORTED_SESSION_VOLUME") {
       throw new Error("VOLUME_POINT_IN_TIME_PROVENANCE_UNAVAILABLE");
     }

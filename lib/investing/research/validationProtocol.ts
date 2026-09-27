@@ -35,6 +35,12 @@ import {
   type ExperimentHashPayloadV1,
 } from "./experiment";
 import { ownerStructuredHashPreimageV1 } from "./scientificPreimage";
+import {
+  assertEngineV1ResearchIrFieldContract,
+  assertEngineV2ExecutionConfig,
+  assertEngineV2MetricRequestSet,
+  assertEngineV2ResearchIrFieldContract,
+} from "./engineV2ScientificProfile";
 
 export type ValidationModeV1 =
   | "CHRONOLOGICAL_HOLDOUT"
@@ -116,7 +122,7 @@ type CanonicalValidationFoldV1 = ValidationFoldV1 & CanonicalJsonValue;
 type CanonicalValidationProtocolPayloadV1 = Readonly<{
   schemaVersion: "VALIDATION_PROTOCOL_HASH_PAYLOAD_V1";
   methodology: "VALIDATION_METHODOLOGY_V1";
-  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1";
+  boundaryPolicy: "EXACT_XNYS_SESSION_BOUNDARIES_V1" | "EXACT_XNYS_SESSION_BOUNDARIES_V2";
   missingDataSemantics: "INHERIT_EXECUTION_CONFIG_EXACT_V1";
   sourceMaterialPolicy: "PREFIX_TO_PHASE_END_NO_FUTURE_DATA_V1";
   subjectExperiment: HashRefV1;
@@ -233,6 +239,16 @@ export function admitValidationProtocolV1(input: ValidationProtocolCandidateV1):
     throw new Error("VALIDATION_ENGINE_VERSION_MISMATCH");
   }
   assertCanonicalExecutionConfigBoundToValidationProtocolV1(protocol, executionConfigPayload);
+  if (protocol.engineVersion === acceptedEngineVersionV1) {
+    assertEngineV1ResearchIrFieldContract(researchIrPayload);
+  } else if (protocol.engineVersion === acceptedEngineVersionV2) {
+    if (protocol.boundaryPolicy !== "EXACT_XNYS_SESSION_BOUNDARIES_V2") throw new Error("VALIDATION_BOUNDARY_POLICY_UNSUPPORTED");
+    assertEngineV2ResearchIrFieldContract(researchIrPayload);
+    assertEngineV2MetricRequestSet(metricRequestSetPayload);
+    assertEngineV2ExecutionConfig(executionConfigPayload);
+  } else {
+    throw new Error("VALIDATION_ENGINE_VERSION_UNSUPPORTED");
+  }
   const frozenProtocol = deepFreezeCanonicalJsonV1(protocol);
 
   return Object.freeze({
