@@ -45,6 +45,10 @@ ratio serialization = RESEARCH_RATIO_OUTPUT_V1
 RL-6 must not alter the formula, rounding, canonical bytes or historical output
 of either accepted V1 metric.
 
+Historical METRIC_REGISTRY_V20260918 admission remains exactly two requests:
+TOTAL_RETURN / METRIC_V1 and MAX_DRAWDOWN / METRIC_V1. Missing, extra or
+different requests remain rejected on that historical registry path.
+
 New registry token:
 
 METRIC_REGISTRY_V20260927
@@ -241,15 +245,22 @@ UNAVAILABLE_CAGR_DOMAIN.
 A drawdown episode starts after a running peak when NAV < peak and ends on the
 first later valuation where NAV >= peak.
 
-Duration is XNYS valuation-session intervals from peak to recovery. For an open
+Peak-anchor tie law: while not underwater, a valuation with NAV equal to the
+current running-peak value replaces the prior peak anchor. Therefore a new
+drawdown is anchored to the latest equal-high valuation immediately preceding
+the decline. A strictly higher NAV replaces both peak value and peak anchor.
+
+Duration is XNYS valuation-session intervals from that peak anchor to recovery.
+For an open
 episode at period end, duration is peak to final observed valuation. Return the
 maximum observed episode duration. No drawdown is AVAILABLE value 0.
 
 ### MAX_DRAWDOWN_RECOVERY / METRIC_V1
 
 Use the episode containing the selected MAX_DRAWDOWN trough. Equal maximum
-drawdown magnitudes choose the earliest trough; remaining ties choose earliest
-associated peak.
+drawdown magnitudes choose the earliest trough by session order. The associated
+peak is the peak anchor fixed by the latest-equal-peak law above; no earlier
+equal-valued peak may be substituted.
 
 Recovery duration is XNYS valuation-session intervals from trough to first later
 NAV >= pre-drawdown peak. If no recovery is observed:

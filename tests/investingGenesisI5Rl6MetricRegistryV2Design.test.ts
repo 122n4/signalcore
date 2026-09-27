@@ -55,6 +55,8 @@ describe("I5 RL-6 Metric Registry V2 design freeze candidate", () => {
       "BENCHMARK_RELATIVE_RETURN / METRIC_V1",
       "TRACKING_ERROR / METRIC_V1",
       "SYNTRAKE:METRIC_REQUEST_SET:V1",
+      "Historical METRIC_REGISTRY_V20260918 admission remains exactly two requests",
+      "Missing, extra or\ndifferent requests remain rejected on that historical registry path.",
     ]);
   });
 
@@ -95,6 +97,8 @@ describe("I5 RL-6 Metric Registry V2 design freeze candidate", () => {
       "Count distinct fill-producing rebalance execution intents",
       "BENCHMARK_RELATIVE_RETURN = portfolio_return - benchmark_return",
       "TRACKING_ERROR = sqrt(sample_active_variance * 252)",
+      "a valuation with NAV equal to the\ncurrent running-peak value replaces the prior peak anchor",
+      "latest equal-high valuation immediately preceding\nthe decline",
     ]);
   });
 
