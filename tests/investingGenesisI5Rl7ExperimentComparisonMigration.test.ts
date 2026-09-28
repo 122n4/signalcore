@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "..");
 const migrationPath = path.join(repoRoot, "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql");
+const closureMigrationPath = path.join(repoRoot, "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql");
 const sql = fs.readFileSync(migrationPath, "utf8");
+const closureSql = fs.readFileSync(closureMigrationPath, "utf8");
 
 describe("I5 RL-7 experiment comparison persistence migration", () => {
   it("creates append-only protocol and result scientific identity tables", () => {
@@ -44,5 +46,32 @@ describe("I5 RL-7 experiment comparison persistence migration", () => {
     expect(sql).toContain("RL-7 experiment comparison table owner drift");
     expect(sql).toContain("RL-7 experiment comparison RLS/FORCE RLS drift");
     expect(sql).toContain("RL-7 experiment comparison forbidden grants drift");
+  });
+
+  it("adds authoritative protocol/result persistence functions with deterministic reuse and conflict semantics", () => {
+    expect(closureSql).toContain("persist_research_experiment_comparison_protocol_v1");
+    expect(closureSql).toContain("finalize_research_experiment_comparison_result_v1");
+    expect(closureSql).toContain("RL7_EXPERIMENT_COMPARISON_PROTOCOL_CONFLICT");
+    expect(closureSql).toContain("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT");
+    expect(closureSql).toContain("REUSED_IDENTICAL");
+    expect(closureSql).toContain("pg_advisory_xact_lock");
+    expect(closureSql).toContain("for update");
+  });
+
+  it("binds protocol/result rows to server-derived authority and finalizer lineage", () => {
+    expect(closureSql).toContain("research_experiment_comparison_protocols_authority_tuple_fk");
+    expect(closureSql).toContain("research_experiment_comparison_results_authority_tuple_fk");
+    expect(closureSql).toContain("research_experiment_comparison_results_protocol_authority_fk");
+    expect(closureSql).toContain("references investing.tenant_memberships");
+    expect(closureSql).toContain("references investing.research_experiment_comparison_protocols_scientific_identities");
+  });
+
+  it("preserves minimum privileges and avoids SECURITY DEFINER persistence", () => {
+    expect(closureSql).toContain("security invoker");
+    expect(closureSql).toContain("SECURITY DEFINER function drift");
+    expect(closureSql).toContain("grant execute on function investing.persist_research_experiment_comparison_protocol_v1(text, text, jsonb)");
+    expect(closureSql).toContain("grant execute on function investing.finalize_research_experiment_comparison_result_v1(uuid, text, jsonb)");
+    expect(closureSql).toContain("revoke all on function investing.persist_research_experiment_comparison_protocol_v1(text, text, jsonb)");
+    expect(closureSql).toContain("revoke all on function investing.finalize_research_experiment_comparison_result_v1(uuid, text, jsonb)");
   });
 });
