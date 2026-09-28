@@ -20,15 +20,12 @@ export function deriveFoldStabilityEvidenceV1(folds: readonly SignedEvidenceV1[]
   const degradedFoldCount = canonical.filter((fold) => fold.orientedDeltaSign < 0).length;
   const nonDegradedFoldCount = canonical.length - degradedFoldCount;
   const positive = canonical.filter((fold) => fold.orientedDeltaSign > 0).length;
-  const negative = degradedFoldCount;
-  const nonZero = positive + negative;
-  const dominantDirection = Math.max(positive, negative);
   return Object.freeze({
     completeFoldCount: canonical.length,
     degradedFoldCount,
     nonDegradedFoldCount,
     foldInstability: degradedFoldCount > nonDegradedFoldCount,
-    foldDirectionConcentration: nonZero >= 3 && dominantDirection === nonZero,
+    foldDirectionConcentration: canonical.length >= 3 && positive === 1,
   });
 }
 

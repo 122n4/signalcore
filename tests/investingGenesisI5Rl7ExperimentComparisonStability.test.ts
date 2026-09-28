@@ -19,12 +19,18 @@ describe("I5 RL-7 fold and neighborhood stability evidence", () => {
     ]).foldInstability).toBe(false);
   });
 
-  it("detects one-direction concentration only with at least three non-zero folds", () => {
+  it("detects fold direction concentration only for exactly one positive fold across at least three complete folds", () => {
     expect(deriveFoldStabilityEvidenceV1([
-      { id: "a", orientedDeltaSign: 1 }, { id: "b", orientedDeltaSign: 1 }, { id: "c", orientedDeltaSign: 1 },
+      { id: "a", orientedDeltaSign: -1 }, { id: "b", orientedDeltaSign: 0 }, { id: "c", orientedDeltaSign: -1 },
+    ]).foldDirectionConcentration).toBe(false);
+    expect(deriveFoldStabilityEvidenceV1([
+      { id: "a", orientedDeltaSign: 1 }, { id: "b", orientedDeltaSign: -1 }, { id: "c", orientedDeltaSign: 0 },
     ]).foldDirectionConcentration).toBe(true);
     expect(deriveFoldStabilityEvidenceV1([
       { id: "a", orientedDeltaSign: 1 }, { id: "b", orientedDeltaSign: 1 }, { id: "c", orientedDeltaSign: 0 },
+    ]).foldDirectionConcentration).toBe(false);
+    expect(deriveFoldStabilityEvidenceV1([
+      { id: "a", orientedDeltaSign: 1 }, { id: "b", orientedDeltaSign: -1 },
     ]).foldDirectionConcentration).toBe(false);
   });
 

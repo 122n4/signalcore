@@ -327,3 +327,59 @@ export {
   type ResearchMaterialRequestHashV1,
   type ResearchMaterialIdentityV1,
 } from "./materialRequest";
+
+export {
+  canonicalExperimentComparisonProtocolBytesV1,
+  canonicalExperimentComparisonProtocolV1,
+  hashExperimentComparisonProtocolV1,
+  metricDirectionV1,
+  robustnessComparisonPolicyV1,
+  type ComparisonMetricIdV1,
+  type DirectionalComparisonMetricIdV1,
+  type ExperimentComparisonProtocolV1,
+} from "./experimentComparison";
+
+export {
+  aggregateExperimentComparisonV1,
+  type ExperimentComparisonAggregateInputV1,
+  type ExperimentComparisonAggregateV1,
+} from "./experimentComparisonAggregate";
+
+export {
+  classifyRobustnessV1,
+  type ComparisonFailClosedErrorV1,
+  type RobustnessClassificationV1,
+  type RobustnessDecisionInputV1,
+  type RobustnessDecisionV1,
+  type RobustnessDiagnosticV1,
+} from "./experimentComparisonClassification";
+
+export {
+  compareExactMetricObservationV1,
+  directionalMetricDeltaSignV1,
+  type ExactMetricDeltaV1,
+  type ExactMetricObservationV1,
+  type MetricDeltaOutcomeV1,
+} from "./experimentComparisonEvidence";
+
+export {
+  canonicalExperimentComparisonResultBytesV1,
+  canonicalExperimentComparisonResultV1,
+  hashExperimentComparisonResultV1,
+  type ComparisonProtocolHashRefV1,
+  type ConcentrationEvidenceV1,
+  type CostEvidenceV1,
+  type ExperimentComparisonResultV1,
+  type NeighborhoodEvidenceV1,
+  type ParameterDeltaV1,
+  type ScientificInputDeltaV1,
+  type ValidationEvidenceV1,
+} from "./experimentComparisonResult";
+
+export {
+  deriveFoldStabilityEvidenceV1,
+  deriveNeighborhoodStabilityEvidenceV1,
+  type FoldStabilityEvidenceV1,
+  type NeighborhoodStabilityEvidenceV1,
+  type SignedEvidenceV1,
+} from "./experimentComparisonStability";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalSha256HexV1, hashRefV1 } from "../lib/investing/research/canonical";
+import { canonicalSha256HexV1, hashDomainStateV1, hashRefV1 } from "../lib/investing/research/canonical";
 import {
   canonicalExperimentComparisonProtocolV1,
   metricDirectionV1,
@@ -89,5 +89,10 @@ describe("RL-7 experiment comparison runtime core", () => {
   it("rejects wrong-domain scientific refs", () => {
     const input = protocol();
     expect(() => canonicalExperimentComparisonProtocolV1({ ...input, referenceResult: ref("SYNTRAKE:EXPERIMENT:V1", "E") })).toThrow("wrong-domain HashRefV1");
+  });
+
+  it("admits RL-7 protocol and result domains as owner-payload exact runtime identities", () => {
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1")).toBe("OWNER_PAYLOAD_EXACT");
   });
 });
