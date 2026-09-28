@@ -185,11 +185,10 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
     for (const token of [
-      "One promotion chain is identified by:",
+      "One promotion chain key is deterministically knowable before the first",
       "tenant authority",
       "subject Experiment HashRef",
       "protocol HashRef",
-      "root transition HashRef",
       "row insertion order",
       "mutable latest pointer",
       "caller",
@@ -202,6 +201,31 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "does not choose by wall-clock time",
       "Supersession or invalidation caused by new evidence under the same protocol occurs inside the same chain",
       "A methodology/protocol change creates a new promotion chain with a different protocol HashRef",
+    ]) expect(normalized).toContain(token);
+    expect(normalized).toContain("The root transition HashRef is not part of the pre-root promotion chain key");
+  });
+
+  it("proves promotion-chain identity is non-circular and root creation is unique", () => {
+    const contract = read(contractPath);
+    const normalized = compact(contract);
+    const chainKeyBlock = contract.match(/One promotion chain key[\s\S]*?```text\n([\s\S]*?)\n```/);
+    if (!chainKeyBlock) throw new Error("promotion chain key block not found");
+    expect(chainKeyBlock[1]).toContain("tenant authority");
+    expect(chainKeyBlock[1]).toContain("Investigation UUID");
+    expect(chainKeyBlock[1]).toContain("subject Experiment HashRef");
+    expect(chainKeyBlock[1]).toContain("subject ExperimentParameters HashRef");
+    expect(chainKeyBlock[1]).toContain("subject Research IR HashRef");
+    expect(chainKeyBlock[1]).toContain("protocol HashRef");
+    expect(chainKeyBlock[1]).not.toContain("root transition HashRef");
+    for (const token of [
+      "root transition HashRef is not part of the pre-root promotion chain key",
+      "One chain key can have exactly one authoritative root transition",
+      "Concurrent identical root creation reuses the same root transition identity",
+      "Concurrent or divergent root creation for the same chain key fails closed",
+      "DIVERGENT_EXISTING_IDENTITY",
+      "concurrency equivalent to one accepted authoritative root transition for one promotion chain key",
+      "logical root uniqueness by tenant authority, Investigation, exact scientific subject identity and protocol HashRef",
+      "Missing root, multiple roots or divergent roots for one promotion chain key fail closed",
     ]) expect(normalized).toContain(token);
   });
 
@@ -230,10 +254,15 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "same tenant authority, same Investigation and same scientific subject lineage",
       "MUST have a different protocol HashRef when supersession is caused by methodology/protocol change",
       "Dangling successor chain references, self-reference, self-supersession and supersession cycles are forbidden and fail closed",
+      "successorRootTransition",
+      "MUST identify the unique accepted root belonging to the exact successor promotion chain key/protocol",
+      "successor root transition MUST be the unique accepted root for the exact successor promotion chain key",
       "one old chain may point to only one accepted successor chain/root transition",
       "identical cross-chain linkage retry is idempotent",
       "divergent cross-chain linkage for the same old chain fails closed",
       "Passport follows only that immutable reference to the exact successor root transition",
+      "validates that",
+      "is the unique accepted root for the exact successor promotion chain key/protocol",
       "must not infer a successor chain from timestamps, insertion order, mutable latest pointers, protocol aliases or caller preference",
       "historical transitions remain immutable evidence",
     ]) expect(normalized).toContain(token);

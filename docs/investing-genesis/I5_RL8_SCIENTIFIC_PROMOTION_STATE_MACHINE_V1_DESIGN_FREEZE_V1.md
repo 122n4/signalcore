@@ -130,7 +130,8 @@ historical states because the V1 graph admits outgoing transitions from them.
 lifecycle endpoint for one chain, but it is not called a terminal state token
 because a later V2 graph may define a successor without mutating V1 history.
 
-One promotion chain is identified by:
+One promotion chain key is deterministically knowable before the first
+transition is created and is identified by:
 
 ```text
 tenant authority
@@ -139,16 +140,20 @@ subject Experiment HashRef
 subject ExperimentParameters HashRef
 subject Research IR HashRef
 protocol HashRef
-root transition HashRef
 ```
 
-The root transition is the first admitted RL-8 transition for that exact
-subject/protocol chain and has `predecessorState = null`. Supersession or
-invalidation caused by new evidence under the same protocol occurs inside the
-same chain through an explicit successor transition. A methodology/protocol
-change creates a new promotion chain with a different protocol HashRef; the old
-chain is linked to the exact accepted successor chain by an explicit
-`SUPERSEDED` transition that preserves the old chain's historical truth.
+The root transition HashRef is not part of the pre-root promotion chain key. It
+is the immutable first accepted transition anchoring history for that already
+determined chain key and has `predecessorState = null`. One chain key can have
+exactly one authoritative root transition. Concurrent identical root creation
+reuses the same root transition identity. Concurrent or divergent root creation
+for the same chain key fails closed with `DIVERGENT_EXISTING_IDENTITY`.
+Supersession or invalidation caused by new evidence under the same protocol
+occurs inside the same chain through an explicit successor transition. A
+methodology/protocol change creates a new promotion chain with a different
+protocol HashRef; the old chain is linked to the exact accepted successor chain
+by an explicit `SUPERSEDED` transition that preserves the old chain's
+historical truth.
 
 Cross-chain methodology/protocol supersession is represented canonically inside
 the superseding `SCIENTIFIC_PROMOTION_TRANSITION_V1` artifact and does not
@@ -167,6 +172,8 @@ same scientific subject lineage, but MUST have a different protocol HashRef
 when supersession is caused by methodology/protocol change. Dangling successor
 chain references, self-reference, self-supersession and supersession cycles are
 forbidden and fail closed.
+`supersededByChain.successorRootTransition` MUST identify the unique accepted
+root belonging to the exact successor promotion chain key/protocol.
 
 ## Transition Graph
 
@@ -460,10 +467,12 @@ UUID and scientific subject lineage with the old chain. Its protocol HashRef
 MUST differ from the old chain's protocol HashRef when the supersession reason
 is methodology/protocol change. It MUST NOT be the same transition as the
 `SUPERSEDED` transition and MUST NOT be any transition in the old chain. The
-linked graph from old chain to successor chain MUST be acyclic. Dangling
-successor-chain references, self-reference, self-supersession, cycles or a
-successor root that is not actually a root fail closed with
-`DIVERGENT_EXISTING_IDENTITY`.
+successor root transition MUST be the unique accepted root for the exact
+successor promotion chain key. The linked graph from old chain to successor
+chain MUST be acyclic. Dangling successor-chain references, self-reference,
+self-supersession, cycles, a successor root that is not actually a root, or a
+successor root that does not belong to the exact successor chain key fail
+closed with `DIVERGENT_EXISTING_IDENTITY`.
 
 No mutable current-truth field may replace immutable transition history.
 
@@ -475,11 +484,18 @@ This design slice writes no SQL. The later implementation must provide:
 - immutable accepted protocol and transition scientific identities;
 - deterministic identical-payload reuse;
 - deterministic divergent-payload conflict;
+- concurrency equivalent to one accepted authoritative root transition for one
+  promotion chain key;
+- identical root retry reuses the same root transition identity;
+- divergent root creation for the same promotion chain key fails closed with
+  `DIVERGENT_EXISTING_IDENTITY`;
 - concurrency equivalent to one accepted authoritative successor for one
   predecessor transition;
-- logical uniqueness by tenant authority, Investigation, subject Experiment
-  HashRef, protocol HashRef, root transition HashRef, predecessor transition
-  HashRef and resulting state;
+- logical root uniqueness by tenant authority, Investigation, exact scientific
+  subject identity and protocol HashRef;
+- logical non-root uniqueness by tenant authority, Investigation, exact
+  scientific subject identity, protocol HashRef, predecessor transition HashRef
+  and resulting state;
 - exact reuse for the same successor payload and fail-closed conflict for any
   second divergent authoritative successor to the same predecessor;
 - server-derived tenant authority;
@@ -540,21 +556,27 @@ scientificPromotion = {
 
 Legacy or missing RL-8 evidence remains explicit as `UNAVAILABLE`; it is not
 success and not failure by default. Corrupt RL-8 evidence fails closed. Passport
-chooses `currentState` only by reconstructing the unique successor chain from
-root transition to leaf transition under the exact promotion chain identity. It
-does not choose by wall-clock time, row insertion order, mutable latest pointer
-or caller preference. Passport reports scientific state/evidence only and does
-not become recommendation, Paper, Live, capital or suitability authority.
+chooses `currentState` only by first resolving the unique accepted root
+transition for the exact promotion chain key, then reconstructing the unique
+successor chain from that root transition to leaf transition. It does not choose
+by wall-clock time, row insertion order, mutable latest pointer or caller
+preference. Missing root, multiple roots or divergent roots for one promotion
+chain key fail closed with `DIVERGENT_EXISTING_IDENTITY`. Passport reports
+scientific state/evidence only and does not become recommendation, Paper, Live,
+capital or suitability authority.
 
 For methodology/protocol supersession, Passport first reconstructs the old
 chain to its active leaf. If that leaf is a `SUPERSEDED` transition with
 `supersededByChain`, Passport follows only that immutable reference to the exact
 successor root transition and then reconstructs the successor chain from root to
-leaf. It must not infer a successor chain from timestamps, insertion order,
-mutable latest pointers, protocol aliases or caller preference. Multiple
-divergent successor-chain references for one old chain, dangling references,
-non-root successor references, self-reference, self-supersession and cycles all
-fail closed; historical transitions remain immutable evidence.
+leaf. It validates that `supersededByChain.successorRootTransition` is the
+unique accepted root for the exact successor promotion chain key/protocol. It
+must not infer a successor chain from timestamps, insertion order, mutable
+latest pointers, protocol aliases or caller preference. Multiple divergent
+successor-chain references for one old chain, dangling references, non-root
+successor references, self-reference, self-supersession, cycles or successor
+root/key mismatch all fail closed; historical transitions remain immutable
+evidence.
 
 ## Evidence Ledger Integration
 
