@@ -150,6 +150,9 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "No extra keys",
       "No third RL-8 scientific domain is admitted in V1",
       "predecessorTransition",
+      "supersededByChain",
+      "successorProtocol",
+      "successorRootTransition",
     ]) expect(contract).toContain(token);
     expect(canonical).not.toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1");
     expect(canonical).not.toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1");
@@ -157,6 +160,7 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
 
   it("freezes persistence, Passport, Evidence Ledger and supersession contracts", () => {
     const contract = read(contractPath);
+    const normalized = compact(contract);
     const passport = read("lib/investing/research/researchPassportReader.ts");
     for (const token of [
       "This design slice writes no SQL",
@@ -171,9 +175,9 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "Evidence Ledger",
       "does not create duplicate scientific truth",
       "New experiment evidence, validation rerun, Metric Registry version change",
-      "silently rewrite an old",
       "`PROMOTION_ELIGIBLE` result",
     ]) expect(contract).toContain(token);
+    expect(normalized).toContain("silently rewrite an old `PROMOTION_ELIGIBLE` result");
     expect(passport).toContain('scientificPromotion: { availability: "DEFERRED_RL8", transitions: [] }');
   });
 
@@ -198,6 +202,40 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "does not choose by wall-clock time",
       "Supersession or invalidation caused by new evidence under the same protocol occurs inside the same chain",
       "A methodology/protocol change creates a new promotion chain with a different protocol HashRef",
+    ]) expect(normalized).toContain(token);
+  });
+
+  it("freezes cross-chain supersession linkage and Passport reconstruction semantics", () => {
+    const contract = read(contractPath);
+    const normalized = compact(contract);
+    for (const token of [
+      "supersededByChain",
+      "successor protocol HashRef",
+      "successor root transition HashRef",
+      "successorProtocol:",
+      "successorRootTransition:",
+      "SCIENTIFIC_PROMOTION_TRANSITION_V1",
+      "SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1",
+      "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1",
+      "DIVERGENT_EXISTING_IDENTITY",
+    ]) expect(contract).toContain(token);
+    for (const token of [
+      "Cross-chain methodology/protocol supersession is represented canonically inside the superseding",
+      "SCIENTIFIC_PROMOTION_TRANSITION_V1",
+      "does not introduce a third RL-8 scientific HashRef domain",
+      "canonical immutable reference from the superseded old chain to the exact successor chain",
+      "successor root transition MUST actually be a root transition",
+      "predecessorState = null",
+      "predecessorTransition = null",
+      "same tenant authority, same Investigation and same scientific subject lineage",
+      "MUST have a different protocol HashRef when supersession is caused by methodology/protocol change",
+      "Dangling successor chain references, self-reference, self-supersession and supersession cycles are forbidden and fail closed",
+      "one old chain may point to only one accepted successor chain/root transition",
+      "identical cross-chain linkage retry is idempotent",
+      "divergent cross-chain linkage for the same old chain fails closed",
+      "Passport follows only that immutable reference to the exact successor root transition",
+      "must not infer a successor chain from timestamps, insertion order, mutable latest pointers, protocol aliases or caller preference",
+      "historical transitions remain immutable evidence",
     ]) expect(normalized).toContain(token);
   });
 

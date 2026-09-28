@@ -147,8 +147,26 @@ subject/protocol chain and has `predecessorState = null`. Supersession or
 invalidation caused by new evidence under the same protocol occurs inside the
 same chain through an explicit successor transition. A methodology/protocol
 change creates a new promotion chain with a different protocol HashRef; the old
-chain is linked to the new chain by an explicit `SUPERSEDED` transition that
-preserves the old chain's historical truth.
+chain is linked to the exact accepted successor chain by an explicit
+`SUPERSEDED` transition that preserves the old chain's historical truth.
+
+Cross-chain methodology/protocol supersession is represented canonically inside
+the superseding `SCIENTIFIC_PROMOTION_TRANSITION_V1` artifact and does not
+introduce a third RL-8 scientific HashRef domain. The transition contains a
+`supersededByChain` value that references both:
+
+```text
+successor protocol HashRef
+successor root transition HashRef
+```
+
+The referenced successor root transition MUST actually be a root transition
+with `predecessorState = null` and `predecessorTransition = null`. The
+successor chain MUST be in the same tenant authority, same Investigation and
+same scientific subject lineage, but MUST have a different protocol HashRef
+when supersession is caused by methodology/protocol change. Dangling successor
+chain references, self-reference, self-supersession and supersession cycles are
+forbidden and fail closed.
 
 ## Transition Graph
 
@@ -410,7 +428,13 @@ exactly:
   rejectedTransition:
     HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null,
   predecessorTransition:
-    HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null
+    HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null,
+  supersededByChain: {
+    successorProtocol:
+      HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1>,
+    successorRootTransition:
+      HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1>
+  } | null
 }
 ```
 
@@ -421,7 +445,25 @@ transition of one promotion chain and then requires
 requires every required gate outcome to be `PASS`. `supersedes`, `invalidates`
 and `rejectedTransition` may reference only immutable prior RL-8 transition
 HashRefs for the same tenant, Investigation, subject lineage and promotion
-chain.
+chain. `supersededByChain` is null except when `resultingState = SUPERSEDED`
+records cross-chain methodology/protocol replacement. In that case it is the
+canonical immutable reference from the superseded old chain to the exact
+successor chain. It belongs to `SCIENTIFIC_PROMOTION_TRANSITION_V1`, points to
+an existing accepted successor protocol and successor root transition, and uses
+only the two already frozen RL-8 domains:
+`SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` and
+`SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1`.
+
+The successor root transition MUST have `predecessorState = null` and
+`predecessorTransition = null`. It MUST share tenant authority, Investigation
+UUID and scientific subject lineage with the old chain. Its protocol HashRef
+MUST differ from the old chain's protocol HashRef when the supersession reason
+is methodology/protocol change. It MUST NOT be the same transition as the
+`SUPERSEDED` transition and MUST NOT be any transition in the old chain. The
+linked graph from old chain to successor chain MUST be acyclic. Dangling
+successor-chain references, self-reference, self-supersession, cycles or a
+successor root that is not actually a root fail closed with
+`DIVERGENT_EXISTING_IDENTITY`.
 
 No mutable current-truth field may replace immutable transition history.
 
@@ -448,6 +490,13 @@ This design slice writes no SQL. The later implementation must provide:
 - no client authority injection;
 - reconstruction of current state from immutable history by following the
   unique successor chain from root transition to the only leaf transition.
+- uniqueness of cross-chain supersession linkage: one old chain may point to
+  only one accepted successor chain/root transition;
+- identical cross-chain linkage retry is idempotent;
+- divergent cross-chain linkage for the same old chain fails closed with
+  `DIVERGENT_EXISTING_IDENTITY`;
+- no dangling successor-chain references, no self-reference, no
+  self-supersession and no supersession cycles.
 
 An optional current-state projection may exist only as a non-authoritative read
 model. If projection and immutable transition history disagree, history wins
@@ -458,6 +507,12 @@ that chain. If one predecessor transition has one successor, reconstruction
 continues to that successor. If one predecessor transition has more than one
 authoritative successor, the chain is corrupt and Passport/Evidence reads fail
 closed with `DIVERGENT_EXISTING_IDENTITY`; no active/current state is projected.
+If the active leaf is `SUPERSEDED` with a non-null `supersededByChain`,
+cross-chain reconstruction continues to the referenced successor root transition
+after validating rootness, same tenant, same Investigation, same subject
+lineage, different successor protocol for methodology/protocol replacement and
+acyclic linkage. If validation fails, no cross-chain active/current state is
+projected.
 
 ## Passport Integration
 
@@ -491,6 +546,16 @@ does not choose by wall-clock time, row insertion order, mutable latest pointer
 or caller preference. Passport reports scientific state/evidence only and does
 not become recommendation, Paper, Live, capital or suitability authority.
 
+For methodology/protocol supersession, Passport first reconstructs the old
+chain to its active leaf. If that leaf is a `SUPERSEDED` transition with
+`supersededByChain`, Passport follows only that immutable reference to the exact
+successor root transition and then reconstructs the successor chain from root to
+leaf. It must not infer a successor chain from timestamps, insertion order,
+mutable latest pointers, protocol aliases or caller preference. Multiple
+divergent successor-chain references for one old chain, dangling references,
+non-root successor references, self-reference, self-supersession and cycles all
+fail closed; historical transitions remain immutable evidence.
+
 ## Evidence Ledger Integration
 
 RL-8 transitions are represented in the Evidence Ledger as accepted scientific
@@ -511,8 +576,9 @@ or RL-7 comparison rerun under the same protocol creates an explicit successor
 transition inside the same promotion chain. A promotion methodology/protocol
 change creates a new promotion chain because the protocol HashRef changes. The
 old chain is explicitly linked to the new chain by a `SUPERSEDED` successor
-transition in the old chain. It does not silently rewrite an old
-`PROMOTION_ELIGIBLE` result.
+transition in the old chain whose `supersededByChain` points to the exact
+successor protocol and successor root transition. It does not silently rewrite
+an old `PROMOTION_ELIGIBLE` result.
 
 `REJECTED` records owner/scientific governance rejection of a transition chain.
 `SUPERSEDED` records replacement by newer accepted evidence or methodology.
