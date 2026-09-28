@@ -9,6 +9,20 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 }
 
+function compact(value: string): string {
+  return value.replace(/\s+/g, " ");
+}
+
+function transitionGraph(contract: string): Array<{ from: string; to: string }> {
+  const graph = contract.match(/The only admitted V1 transitions are:\n\n```text\n([\s\S]*?)\n```/);
+  if (!graph) throw new Error("transition graph not found");
+  return graph[1].trim().split(/\r?\n/).map((line) => {
+    const [from, to] = line.split(" -> ");
+    if (!from || !to) throw new Error(`malformed transition: ${line}`);
+    return { from, to };
+  });
+}
+
 describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
   it("remains candidate-only and design-only", () => {
     const contract = read(contractPath);
@@ -39,7 +53,7 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
     ]) expect(contract).toContain(token);
   });
 
-  it("freezes states, terminal semantics and the transition graph", () => {
+  it("freezes states, non-terminal semantics and the transition graph", () => {
     const contract = read(contractPath);
     for (const token of [
       "DRAFT_RESEARCH",
@@ -57,7 +71,25 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "PROMOTION_ELIGIBLE -> SUPERSEDED",
       "All other transitions are forbidden",
       "Regression is not mutation",
+      "NO_TERMINAL_STATE_IN_V1",
+      "A state MUST NOT be described as terminal",
+      "admitted outgoing transition",
+      "Historical `PROMOTION_ELIGIBLE` remains",
+      "immutable evidence even when it is no longer the active/current projection",
     ]) expect(contract).toContain(token);
+    expect(contract).not.toContain("Terminal states in V1 are");
+  });
+
+  it("proves no state labelled terminal has an outgoing admitted transition", () => {
+    const contract = read(contractPath);
+    const outgoingStates = new Set(transitionGraph(contract).map((transition) => transition.from));
+    for (const state of ["PROMOTION_ELIGIBLE", "REJECTED", "INVALIDATED"]) {
+      expect(outgoingStates.has(state)).toBe(true);
+    }
+    expect(contract).toContain("`PROMOTION_ELIGIBLE`, `REJECTED` and `INVALIDATED` are non-terminal");
+    expect(outgoingStates.has("SUPERSEDED")).toBe(false);
+    expect(contract).toContain("V1 has no truly terminal state token in the state vocabulary");
+    expect(contract).toContain("SUPERSEDED` has no outgoing transition in the V1 graph");
   });
 
   it("freezes promotion-eligible gates and RL-7 consumption semantics", () => {
@@ -117,6 +149,7 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "gateOutcomes",
       "No extra keys",
       "No third RL-8 scientific domain is admitted in V1",
+      "predecessorTransition",
     ]) expect(contract).toContain(token);
     expect(canonical).not.toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1");
     expect(canonical).not.toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1");
@@ -133,12 +166,39 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "scientificPromotion.availability = DEFERRED_RL8",
       "latestTransition",
       "currentState",
+      "unique successor chain",
+      "root transition to leaf transition",
       "Evidence Ledger",
       "does not create duplicate scientific truth",
       "New experiment evidence, validation rerun, Metric Registry version change",
-      "silently rewrite an old `PROMOTION_ELIGIBLE` result",
+      "silently rewrite an old",
+      "`PROMOTION_ELIGIBLE` result",
     ]) expect(contract).toContain(token);
     expect(passport).toContain('scientificPromotion: { availability: "DEFERRED_RL8", transitions: [] }');
+  });
+
+  it("freezes promotion-chain identity, single-successor concurrency and protocol-change lineage", () => {
+    const contract = read(contractPath);
+    const normalized = compact(contract);
+    for (const token of [
+      "One promotion chain is identified by:",
+      "tenant authority",
+      "subject Experiment HashRef",
+      "protocol HashRef",
+      "root transition HashRef",
+      "row insertion order",
+      "mutable latest pointer",
+      "caller",
+    ]) expect(contract).toContain(token);
+    for (const token of [
+      "one accepted authoritative successor for one predecessor transition",
+      "fail-closed conflict for any second divergent authoritative successor to the same predecessor",
+      "If one predecessor transition has more than one authoritative successor",
+      "no active/current state is projected",
+      "does not choose by wall-clock time",
+      "Supersession or invalidation caused by new evidence under the same protocol occurs inside the same chain",
+      "A methodology/protocol change creates a new promotion chain with a different protocol HashRef",
+    ]) expect(normalized).toContain(token);
   });
 
   it("preserves determinism, authority boundaries and explicit out-of-scope", () => {

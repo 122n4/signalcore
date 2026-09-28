@@ -101,16 +101,54 @@ They may be projected from accepted upstream research history but are not by
 themselves promotion success.
 
 `INSUFFICIENT_EVIDENCE`, `VALIDATION_FAILED`, `VALIDATION_PASSED` and
-`PROMOTION_ELIGIBLE` are deterministic RL-8 evaluation states.
+`PROMOTION_ELIGIBLE` are deterministic RL-8 evaluation outcome states.
 
 `REJECTED`, `SUPERSEDED` and `INVALIDATED` are append-only governance states.
 They do not delete, mutate or rewrite earlier scientific truth.
 
-Terminal states in V1 are `PROMOTION_ELIGIBLE`, `REJECTED`, `SUPERSEDED` and
-`INVALIDATED` for one promotion identity. New evidence, a new methodology, a
-new Metric Registry version or a new RL-7 comparison creates a new promotion
-identity or an explicit supersession transition. It does not silently regress
-or rewrite an old identity.
+RL-8 distinguishes:
+
+```text
+evaluation outcome/state = deterministic gate result for one protocol run
+governance/lifecycle state = append-only lifecycle marker over accepted history
+immutable historical transition = canonical transition artifact that never mutates
+active/current projection = deterministic read model reconstructed from history
+truly terminal state = state with no admitted outgoing transition
+```
+
+V1 has no truly terminal state token in the state vocabulary. The design freeze
+therefore uses the explicit terminal marker:
+
+```text
+NO_TERMINAL_STATE_IN_V1
+```
+
+A state MUST NOT be described as terminal if an admitted outgoing transition
+exists. `PROMOTION_ELIGIBLE`, `REJECTED` and `INVALIDATED` are non-terminal
+historical states because the V1 graph admits outgoing transitions from them.
+`SUPERSEDED` has no outgoing transition in the V1 graph and is an inactive
+lifecycle endpoint for one chain, but it is not called a terminal state token
+because a later V2 graph may define a successor without mutating V1 history.
+
+One promotion chain is identified by:
+
+```text
+tenant authority
+Investigation UUID
+subject Experiment HashRef
+subject ExperimentParameters HashRef
+subject Research IR HashRef
+protocol HashRef
+root transition HashRef
+```
+
+The root transition is the first admitted RL-8 transition for that exact
+subject/protocol chain and has `predecessorState = null`. Supersession or
+invalidation caused by new evidence under the same protocol occurs inside the
+same chain through an explicit successor transition. A methodology/protocol
+change creates a new promotion chain with a different protocol HashRef; the old
+chain is linked to the new chain by an explicit `SUPERSEDED` transition that
+preserves the old chain's historical truth.
 
 ## Transition Graph
 
@@ -137,13 +175,14 @@ All other transitions are forbidden and fail closed with
 `FORBIDDEN_TRANSITION`.
 
 Retry semantics are idempotent for identical protocol, subject, predecessor
-state and evidence payload. Identical payload reuse returns the same scientific
-transition identity. A divergent payload for the same logical transition is
-`DIVERGENT_EXISTING_IDENTITY`.
+state, predecessor transition and evidence payload. Identical payload reuse
+returns the same scientific transition identity. A divergent payload for the
+same logical transition is `DIVERGENT_EXISTING_IDENTITY`.
 
 Regression is not mutation. If later accepted evidence changes the scientific
-answer, the previous transition remains immutable and a new identity plus
-`SUPERSEDED` or `INVALIDATED` transition records the change.
+answer, the previous transition remains immutable and a successor transition
+records `SUPERSEDED` or `INVALIDATED`. Historical `PROMOTION_ELIGIBLE` remains
+immutable evidence even when it is no longer the active/current projection.
 
 ## Promotion Eligibility Gates
 
@@ -369,15 +408,20 @@ exactly:
   supersedes: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null,
   invalidates: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null,
   rejectedTransition:
+    HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null,
+  predecessorTransition:
     HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null
 }
 ```
 
 No extra keys. `predecessorState = null` is admitted only for the first
-transition of one promotion identity. `resultingState = PROMOTION_ELIGIBLE`
+transition of one promotion chain and then requires
+`predecessorTransition = null`. Every non-root transition requires exactly one
+`predecessorTransition` in the same chain. `resultingState = PROMOTION_ELIGIBLE`
 requires every required gate outcome to be `PASS`. `supersedes`, `invalidates`
 and `rejectedTransition` may reference only immutable prior RL-8 transition
-HashRefs for the same tenant, Investigation and subject lineage.
+HashRefs for the same tenant, Investigation, subject lineage and promotion
+chain.
 
 No mutable current-truth field may replace immutable transition history.
 
@@ -389,22 +433,31 @@ This design slice writes no SQL. The later implementation must provide:
 - immutable accepted protocol and transition scientific identities;
 - deterministic identical-payload reuse;
 - deterministic divergent-payload conflict;
-- concurrency equivalent to one accepted identity for one exact logical
-  transition;
+- concurrency equivalent to one accepted authoritative successor for one
+  predecessor transition;
 - logical uniqueness by tenant authority, Investigation, subject Experiment
-  HashRef, protocol HashRef, predecessor transition HashRef and transition
-  payload hash;
+  HashRef, protocol HashRef, root transition HashRef, predecessor transition
+  HashRef and resulting state;
+- exact reuse for the same successor payload and fail-closed conflict for any
+  second divergent authoritative successor to the same predecessor;
 - server-derived tenant authority;
 - same-Investigation enforcement;
 - RLS and FORCE RLS;
 - minimum grants to the accepted Investing application role only;
 - no public, anon, authenticated or service-role mutation authority;
 - no client authority injection;
-- reconstruction of current state from immutable history.
+- reconstruction of current state from immutable history by following the
+  unique successor chain from root transition to the only leaf transition.
 
 An optional current-state projection may exist only as a non-authoritative read
 model. If projection and immutable transition history disagree, history wins
 and the projection is corrupt evidence.
+
+If one predecessor transition has zero successors, it is the active leaf for
+that chain. If one predecessor transition has one successor, reconstruction
+continues to that successor. If one predecessor transition has more than one
+authoritative successor, the chain is corrupt and Passport/Evidence reads fail
+closed with `DIVERGENT_EXISTING_IDENTITY`; no active/current state is projected.
 
 ## Passport Integration
 
@@ -432,8 +485,11 @@ scientificPromotion = {
 
 Legacy or missing RL-8 evidence remains explicit as `UNAVAILABLE`; it is not
 success and not failure by default. Corrupt RL-8 evidence fails closed. Passport
-reports scientific state/evidence only and does not become recommendation,
-Paper, Live, capital or suitability authority.
+chooses `currentState` only by reconstructing the unique successor chain from
+root transition to leaf transition under the exact promotion chain identity. It
+does not choose by wall-clock time, row insertion order, mutable latest pointer
+or caller preference. Passport reports scientific state/evidence only and does
+not become recommendation, Paper, Live, capital or suitability authority.
 
 ## Evidence Ledger Integration
 
@@ -451,9 +507,12 @@ transition records. Absence remains explicit.
 Historical scientific decisions remain immutable.
 
 New experiment evidence, validation rerun, Metric Registry version change,
-RL-7 comparison rerun or promotion methodology change creates a new promotion
-identity or an explicit supersession/invalidation transition. It does not
-silently rewrite an old `PROMOTION_ELIGIBLE` result.
+or RL-7 comparison rerun under the same protocol creates an explicit successor
+transition inside the same promotion chain. A promotion methodology/protocol
+change creates a new promotion chain because the protocol HashRef changes. The
+old chain is explicitly linked to the new chain by a `SUPERSEDED` successor
+transition in the old chain. It does not silently rewrite an old
+`PROMOTION_ELIGIBLE` result.
 
 `REJECTED` records owner/scientific governance rejection of a transition chain.
 `SUPERSEDED` records replacement by newer accepted evidence or methodology.
