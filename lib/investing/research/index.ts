@@ -383,3 +383,37 @@ export {
   type NeighborhoodStabilityEvidenceV1,
   type SignedEvidenceV1,
 } from "./experimentComparisonStability";
+
+export {
+  canonicalScientificPromotionProtocolV1,
+  canonicalScientificPromotionSubjectV1,
+  canonicalScientificPromotionTransitionV1,
+  evaluateScientificPromotionGatesV1,
+  hashScientificPromotionChainKeyV1,
+  hashScientificPromotionProtocolV1,
+  hashScientificPromotionTransitionV1,
+  scientificPromotionGateIdsV1,
+  scientificPromotionMetricRegistryVersionV1,
+  scientificPromotionProtocolIdV1,
+  scientificPromotionProtocolRefV1,
+  scientificPromotionProtocolV1,
+  scientificPromotionRl7PolicyIdV1,
+  scientificPromotionStatesV1,
+  scientificPromotionTransitionGraphV1,
+  type ScientificPromotionGateIdV1,
+  type ScientificPromotionGateOutcomeV1,
+  type ScientificPromotionGateStatusV1,
+  type ScientificPromotionProtocolV1,
+  type ScientificPromotionReasonCodeV1,
+  type ScientificPromotionStateV1,
+  type ScientificPromotionSubjectV1,
+  type ScientificPromotionTransitionV1,
+} from "./scientificPromotion";
+
+export {
+  readScientificPromotionPassportProjectionV1,
+  reconstructScientificPromotionProjectionV1,
+  type ScientificPromotionPassportProjectionV1,
+  type ScientificPromotionPassportReadResult,
+  type ScientificPromotionTransitionProjectionV1,
+} from "./scientificPromotionPassport";

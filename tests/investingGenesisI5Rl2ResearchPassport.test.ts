@@ -393,7 +393,7 @@ describe("I5 RL-2 Research Passport projection", () => {
     expect(first.passport.executionRuns[2]?.failureReasonCode).toBe("UNSUPPORTED_ENGINE");
     expect(first.passport.ledger.map((event) => event.eventKind)).toContain("RUN_FAILED");
     expect(first.passport.validation).toEqual({ availability: "AVAILABLE_RL3", episodes: [] });
-    expect(first.passport.scientificPromotion.availability).toBe("DEFERRED_RL8");
+    expect(first.passport.scientificPromotion.availability).toBe("UNAVAILABLE");
     expect(first.passport.blindTruth.availability).toBe("DEFERRED_RL9");
     const acceptedDomains = new Set([
       "SYNTRAKE:RESEARCH_DRAFT:V1",

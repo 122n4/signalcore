@@ -138,7 +138,6 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1",
       "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1",
       "DESIGN_FROZEN",
-      "NOT RUNTIME_ADMITTED",
       "SCIENTIFIC_PROMOTION_PROTOCOL_V1",
       "requiredEvidenceClasses",
       "decisionPrecedence",
@@ -154,8 +153,8 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "successorProtocol",
       "successorRootTransition",
     ]) expect(contract).toContain(token);
-    expect(canonical).not.toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1");
-    expect(canonical).not.toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1");
+    expect(canonical).toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1");
+    expect(canonical).toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1");
   });
 
   it("freezes persistence, Passport, Evidence Ledger and supersession contracts", () => {
@@ -178,7 +177,8 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "`PROMOTION_ELIGIBLE` result",
     ]) expect(contract).toContain(token);
     expect(normalized).toContain("silently rewrite an old `PROMOTION_ELIGIBLE` result");
-    expect(passport).toContain('scientificPromotion: { availability: "DEFERRED_RL8", transitions: [] }');
+    expect(passport).toContain("readScientificPromotionPassportProjectionV1");
+    expect(passport).toContain("scientificPromotionRead.scientificPromotion");
   });
 
   it("freezes promotion-chain identity, single-successor concurrency and protocol-change lineage", () => {

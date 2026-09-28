@@ -12,6 +12,10 @@ import {
   type ValidationPassportProjectionV1,
   type ValidationLedgerEventV1,
 } from "./validationPassport";
+import {
+  readScientificPromotionPassportProjectionV1,
+  type ScientificPromotionPassportProjectionV1,
+} from "./scientificPromotionPassport";
 
 export type ResearchPassportV1SchemaVersion = "RESEARCH_PASSPORT_V1";
 
@@ -118,7 +122,7 @@ export type ResearchPassportV1 = Readonly<{
   evidence: readonly EvidencePassportRowV1[];
   ledger: readonly ResearchEvidenceLedgerEventV1[];
   validation: ValidationPassportProjectionV1;
-  scientificPromotion: { availability: "DEFERRED_RL8"; transitions: readonly [] };
+  scientificPromotion: ScientificPromotionPassportProjectionV1;
   blindTruth: { availability: "DEFERRED_RL9"; episodes: readonly [] };
 }>;
 
@@ -641,6 +645,11 @@ export async function readResearchPassportV1(
       await client.query("rollback");
       return { ok: false, code: validationRead.code };
     }
+    const scientificPromotionRead = await readScientificPromotionPassportProjectionV1(client, context);
+    if (scientificPromotionRead.ok === false) {
+      await client.query("rollback");
+      return { ok: false, code: scientificPromotionRead.code };
+    }
 
     const artifactsById = new Map(artifactRows.map((artifact) => [artifact.artifact_id, artifact]));
     const materialRevisions = materialRows.map(projectMaterialRevision);
@@ -714,7 +723,7 @@ export async function readResearchPassportV1(
         evidence,
         ledger,
         validation: validationRead.validation,
-        scientificPromotion: { availability: "DEFERRED_RL8", transitions: [] },
+        scientificPromotion: scientificPromotionRead.scientificPromotion,
         blindTruth: { availability: "DEFERRED_RL9", episodes: [] },
       },
     };

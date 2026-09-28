@@ -1,0 +1,125 @@
+import { describe, expect, it } from "vitest";
+import { canonicalSha256HexV1, hashDomainStateV1, hashRefV1 } from "../lib/investing/research/canonical";
+import {
+  canonicalScientificPromotionProtocolV1,
+  canonicalScientificPromotionTransitionV1,
+  evaluateScientificPromotionGatesV1,
+  hashScientificPromotionChainKeyV1,
+  hashScientificPromotionProtocolV1,
+  hashScientificPromotionTransitionV1,
+  scientificPromotionGateIdsV1,
+  scientificPromotionProtocolRefV1,
+  scientificPromotionProtocolV1,
+  type ScientificPromotionSubjectV1,
+  type ScientificPromotionTransitionV1,
+} from "../lib/investing/research/scientificPromotion";
+
+const H = (char: string) => canonicalSha256HexV1(char.repeat(64).slice(0, 64).toUpperCase());
+const ref = (domain: Parameters<typeof hashRefV1>[0]["hashDomain"], char: string) => hashRefV1({
+  hashAlgorithm: "SHA-256",
+  hashDomain: domain,
+  hashVersion: "SYNTRAKE_SHA256_V1",
+  hashHex: H(char),
+});
+const metricRef = (char: string) => ({
+  hashAlgorithm: "SHA-256" as const,
+  hashDomain: "METRIC_RESULT_SET_V2" as const,
+  hashVersion: "SYNTRAKE_SHA256_V1" as const,
+  hashHex: H(char),
+});
+
+function subject(overrides: Partial<ScientificPromotionSubjectV1> = {}): ScientificPromotionSubjectV1 {
+  return {
+    tenantAuthority: "tenant:alpha",
+    investigationId: "44444444-0000-4000-8000-000000000801",
+    subjectExperiment: ref("SYNTRAKE:EXPERIMENT:V1", "A"),
+    subjectExperimentParameters: ref("SYNTRAKE:EXPERIMENT_PARAMETERS:V1", "B"),
+    subjectResearchIr: ref("SYNTRAKE:RESEARCH_IR:V1", "C"),
+    subjectRunInput: ref("SYNTRAKE:RUN_INPUT:V1", "D"),
+    subjectResult: ref("SYNTRAKE:RESULT:V1", "E"),
+    subjectEvidenceObject: ref("SYNTRAKE:EVIDENCE_OBJECT:V1", "F"),
+    subjectValidationProtocol: ref("SYNTRAKE:VALIDATION_PROTOCOL:V1", "1"),
+    subjectValidationResult: ref("SYNTRAKE:VALIDATION_RESULT:V1", "2"),
+    subjectMetricResultSet: metricRef("3"),
+    robustnessComparisonProtocol: ref("SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1", "4"),
+    robustnessComparisonResult: ref("SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1", "5"),
+    ...overrides,
+  };
+}
+
+function allPassGates() {
+  return scientificPromotionGateIdsV1.map((gateId) => ({ gateId, status: "PASS" as const, reasons: [], evidence: [] }));
+}
+
+function rootTransition(overrides: Partial<ScientificPromotionTransitionV1> = {}): ScientificPromotionTransitionV1 {
+  return {
+    schemaVersion: "SCIENTIFIC_PROMOTION_TRANSITION_V1",
+    protocol: scientificPromotionProtocolRefV1(),
+    subject: subject(),
+    predecessorState: null,
+    resultingState: "PROMOTION_ELIGIBLE",
+    gateOutcomes: allPassGates(),
+    transitionReasons: [],
+    supersedes: null,
+    invalidates: null,
+    rejectedTransition: null,
+    predecessorTransition: null,
+    supersededByChain: null,
+    ...overrides,
+  };
+}
+
+describe("I5 RL-8 Scientific Promotion State Machine V1 runtime", () => {
+  it("admits the two frozen scientific domains and hashes protocol deterministically", () => {
+    expect(hashDomainStateV1("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashDomainStateV1("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1")).toBe("OWNER_PAYLOAD_EXACT");
+    expect(hashScientificPromotionProtocolV1()).toBe(hashScientificPromotionProtocolV1(scientificPromotionProtocolV1));
+    expect(canonicalScientificPromotionProtocolV1(scientificPromotionProtocolV1)).toMatchObject({
+      protocolId: "SCIENTIFIC_PROMOTION_PROTOCOL_V20260928",
+      rl7Required: true,
+      compatibleMetricRegistryVersion: "METRIC_REGISTRY_V20260927",
+    });
+  });
+
+  it("rejects unknown protocol keys, wrong domains and malformed transitions", () => {
+    expect(() => canonicalScientificPromotionProtocolV1({ ...scientificPromotionProtocolV1, extra: true } as any)).toThrow("unknown key");
+    expect(() => canonicalScientificPromotionTransitionV1(rootTransition({ protocol: ref("SYNTRAKE:EXPERIMENT:V1", "9") }))).toThrow("wrong-domain");
+    expect(() => canonicalScientificPromotionTransitionV1(rootTransition({ predecessorState: "EXECUTED", predecessorTransition: null }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionV1(rootTransition({ predecessorState: "EXECUTED", resultingState: "SUPERSEDED", predecessorTransition: ref("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", "6") }))).toThrow("FORBIDDEN_TRANSITION");
+  });
+
+  it("freezes non-circular chain key independent of root transition identity", () => {
+    const protocol = scientificPromotionProtocolRefV1();
+    const base = subject();
+    const key = hashScientificPromotionChainKeyV1(base, protocol);
+    const first = hashScientificPromotionTransitionV1(rootTransition({ subject: base }));
+    const second = hashScientificPromotionTransitionV1(rootTransition({ subject: base, transitionReasons: ["SUPERSEDED_EVIDENCE"] }));
+    expect(first).not.toBe(second);
+    expect(hashScientificPromotionChainKeyV1(base, protocol)).toBe(key);
+  });
+
+  it("requires all gates PASS and mandatory RL-7 ROBUSTNESS_STABLE for PROMOTION_ELIGIBLE", () => {
+    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: true, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: "ROBUSTNESS_STABLE" }).resultingState).toBe("PROMOTION_ELIGIBLE");
+    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: true, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: null }).resultingState).toBe("INSUFFICIENT_EVIDENCE");
+    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: true, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: "ROBUSTNESS_UNSTABLE" }).resultingState).toBe("VALIDATION_FAILED");
+    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: false, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: "ROBUSTNESS_STABLE" }).resultingState).toBe("VALIDATION_FAILED");
+  });
+
+  it("requires PROMOTION_ELIGIBLE gates to be all PASS", () => {
+    const gates = allPassGates();
+    expect(() => canonicalScientificPromotionTransitionV1(rootTransition({ gateOutcomes: [{ ...gates[0]!, status: "FAIL", reasons: ["FAILED_VALIDATION"] }, ...gates.slice(1)] }))).toThrow("AUTHORITY_FAILURE");
+  });
+
+  it("freezes cross-chain supersession payload without a third scientific domain", () => {
+    const successorRoot = ref("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", "7");
+    const transition = rootTransition({
+      predecessorState: "PROMOTION_ELIGIBLE",
+      resultingState: "SUPERSEDED",
+      predecessorTransition: ref("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", "6"),
+      supersededByChain: { successorProtocol: scientificPromotionProtocolRefV1(), successorRootTransition: successorRoot },
+    });
+    const canonical = canonicalScientificPromotionTransitionV1(transition) as any;
+    expect(canonical.supersededByChain.successorRootTransition.hashDomain).toBe("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1");
+    expect(() => canonicalScientificPromotionTransitionV1(rootTransition({ supersededByChain: { successorProtocol: scientificPromotionProtocolRefV1(), successorRootTransition: successorRoot } }))).toThrow("MALFORMED_TRANSITION");
+  });
+});
