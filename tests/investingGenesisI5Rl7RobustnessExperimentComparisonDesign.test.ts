@@ -45,12 +45,13 @@ describe("I5 RL-7 Robustness And Experiment Comparison V1 design freeze", () => 
     for (const token of ["ROBUSTNESS_COMPARISON_POLICY_V20260927", "validationRequired = true", "minimumCompleteFolds = 3", "minimumNeighborhoodMembers = 3", "materialDegradationThreshold = 0", "foldInstabilityRule = degradedFoldCount > nonDegradedFoldCount", "neighborhoodInstabilityRule = degradedMemberCount > improvedOrEqualMemberCount", "ROBUSTNESS_INSUFFICIENT_EVIDENCE", "ROBUSTNESS_UNSTABLE", "ROBUSTNESS_DEGRADED", "ROBUSTNESS_STABLE", "ROBUSTNESS_MIXED", "evaluated in this exact precedence order", "primaryMetricId", "undocumented score", "AI confidence", "invented probability", "opaque weighted score", "80% robust"]) expect(contract).toContain(token);
   });
 
-  it("freezes future scientific payloads without runtime admission", () => {
+  it("freezes scientific payloads while implementation admits runtime domains and persistence", () => {
     const contract = read(contractPath);
     const canonical = read("lib/investing/research/canonical.ts");
     for (const token of ["SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1", "EXPERIMENT_COMPARISON_PROTOCOL_V1", "SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1", "EXPERIMENT_COMPARISON_RESULT_V1", "No extra keys", "failure != null` requires `classification = null", "domain-separated respectively", "This slice does not activate those domains in `canonical.ts`", "RL-7 implementation requires append-only persistence", "No migration is written in this design slice"]) expect(contract).toContain(token);
-    expect(canonical).not.toContain("SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1");
-    expect(canonical).not.toContain("SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1");
+    expect(canonical).toContain("SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1");
+    expect(canonical).toContain("SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1");
+    expect(read("supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql")).toContain("research_experiment_comparison_protocols_scientific_identities");
   });
 
   it("preserves fail-closed and downstream boundaries", () => {
