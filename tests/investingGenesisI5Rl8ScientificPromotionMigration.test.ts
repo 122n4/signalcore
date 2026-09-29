@@ -20,6 +20,8 @@ describe("I5 RL-8 scientific promotion persistence migration", () => {
     expect(sql).toContain("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1");
     expect(sql).toContain("chain_key");
     expect(sql).toContain("research_scientific_promotion_transitions_root_unique");
+    expect(sql).toContain("research_scientific_promotion_transitions_root_authority_unique");
+    expect(sql).toContain("research_scientific_promotion_transitions_root_authority_fk");
     expect(sql).toContain("research_scientific_promotion_transitions_single_successor");
     expect(sql).toContain("research_scientific_promotion_transitions_one_root_per_chain_key");
     expect(sql).toContain("where predecessor_transition_id is null");
@@ -35,6 +37,24 @@ describe("I5 RL-8 scientific promotion persistence migration", () => {
     expect(sql).toContain("superseded_by_successor_root_hash_hex");
     expect(sql).toContain("research_scientific_promotion_transitions_successor_root_fk");
     expect(sql).toContain("research_scientific_promotion_transitions_single_cross_chain");
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_SUCCESSOR_ROOT_AUTHORITY_FAILURE");
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_CYCLE");
+    expect(sql).toContain("predecessor_transition_id is null");
+    expect(sql).toContain("predecessor_state is null");
+  });
+
+  it("allows protocol reuse by separate Investigations in one tenant without leaking authority", () => {
+    expect(sql).toContain("unique (tenant_id, research_investigation_id, hash_algorithm, hash_domain, hash_version, hash_hex)");
+    expect(sql).toContain("where tenant_id = v_tenant_id and research_investigation_id = v_research_investigation_id and hash_hex = p_hash_hex");
+    expect(sql).toContain("v_tenant_id::text || ':' || v_research_investigation_id::text || ':RL8_PROTOCOL:'");
+  });
+
+  it("physically proves predecessor/root relationships before insert", () => {
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_PREDECESSOR_AUTHORITY_FAILURE");
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_PREDECESSOR_STATE_MISMATCH");
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_ROOT_AUTHORITY_FAILURE");
+    expect(sql).toContain("and chain_key = p_chain_key");
+    expect(sql).toContain("and protocol_hash_hex = p_protocol_hash_hex");
   });
 
   it("enforces owner role, RLS, FORCE RLS and no public mutation authority", () => {

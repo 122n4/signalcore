@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import { canonicalSha256HexV1, hashDomainStateV1, hashRefV1 } from "../lib/investing/research/canonical";
 import {
   canonicalScientificPromotionProtocolV1,
+  canonicalScientificPromotionEvidenceAggregateV1,
   canonicalScientificPromotionTransitionV1,
   evaluateScientificPromotionGatesV1,
   hashScientificPromotionChainKeyV1,
   hashScientificPromotionProtocolV1,
   hashScientificPromotionTransitionV1,
   scientificPromotionGateIdsV1,
+  scientificPromotionMetricRegistryVersionV1,
   scientificPromotionProtocolRefV1,
   scientificPromotionProtocolV1,
+  scientificPromotionRl7PolicyIdV1,
+  type ScientificPromotionEvidenceAggregateV1,
   type ScientificPromotionSubjectV1,
   type ScientificPromotionTransitionV1,
 } from "../lib/investing/research/scientificPromotion";
@@ -49,6 +53,35 @@ function subject(overrides: Partial<ScientificPromotionSubjectV1> = {}): Scienti
 
 function allPassGates() {
   return scientificPromotionGateIdsV1.map((gateId) => ({ gateId, status: "PASS" as const, reasons: [], evidence: [] }));
+}
+
+function aggregate(overrides: Partial<ScientificPromotionEvidenceAggregateV1> = {}): ScientificPromotionEvidenceAggregateV1 {
+  const s = subject();
+  const protocol = scientificPromotionProtocolRefV1();
+  const gateEvidence = {
+    GATE_AUTHORITY_AND_TENANCY: { status: "PASS", reasons: [], evidence: [s.subjectResult] },
+    GATE_SUBJECT_IDENTITY: { status: "PASS", reasons: [], evidence: [s.subjectExperiment, s.subjectExperimentParameters, s.subjectResearchIr, s.subjectRunInput] },
+    GATE_ACCEPTED_EXECUTION_RESULT: { status: "PASS", reasons: [], evidence: [s.subjectResult] },
+    GATE_EVIDENCE_OBJECT_BINDING: { status: "PASS", reasons: [], evidence: [s.subjectEvidenceObject, s.subjectResult] },
+    GATE_VALIDATION_RESULT: { status: "PASS", reasons: [], evidence: [s.subjectValidationProtocol, s.subjectValidationResult] },
+    GATE_METRIC_RESULT_SET_V2: { status: "PASS", reasons: [], evidence: [s.subjectMetricResultSet] },
+    GATE_RL7_ROBUSTNESS_COMPARISON: { status: "PASS", reasons: [], evidence: [s.robustnessComparisonProtocol, s.robustnessComparisonResult] },
+    GATE_LINEAGE_INTEGRITY: { status: "PASS", reasons: [], evidence: [s.subjectRunInput, s.subjectResult, s.subjectEvidenceObject, s.subjectValidationResult, s.robustnessComparisonResult] },
+    GATE_PROTOCOL_COMPATIBILITY: { status: "PASS", reasons: [], evidence: [protocol] },
+    GATE_EVIDENCE_COMPLETENESS: { status: "PASS", reasons: [], evidence: [s.subjectResult, s.subjectEvidenceObject, s.subjectValidationResult, s.subjectMetricResultSet, s.robustnessComparisonResult] },
+  } satisfies ScientificPromotionEvidenceAggregateV1["gateEvidence"];
+  return {
+    schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1",
+    tenantAuthority: s.tenantAuthority,
+    investigationId: s.investigationId,
+    subject: s,
+    protocol,
+    metricRegistryVersion: scientificPromotionMetricRegistryVersionV1,
+    rl7PolicyId: scientificPromotionRl7PolicyIdV1,
+    rl7Classification: "ROBUSTNESS_STABLE",
+    gateEvidence,
+    ...overrides,
+  };
 }
 
 function rootTransition(overrides: Partial<ScientificPromotionTransitionV1> = {}): ScientificPromotionTransitionV1 {
@@ -98,11 +131,52 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 runtime", () => {
     expect(hashScientificPromotionChainKeyV1(base, protocol)).toBe(key);
   });
 
-  it("requires all gates PASS and mandatory RL-7 ROBUSTNESS_STABLE for PROMOTION_ELIGIBLE", () => {
-    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: true, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: "ROBUSTNESS_STABLE" }).resultingState).toBe("PROMOTION_ELIGIBLE");
-    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: true, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: null }).resultingState).toBe("INSUFFICIENT_EVIDENCE");
-    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: true, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: "ROBUSTNESS_UNSTABLE" }).resultingState).toBe("VALIDATION_FAILED");
-    expect(evaluateScientificPromotionGatesV1({ subject: subject(), validationPassed: false, metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2", rl7Classification: "ROBUSTNESS_STABLE" }).resultingState).toBe("VALIDATION_FAILED");
+  it("requires all 10 gates to be evidence-derived and mandatory RL-7 ROBUSTNESS_STABLE for PROMOTION_ELIGIBLE", () => {
+    const eligible = evaluateScientificPromotionGatesV1({ evidenceAggregate: aggregate() });
+    expect(eligible.resultingState).toBe("PROMOTION_ELIGIBLE");
+    expect(eligible.gateOutcomes).toHaveLength(10);
+    expect(eligible.gateOutcomes.map((gate) => gate.gateId)).toEqual([...scientificPromotionGateIdsV1]);
+
+    const insufficient = aggregate({
+      gateEvidence: {
+        ...aggregate().gateEvidence,
+        GATE_RL7_ROBUSTNESS_COMPARISON: { status: "INSUFFICIENT_EVIDENCE", reasons: ["INSUFFICIENT_RL7_EVIDENCE"], evidence: [] },
+      },
+      rl7Classification: "ROBUSTNESS_INSUFFICIENT_EVIDENCE",
+    });
+    expect(evaluateScientificPromotionGatesV1({ evidenceAggregate: insufficient }).resultingState).toBe("INSUFFICIENT_EVIDENCE");
+
+    const failed = aggregate({
+      gateEvidence: {
+        ...aggregate().gateEvidence,
+        GATE_VALIDATION_RESULT: { status: "FAIL", reasons: ["FAILED_VALIDATION"], evidence: [subject().subjectValidationResult] },
+      },
+    });
+    expect(evaluateScientificPromotionGatesV1({ evidenceAggregate: failed }).resultingState).toBe("VALIDATION_FAILED");
+  });
+
+  it("rejects syntactically valid forged, wrong-tenant, wrong-Investigation and wrong-lineage evidence aggregates", () => {
+    expect(() => canonicalScientificPromotionEvidenceAggregateV1({
+      ...aggregate(),
+      tenantAuthority: "tenant:forged",
+    })).toThrow("WRONG_TENANT");
+    expect(() => canonicalScientificPromotionEvidenceAggregateV1({
+      ...aggregate(),
+      investigationId: "44444444-0000-4000-8000-000000000999",
+    })).toThrow("WRONG_INVESTIGATION");
+    expect(() => canonicalScientificPromotionEvidenceAggregateV1({
+      ...aggregate(),
+      gateEvidence: {
+        ...aggregate().gateEvidence,
+        GATE_ACCEPTED_EXECUTION_RESULT: { status: "PASS", reasons: [], evidence: [ref("SYNTRAKE:RESULT:V1", "9")] },
+      },
+    })).toThrow("MISSING_RESULT");
+    expect(evaluateScientificPromotionGatesV1({
+      evidenceAggregate: {
+        ...aggregate(),
+        protocol: ref("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1", "9"),
+      },
+    }).resultingState).toBe(null);
   });
 
   it("requires PROMOTION_ELIGIBLE gates to be all PASS", () => {

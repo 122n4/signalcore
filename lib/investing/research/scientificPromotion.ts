@@ -98,6 +98,9 @@ export type ScientificPromotionSubjectV1 = Readonly<{
   robustnessComparisonResult: HashRefV1;
 }>;
 
+export type ScientificPromotionMetricResultSetRefV1 = ScientificPromotionSubjectV1["subjectMetricResultSet"];
+export type ScientificPromotionEvidenceRefV1 = HashRefV1 | ScientificPromotionMetricResultSetRefV1;
+
 export type ScientificPromotionProtocolV1 = Readonly<{
   schemaVersion: "SCIENTIFIC_PROMOTION_PROTOCOL_V1";
   protocolId: typeof scientificPromotionProtocolIdV1;
@@ -123,7 +126,30 @@ export type ScientificPromotionGateOutcomeV1 = Readonly<{
   gateId: ScientificPromotionGateIdV1;
   status: ScientificPromotionGateStatusV1;
   reasons: readonly ScientificPromotionReasonCodeV1[];
-  evidence: readonly HashRefV1[];
+  evidence: readonly ScientificPromotionEvidenceRefV1[];
+}>;
+
+export type ScientificPromotionEvidenceAggregateGateV1 = Readonly<{
+  status: ScientificPromotionGateStatusV1;
+  reasons: readonly ScientificPromotionReasonCodeV1[];
+  evidence: readonly ScientificPromotionEvidenceRefV1[];
+}>;
+
+export type ScientificPromotionEvidenceAggregateV1 = Readonly<{
+  schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1";
+  tenantAuthority: string;
+  investigationId: string;
+  subject: ScientificPromotionSubjectV1;
+  protocol: HashRefV1;
+  metricRegistryVersion: typeof scientificPromotionMetricRegistryVersionV1;
+  rl7PolicyId: typeof scientificPromotionRl7PolicyIdV1;
+  rl7Classification:
+    | "ROBUSTNESS_STABLE"
+    | "ROBUSTNESS_MIXED"
+    | "ROBUSTNESS_DEGRADED"
+    | "ROBUSTNESS_UNSTABLE"
+    | "ROBUSTNESS_INSUFFICIENT_EVIDENCE";
+  gateEvidence: Readonly<Record<ScientificPromotionGateIdV1, ScientificPromotionEvidenceAggregateGateV1>>;
 }>;
 
 export type ScientificPromotionTransitionV1 = Readonly<{
@@ -414,28 +440,118 @@ export function hashScientificPromotionTransitionV1(input: ScientificPromotionTr
 }
 
 export function evaluateScientificPromotionGatesV1(input: {
-  subject: ScientificPromotionSubjectV1 | null;
-  validationPassed: boolean | null;
-  metricResultSetSchemaVersion: "METRIC_RESULT_SET_V2" | string | null;
-  rl7Classification: "ROBUSTNESS_STABLE" | "ROBUSTNESS_MIXED" | "ROBUSTNESS_DEGRADED" | "ROBUSTNESS_UNSTABLE" | "ROBUSTNESS_INSUFFICIENT_EVIDENCE" | string | null;
+  evidenceAggregate: ScientificPromotionEvidenceAggregateV1 | null;
 }): { resultingState: ScientificPromotionStateV1 | null; gateOutcomes: readonly ScientificPromotionGateOutcomeV1[]; reasons: readonly ScientificPromotionReasonCodeV1[] } {
-  const evidence = input.subject ? [input.subject.subjectResult, input.subject.subjectEvidenceObject, input.subject.subjectValidationResult, input.subject.robustnessComparisonResult] : [];
-  const outcomes = scientificPromotionGateIdsV1.map((gateId): ScientificPromotionGateOutcomeV1 => ({ gateId, status: "PASS", reasons: [], evidence }));
-  const fail = (gateId: ScientificPromotionGateIdV1, status: ScientificPromotionGateStatusV1, reason: ScientificPromotionReasonCodeV1, state: ScientificPromotionStateV1 | null) => ({
-    resultingState: state,
-    gateOutcomes: outcomes.map((gate) => gate.gateId === gateId ? { ...gate, status, reasons: [reason], evidence: [] } : gate),
-    reasons: [reason],
-  });
-  if (!input.subject) return fail("GATE_SUBJECT_IDENTITY", "UNAVAILABLE", "MISSING_SUBJECT", "INSUFFICIENT_EVIDENCE");
-  try { canonicalScientificPromotionSubjectV1(input.subject); } catch { return fail("GATE_SUBJECT_IDENTITY", "INCOMPATIBLE_EVIDENCE", "WRONG_HASHREF_DOMAIN", null); }
-  if (input.metricResultSetSchemaVersion !== "METRIC_RESULT_SET_V2") return fail("GATE_METRIC_RESULT_SET_V2", "INCOMPATIBLE_EVIDENCE", "INCOMPATIBLE_ARTIFACT_SCHEMA", null);
-  if (input.validationPassed === null) return fail("GATE_VALIDATION_RESULT", "UNAVAILABLE", "MISSING_VALIDATION_RESULT", "INSUFFICIENT_EVIDENCE");
-  if (!input.validationPassed) return fail("GATE_VALIDATION_RESULT", "FAIL", "FAILED_VALIDATION", "VALIDATION_FAILED");
-  if (input.rl7Classification === null) return fail("GATE_RL7_ROBUSTNESS_COMPARISON", "UNAVAILABLE", "MISSING_RL7_COMPARISON", "INSUFFICIENT_EVIDENCE");
-  if (input.rl7Classification === "ROBUSTNESS_MIXED" || input.rl7Classification === "ROBUSTNESS_INSUFFICIENT_EVIDENCE") return fail("GATE_RL7_ROBUSTNESS_COMPARISON", "INSUFFICIENT_EVIDENCE", "INSUFFICIENT_RL7_EVIDENCE", "INSUFFICIENT_EVIDENCE");
-  if (input.rl7Classification === "ROBUSTNESS_DEGRADED" || input.rl7Classification === "ROBUSTNESS_UNSTABLE") return fail("GATE_RL7_ROBUSTNESS_COMPARISON", "FAIL", "FAILED_ROBUSTNESS_GATE", "VALIDATION_FAILED");
-  if (input.rl7Classification !== "ROBUSTNESS_STABLE") return fail("GATE_RL7_ROBUSTNESS_COMPARISON", "INCOMPATIBLE_EVIDENCE", "UNKNOWN_RL7_CLASSIFICATION", null);
+  const unavailable = scientificPromotionGateIdsV1.map((gateId): ScientificPromotionGateOutcomeV1 => ({
+    gateId,
+    status: "UNAVAILABLE",
+    reasons: ["MISSING_SUBJECT"],
+    evidence: [],
+  }));
+  if (input.evidenceAggregate === null) return { resultingState: "INSUFFICIENT_EVIDENCE", gateOutcomes: unavailable, reasons: ["MISSING_SUBJECT"] };
+
+  let aggregate: ScientificPromotionEvidenceAggregateV1;
+  try {
+    aggregate = canonicalScientificPromotionEvidenceAggregateV1(input.evidenceAggregate);
+  } catch (error) {
+    const reason = error instanceof Error && (reasonCodes as readonly string[]).includes(error.message)
+      ? error.message as ScientificPromotionReasonCodeV1
+      : "CORRUPTED_EVIDENCE";
+    return {
+      resultingState: null,
+      gateOutcomes: scientificPromotionGateIdsV1.map((gateId): ScientificPromotionGateOutcomeV1 => ({
+        gateId,
+        status: "INCOMPATIBLE_EVIDENCE",
+        reasons: [reason],
+        evidence: [],
+      })),
+      reasons: [reason],
+    };
+  }
+  const outcomes = scientificPromotionGateIdsV1.map((gateId): ScientificPromotionGateOutcomeV1 => ({
+    gateId,
+    status: aggregate.gateEvidence[gateId].status,
+    reasons: aggregate.gateEvidence[gateId].reasons,
+    evidence: aggregate.gateEvidence[gateId].evidence,
+  }));
+  const firstNonPass = outcomes.find((gate) => gate.status !== "PASS");
+  if (firstNonPass) {
+    const reason = firstNonPass.reasons[0] ?? "AUTHORITY_FAILURE";
+    const state =
+      firstNonPass.status === "UNAVAILABLE" || firstNonPass.status === "INSUFFICIENT_EVIDENCE"
+        ? "INSUFFICIENT_EVIDENCE"
+        : firstNonPass.gateId === "GATE_VALIDATION_RESULT" || firstNonPass.gateId === "GATE_RL7_ROBUSTNESS_COMPARISON"
+          ? "VALIDATION_FAILED"
+          : null;
+    return { resultingState: state, gateOutcomes: outcomes, reasons: [reason] };
+  }
   return { resultingState: "PROMOTION_ELIGIBLE", gateOutcomes: outcomes, reasons: [] };
+}
+
+export function canonicalScientificPromotionEvidenceAggregateV1(input: ScientificPromotionEvidenceAggregateV1): ScientificPromotionEvidenceAggregateV1 {
+  assertClosedPlainObject(input, new Set([
+    "schemaVersion",
+    "tenantAuthority",
+    "investigationId",
+    "subject",
+    "protocol",
+    "metricRegistryVersion",
+    "rl7PolicyId",
+    "rl7Classification",
+    "gateEvidence",
+  ]), "ScientificPromotionEvidenceAggregate");
+  if (input.schemaVersion !== "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1") throw new Error("INCOMPATIBLE_SCHEMA_VERSION");
+  const subject = canonicalScientificPromotionSubjectV1(input.subject) as unknown as ScientificPromotionSubjectV1;
+  if (input.tenantAuthority !== input.subject.tenantAuthority) throw new Error("WRONG_TENANT");
+  if (input.investigationId !== input.subject.investigationId) throw new Error("WRONG_INVESTIGATION");
+  const protocol = checkedRef(input.protocol, "SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1");
+  if (protocol.hashHex !== scientificPromotionProtocolRefV1().hashHex) throw new Error("INCOMPATIBLE_PROTOCOL_VERSION");
+  if (input.metricRegistryVersion !== scientificPromotionMetricRegistryVersionV1) throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
+  if (input.rl7PolicyId !== scientificPromotionRl7PolicyIdV1) throw new Error("MISSING_RL7_COMPARISON");
+  if (!["ROBUSTNESS_STABLE", "ROBUSTNESS_MIXED", "ROBUSTNESS_DEGRADED", "ROBUSTNESS_UNSTABLE", "ROBUSTNESS_INSUFFICIENT_EVIDENCE"].includes(input.rl7Classification)) {
+    throw new Error("UNKNOWN_RL7_CLASSIFICATION");
+  }
+  assertClosedPlainObject(input.gateEvidence, new Set(scientificPromotionGateIdsV1), "ScientificPromotionGateEvidence");
+  const gateEvidence = {} as Record<ScientificPromotionGateIdV1, ScientificPromotionEvidenceAggregateGateV1>;
+  for (const gateId of scientificPromotionGateIdsV1) {
+    const gate = input.gateEvidence[gateId];
+    assertClosedPlainObject(gate, new Set(["status", "reasons", "evidence"]), "ScientificPromotionEvidenceGate");
+    gateEvidence[gateId] = {
+      status: gateStatus(gate.status),
+      reasons: canonicalReasons(gate.reasons),
+      evidence: canonicalEvidence(gate.evidence),
+    };
+  }
+  assertGateBinds(gateEvidence.GATE_AUTHORITY_AND_TENANCY, [input.subject.subjectResult], "UNAUTHORIZED_EVIDENCE");
+  assertGateBinds(gateEvidence.GATE_SUBJECT_IDENTITY, [input.subject.subjectExperiment, input.subject.subjectExperimentParameters, input.subject.subjectResearchIr, input.subject.subjectRunInput], "WRONG_LINEAGE");
+  assertGateBinds(gateEvidence.GATE_ACCEPTED_EXECUTION_RESULT, [input.subject.subjectResult], "MISSING_RESULT");
+  assertGateBinds(gateEvidence.GATE_EVIDENCE_OBJECT_BINDING, [input.subject.subjectEvidenceObject, input.subject.subjectResult], "MISSING_EVIDENCE_OBJECT");
+  assertGateBinds(gateEvidence.GATE_VALIDATION_RESULT, [input.subject.subjectValidationProtocol, input.subject.subjectValidationResult], "MISSING_VALIDATION_RESULT");
+  assertGateBinds(gateEvidence.GATE_METRIC_RESULT_SET_V2, [input.subject.subjectMetricResultSet], "MISSING_METRIC_RESULT_SET");
+  assertGateBinds(gateEvidence.GATE_RL7_ROBUSTNESS_COMPARISON, [input.subject.robustnessComparisonProtocol, input.subject.robustnessComparisonResult], "MISSING_RL7_COMPARISON");
+  assertGateBinds(gateEvidence.GATE_LINEAGE_INTEGRITY, [input.subject.subjectRunInput, input.subject.subjectResult, input.subject.subjectEvidenceObject, input.subject.subjectValidationResult, input.subject.robustnessComparisonResult], "WRONG_LINEAGE");
+  assertGateBinds(gateEvidence.GATE_PROTOCOL_COMPATIBILITY, [protocol], "INCOMPATIBLE_PROTOCOL_VERSION");
+  assertGateBinds(gateEvidence.GATE_EVIDENCE_COMPLETENESS, [
+    input.subject.subjectResult,
+    input.subject.subjectEvidenceObject,
+    input.subject.subjectValidationResult,
+    input.subject.subjectMetricResultSet,
+    input.subject.robustnessComparisonResult,
+  ], "CORRUPTED_EVIDENCE");
+  if (input.rl7Classification !== "ROBUSTNESS_STABLE" && gateEvidence.GATE_RL7_ROBUSTNESS_COMPARISON.status === "PASS") {
+    throw new Error("FAILED_ROBUSTNESS_GATE");
+  }
+  return {
+    schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1",
+    tenantAuthority: input.tenantAuthority,
+    investigationId: input.investigationId,
+    subject: subject as ScientificPromotionSubjectV1,
+    protocol,
+    metricRegistryVersion: input.metricRegistryVersion,
+    rl7PolicyId: input.rl7PolicyId,
+    rl7Classification: input.rl7Classification,
+    gateEvidence,
+  };
 }
 
 function checkedRef(ref: HashRefV1, domain: Parameters<typeof assertHashRefDomainV1>[1]): HashRefV1 {
@@ -467,11 +583,18 @@ function canonicalGateOutcomes(input: readonly ScientificPromotionGateOutcomeV1[
   for (const gateId of scientificPromotionGateIdsV1) if (!seen.has(gateId)) throw new Error("UNKNOWN_GATE");
   return outcomes;
 }
-function canonicalEvidence(input: readonly HashRefV1[]): readonly HashRefV1[] {
+function canonicalEvidence(input: readonly ScientificPromotionEvidenceRefV1[]): readonly ScientificPromotionEvidenceRefV1[] {
   if (!Array.isArray(input)) throw new Error("MALFORMED_TRANSITION");
-  const refs = input.map(hashRefV1).sort((a, b) => byteCompare(`${a.hashDomain}:${a.hashHex}`, `${b.hashDomain}:${b.hashHex}`));
+  const refs = input.map(canonicalEvidenceRef).sort((a, b) => byteCompare(`${a.hashDomain}:${a.hashHex}`, `${b.hashDomain}:${b.hashHex}`));
   for (let index = 1; index < refs.length; index += 1) if (`${refs[index - 1]!.hashDomain}:${refs[index - 1]!.hashHex}` === `${refs[index]!.hashDomain}:${refs[index]!.hashHex}`) throw new Error("CORRUPTED_EVIDENCE");
   return refs;
+}
+function canonicalEvidenceRef(input: ScientificPromotionEvidenceRefV1): ScientificPromotionEvidenceRefV1 {
+  if ((input as { hashDomain?: string }).hashDomain === "METRIC_RESULT_SET_V2") {
+    canonicalMetricResultSetRef(input as unknown as ScientificPromotionSubjectV1["subjectMetricResultSet"]);
+    return input;
+  }
+  return hashRefV1(input);
 }
 function canonicalReasons(input: readonly ScientificPromotionReasonCodeV1[]): readonly ScientificPromotionReasonCodeV1[] {
   if (!Array.isArray(input)) throw new Error("MALFORMED_TRANSITION");
@@ -484,6 +607,13 @@ function canonicalMetricResultSetRef(input: ScientificPromotionSubjectV1["subjec
   if (input.hashAlgorithm !== "SHA-256" || input.hashDomain !== "METRIC_RESULT_SET_V2" || input.hashVersion !== "SYNTRAKE_SHA256_V1") throw new Error("INCOMPATIBLE_ARTIFACT_SCHEMA");
   if (!/^[0-9A-F]{64}$/u.test(input.hashHex)) throw new Error("MALFORMED_HASHREF");
   return { hashAlgorithm: input.hashAlgorithm, hashDomain: input.hashDomain, hashVersion: input.hashVersion, hashHex: input.hashHex };
+}
+function assertGateBinds(gate: ScientificPromotionEvidenceAggregateGateV1, required: readonly ScientificPromotionEvidenceRefV1[], reason: ScientificPromotionReasonCodeV1) {
+  if (gate.status !== "PASS") return;
+  const actual = new Set(gate.evidence.map((ref) => `${ref.hashDomain}:${ref.hashHex}`));
+  for (const ref of required.map(canonicalEvidenceRef)) {
+    if (!actual.has(`${ref.hashDomain}:${ref.hashHex}`)) throw new Error(reason);
+  }
 }
 function isAdmittedTransition(from: ScientificPromotionStateV1, to: ScientificPromotionStateV1) {
   return scientificPromotionTransitionGraphV1.some((transition) => transition.from === from && transition.to === to);

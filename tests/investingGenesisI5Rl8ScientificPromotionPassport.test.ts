@@ -55,9 +55,10 @@ describe("I5 RL-8 Scientific Promotion Passport projection", () => {
 
   it("follows explicit cross-chain supersession and rejects cycles/self-supersession", () => {
     const projection = reconstructScientificPromotionProjectionV1([
-      row("oldroot", { chain_key: "1".repeat(64), resulting_state: "PROMOTION_ELIGIBLE" }),
+      row("oldroot", { chain_key: "1".repeat(64), root_transition_id: "oldroot", resulting_state: "PROMOTION_ELIGIBLE" }),
       row("oldleaf", {
         chain_key: "1".repeat(64),
+        root_transition_id: "oldroot",
         predecessor_transition_id: "oldroot",
         predecessor_state: "PROMOTION_ELIGIBLE",
         resulting_state: "SUPERSEDED",
@@ -65,13 +66,47 @@ describe("I5 RL-8 Scientific Promotion Passport projection", () => {
         superseded_by_successor_root_transition_id: "newroot",
         superseded_by_successor_root_hash_hex: "3".repeat(64),
       }),
-      row("newroot", { chain_key: "2".repeat(64), resulting_state: "PROMOTION_ELIGIBLE", hash_hex: "3".repeat(64) }),
+      row("newroot", { chain_key: "2".repeat(64), root_transition_id: "newroot", protocol_hash_hex: "2".repeat(64), resulting_state: "PROMOTION_ELIGIBLE", hash_hex: "3".repeat(64) }),
     ]);
     expect(projection.availability).toBe("MATERIALIZED");
     if (projection.availability === "MATERIALIZED") expect(projection.transitions.map((transition) => transition.scientificPromotionTransitionId)).toEqual(["oldroot", "oldleaf", "newroot"]);
 
     expect(() => reconstructScientificPromotionProjectionV1([
       row("oldroot", { chain_key: "1".repeat(64), resulting_state: "SUPERSEDED", superseded_by_successor_root_transition_id: "oldroot" }),
+    ])).toThrow("DIVERGENT_EXISTING_IDENTITY");
+  });
+
+  it("fails closed on multiple unlinked valid chains because Passport has no caller-selected chain preference", () => {
+    expect(() => reconstructScientificPromotionProjectionV1([
+      row("root-a", { chain_key: "1".repeat(64), root_transition_id: "root-a" }),
+      row("root-b", { chain_key: "2".repeat(64), root_transition_id: "root-b", hash_hex: "2".repeat(64) }),
+    ])).toThrow("DIVERGENT_EXISTING_IDENTITY");
+  });
+
+  it("validates predecessor state, root membership and cross-chain successor protocol/hash", () => {
+    expect(() => reconstructScientificPromotionProjectionV1([
+      row("root", { resulting_state: "VALIDATION_PASSED" }),
+      row("leaf", { predecessor_transition_id: "root", predecessor_state: "EXECUTED", resulting_state: "PROMOTION_ELIGIBLE", root_transition_id: "root" }),
+    ])).toThrow("DIVERGENT_EXISTING_IDENTITY");
+
+    expect(() => reconstructScientificPromotionProjectionV1([
+      row("root", { chain_key: "1".repeat(64), root_transition_id: "root" }),
+      row("leaf", { chain_key: "1".repeat(64), predecessor_transition_id: "root", predecessor_state: "PROMOTION_ELIGIBLE", root_transition_id: "missing" }),
+    ])).toThrow("DIVERGENT_EXISTING_IDENTITY");
+
+    expect(() => reconstructScientificPromotionProjectionV1([
+      row("oldroot", { chain_key: "1".repeat(64), root_transition_id: "oldroot", resulting_state: "PROMOTION_ELIGIBLE" }),
+      row("oldleaf", {
+        chain_key: "1".repeat(64),
+        root_transition_id: "oldroot",
+        predecessor_transition_id: "oldroot",
+        predecessor_state: "PROMOTION_ELIGIBLE",
+        resulting_state: "SUPERSEDED",
+        superseded_by_successor_protocol_hash_hex: "9".repeat(64),
+        superseded_by_successor_root_transition_id: "newroot",
+        superseded_by_successor_root_hash_hex: "3".repeat(64),
+      }),
+      row("newroot", { chain_key: "2".repeat(64), root_transition_id: "newroot", resulting_state: "PROMOTION_ELIGIBLE", hash_hex: "3".repeat(64) }),
     ])).toThrow("DIVERGENT_EXISTING_IDENTITY");
   });
 });

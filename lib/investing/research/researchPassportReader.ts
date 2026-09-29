@@ -39,7 +39,9 @@ export type ResearchEvidenceLedgerEventKindV1 =
   | "VALIDATION_RUN_SUCCEEDED"
   | "VALIDATION_RUN_FAILED"
   | "VALIDATION_CHILD_RESULT_AVAILABLE"
-  | "VALIDATION_RESULT_AVAILABLE";
+  | "VALIDATION_RESULT_AVAILABLE"
+  | "SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE"
+  | "SCIENTIFIC_PROMOTION_TRANSITION_RECORDED";
 
 export type ResearchPassportIntegrityFailureCodeV1 =
   | "FORBIDDEN_OR_NOT_FOUND"
@@ -670,6 +672,7 @@ export async function readResearchPassportV1(
       results,
       evidence,
       validationEvents: validationRead.ledgerEvents,
+      scientificPromotionEvents: scientificPromotionRead.ledgerEvents,
     });
 
     await client.query("commit");
@@ -1177,6 +1180,7 @@ function buildLedger(input: {
   results: readonly ResultPassportRowV1[];
   evidence: readonly EvidencePassportRowV1[];
   validationEvents: readonly ValidationLedgerEventV1[];
+  scientificPromotionEvents: readonly ResearchEvidenceLedgerEventV1[];
 }): readonly ResearchEvidenceLedgerEventV1[] {
   const events: ResearchEvidenceLedgerEventV1[] = [
     {
@@ -1314,6 +1318,7 @@ function buildLedger(input: {
     });
   }
   events.push(...input.validationEvents);
+  events.push(...input.scientificPromotionEvents);
   return events.sort(byLedgerOrder);
 }
 
@@ -1338,6 +1343,8 @@ const phaseOrder: Record<ResearchEvidenceLedgerEventKindV1, number> = {
   VALIDATION_RUN_FAILED: 85,
   VALIDATION_CHILD_RESULT_AVAILABLE: 86,
   VALIDATION_RESULT_AVAILABLE: 87,
+  SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE: 90,
+  SCIENTIFIC_PROMOTION_TRANSITION_RECORDED: 91,
 };
 
 function byLedgerOrder(a: ResearchEvidenceLedgerEventV1, b: ResearchEvidenceLedgerEventV1) {

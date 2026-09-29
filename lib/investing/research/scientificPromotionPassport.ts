@@ -4,6 +4,7 @@ import type { ScientificPromotionGateOutcomeV1, ScientificPromotionStateV1 } fro
 
 export type ScientificPromotionTransitionProjectionV1 = Readonly<{
   scientificPromotionTransitionId: string;
+  scientificPromotionProtocolIdentityId: string;
   protocol: HashRefProjectionV1;
   transition: HashRefProjectionV1;
   chainKey: string;
@@ -30,8 +31,20 @@ export type ScientificPromotionPassportProjectionV1 =
     };
 
 export type ScientificPromotionPassportReadResult =
-  | { ok: true; scientificPromotion: ScientificPromotionPassportProjectionV1; ledgerEvents: readonly [] }
+  | { ok: true; scientificPromotion: ScientificPromotionPassportProjectionV1; ledgerEvents: readonly ScientificPromotionLedgerEventV1[] }
   | { ok: false; code: "PASSPORT_SOURCE_INTEGRITY_FAILURE" | "DATABASE_ERROR" };
+
+export type ScientificPromotionLedgerEventV1 = Readonly<{
+  eventKind: "SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE" | "SCIENTIFIC_PROMOTION_TRANSITION_RECORDED";
+  sourceTable: string;
+  sourceRecordId: string;
+  researchInvestigationId: string;
+  relevantParentIds: Readonly<Record<string, string>>;
+  scientificHashRefs: readonly HashRefProjectionV1[];
+  eventSequence: number | null;
+  reasonCode: string | null;
+  occurredAt: string;
+}>;
 
 type PromotionRow = {
   scientific_promotion_transition_id: string;
@@ -87,15 +100,68 @@ export async function readScientificPromotionPassportProjectionV1(
       ].join(" "),
       [context.tenantId, context.researchInvestigationId],
     )).rows;
-    return { ok: true, scientificPromotion: reconstructScientificPromotionProjectionV1(rows), ledgerEvents: [] };
+    const scientificPromotion = reconstructScientificPromotionProjectionV1(rows);
+    return { ok: true, scientificPromotion, ledgerEvents: buildScientificPromotionLedgerEventsV1(scientificPromotion, context.researchInvestigationId) };
   } catch {
     return { ok: false, code: "DATABASE_ERROR" };
   }
 }
 
+export function buildScientificPromotionLedgerEventsV1(
+  scientificPromotion: ScientificPromotionPassportProjectionV1,
+  researchInvestigationId: string,
+): readonly ScientificPromotionLedgerEventV1[] {
+  if (scientificPromotion.availability !== "MATERIALIZED") return [];
+  const protocol = scientificPromotion.protocol;
+  const protocolEvent: ScientificPromotionLedgerEventV1 = {
+    eventKind: "SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE",
+    sourceTable: "investing.research_scientific_promotion_protocols",
+    sourceRecordId: scientificPromotion.transitions[0]?.scientificPromotionProtocolIdentityId ?? scientificPromotion.protocol.hashHex,
+    researchInvestigationId,
+    relevantParentIds: {},
+    scientificHashRefs: [protocol],
+    eventSequence: null,
+    reasonCode: null,
+    occurredAt: scientificPromotion.transitions[0]?.createdAt ?? "",
+  };
+  return [
+    protocolEvent,
+    ...scientificPromotion.transitions.map((transition, index): ScientificPromotionLedgerEventV1 => ({
+      eventKind: "SCIENTIFIC_PROMOTION_TRANSITION_RECORDED",
+      sourceTable: "investing.research_scientific_promotion_transitions",
+      sourceRecordId: transition.scientificPromotionTransitionId,
+      researchInvestigationId,
+      relevantParentIds: {
+        rootTransitionId: transition.rootTransitionId,
+        chainKey: transition.chainKey,
+        ...(transition.predecessorTransitionId ? { predecessorTransitionId: transition.predecessorTransitionId } : {}),
+        ...(transition.supersededByChain ? { successorRootTransitionId: transition.supersededByChain.successorRootTransitionId } : {}),
+      },
+      scientificHashRefs: [protocol, transition.transition],
+      eventSequence: index,
+      reasonCode: transition.transitionReasons[0] ?? null,
+      occurredAt: transition.createdAt,
+    })),
+  ];
+}
+
 export function reconstructScientificPromotionProjectionV1(rows: readonly PromotionRow[]): ScientificPromotionPassportProjectionV1 {
   if (rows.length === 0) return { availability: "UNAVAILABLE", transitions: [] };
   const byId = new Map(rows.map((row) => [row.scientific_promotion_transition_id, row]));
+  if (byId.size !== rows.length) throw new Error("DIVERGENT_EXISTING_IDENTITY");
+  for (const row of rows) {
+    const root = byId.get(row.root_transition_id);
+    if (!root || root.predecessor_transition_id !== null || root.predecessor_state !== null || root.chain_key !== row.chain_key) {
+      throw new Error("DIVERGENT_EXISTING_IDENTITY");
+    }
+    if (row.predecessor_transition_id !== null) {
+      const predecessor = byId.get(row.predecessor_transition_id);
+      if (!predecessor || predecessor.chain_key !== row.chain_key || predecessor.protocol_hash_hex !== row.protocol_hash_hex) {
+        throw new Error("DIVERGENT_EXISTING_IDENTITY");
+      }
+      if (row.predecessor_state !== predecessor.resulting_state) throw new Error("DIVERGENT_EXISTING_IDENTITY");
+    }
+  }
   const roots = rows.filter((row) => row.predecessor_transition_id === null && row.predecessor_state === null);
   const rootsByChain = groupBy(roots, (row) => row.chain_key);
   for (const group of rootsByChain.values()) if (group.length !== 1) throw new Error("DIVERGENT_EXISTING_IDENTITY");
@@ -146,6 +212,12 @@ function followChain(
       if (!successorRoot || successorRoot.predecessor_transition_id !== null || successorRoot.predecessor_state !== null) {
         throw new Error("DIVERGENT_EXISTING_IDENTITY");
       }
+      if (cursor.superseded_by_successor_protocol_hash_hex !== successorRoot.protocol_hash_hex) {
+        throw new Error("DIVERGENT_EXISTING_IDENTITY");
+      }
+      if (cursor.superseded_by_successor_root_hash_hex !== successorRoot.hash_hex) {
+        throw new Error("DIVERGENT_EXISTING_IDENTITY");
+      }
       if (successorRoot.scientific_promotion_transition_id === cursor.scientific_promotion_transition_id || successorRoot.chain_key === cursor.chain_key) {
         throw new Error("DIVERGENT_EXISTING_IDENTITY");
       }
@@ -159,6 +231,7 @@ function followChain(
 function projectRow(row: PromotionRow): ScientificPromotionTransitionProjectionV1 {
   return {
     scientificPromotionTransitionId: row.scientific_promotion_transition_id,
+    scientificPromotionProtocolIdentityId: row.scientific_promotion_protocol_identity_id,
     protocol: ref("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1", row.protocol_hash_hex),
     transition: ref("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", row.hash_hex),
     chainKey: row.chain_key,

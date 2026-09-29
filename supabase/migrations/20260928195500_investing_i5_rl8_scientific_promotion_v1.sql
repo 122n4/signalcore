@@ -61,7 +61,7 @@ create table investing.research_scientific_promotion_protocols (
     check (jsonb_typeof(canonical_payload) = 'object'),
   created_at timestamptz not null default statement_timestamp(),
   constraint research_scientific_promotion_protocols_hash_unique
-    unique (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex),
+    unique (tenant_id, research_investigation_id, hash_algorithm, hash_domain, hash_version, hash_hex),
   constraint research_scientific_promotion_protocols_authority_tuple_fk
     foreign key (tenant_membership_id, tenant_id, principal_id)
     references investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id),
@@ -151,6 +151,12 @@ create table investing.research_scientific_promotion_transitions (
     unique (tenant_id, hash_algorithm, hash_domain, hash_version, hash_hex),
   constraint research_scientific_promotion_transitions_root_unique
     unique (tenant_id, research_investigation_id, chain_key, root_transition_id),
+  constraint research_scientific_promotion_transitions_root_authority_unique
+    unique (scientific_promotion_transition_id, tenant_id, research_investigation_id, chain_key, protocol_hash_hex, resulting_state),
+  constraint research_scientific_promotion_transitions_root_lookup_unique
+    unique (scientific_promotion_transition_id, tenant_id, research_investigation_id, chain_key, protocol_hash_hex),
+  constraint research_scientific_promotion_transitions_successor_lookup_unique
+    unique (scientific_promotion_transition_id, tenant_id, research_investigation_id, protocol_hash_hex, hash_hex),
   constraint research_scientific_promotion_transitions_single_root_key
     unique (tenant_id, research_investigation_id, chain_key, predecessor_transition_id),
   constraint research_scientific_promotion_transitions_single_successor
@@ -180,11 +186,14 @@ create table investing.research_scientific_promotion_transitions (
 
 alter table investing.research_scientific_promotion_transitions
   add constraint research_scientific_promotion_transitions_predecessor_fk
-  foreign key (predecessor_transition_id)
-  references investing.research_scientific_promotion_transitions (scientific_promotion_transition_id),
+  foreign key (predecessor_transition_id, tenant_id, research_investigation_id, chain_key, protocol_hash_hex, predecessor_state)
+  references investing.research_scientific_promotion_transitions (scientific_promotion_transition_id, tenant_id, research_investigation_id, chain_key, protocol_hash_hex, resulting_state),
+  add constraint research_scientific_promotion_transitions_root_authority_fk
+  foreign key (root_transition_id, tenant_id, research_investigation_id, chain_key, protocol_hash_hex)
+  references investing.research_scientific_promotion_transitions (scientific_promotion_transition_id, tenant_id, research_investigation_id, chain_key, protocol_hash_hex),
   add constraint research_scientific_promotion_transitions_successor_root_fk
-  foreign key (superseded_by_successor_root_transition_id)
-  references investing.research_scientific_promotion_transitions (scientific_promotion_transition_id);
+  foreign key (superseded_by_successor_root_transition_id, tenant_id, research_investigation_id, superseded_by_successor_protocol_hash_hex, superseded_by_successor_root_hash_hex)
+  references investing.research_scientific_promotion_transitions (scientific_promotion_transition_id, tenant_id, research_investigation_id, protocol_hash_hex, hash_hex);
 
 create trigger research_scientific_promotion_protocols_append_only
 before update or delete on investing.research_scientific_promotion_protocols
@@ -280,9 +289,9 @@ begin
   if p_hash_hex !~ '^[0-9A-F]{64}$' or jsonb_typeof(p_canonical_payload) <> 'object' then
     raise exception 'RL8_SCIENTIFIC_PROMOTION_PROTOCOL_INVALID';
   end if;
-  perform pg_advisory_xact_lock(hashtextextended(v_tenant_id::text || ':RL8_PROTOCOL:' || p_hash_hex, 0));
+  perform pg_advisory_xact_lock(hashtextextended(v_tenant_id::text || ':' || v_research_investigation_id::text || ':RL8_PROTOCOL:' || p_hash_hex, 0));
   select * into v_existing from investing.research_scientific_promotion_protocols
-  where tenant_id = v_tenant_id and hash_hex = p_hash_hex for update;
+  where tenant_id = v_tenant_id and research_investigation_id = v_research_investigation_id and hash_hex = p_hash_hex for update;
   if found then
     if v_existing.canonical_payload = p_canonical_payload then
       scientific_promotion_protocol_identity_id := v_existing.scientific_promotion_protocol_identity_id;
@@ -336,6 +345,10 @@ declare
   v_lock_key text;
   v_new_transition_id uuid := gen_random_uuid();
   v_effective_root_transition_id uuid;
+  v_protocol record;
+  v_root record;
+  v_predecessor record;
+  v_successor_root record;
 begin
   if current_setting('syntrake.investing.operation', true) <> 'RESEARCH_SCIENTIFIC_PROMOTION_TRANSITION_RECORD_V1'
      or current_setting('syntrake.investing.capability', true) <> 'RESEARCH_MUTATE' then
@@ -347,17 +360,101 @@ begin
   if jsonb_typeof(p_canonical_payload) <> 'object' or jsonb_typeof(p_gate_outcomes) <> 'array' or jsonb_typeof(p_evidence_hash_refs) <> 'array' or jsonb_typeof(p_transition_reasons) <> 'array' then
     raise exception 'RL8_SCIENTIFIC_PROMOTION_TRANSITION_INVALID_PAYLOAD';
   end if;
+  select * into v_protocol
+  from investing.research_scientific_promotion_protocols
+  where scientific_promotion_protocol_identity_id = p_scientific_promotion_protocol_identity_id
+    and tenant_id = v_tenant_id
+    and principal_id = v_principal_id
+    and tenant_membership_id = v_tenant_membership_id
+    and research_investigation_id = v_research_investigation_id
+    and hash_hex = p_protocol_hash_hex;
+  if not found then
+    raise exception 'RL8_SCIENTIFIC_PROMOTION_PROTOCOL_AUTHORITY_FAILURE';
+  end if;
   if p_predecessor_transition_id is null and p_predecessor_state is null then
-    v_lock_key := v_tenant_id::text || ':RL8_ROOT:' || p_chain_key;
+    v_lock_key := v_tenant_id::text || ':' || v_research_investigation_id::text || ':RL8_ROOT:' || p_chain_key;
     v_effective_root_transition_id := v_new_transition_id;
   elsif p_predecessor_transition_id is not null and p_predecessor_state is not null then
-    v_lock_key := v_tenant_id::text || ':RL8_SUCCESSOR:' || p_predecessor_transition_id::text;
+    v_lock_key := v_tenant_id::text || ':' || v_research_investigation_id::text || ':RL8_SUCCESSOR:' || p_predecessor_transition_id::text;
     if p_root_transition_id is null then
       raise exception 'RL8_SCIENTIFIC_PROMOTION_TRANSITION_ROOT_REQUIRED';
     end if;
     v_effective_root_transition_id := p_root_transition_id;
+    select * into v_predecessor
+    from investing.research_scientific_promotion_transitions
+    where scientific_promotion_transition_id = p_predecessor_transition_id
+      and tenant_id = v_tenant_id
+      and research_investigation_id = v_research_investigation_id
+      and chain_key = p_chain_key
+      and protocol_hash_hex = p_protocol_hash_hex
+    for update;
+    if not found then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_PREDECESSOR_AUTHORITY_FAILURE';
+    end if;
+    if v_predecessor.resulting_state <> p_predecessor_state then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_PREDECESSOR_STATE_MISMATCH';
+    end if;
+    select * into v_root
+    from investing.research_scientific_promotion_transitions
+    where scientific_promotion_transition_id = p_root_transition_id
+      and tenant_id = v_tenant_id
+      and research_investigation_id = v_research_investigation_id
+      and chain_key = p_chain_key
+      and protocol_hash_hex = p_protocol_hash_hex
+      and predecessor_transition_id is null
+      and predecessor_state is null;
+    if not found then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_ROOT_AUTHORITY_FAILURE';
+    end if;
   else
     raise exception 'RL8_SCIENTIFIC_PROMOTION_TRANSITION_INVALID_PREDECESSOR';
+  end if;
+  if p_superseded_by_successor_root_transition_id is null then
+    if p_superseded_by_successor_protocol_hash_hex is not null or p_superseded_by_successor_root_hash_hex is not null then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_INVALID';
+    end if;
+  else
+    if p_resulting_state <> 'SUPERSEDED'
+       or p_superseded_by_successor_protocol_hash_hex is null
+       or p_superseded_by_successor_root_hash_hex is null then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_INVALID';
+    end if;
+    select * into v_successor_root
+    from investing.research_scientific_promotion_transitions
+    where scientific_promotion_transition_id = p_superseded_by_successor_root_transition_id
+      and tenant_id = v_tenant_id
+      and research_investigation_id = v_research_investigation_id
+      and protocol_hash_hex = p_superseded_by_successor_protocol_hash_hex
+      and hash_hex = p_superseded_by_successor_root_hash_hex
+      and predecessor_transition_id is null
+      and predecessor_state is null;
+    if not found then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_SUCCESSOR_ROOT_AUTHORITY_FAILURE';
+    end if;
+    if v_successor_root.chain_key = p_chain_key or p_superseded_by_successor_root_transition_id = coalesce(p_predecessor_transition_id, v_new_transition_id) then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_CYCLE';
+    end if;
+    if exists (
+      with recursive walk as (
+        select t.scientific_promotion_transition_id, t.chain_key, t.superseded_by_successor_root_transition_id
+        from investing.research_scientific_promotion_transitions t
+        where t.scientific_promotion_transition_id = p_superseded_by_successor_root_transition_id
+          and t.tenant_id = v_tenant_id
+          and t.research_investigation_id = v_research_investigation_id
+        union all
+        select next.scientific_promotion_transition_id, next.chain_key, next.superseded_by_successor_root_transition_id
+        from walk w
+        join investing.research_scientific_promotion_transitions leaf on leaf.root_transition_id = w.scientific_promotion_transition_id
+          and leaf.tenant_id = v_tenant_id
+          and leaf.research_investigation_id = v_research_investigation_id
+        join investing.research_scientific_promotion_transitions next on next.scientific_promotion_transition_id = leaf.superseded_by_successor_root_transition_id
+          and next.tenant_id = v_tenant_id
+          and next.research_investigation_id = v_research_investigation_id
+      )
+      select 1 from walk where chain_key = p_chain_key
+    ) then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_CYCLE';
+    end if;
   end if;
   perform pg_advisory_xact_lock(hashtextextended(v_lock_key, 0));
   select * into v_existing from investing.research_scientific_promotion_transitions

@@ -386,6 +386,7 @@ export {
 
 export {
   canonicalScientificPromotionProtocolV1,
+  canonicalScientificPromotionEvidenceAggregateV1,
   canonicalScientificPromotionSubjectV1,
   canonicalScientificPromotionTransitionV1,
   evaluateScientificPromotionGatesV1,
@@ -401,9 +402,13 @@ export {
   scientificPromotionStatesV1,
   scientificPromotionTransitionGraphV1,
   type ScientificPromotionGateIdV1,
+  type ScientificPromotionEvidenceAggregateGateV1,
+  type ScientificPromotionEvidenceAggregateV1,
+  type ScientificPromotionEvidenceRefV1,
   type ScientificPromotionGateOutcomeV1,
   type ScientificPromotionGateStatusV1,
   type ScientificPromotionProtocolV1,
+  type ScientificPromotionMetricResultSetRefV1,
   type ScientificPromotionReasonCodeV1,
   type ScientificPromotionStateV1,
   type ScientificPromotionSubjectV1,
@@ -415,5 +420,6 @@ export {
   reconstructScientificPromotionProjectionV1,
   type ScientificPromotionPassportProjectionV1,
   type ScientificPromotionPassportReadResult,
+  type ScientificPromotionLedgerEventV1,
   type ScientificPromotionTransitionProjectionV1,
 } from "./scientificPromotionPassport";
