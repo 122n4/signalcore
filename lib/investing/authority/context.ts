@@ -20,6 +20,12 @@ const authorizedResearchValidationChildExecutionContextRuntimeBrand = Symbol(
 const authorizedResearchValidationResultFinalizeContextRuntimeBrand = Symbol(
   "AuthorizedResearchValidationResultFinalizeContext",
 );
+const authorizedResearchValidationAssessmentProtocolCreateContextRuntimeBrand = Symbol(
+  "AuthorizedResearchValidationAssessmentProtocolCreateContext",
+);
+const authorizedResearchValidationAssessmentResultFinalizeContextRuntimeBrand = Symbol(
+  "AuthorizedResearchValidationAssessmentResultFinalizeContext",
+);
 const authorizedResearchPassportReadContextRuntimeBrand = Symbol("AuthorizedResearchPassportReadContext");
 const accountContextResolveOperation = "ACCOUNT_CONTEXT_RESOLVE";
 const accountAuthorityReadCapability = "ACCOUNT_AUTHORITY_READ";
@@ -35,6 +41,8 @@ const researchExecutionRunOperation = "RESEARCH_EXECUTION_RUN_V1";
 const researchValidationProtocolCreateOperation = "RESEARCH_VALIDATION_PROTOCOL_CREATE_V1";
 const researchValidationChildExecuteOperation = "RESEARCH_VALIDATION_CHILD_EXECUTE_V1";
 const researchValidationResultFinalizeOperation = "RESEARCH_VALIDATION_RESULT_FINALIZE_V1";
+const researchValidationAssessmentProtocolCreateOperation = "RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1";
+const researchValidationAssessmentResultFinalizeOperation = "RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1";
 const researchValidationChildEvalPhase = "EVAL" + "UATION";
 const researchPassportReadOperation = "RESEARCH_PASSPORT_READ_V1";
 const researchMutateCapability = "RESEARCH_MUTATE";
@@ -75,6 +83,14 @@ type ResearchValidationChildExecutionContextBrand = {
 
 type ResearchValidationResultFinalizeContextBrand = {
   readonly __authorizedResearchValidationResultFinalizeContext: "AuthorizedResearchValidationResultFinalizeContext";
+};
+
+type ResearchValidationAssessmentProtocolCreateContextBrand = {
+  readonly __authorizedResearchValidationAssessmentProtocolCreateContext: "AuthorizedResearchValidationAssessmentProtocolCreateContext";
+};
+
+type ResearchValidationAssessmentResultFinalizeContextBrand = {
+  readonly __authorizedResearchValidationAssessmentResultFinalizeContext: "AuthorizedResearchValidationAssessmentResultFinalizeContext";
 };
 
 type ResearchPassportReadContextBrand = {
@@ -280,6 +296,47 @@ export type AuthorizedResearchValidationResultFinalizeContext = Readonly<
   }
 >;
 
+
+export type AuthorizedResearchValidationAssessmentProtocolCreateContext = Readonly<
+  ResearchValidationAssessmentProtocolCreateContextBrand & {
+    actorKind: "USER_PRINCIPAL";
+    actorId: string;
+    principalId: string;
+    tenantId: string;
+    tenantMembershipId: string;
+    correlationId: string;
+    operation: typeof researchValidationAssessmentProtocolCreateOperation;
+    capability: typeof researchMutateCapability;
+    operationScope: "TENANT_SCOPE";
+    sourceContext: "PURE_RESEARCH";
+    researchInvestigationId: string;
+    researchValidationProtocolIdentityId: string;
+    researchExperimentId: string;
+    accountId?: never;
+    accountAccessId?: never;
+  }
+>;
+
+export type AuthorizedResearchValidationAssessmentResultFinalizeContext = Readonly<
+  ResearchValidationAssessmentResultFinalizeContextBrand & {
+    actorKind: "USER_PRINCIPAL";
+    actorId: string;
+    principalId: string;
+    tenantId: string;
+    tenantMembershipId: string;
+    correlationId: string;
+    operation: typeof researchValidationAssessmentResultFinalizeOperation;
+    capability: typeof researchMutateCapability;
+    operationScope: "TENANT_SCOPE";
+    sourceContext: "PURE_RESEARCH";
+    researchInvestigationId: string;
+    researchValidationProtocolIdentityId: string;
+    researchExperimentId: string;
+    accountId?: never;
+    accountAccessId?: never;
+  }
+>;
+
 export type AuthorizedResearchPassportReadContext = Readonly<
   ResearchPassportReadContextBrand & {
     actorKind: "USER_PRINCIPAL";
@@ -454,6 +511,19 @@ export type ResolveAuthorizedResearchValidationChildExecutionContextInput = {
 };
 
 export type ResolveAuthorizedResearchValidationResultFinalizeContextInput = {
+  researchInvestigationId: string;
+  researchValidationProtocolIdentityId: string;
+  correlationId: string;
+};
+
+
+export type ResolveAuthorizedResearchValidationAssessmentProtocolCreateContextInput = {
+  researchInvestigationId: string;
+  researchValidationProtocolIdentityId: string;
+  correlationId: string;
+};
+
+export type ResolveAuthorizedResearchValidationAssessmentResultFinalizeContextInput = {
   researchInvestigationId: string;
   researchValidationProtocolIdentityId: string;
   correlationId: string;
@@ -791,6 +861,52 @@ export function isAuthorizedResearchValidationResultFinalizeContext(
     typeof (value as Partial<AuthorizedResearchValidationResultFinalizeContext>).researchExperimentId === "string" &&
     !("accountId" in (value as Partial<AuthorizedResearchValidationResultFinalizeContext>)) &&
     !("accountAccessId" in (value as Partial<AuthorizedResearchValidationResultFinalizeContext>))
+  );
+}
+
+export function isAuthorizedResearchValidationAssessmentProtocolCreateContext(
+  value: unknown,
+): value is AuthorizedResearchValidationAssessmentProtocolCreateContext {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { [authorizedResearchValidationAssessmentProtocolCreateContextRuntimeBrand]?: boolean })[
+      authorizedResearchValidationAssessmentProtocolCreateContextRuntimeBrand
+    ] === true &&
+    (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).operation ===
+      researchValidationAssessmentProtocolCreateOperation &&
+    (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).capability === researchMutateCapability &&
+    (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).operationScope === "TENANT_SCOPE" &&
+    (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).sourceContext === "PURE_RESEARCH" &&
+    typeof (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).researchInvestigationId === "string" &&
+    typeof (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).researchValidationProtocolIdentityId ===
+      "string" &&
+    typeof (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>).researchExperimentId === "string" &&
+    !("accountId" in (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>)) &&
+    !("accountAccessId" in (value as Partial<AuthorizedResearchValidationAssessmentProtocolCreateContext>))
+  );
+}
+
+export function isAuthorizedResearchValidationAssessmentResultFinalizeContext(
+  value: unknown,
+): value is AuthorizedResearchValidationAssessmentResultFinalizeContext {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { [authorizedResearchValidationAssessmentResultFinalizeContextRuntimeBrand]?: boolean })[
+      authorizedResearchValidationAssessmentResultFinalizeContextRuntimeBrand
+    ] === true &&
+    (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).operation ===
+      researchValidationAssessmentResultFinalizeOperation &&
+    (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).capability === researchMutateCapability &&
+    (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).operationScope === "TENANT_SCOPE" &&
+    (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).sourceContext === "PURE_RESEARCH" &&
+    typeof (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).researchInvestigationId === "string" &&
+    typeof (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).researchValidationProtocolIdentityId ===
+      "string" &&
+    typeof (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>).researchExperimentId === "string" &&
+    !("accountId" in (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>)) &&
+    !("accountAccessId" in (value as Partial<AuthorizedResearchValidationAssessmentResultFinalizeContext>))
   );
 }
 
@@ -2113,6 +2229,314 @@ export async function resolveAuthorizedResearchValidationResultFinalizeContext(
   }
 }
 
+export async function resolveAuthorizedResearchValidationAssessmentProtocolCreateContext(
+  input: ResolveAuthorizedResearchValidationAssessmentProtocolCreateContextInput,
+): Promise<InvestingAuthorityFailure | { ok: true; context: AuthorizedResearchValidationAssessmentProtocolCreateContext }> {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Object.getPrototypeOf(input) !== Object.prototype ||
+    !hasOnlyKeys(input as Record<string, unknown>, [
+      "researchInvestigationId",
+      "researchValidationProtocolIdentityId",
+      "correlationId",
+    ]) ||
+    !uuidPattern.test(input.researchInvestigationId) ||
+    !uuidPattern.test(input.researchValidationProtocolIdentityId) ||
+    !isValidCorrelationId(input.correlationId)
+  ) {
+    return fail("VALIDATION_ERROR");
+  }
+  const forbiddenFieldFailure = rejectClientAuthorityFields(input as never);
+  if (forbiddenFieldFailure) return forbiddenFieldFailure;
+
+  const verifiedAuth = await resolveVerifiedClerkIdentity();
+  if (verifiedAuth.ok === false) return fail(verifiedAuth.code);
+
+  let database: InvestingAuthorityDatabase;
+  try {
+    database = getInvestingAuthorityDatabase();
+  } catch {
+    return fail("INTERNAL_ERROR");
+  }
+
+  let client: InvestingAuthorityTransactionClient | null = null;
+  let destroyClient = false;
+  try {
+    client = await database.connect();
+    await client.query("begin");
+    if (await hasStaleTransactionContext(client)) {
+      destroyClient = true;
+      await client.query("rollback");
+      return fail("INTERNAL_ERROR");
+    }
+    await setTransactionContext(client, {
+      actor_kind: "USER_PRINCIPAL",
+      actor_id: verifiedAuth.externalSubject,
+      external_provider: verifiedAuth.externalProvider,
+      external_subject: verifiedAuth.externalSubject,
+      operation: researchValidationAssessmentProtocolCreateOperation,
+      capability: researchMutateCapability,
+      operation_scope: "TENANT_SCOPE",
+      source_context: "PURE_RESEARCH",
+      research_investigation_id: input.researchInvestigationId,
+      account_id: "",
+      account_access_id: "",
+      correlation_id: input.correlationId,
+    });
+
+    const principal = await expectExactlyOne(
+      client.query<PrincipalRow>(
+        "select principal_id, state from investing.principals where external_provider = $1 and external_subject = $2",
+        [verifiedAuth.externalProvider, verifiedAuth.externalSubject],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (principal.ok === false || principal.row.state !== "ACTIVE") {
+      await client.query("rollback");
+      return principal.ok === false ? principal : fail("PRINCIPAL_DISABLED");
+    }
+    await setTransactionContext(client, { principal_id: principal.row.principal_id });
+
+    const protocol = await expectExactlyOne(
+      client.query<ResearchValidationResultFinalizeAuthorityRow>(
+        [
+          "select research_investigation_id, research_validation_protocol_identity_id, research_experiment_id,",
+          "tenant_id, principal_id, tenant_membership_id, operation_scope, source_context",
+          "from investing.research_validation_protocols_scientific_identities",
+          "where research_validation_protocol_identity_id = $1 and research_investigation_id = $2",
+          "and principal_id = $3 and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'",
+        ].join(" "),
+        [input.researchValidationProtocolIdentityId, input.researchInvestigationId, principal.row.principal_id],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (protocol.ok === false) {
+      await client.query("rollback");
+      return protocol;
+    }
+
+    await setTransactionContext(client, {
+      tenant_id: protocol.row.tenant_id,
+      tenant_membership_id: protocol.row.tenant_membership_id,
+    });
+
+    const tenant = await expectExactlyOne(
+      client.query<TenantRow>(
+        "select tenant_id, state from investing.tenants where tenant_id = $1",
+        [protocol.row.tenant_id],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (tenant.ok === false || tenant.row.state !== "ACTIVE") {
+      await client.query("rollback");
+      return tenant.ok === false ? tenant : fail("TENANT_INACTIVE");
+    }
+
+    const membership = await expectExactlyOne(
+      client.query<MembershipRow>(
+        [
+          "select tenant_membership_id, tenant_id, principal_id, state",
+          "from investing.tenant_memberships",
+          "where tenant_membership_id = $1 and tenant_id = $2 and principal_id = $3",
+          "and role = 'OWNER' and state = 'ACTIVE'",
+        ].join(" "),
+        [protocol.row.tenant_membership_id, protocol.row.tenant_id, principal.row.principal_id],
+      ),
+      "MEMBERSHIP_INACTIVE",
+    );
+    if (membership.ok === false) {
+      await client.query("rollback");
+      return membership;
+    }
+
+    await client.query("commit");
+    return {
+      ok: true,
+      context: brandAuthorizedResearchValidationAssessmentProtocolCreateContext({
+        actorKind: "USER_PRINCIPAL",
+        actorId: verifiedAuth.externalSubject,
+        principalId: principal.row.principal_id,
+        tenantId: protocol.row.tenant_id,
+        tenantMembershipId: protocol.row.tenant_membership_id,
+        correlationId: input.correlationId,
+        operation: researchValidationAssessmentProtocolCreateOperation,
+        capability: researchMutateCapability,
+        operationScope: "TENANT_SCOPE",
+        sourceContext: "PURE_RESEARCH",
+        researchInvestigationId: protocol.row.research_investigation_id,
+        researchValidationProtocolIdentityId: protocol.row.research_validation_protocol_identity_id,
+        researchExperimentId: protocol.row.research_experiment_id,
+      }),
+    };
+  } catch {
+    if (client) {
+      try {
+        await client.query("rollback");
+      } catch {
+        destroyClient = true;
+      }
+    }
+    return fail("INTERNAL_ERROR");
+  } finally {
+    if (client) await client.release(destroyClient);
+  }
+}
+
+export async function resolveAuthorizedResearchValidationAssessmentResultFinalizeContext(
+  input: ResolveAuthorizedResearchValidationAssessmentResultFinalizeContextInput,
+): Promise<InvestingAuthorityFailure | { ok: true; context: AuthorizedResearchValidationAssessmentResultFinalizeContext }> {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Object.getPrototypeOf(input) !== Object.prototype ||
+    !hasOnlyKeys(input as Record<string, unknown>, [
+      "researchInvestigationId",
+      "researchValidationProtocolIdentityId",
+      "correlationId",
+    ]) ||
+    !uuidPattern.test(input.researchInvestigationId) ||
+    !uuidPattern.test(input.researchValidationProtocolIdentityId) ||
+    !isValidCorrelationId(input.correlationId)
+  ) {
+    return fail("VALIDATION_ERROR");
+  }
+  const forbiddenFieldFailure = rejectClientAuthorityFields(input as never);
+  if (forbiddenFieldFailure) return forbiddenFieldFailure;
+
+  const verifiedAuth = await resolveVerifiedClerkIdentity();
+  if (verifiedAuth.ok === false) return fail(verifiedAuth.code);
+
+  let database: InvestingAuthorityDatabase;
+  try {
+    database = getInvestingAuthorityDatabase();
+  } catch {
+    return fail("INTERNAL_ERROR");
+  }
+
+  let client: InvestingAuthorityTransactionClient | null = null;
+  let destroyClient = false;
+  try {
+    client = await database.connect();
+    await client.query("begin");
+    if (await hasStaleTransactionContext(client)) {
+      destroyClient = true;
+      await client.query("rollback");
+      return fail("INTERNAL_ERROR");
+    }
+    await setTransactionContext(client, {
+      actor_kind: "USER_PRINCIPAL",
+      actor_id: verifiedAuth.externalSubject,
+      external_provider: verifiedAuth.externalProvider,
+      external_subject: verifiedAuth.externalSubject,
+      operation: researchValidationAssessmentResultFinalizeOperation,
+      capability: researchMutateCapability,
+      operation_scope: "TENANT_SCOPE",
+      source_context: "PURE_RESEARCH",
+      research_investigation_id: input.researchInvestigationId,
+      account_id: "",
+      account_access_id: "",
+      correlation_id: input.correlationId,
+    });
+
+    const principal = await expectExactlyOne(
+      client.query<PrincipalRow>(
+        "select principal_id, state from investing.principals where external_provider = $1 and external_subject = $2",
+        [verifiedAuth.externalProvider, verifiedAuth.externalSubject],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (principal.ok === false || principal.row.state !== "ACTIVE") {
+      await client.query("rollback");
+      return principal.ok === false ? principal : fail("PRINCIPAL_DISABLED");
+    }
+    await setTransactionContext(client, { principal_id: principal.row.principal_id });
+
+    const protocol = await expectExactlyOne(
+      client.query<ResearchValidationResultFinalizeAuthorityRow>(
+        [
+          "select research_investigation_id, research_validation_protocol_identity_id, research_experiment_id,",
+          "tenant_id, principal_id, tenant_membership_id, operation_scope, source_context",
+          "from investing.research_validation_protocols_scientific_identities",
+          "where research_validation_protocol_identity_id = $1 and research_investigation_id = $2",
+          "and principal_id = $3 and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'",
+        ].join(" "),
+        [input.researchValidationProtocolIdentityId, input.researchInvestigationId, principal.row.principal_id],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (protocol.ok === false) {
+      await client.query("rollback");
+      return protocol;
+    }
+
+    await setTransactionContext(client, {
+      tenant_id: protocol.row.tenant_id,
+      tenant_membership_id: protocol.row.tenant_membership_id,
+    });
+
+    const tenant = await expectExactlyOne(
+      client.query<TenantRow>(
+        "select tenant_id, state from investing.tenants where tenant_id = $1",
+        [protocol.row.tenant_id],
+      ),
+      "FORBIDDEN_OR_NOT_FOUND",
+    );
+    if (tenant.ok === false || tenant.row.state !== "ACTIVE") {
+      await client.query("rollback");
+      return tenant.ok === false ? tenant : fail("TENANT_INACTIVE");
+    }
+
+    const membership = await expectExactlyOne(
+      client.query<MembershipRow>(
+        [
+          "select tenant_membership_id, tenant_id, principal_id, state",
+          "from investing.tenant_memberships",
+          "where tenant_membership_id = $1 and tenant_id = $2 and principal_id = $3",
+          "and role = 'OWNER' and state = 'ACTIVE'",
+        ].join(" "),
+        [protocol.row.tenant_membership_id, protocol.row.tenant_id, principal.row.principal_id],
+      ),
+      "MEMBERSHIP_INACTIVE",
+    );
+    if (membership.ok === false) {
+      await client.query("rollback");
+      return membership;
+    }
+
+    await client.query("commit");
+    return {
+      ok: true,
+      context: brandAuthorizedResearchValidationAssessmentResultFinalizeContext({
+        actorKind: "USER_PRINCIPAL",
+        actorId: verifiedAuth.externalSubject,
+        principalId: principal.row.principal_id,
+        tenantId: protocol.row.tenant_id,
+        tenantMembershipId: protocol.row.tenant_membership_id,
+        correlationId: input.correlationId,
+        operation: researchValidationAssessmentResultFinalizeOperation,
+        capability: researchMutateCapability,
+        operationScope: "TENANT_SCOPE",
+        sourceContext: "PURE_RESEARCH",
+        researchInvestigationId: protocol.row.research_investigation_id,
+        researchValidationProtocolIdentityId: protocol.row.research_validation_protocol_identity_id,
+        researchExperimentId: protocol.row.research_experiment_id,
+      }),
+    };
+  } catch {
+    if (client) {
+      try {
+        await client.query("rollback");
+      } catch {
+        destroyClient = true;
+      }
+    }
+    return fail("INTERNAL_ERROR");
+  } finally {
+    if (client) await client.release(destroyClient);
+  }
+}
+
 export async function resolveAuthorizedResearchPassportReadContext(
   input: ResolveAuthorizedResearchPassportReadContextInput,
 ): Promise<InvestingAuthorityResult | { ok: true; context: AuthorizedResearchPassportReadContext }> {
@@ -2975,6 +3399,27 @@ function brandAuthorizedResearchValidationResultFinalizeContext<
     __authorizedResearchValidationResultFinalizeContext: "AuthorizedResearchValidationResultFinalizeContext",
     [authorizedResearchValidationResultFinalizeContextRuntimeBrand]: true,
   }) as unknown as Context & ResearchValidationResultFinalizeContextBrand;
+}
+
+
+function brandAuthorizedResearchValidationAssessmentProtocolCreateContext<
+  Context extends Omit<AuthorizedResearchValidationAssessmentProtocolCreateContext, keyof ResearchValidationAssessmentProtocolCreateContextBrand>,
+>(context: Context): Context & ResearchValidationAssessmentProtocolCreateContextBrand {
+  return Object.freeze({
+    ...context,
+    __authorizedResearchValidationAssessmentProtocolCreateContext: "AuthorizedResearchValidationAssessmentProtocolCreateContext",
+    [authorizedResearchValidationAssessmentProtocolCreateContextRuntimeBrand]: true,
+  }) as unknown as Context & ResearchValidationAssessmentProtocolCreateContextBrand;
+}
+
+function brandAuthorizedResearchValidationAssessmentResultFinalizeContext<
+  Context extends Omit<AuthorizedResearchValidationAssessmentResultFinalizeContext, keyof ResearchValidationAssessmentResultFinalizeContextBrand>,
+>(context: Context): Context & ResearchValidationAssessmentResultFinalizeContextBrand {
+  return Object.freeze({
+    ...context,
+    __authorizedResearchValidationAssessmentResultFinalizeContext: "AuthorizedResearchValidationAssessmentResultFinalizeContext",
+    [authorizedResearchValidationAssessmentResultFinalizeContextRuntimeBrand]: true,
+  }) as unknown as Context & ResearchValidationAssessmentResultFinalizeContextBrand;
 }
 
 function brandAuthorizedResearchPassportReadContext<

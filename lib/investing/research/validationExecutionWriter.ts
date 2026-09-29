@@ -210,6 +210,21 @@ export async function executeValidationChildV1(
       const reproved = await loadPreparedChild(client, input.authorizedContext);
       if (reproved.ok === false) return reproved;
       if (canonicalString(reproved.value.protocol) !== canonicalString(preparedTx.value.protocol)) return { ok: false as const, code: "CONFLICT" as const };
+      if (reproved.value.protocol.metricRegistryVersion === "METRIC_REGISTRY_V20260927") {
+        await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
+          input.authorizedContext.researchValidationProtocolIdentityId,
+        ]);
+        const assessmentProtocol = await one<{ research_validation_assessment_protocol_identity_id: string }>(
+          client,
+          [
+            "select research_validation_assessment_protocol_identity_id",
+            "from investing.research_validation_assessment_protocols_scientific_identities",
+            "where research_validation_protocol_identity_id = $1",
+          ].join(" "),
+          [input.authorizedContext.researchValidationProtocolIdentityId],
+        );
+        if (!assessmentProtocol) return { ok: false as const, code: "ASSESSMENT_PROTOCOL_REQUIRED" as const };
+      }
       const persisted = await persistValidationRunInput(client, input.authorizedContext, materialized);
       if (persisted.ok === false) return persisted;
       await lockValidationRunInput(client, persisted.runInputId);
