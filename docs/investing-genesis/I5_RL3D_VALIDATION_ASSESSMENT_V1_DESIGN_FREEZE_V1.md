@@ -209,7 +209,6 @@ EvidenceRequirementDescriptorV1 {
   artifactClass,
   sourceLineage,
   metricIdentity,
-  scope,
   cardinality,
   missingEvidencePolicy
 }
@@ -225,10 +224,31 @@ METRIC_RESULT_SET_DESCRIPTOR_V2
 EVIDENCE_OBJECT
 ```
 
-`sourceLineage` binds the required tenant authority, Investigation, subject
-Experiment, subject Research IR, Validation Protocol, fold/scope selector and
-where applicable Result or Validation Child Result lineage. It is a selector
-over the future accepted lineage, not a concrete future row ID or HashRef.
+`sourceLineage` is a closed pre-result selector:
+
+```text
+EvidenceSourceLineageSelectorV1 {
+  validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1>,
+  subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>,
+  subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>,
+  observationScope: ObservationScopeSelectorV1,
+  artifactOwnerClass
+}
+```
+
+`artifactOwnerClass` is exactly one of:
+
+```text
+VALIDATION_AGGREGATE
+VALIDATION_CHILD
+EXECUTION_RESULT
+EVIDENCE_OBJECT
+```
+
+This selector binds only pre-result lineage already knowable at Assessment
+Protocol authority time. It must not include future Result, Validation Child
+Result, Validation Result, Evidence Object, Metric Result Set descriptor or
+database row identities.
 
 `metricIdentity` is null only when the artifact class is not metric-specific.
 When present it is exactly `{ metricId, metricVersion }`.
@@ -250,7 +270,10 @@ MISSING_FAILS_CLOSED_NO_RESULT
 ```
 
 Duplicate `requirementId` is forbidden. Canonical ordering is lexicographic by
-`requirementId`.
+`requirementId`. Top-level `requiredEvidenceRequirements` MUST equal the
+byte-sorted deduplicated union of every criterion `evidenceRequirements`.
+There is no silent divergence between top-level and criterion requirements in
+V1, and no independent global requirements outside that union.
 
 ## Criterion Identity
 
@@ -291,6 +314,7 @@ Duplicate `(criterionId, criterionVersion)` pairs are forbidden.
 `observationScope` is an exact discriminated selector:
 
 ```text
+ObservationScopeSelectorV1 =
 { kind = AGGREGATE }
 { kind = ALL_EVALUATION_FOLDS }
 { kind = ALL_TRAINING_FOLDS }
@@ -306,7 +330,6 @@ of:
 ```text
 SINGLE_OBSERVATION
 ALL_SELECTED_OBSERVATIONS_PASS
-ANY_SELECTED_OBSERVATION_FAILS
 ```
 
 `SINGLE_OBSERVATION` is required for `AGGREGATE` and `FOLD_PHASE` scopes. For
@@ -315,11 +338,13 @@ numeric `foldOrdinal` ascending, then `phase`. `ALL_SELECTED_OBSERVATIONS_PASS`
 means every selected observation must individually pass the criterion;
 one explicit FAIL makes the criterion FAIL; no FAIL plus at least one
 insufficient selected observation makes the criterion INSUFFICIENT_EVIDENCE.
-`ANY_SELECTED_OBSERVATION_FAILS` is diagnostic/adverse-evidence mode: any
-selected FAIL makes the criterion FAIL; if none fail and at least one selected
-observation is insufficient, the criterion is INSUFFICIENT_EVIDENCE; otherwise
-the criterion PASSes. No runtime-selected averaging, weighting or reduction is
-admitted.
+otherwise all selected observations PASS makes the criterion PASS. Empty
+selected observation set must never vacuously PASS; it is
+INSUFFICIENT_EVIDENCE when evidence is normally unavailable and fail-closed
+when `UNAVAILABLE_NOT_ADMITTED` or `MISSING_FAILS_CLOSED_NO_RESULT` applies. No
+runtime-selected averaging, weighting or reduction is admitted. The former
+`ANY_SELECTED_OBSERVATION_FAILS` token is not admitted in V1 because it is
+behavior-identical to the frozen fail-if-any-observation-fails rule.
 
 `evidenceSource` is exactly one of:
 
@@ -400,29 +425,72 @@ standalone `HashRefV1` domain. The accepted V1/V2 shape is:
 
 ```text
 MetricResultSetEvidenceV1 {
+  evidenceIdentity: ConsumedEvidenceRefV1,
   artifactSchemaVersion = METRIC_RESULT_SET_V1,
   format,
   contentSha256,
   contentByteLength,
   recordCount,
-  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>
+  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>,
+  metricRecords
 }
 
 MetricResultSetEvidenceV2 {
+  evidenceIdentity: ConsumedEvidenceRefV1,
   artifactSchemaVersion = METRIC_RESULT_SET_V2,
   format,
   contentSha256,
   contentByteLength,
   recordCount,
-  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>
+  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>,
+  metricRecords
 }
 ```
 
 The descriptor fields must equal the accepted Result or Validation Child Result
 artifact descriptor and the content bytes must verify by SHA-256, byte length
-and record count. Ratio metrics require `RATIO` observed values. Count metrics
-require `INTEGER` observed values. No implicit coercion between integer and
-ratio is admitted.
+and record count before any selected metric record becomes scientific
+assessment evidence.
+
+`metricRecords` is the exact deterministic selected subset required by the
+assessment criterion, not an implicit array-position lookup. Selection proof is:
+full artifact bytes verify against descriptor SHA/byteLength/recordCount, then
+canonical Metric Result Set parsing selects records by exact
+`metricId + metricVersion + registryVersion`. Each selected record must exist
+exactly once. Wrong metric, duplicate metric or wrong registry fails closed. If
+an implementation chooses to carry the full verified artifact record set, that
+full set must still satisfy the same selected-record uniqueness rule.
+
+Metric record representation is:
+
+```text
+MetricRecordEvidenceV1 {
+  registryVersion = METRIC_REGISTRY_V20260918,
+  metricId,
+  metricVersion = METRIC_V1,
+  availability,
+  value,
+  unavailableReason
+}
+
+MetricRecordEvidenceV2 {
+  registryVersion = METRIC_REGISTRY_V20260927,
+  metricId,
+  metricVersion = METRIC_V2,
+  availability,
+  value,
+  unavailableReason
+}
+```
+
+`availability` is exactly `AVAILABLE` or `UNAVAILABLE`. For `AVAILABLE`,
+`value` is `CanonicalAssessmentNumericV1` and `unavailableReason = null`. For
+`UNAVAILABLE`, `value = null` and `unavailableReason` is the exact closed reason
+serialized by the accepted Metric Registry/Metric Result Set artifact. Records
+are ordered by `registryVersion`, then `metricId`, then `metricVersion`.
+Duplicate `(registryVersion, metricId, metricVersion)` records fail closed.
+Ratio metrics require `RATIO` observed values. Count metrics require `INTEGER`
+observed values. No implicit coercion between integer and ratio is admitted.
 
 Each criterion must bind every Evidence Object, Metric Result Set descriptor,
 Validation Child Result and Validation Result HashRef needed to prove its
@@ -474,6 +542,19 @@ ConsumedEvidenceV1 =
   | { kind = EVIDENCE_OBJECT, ref: HashRef<SYNTRAKE:EVIDENCE_OBJECT:V1> }
 ```
 
+Every consumed evidence entry has an exact identity:
+
+```text
+ConsumedEvidenceRefV1 =
+  | { kind = HASH_REF, ref: HashRefV1 }
+  | { kind = METRIC_RESULT_SET_DESCRIPTOR, artifactSchemaVersion, contentSha256, contentByteLength, recordCount, ownerResult: HashRefV1 }
+```
+
+`ConsumedEvidenceRefV1` never uses array indexes, database UUIDs, insertion
+order or object references as scientific identity. Duplicate
+`ConsumedEvidenceRefV1` identity is forbidden. `consumedEvidenceRefs` may use
+only this closed form.
+
 Canonical ordering is by `kind`, then concrete HashRef domain/hash where present,
 then descriptor `artifactSchemaVersion`, `contentSha256`, `contentByteLength`,
 `recordCount`, then fold ordinal/phase where present. Duplicate concrete
@@ -506,10 +587,9 @@ VALIDATION_ASSESSMENT_CRITERION_OUTCOME_V1 {
   criterionId,
   criterionVersion,
   status,
-  observedValue,
   operator,
   threshold,
-  consumedEvidenceRefs,
+  observationOutcomes,
   reasonCode
 }
 ```
@@ -522,12 +602,36 @@ FAIL
 INSUFFICIENT_EVIDENCE
 ```
 
-`observedValue` is null only when evidence is insufficient or unavailable under
-the criterion's closed unavailable policy. When present, it must be derived from
-accepted predecessor bytes and serialized with the metric's accepted canonical
-serialization law. Accepted V2 metric observed values use exactly
-`CanonicalAssessmentNumericV1`; ratio and integer values are different kinds and
-are never implicitly coerced.
+`observationOutcomes` is a non-empty canonical array. A Criterion Outcome MUST
+NOT represent multi-fold scientific evidence with one ambiguous scalar
+`observedValue`. Each selected observation has exactly one:
+
+```text
+ValidationAssessmentObservationOutcomeV1 {
+  observationIdentity,
+  status,
+  observedValue,
+  consumedEvidenceRefs,
+  reasonCode
+}
+```
+
+`observationIdentity` is closed:
+
+```text
+ObservationIdentityV1 =
+  | { kind = AGGREGATE }
+  | { kind = FOLD_PHASE, foldOrdinal = canonical non-negative integer string, phase = TRAINING | EVALUATION }
+```
+
+Observation outcomes are byte-sorted by `observationIdentity.kind`, then numeric
+`foldOrdinal`, then `phase`. Duplicate observation identity is forbidden.
+`observedValue` is null only when that observation's evidence is insufficient or
+unavailable under the criterion's closed unavailable policy. When present, it
+must be derived from accepted predecessor bytes and serialized with the metric's
+accepted canonical serialization law. Accepted V2 metric observed values use
+exactly `CanonicalAssessmentNumericV1`; ratio and integer values are different
+kinds and are never implicitly coerced.
 
 `reasonCode` is closed:
 
@@ -542,10 +646,11 @@ EVIDENCE_SOURCE_INCOMPATIBLE
 OBSERVED_VALUE_KIND_MISMATCH
 ```
 
-`reasonCode = null` exactly when `status = PASS`. `CRITERION_PASSED` is not a
-canonical reason code. For `FAIL` or `INSUFFICIENT_EVIDENCE`, `reasonCode` is
-required and must be one of the closed V1 reason codes above. No free-form
-reason string carries assessment authority.
+For both criterion-level and observation-level outcomes, `reasonCode = null`
+exactly when `status = PASS`. `CRITERION_PASSED` is not a canonical reason
+code. For `FAIL` or `INSUFFICIENT_EVIDENCE`, `reasonCode` is required and must
+be one of the closed V1 reason codes above. No free-form reason string carries
+assessment authority.
 
 `UNAVAILABLE_NOT_ADMITTED` means unavailable metric evidence is not a normal
 criterion outcome. If a selected observation is unavailable under
@@ -557,10 +662,10 @@ outcome, extra criterion outcome, duplicate outcome, criterionId/version
 mismatch, operator drift, threshold drift or evidence that does not satisfy the
 criterion's frozen evidence requirements all fail closed. Canonical ordering of
 `criterionOutcomes` is lexicographic by `criterionId`, then
-`criterionVersion`. Within each outcome, `consumedEvidenceRefs` are ordered by
-the consumed-evidence canonical order and duplicates are forbidden. Criterion
-Outcome evidence must reference concrete `consumedEvidence` entries that satisfy
-the Protocol's frozen evidence requirement descriptors.
+`criterionVersion`. Within each observation outcome, `consumedEvidenceRefs` are
+ordered by the consumed-evidence canonical order and duplicates are forbidden.
+Observation Outcome evidence must reference concrete `consumedEvidence` entries
+that satisfy the Protocol's frozen evidence requirement descriptors.
 
 ## Outcome Aggregation
 

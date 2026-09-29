@@ -105,6 +105,7 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "required criteria count `>= 1`",
       "requiredEvidenceRequirements.length >= 1",
       "EvidenceRequirementDescriptorV1",
+      "EvidenceSourceLineageSelectorV1",
       "artifactClass",
       "sourceLineage",
       "metricIdentity",
@@ -125,9 +126,13 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("An empty criteria set or all-optional criteria set is invalid");
     expect(normalized).toContain("Duplicate criterion identity is forbidden");
     expect(normalized).toContain("Protocol evidence requirements are closed descriptors/selectors, not future concrete hashes");
-    expect(normalized).toContain("`sourceLineage` binds the required tenant authority, Investigation, subject Experiment, subject Research IR, Validation Protocol, fold/scope selector");
+    expect(normalized).toContain("`sourceLineage` is a closed pre-result selector");
+    expect(normalized).toContain("validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1>");
+    expect(normalized).toContain("observationScope: ObservationScopeSelectorV1");
+    expect(normalized).toContain("It must not include future Result, Validation Child Result, Validation Result, Evidence Object, Metric Result Set descriptor or database row identities");
     expect(normalized).toContain("Duplicate `requirementId` is forbidden");
     expect(normalized).toContain("Canonical ordering is lexicographic by `requirementId`");
+    expect(normalized).toContain("Top-level `requiredEvidenceRequirements` MUST equal the byte-sorted deduplicated union of every criterion `evidenceRequirements`");
   });
 
   it("freezes exact criterion vocabularies and threshold union", () => {
@@ -143,7 +148,6 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "{ kind = FOLD_PHASE, foldOrdinal = canonical non-negative integer string, phase = TRAINING | EVALUATION }",
       "SINGLE_OBSERVATION",
       "ALL_SELECTED_OBSERVATIONS_PASS",
-      "ANY_SELECTED_OBSERVATION_FAILS",
       "VALIDATION_RESULT",
       "VALIDATION_CHILD_RESULT",
       "METRIC_RESULT_SET_DESCRIPTOR_V1",
@@ -162,7 +166,9 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("Range operators `BETWEEN_INCLUSIVE` and `OUTSIDE_EXCLUSIVE` require exactly `RangeThresholdV1` and `lower <= upper`");
     expect(normalized).toContain("Wrong threshold shape for operator fails closed");
     expect(normalized).toContain("A fold-specific scope must carry both `foldOrdinal` and `phase`");
+    expect(normalized).toContain("Empty selected observation set must never vacuously PASS");
     expect(normalized).toContain("No runtime-selected averaging, weighting or reduction is admitted");
+    expect(normalized).toContain("The former `ANY_SELECTED_OBSERVATION_FAILS` token is not admitted in V1");
     expect(contract).not.toContain("for example:");
   });
 
@@ -197,6 +203,9 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "OBSERVED_VALUE_KIND_MISMATCH",
       "reasonCode = null",
       "UNAVAILABLE_NOT_ADMITTED",
+      "ValidationAssessmentObservationOutcomeV1",
+      "ObservationIdentityV1",
+      "observationOutcomes",
       "There is exactly one Criterion Outcome per Protocol Criterion",
     ]) expect(contract).toContain(token);
     const reasonBlock = fencedBlockAfter(contract, "`reasonCode` is closed:");
@@ -207,9 +216,12 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("No implicit coercion between integer and ratio is admitted");
     expect(normalized).toContain("`reasonCode = null` exactly when `status = PASS`");
     expect(normalized).toContain("If a selected observation is unavailable under `UNAVAILABLE_NOT_ADMITTED`, no authoritative Assessment Result may be produced");
+    expect(normalized).toContain("MUST NOT represent multi-fold scientific evidence with one ambiguous scalar `observedValue`");
+    expect(normalized).toContain("Observation outcomes are byte-sorted by `observationIdentity.kind`, then numeric `foldOrdinal`, then `phase`");
+    expect(normalized).toContain("Duplicate observation identity is forbidden");
     expect(normalized).toContain("Missing criterion outcome, extra criterion outcome, duplicate outcome, criterionId/version mismatch, operator drift, threshold drift");
     expect(normalized).toContain("Canonical ordering of `criterionOutcomes` is lexicographic by `criterionId`, then `criterionVersion`");
-    expect(normalized).toContain("Within each outcome, `consumedEvidenceRefs` are ordered by the consumed-evidence canonical order and duplicates are forbidden");
+    expect(normalized).toContain("Within each observation outcome, `consumedEvidenceRefs` are ordered by the consumed-evidence canonical order and duplicates are forbidden");
   });
 
   it("freezes registry compatibility and blocks V1/V2 evidence mixing", () => {
@@ -221,6 +233,15 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("Metric Result Set evidence is first-class descriptor evidence owned by Result and Validation Child Result payloads, not a standalone `HashRefV1` domain");
     expect(contract).toContain("MetricResultSetEvidenceV1");
     expect(contract).toContain("MetricResultSetEvidenceV2");
+    expect(contract).toContain("MetricRecordEvidenceV1");
+    expect(contract).toContain("MetricRecordEvidenceV2");
+    expect(contract).toContain("ConsumedEvidenceRefV1");
+    expect(normalized).toContain("full artifact bytes verify against descriptor SHA/byteLength/recordCount");
+    expect(normalized).toContain("selects records by exact `metricId + metricVersion + registryVersion`");
+    expect(normalized).toContain("Wrong metric, duplicate metric or wrong registry fails closed");
+    expect(normalized).toContain("Records are ordered by `registryVersion`, then `metricId`, then `metricVersion`");
+    expect(normalized).toContain("Duplicate `(registryVersion, metricId, metricVersion)` records fail closed");
+    expect(normalized).toContain("never uses array indexes, database UUIDs, insertion order or object references as scientific identity");
   });
 
   it("freezes deterministic aggregation rather than hidden scoring", () => {
@@ -271,6 +292,7 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "PROMOTION_ELIGIBLE",
     ]) expect(contract).toContain(token);
     expect(contract).toContain("ConsumedEvidenceV1");
+    expect(contract).toContain("ConsumedEvidenceRefV1");
     expect(normalized).toContain("binds exact post-result identities and descriptors");
     expect(normalized).toContain("Result evidence closure must reconstruct exactly every selected Validation Child Result, every exact Metric Result Set used, exact metric record(s), exact Validation Result and exact Assessment Protocol");
     expect(normalized).toContain("without caller memory, `latest` lookup or mutable pointers");
