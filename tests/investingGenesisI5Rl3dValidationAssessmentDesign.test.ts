@@ -130,9 +130,12 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1>");
     expect(normalized).toContain("observationScope: ObservationScopeSelectorV1");
     expect(normalized).toContain("It must not include future Result, Validation Child Result, Validation Result, Evidence Object, Metric Result Set descriptor or database row identities");
-    expect(normalized).toContain("Duplicate `requirementId` is forbidden");
+    expect(normalized).toContain("Duplicate `requirementId` within one criterion is forbidden");
     expect(normalized).toContain("Canonical ordering is lexicographic by `requirementId`");
     expect(normalized).toContain("Top-level `requiredEvidenceRequirements` MUST equal the byte-sorted deduplicated union of every criterion `evidenceRequirements`");
+    expect(normalized).toContain("The same `requirementId` may appear in multiple criteria only when every corresponding `EvidenceRequirementDescriptorV1` is byte-identical");
+    expect(normalized).toContain("The same `requirementId` with a divergent descriptor fails closed");
+    expect(normalized).toContain("with exactly one canonical instance per `requirementId`");
   });
 
   it("freezes exact criterion vocabularies and threshold union", () => {
@@ -192,6 +195,8 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
   it("freezes observed value kinds, reason vocabulary and outcome-to-criterion bijection", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
+    const criterionOutcomeBlock = fencedBlockAfter(contract, "Each criterion outcome is a closed canonical record:");
+    const observationOutcomeBlock = fencedBlockAfter(contract, "Each selected observation has exactly one:");
     for (const token of [
       "CRITERION_THRESHOLD_FAILED",
       "REQUIRED_EVIDENCE_MISSING",
@@ -208,13 +213,21 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "observationOutcomes",
       "There is exactly one Criterion Outcome per Protocol Criterion",
     ]) expect(contract).toContain(token);
-    const reasonBlock = fencedBlockAfter(contract, "`reasonCode` is closed:");
+    expect(criterionOutcomeBlock).toContain("VALIDATION_ASSESSMENT_CRITERION_OUTCOME_V1");
+    expect(criterionOutcomeBlock).not.toContain("reasonCode");
+    expect(observationOutcomeBlock).toContain("reasonCode");
+    const reasonBlock = fencedBlockAfter(contract, "Observation-level `reasonCode` is closed:");
     expect(reasonBlock).not.toContain("CRITERION_PASSED");
     expect(normalized).toContain("No free-form reason string carries assessment authority");
     expect(normalized).toContain("Ratio metrics require `RATIO` observed values");
     expect(normalized).toContain("Count metrics require `INTEGER` observed values");
     expect(normalized).toContain("No implicit coercion between integer and ratio is admitted");
-    expect(normalized).toContain("`reasonCode = null` exactly when `status = PASS`");
+    expect(normalized).toContain("Criterion Outcome has no criterion-level `reasonCode`");
+    expect(normalized).toContain("Criterion status is derived only from `status + observationOutcomes` using the frozen `observationAggregation` rule");
+    expect(normalized).toContain("Observation-level `reasonCode = null` exactly when `status = PASS`");
+    expect(normalized).toContain("Observation-level reason derivation is deterministic");
+    expect(normalized).toContain("REGISTRY_INCOMPATIBLE EVIDENCE_SOURCE_INCOMPATIBLE OBSERVED_VALUE_KIND_MISMATCH REQUIRED_EVIDENCE_MISSING METRIC_UNAVAILABLE UNAVAILABLE_POLICY_FAILED UNAVAILABLE_POLICY_INSUFFICIENT_EVIDENCE CRITERION_THRESHOLD_FAILED");
+    expect(normalized).toContain("No implementation-selected reason is admitted");
     expect(normalized).toContain("If a selected observation is unavailable under `UNAVAILABLE_NOT_ADMITTED`, no authoritative Assessment Result may be produced");
     expect(normalized).toContain("MUST NOT represent multi-fold scientific evidence with one ambiguous scalar `observedValue`");
     expect(normalized).toContain("Observation outcomes are byte-sorted by `observationIdentity.kind`, then numeric `foldOrdinal`, then `phase`");
@@ -227,6 +240,8 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
   it("freezes registry compatibility and blocks V1/V2 evidence mixing", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
+    const consumedEvidenceBlock = fencedBlockAfter(contract, "`consumedEvidence` is a non-empty canonical array");
+    const metricSetBlock = fencedBlockAfter(contract, "The accepted V1/V2 shape is:");
     expect(normalized).toContain("METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_DESCRIPTOR_V1");
     expect(normalized).toContain("METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_DESCRIPTOR_V2");
     expect(normalized).toContain("V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a descriptor is syntactically present");
@@ -236,12 +251,31 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(contract).toContain("MetricRecordEvidenceV1");
     expect(contract).toContain("MetricRecordEvidenceV2");
     expect(contract).toContain("ConsumedEvidenceRefV1");
+    expect(contract).not.toContain("evidenceIdentity: ConsumedEvidenceRefV1");
+    expect(consumedEvidenceBlock).not.toContain("metricRecords");
+    expect(metricSetBlock).toContain("metricRecords");
+    expect(normalized).not.toContain("If an implementation chooses to carry the full verified artifact record set");
+    expect(normalized).toContain("`metricRecords` exists in exactly one canonical location");
+    expect(normalized).toContain("It MUST equal the byte-sorted, duplicate-free union of exactly the metric records required by all Assessment Protocol criteria that consume that exact verified Metric Result Set artifact");
+    expect(normalized).toContain("No extra metric record may be serialized");
+    expect(normalized).toContain("No required consumed metric record may be omitted");
+    expect(normalized).toContain("The full artifact bytes must still verify against descriptor SHA-256, byte length and record count before selecting the canonical consumed subset");
+    expect(normalized).toContain("The same accepted evidence therefore always produces the same `metricRecords`");
     expect(normalized).toContain("full artifact bytes verify against descriptor SHA/byteLength/recordCount");
     expect(normalized).toContain("selects records by exact `metricId + metricVersion + registryVersion`");
     expect(normalized).toContain("Wrong metric, duplicate metric or wrong registry fails closed");
     expect(normalized).toContain("Records are ordered by `registryVersion`, then `metricId`, then `metricVersion`");
     expect(normalized).toContain("Duplicate `(registryVersion, metricId, metricVersion)` records fail closed");
     expect(normalized).toContain("never uses array indexes, database UUIDs, insertion order or object references as scientific identity");
+    expect(normalized).toContain("For Metric Result Set evidence, `ConsumedEvidenceRefV1` is derived, not caller-supplied");
+    expect(normalized).toContain("from the frozen descriptor identity `artifactSchemaVersion + contentSha256 + contentByteLength + recordCount` and the accepted owner Result or Validation Child Result HashRef");
+    expect(normalized).toContain("If any persistence projection repeats the derived identity for indexing, exact equality with the derived `ConsumedEvidenceRefV1` is mandatory and divergent identity fails closed");
+    expect(normalized).toContain("Metric numeric kind authority is derived from the accepted Metric Registry, not from caller declaration");
+    expect(normalized).toContain("The observed value kind MUST equal the registry-derived metric kind");
+    expect(normalized).toContain("A scalar threshold value kind MUST equal the registry-derived metric kind");
+    expect(normalized).toContain("A range threshold MUST satisfy `lower.kind == upper.kind`, and both range kinds MUST equal the registry-derived metric kind");
+    expect(normalized).toContain("Kind mismatch fails closed before PASS/FAIL/INSUFFICIENT_EVIDENCE assessment");
+    expect(normalized).toContain("INTEGER/RATIO coercion is not admitted");
   });
 
   it("freezes deterministic aggregation rather than hidden scoring", () => {
