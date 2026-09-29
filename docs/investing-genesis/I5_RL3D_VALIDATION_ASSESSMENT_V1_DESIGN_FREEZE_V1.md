@@ -105,7 +105,6 @@ VALIDATION_ASSESSMENT_PROTOCOL_V1 {
   schemaVersion,
   assessmentMethodology,
   validationProtocol,
-  validationResult,
   subjectExperiment,
   subjectResearchIr,
   metricRegistryVersion,
@@ -129,10 +128,39 @@ Required HashRefs:
 
 ```text
 validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1>
-validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1>
 subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>
 subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
 ```
+
+`VALIDATION_ASSESSMENT_PROTOCOL_V1` MUST NOT contain a Validation Result
+HashRef. It is the pre-result scientific methodology/criteria authority. It
+must be immutable before the first Validation Result for the exact validation
+scientific lineage can be assessed. A future implementation must enforce that
+the authoritative Assessment Protocol was accepted no later than the validation
+execution/result authority point frozen for that lineage. Observing a
+Validation Result and then creating a more permissive Assessment Protocol is
+not admissible authority for RL-8.
+
+The deterministic protocol-selection rule is:
+
+```text
+logicalAssessmentProtocolKey =
+  tenant authority
+  + Investigation UUID
+  + subjectExperiment HashRef
+  + subjectResearchIr HashRef
+  + validationProtocol HashRef
+  + metricRegistryVersion
+  + assessmentMethodology
+```
+
+Exactly one accepted Assessment Protocol may exist for one logical assessment
+protocol key. Identical retry reuses the same Assessment Protocol HashRef.
+Divergent payload for the same logical assessment protocol key fails closed
+with `DIVERGENT_ASSESSMENT_PROTOCOL`. Multiple incompatible Assessment
+Protocols for the same validation scientific lineage create ambiguous
+assessment authority; RL-8 must fail closed and must not choose by `latest`,
+caller preference, timestamp ordering or favorable outcome.
 
 `subjectResearchIr` is required when the accepted Validation Protocol and
 Validation Result lineage do not otherwise prove the exact Research IR consumed
@@ -152,10 +180,40 @@ The protocol must not contain mutable labels such as `latest`, `current`,
 `production`, `default`, `recommended` or `active` where they would identify
 scientific behavior.
 
+`criteria.length >= 1` and required criteria count `>= 1`. An empty criteria
+set or all-optional criteria set is invalid and cannot produce PASS. Duplicate
+criterion identity is forbidden.
+
+`requiredEvidenceSet.length >= 1`. Each entry is a full canonical HashRef
+envelope:
+
+```text
+RequiredEvidenceRefV1 {
+  hashAlgorithm = SHA-256,
+  hashDomain,
+  hashVersion = SYNTRAKE_SHA256_V1,
+  hashHex
+}
+```
+
+Admitted `requiredEvidenceSet.hashDomain` values are exactly:
+
+```text
+SYNTRAKE:VALIDATION_RESULT:V1
+SYNTRAKE:VALIDATION_CHILD_RESULT:V1
+SYNTRAKE:RESULT:V1
+SYNTRAKE:EVIDENCE_OBJECT:V1
+```
+
+Required evidence equality is by the full canonical HashRef envelope
+`hashAlgorithm`, `hashDomain`, `hashVersion`, `hashHex`. Duplicates are
+forbidden. Canonical ordering is lexicographic by
+`hashDomain`, then `hashHex`, then `hashAlgorithm`, then `hashVersion`.
+
 ## Criterion Identity
 
 Each criterion is a closed canonical record. Criteria are byte-sorted by
-`criterionId` after validation.
+`criterionId`, then `criterionVersion` after validation.
 
 ```text
 VALIDATION_ASSESSMENT_CRITERION_V1 {
@@ -173,6 +231,52 @@ VALIDATION_ASSESSMENT_CRITERION_V1 {
 }
 ```
 
+`criterionId` grammar is:
+
+```text
+[A-Z][A-Z0-9_]{2,63}
+```
+
+`criterionVersion` is exactly:
+
+```text
+CRITERION_V1
+```
+
+Duplicate `(criterionId, criterionVersion)` pairs are forbidden.
+
+`phaseScope` is exactly one of:
+
+```text
+ALL_FOLDS_ALL_PHASES
+TRAINING_PHASES
+EVALUATION_PHASES
+FOLD_ORDINAL_PHASE
+AGGREGATE_VALIDATION_RESULT
+```
+
+`evidenceSource` is exactly one of:
+
+```text
+VALIDATION_RESULT
+VALIDATION_CHILD_RESULT
+METRIC_RESULT_SET_V1
+METRIC_RESULT_SET_V2
+EVIDENCE_OBJECT
+```
+
+`unavailablePolicy` is exactly one of:
+
+```text
+UNAVAILABLE_IS_INSUFFICIENT_EVIDENCE
+UNAVAILABLE_IS_FAIL
+UNAVAILABLE_NOT_ADMITTED
+```
+
+`evidenceRequirements` is a non-empty canonical array of
+`RequiredEvidenceRefV1` entries. Equality, duplicate rejection and ordering are
+the same as `requiredEvidenceSet`.
+
 Allowed outcome operators are closed and exact:
 
 ```text
@@ -185,21 +289,48 @@ BETWEEN_INCLUSIVE
 OUTSIDE_EXCLUSIVE
 ```
 
-`threshold` uses canonical decimal/rational representation appropriate to the
-metric unit. JSON number literals, JavaScript `Number`, binary floating point,
-locale parsing, implicit rounding and provider-native numeric formatting are
-not threshold authority.
-
-`evidenceSource` must be one of the admitted scientific predecessor locations,
-for example:
+Threshold is an exact closed union:
 
 ```text
-VALIDATION_RESULT
-VALIDATION_CHILD_RESULT
-METRIC_RESULT_SET_V1
-METRIC_RESULT_SET_V2
-EVIDENCE_OBJECT
+ScalarThresholdV1 {
+  kind = SCALAR,
+  value: CanonicalAssessmentNumericV1
+}
+
+RangeThresholdV1 {
+  kind = RANGE,
+  lower: CanonicalAssessmentNumericV1,
+  upper: CanonicalAssessmentNumericV1
+}
 ```
+
+Scalar operators `LT`, `LTE`, `EQ`, `GTE`, `GT` require exactly
+`ScalarThresholdV1`. Range operators `BETWEEN_INCLUSIVE` and
+`OUTSIDE_EXCLUSIVE` require exactly `RangeThresholdV1` and `lower <= upper`.
+Wrong threshold shape for operator fails closed.
+
+`CanonicalAssessmentNumericV1` is exactly one of:
+
+```text
+{ kind = RATIO, value = RESEARCH_RATIO_OUTPUT_V1 }
+{ kind = INTEGER, value = canonical decimal integer string }
+```
+
+JSON number literals, JavaScript `Number`, binary floating point, locale
+parsing, implicit rounding and provider-native numeric formatting are not
+threshold authority.
+
+Registry compatibility is exact:
+
+```text
+METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_V1
+METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_V2
+```
+
+V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a
+HashRef is syntactically valid. Ratio metrics require `RATIO` observed values.
+Count metrics require `INTEGER` observed values. No implicit coercion between
+integer and ratio is admitted.
 
 Each criterion must bind every Evidence Object, Metric Result Set descriptor,
 Validation Child Result and Validation Result HashRef needed to prove its
@@ -279,7 +410,36 @@ INSUFFICIENT_EVIDENCE
 `observedValue` is null only when evidence is insufficient or unavailable under
 the criterion's closed unavailable policy. When present, it must be derived from
 accepted predecessor bytes and serialized with the metric's accepted canonical
-serialization law.
+serialization law. Accepted V2 metric observed values use exactly
+`CanonicalAssessmentNumericV1`; ratio and integer values are different kinds and
+are never implicitly coerced.
+
+`reasonCode` is closed:
+
+```text
+CRITERION_PASSED
+CRITERION_THRESHOLD_FAILED
+REQUIRED_EVIDENCE_MISSING
+METRIC_UNAVAILABLE
+UNAVAILABLE_POLICY_FAILED
+UNAVAILABLE_POLICY_INSUFFICIENT_EVIDENCE
+REGISTRY_INCOMPATIBLE
+EVIDENCE_SOURCE_INCOMPATIBLE
+OBSERVED_VALUE_KIND_MISMATCH
+```
+
+`reasonCode = null` only when `status = PASS`. For `FAIL` or
+`INSUFFICIENT_EVIDENCE`, `reasonCode` is required and must be one of the closed
+V1 reason codes above. No free-form reason string carries assessment authority.
+
+There is exactly one Criterion Outcome per Protocol Criterion. Missing criterion
+outcome, extra criterion outcome, duplicate outcome, criterionId/version
+mismatch, operator drift, threshold drift or evidence that does not satisfy the
+criterion's frozen evidence requirements all fail closed. Canonical ordering of
+`criterionOutcomes` is lexicographic by `criterionId`, then
+`criterionVersion`. Within each outcome, `evidenceHashRefs` are ordered by
+`hashDomain`, then `hashHex`, then `hashAlgorithm`, then `hashVersion`, and
+duplicates are forbidden.
 
 ## Outcome Aggregation
 
@@ -323,6 +483,12 @@ Assessment admission must re-prove:
 - every Evidence Object consumed is bound to the exact accepted Result,
   RunInput, DatasetSnapshot, metric artifact and engine version it claims.
 
+Assessment Result admission must also re-prove that its Assessment Protocol is
+the unique authoritative accepted protocol for the logical assessment protocol
+key. Multiple conflicting Assessment Results for the same exact Validation
+lineage and Assessment Protocol authority fail closed. Identical result retry
+reuses the same Assessment Result HashRef; divergent result retry fails closed.
+
 Server-derived authority scope is mandatory. Client-supplied tenant,
 principal, membership or authorization data is not scientific authority.
 `service_role` is capability, not authorization.
@@ -354,6 +520,12 @@ assessment truth.
 
 RL-8 must consume RL-3D assessment results after RL-3D is independently
 accepted and implemented.
+
+RL-8 may consume only the unique authoritative accepted Assessment Result for
+the exact Validation lineage and the unique authoritative Assessment Protocol
+selected by the logical assessment protocol key. Multiple conflicting
+Assessment Results or ambiguous Protocol authority fail closed. RL-8 must never
+choose a PASS result because it is newer, more favorable or caller-selected.
 
 The deterministic mapping is:
 
