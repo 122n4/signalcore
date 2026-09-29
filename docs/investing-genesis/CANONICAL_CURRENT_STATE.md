@@ -101,6 +101,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-3A Validation Protocol Foundation (unnumbered) | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` |
 | I5 RL-3B Validation Child Execution (unnumbered) | `I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md` |
 | I5 RL-3C Validation Aggregate Closure (unnumbered) | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-3D Validation Assessment V1 Design Freeze (unnumbered) | `I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md` |
 | I5 RL-4 Research Engine V2 Design Freeze (unnumbered) | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` |
 | I5 RL-5 Research Engine V2 Implementation Closure (unnumbered) | `I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-6 Metric Registry V2 (unnumbered) | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` |
@@ -223,6 +224,15 @@ freeze/master evidence still relies on its narrow classifications.
   Together with accepted RL-3A and RL-3B it closes
   `RL-3_VALIDATION_PROTOCOL_V1`; it does not introduce promotion/robustness,
   Blind Truth, Engine V2, Paper, Live, Core or a permanent A-number.
+- I5 RL-3D Validation Assessment V1 Design Freeze:
+  `CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED`.
+  This accepted design-only slice freezes the separate downstream Validation
+  Assessment authority required between RL-3C structural validation closure and
+  RL-8 promotion. It freezes exactly two future assessment HashRef domains,
+  V2-only metric evidence under `METRIC_REGISTRY_V20260927`, deterministic
+  protocol/evidence/threshold/aggregation semantics and fail-closed RL-8
+  consumption. It does not admit runtime domains, persistence, migration,
+  Supabase Production mutation, RL-8 implementation, RL-9, Paper or Live.
 - I5 RL-6 Metric Registry V2:
   `CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`. This accepted
   slice adds the immutable `METRIC_REGISTRY_V20260927` and
@@ -747,6 +757,80 @@ I5 RL-3C Validation Aggregate Closure acceptance evidence:
 
 `I5 RL-3 VALIDATION PROTOCOL V1 = CURRENT_ACCEPTED / UNNUMBERED`.
 
+## I5 RL-3D Validation Assessment V1 Design Freeze (unnumbered)
+
+RL-3D runtime/progression state:
+
+- design: `YES`.
+- implementation: `NO`.
+- Production DB mutation: `NONE`.
+- state: `CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE`.
+- permanent A-number: `NONE`.
+
+I5 RL-3D Validation Assessment V1 Design Freeze acceptance evidence:
+
+- canonical design predecessor:
+  `b3f48e3f55a1f0c41004c60a3119fbd2cb7f84f0`.
+- final independently audited technical candidate:
+  `ecbd878b13f28e331ae632c2cc78eb94f008e7b3`.
+- PR:
+  `#107`.
+- accepted squash merge/main anchor:
+  `7c5d5dac9f45b8f9c2fb9f55037040f045c70268`.
+- candidate/merge tree:
+  `a4f18592cbf180171b6536ac57f0305b57304201`.
+- tree equality:
+  `PASS`.
+- CI:
+  `36608967214 / #1316 / SUCCESS`.
+- verify:
+  `109545186722 - SUCCESS`.
+- dependency-audit:
+  `109545186434 - SUCCESS`.
+- full suite:
+  `243 passed / 18 skipped files`.
+- tests:
+  `1416 passed / 53 skipped`.
+- lint:
+  `0 errors / 3 pre-existing warnings`.
+- TypeScript:
+  `PASS`.
+- build:
+  `PASS`.
+- dependency audit:
+  `0 vulnerabilities`.
+- Vercel:
+  `SUCCESS`.
+- PG17:
+  `NOT REQUIRED / DESIGN-ONLY`.
+- Production migration:
+  `NONE`.
+- Supabase Production mutation:
+  `NONE`.
+- permanent A-number:
+  `NOT ASSIGNED`.
+- independent auditor verdict:
+  `PASS`.
+
+Accepted RL-3D design invariants:
+
+- RL-3C `SYNTRAKE:VALIDATION_RESULT:V1` remains structural aggregate truth and
+  is not reinterpreted as assessment PASS/FAIL.
+- The design freezes only
+  `SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1` and
+  `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1`; both remain
+  `DESIGN_FROZEN / NOT_RUNTIME_ADMITTED`.
+- RL-3D V1 assessment is V2-only under
+  `METRIC_REGISTRY_V20260927 / METRIC_V2 / METRIC_RESULT_SET_V2`.
+- Integrity, authority, lineage, registry or observed-value-kind incompatibility
+  fails closed before an authoritative assessment outcome exists.
+- Assessment outcome authority is exactly `PASS | FAIL | INSUFFICIENT_EVIDENCE`.
+- No hidden score, AI confidence, probability, recommendation, Paper, Live or
+  Capital Kernel authority is introduced.
+- RL-8 implementation remains separate and is not started by this acceptance.
+
+`I5 RL-3D VALIDATION ASSESSMENT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
+
 ## I5 RL-4 Research Engine V2 Design Freeze (unnumbered)
 
 RL-4 runtime/progression state:
@@ -1014,6 +1098,9 @@ Current production closure is:
 - `RL-3C advisor remediation = APPLIED / AUDITED / CANONICAL`.
 - `RL-3C Git/Production alignment = PASS`.
 - `RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
+- `RL-3D = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED`.
+- `RL-3D Production migration = NONE`.
+- `RL-3D Supabase Production mutation = NONE`.
 - `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 - `RL-5 Production migration = APPLIED`.
 - `RL-5 post-apply audit = PASSED`.
@@ -1024,10 +1111,11 @@ Current production closure is:
 - `RL-6 Supabase Production mutation = NONE`.
 
 This production state records RL-5 accepted in Git and applied in Production.
-RL-6 is accepted in Git and required no database migration; therefore the
-Production Supabase migration state remains `CURRENT THROUGH RL-5`. It does
-not accept RL-7+, promotion/robustness, Blind Truth, Paper, Live, Core or any
-permanent A-number.
+RL-6 is accepted in Git and required no database migration. RL-3D is accepted
+in Git as a design-only Validation Assessment freeze and likewise requires no
+Production migration or Supabase mutation. Therefore the Production Supabase
+migration state remains `CURRENT THROUGH RL-5`. It does not accept RL-7+,
+promotion/robustness, Blind Truth, Paper, Live, Core or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -1055,6 +1143,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-3A Validation Protocol Foundation / unnumbered | YES | YES | `I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md` + Validation Protocol runtime/tests + architecture boundaries + CI; no persistence, migration, RLS or SQL | CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED | CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION | NONE |
 | RL-3B Validation Child Execution / unnumbered | YES | YES | owner contract + runtime + writer/service + migration + authority/runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION | NONE |
 | RL-3C Validation Aggregate Closure / unnumbered | YES | YES | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` + Validation Result runtime/finalizer + Passport/Evidence Ledger projection + migration + PG17 physical/finalizer/cumulative rehearsals + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE | NONE |
+| RL-3D Validation Assessment V1 Design Freeze / unnumbered | NO | YES | `I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md` + static design contract tests + independent audit + PR/CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE | NONE |
 | RL-4 Research Engine V2 Design Freeze / unnumbered | NO | YES | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` + static contract tests + independent design audit + CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED | CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE | NONE |
 | RL-5 Research Engine V2 Implementation Closure / unnumbered | YES | YES | RL-5 owner contract + Engine V2 runtime + scientific admission + Validation V2 + V2 goldens + migration + independent implementation audit + real PostgreSQL 17 rehearsal + PR/CI + Vercel + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE | NONE |
 | RL-6 Metric Registry V2 / unnumbered | YES | YES | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` + Metric Registry V2 runtime + certified arithmetic + V2 metric goldens + Validation V2 compatibility + PR/CI + Vercel + independent audit | CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED | CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 | NONE |
