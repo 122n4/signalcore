@@ -113,7 +113,6 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "missingEvidencePolicy",
       "VALIDATION_RESULT",
       "VALIDATION_CHILD_RESULT",
-      "METRIC_RESULT_SET_DESCRIPTOR_V1",
       "METRIC_RESULT_SET_DESCRIPTOR_V2",
       "EVIDENCE_OBJECT",
       "EXACTLY_ONE",
@@ -136,6 +135,9 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("The same `requirementId` may appear in multiple criteria only when every corresponding `EvidenceRequirementDescriptorV1` is byte-identical");
     expect(normalized).toContain("The same `requirementId` with a divergent descriptor fails closed");
     expect(normalized).toContain("with exactly one canonical instance per `requirementId`");
+    expect(normalized).toContain("RL-3D V1 scientific assessment is scoped to Metric Registry V2 only");
+    expect(normalized).toContain("METRIC_REGISTRY_V20260927 / METRIC_V2 / METRIC_RESULT_SET_V2");
+    expect(normalized).toContain("does not promotion-assess V1 metric evidence and does not define a V1 metric normalization layer");
   });
 
   it("freezes exact criterion vocabularies and threshold union", () => {
@@ -153,7 +155,6 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "ALL_SELECTED_OBSERVATIONS_PASS",
       "VALIDATION_RESULT",
       "VALIDATION_CHILD_RESULT",
-      "METRIC_RESULT_SET_DESCRIPTOR_V1",
       "METRIC_RESULT_SET_DESCRIPTOR_V2",
       "EVIDENCE_OBJECT",
       "UNAVAILABLE_IS_INSUFFICIENT_EVIDENCE",
@@ -172,6 +173,9 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("Empty selected observation set must never vacuously PASS");
     expect(normalized).toContain("No runtime-selected averaging, weighting or reduction is admitted");
     expect(normalized).toContain("The former `ANY_SELECTED_OBSERVATION_FAILS` token is not admitted in V1");
+    expect(normalized).toContain("All threshold comparisons use exact deterministic numeric comparison over the canonical serialized metric value");
+    expect(normalized).toContain("Lexical comparison, JavaScript `Number`, IEEE floating point, locale parsing and provider-native numeric comparison are not authority");
+    expect(normalized).toContain("LT: observed < threshold LTE: observed <= threshold EQ: observed == threshold GTE: observed >= threshold GT: observed > threshold BETWEEN_INCLUSIVE: lower <= observed <= upper OUTSIDE_EXCLUSIVE: observed < lower OR observed > upper");
     expect(contract).not.toContain("for example:");
   });
 
@@ -203,9 +207,6 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "METRIC_UNAVAILABLE",
       "UNAVAILABLE_POLICY_FAILED",
       "UNAVAILABLE_POLICY_INSUFFICIENT_EVIDENCE",
-      "REGISTRY_INCOMPATIBLE",
-      "EVIDENCE_SOURCE_INCOMPATIBLE",
-      "OBSERVED_VALUE_KIND_MISMATCH",
       "reasonCode = null",
       "UNAVAILABLE_NOT_ADMITTED",
       "ValidationAssessmentObservationOutcomeV1",
@@ -218,6 +219,9 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(observationOutcomeBlock).toContain("reasonCode");
     const reasonBlock = fencedBlockAfter(contract, "Observation-level `reasonCode` is closed:");
     expect(reasonBlock).not.toContain("CRITERION_PASSED");
+    expect(reasonBlock).not.toContain("REGISTRY" + "_INCOMPATIBLE");
+    expect(reasonBlock).not.toContain("EVIDENCE_SOURCE" + "_INCOMPATIBLE");
+    expect(reasonBlock).not.toContain("OBSERVED_VALUE_KIND" + "_MISMATCH");
     expect(normalized).toContain("No free-form reason string carries assessment authority");
     expect(normalized).toContain("Ratio metrics require `RATIO` observed values");
     expect(normalized).toContain("Count metrics require `INTEGER` observed values");
@@ -226,8 +230,10 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("Criterion status is derived only from `status + observationOutcomes` using the frozen `observationAggregation` rule");
     expect(normalized).toContain("Observation-level `reasonCode = null` exactly when `status = PASS`");
     expect(normalized).toContain("Observation-level reason derivation is deterministic");
-    expect(normalized).toContain("REGISTRY_INCOMPATIBLE EVIDENCE_SOURCE_INCOMPATIBLE OBSERVED_VALUE_KIND_MISMATCH REQUIRED_EVIDENCE_MISSING METRIC_UNAVAILABLE UNAVAILABLE_POLICY_FAILED UNAVAILABLE_POLICY_INSUFFICIENT_EVIDENCE CRITERION_THRESHOLD_FAILED");
+    expect(normalized).toContain("REQUIRED_EVIDENCE_MISSING METRIC_UNAVAILABLE UNAVAILABLE_POLICY_FAILED UNAVAILABLE_POLICY_INSUFFICIENT_EVIDENCE CRITERION_THRESHOLD_FAILED");
     expect(normalized).toContain("No implementation-selected reason is admitted");
+    expect(normalized).toContain("Registry incompatibility, evidence-source incompatibility and observed-value kind mismatch are admission failures, not serialized scientific observation reasons");
+    expect(normalized).toContain("They fail closed before an authoritative Assessment Result exists");
     expect(normalized).toContain("If a selected observation is unavailable under `UNAVAILABLE_NOT_ADMITTED`, no authoritative Assessment Result may be produced");
     expect(normalized).toContain("MUST NOT represent multi-fold scientific evidence with one ambiguous scalar `observedValue`");
     expect(normalized).toContain("Observation outcomes are byte-sorted by `observationIdentity.kind`, then numeric `foldOrdinal`, then `phase`");
@@ -241,14 +247,16 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
     const consumedEvidenceBlock = fencedBlockAfter(contract, "`consumedEvidence` is a non-empty canonical array");
-    const metricSetBlock = fencedBlockAfter(contract, "The accepted V1/V2 shape is:");
-    expect(normalized).toContain("METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_DESCRIPTOR_V1");
+    const metricSetBlock = fencedBlockAfter(contract, "The accepted V2 shape is:");
+    expect(contract).not.toContain("METRIC_REGISTRY" + "_V20260918");
+    expect(contract).not.toContain("METRIC" + "_V1");
+    expect(contract).not.toContain("METRIC_RESULT_SET_DESCRIPTOR" + "_V1");
+    expect(contract).not.toContain("MetricResultSetEvidence" + "V1");
+    expect(contract).not.toContain("MetricRecordEvidence" + "V1");
     expect(normalized).toContain("METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_DESCRIPTOR_V2");
-    expect(normalized).toContain("V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a descriptor is syntactically present");
+    expect(normalized).toContain("Metric V1 evidence is not admitted by RL-3D V1 and cannot be normalized into Metric V2 evidence");
     expect(normalized).toContain("Metric Result Set evidence is first-class descriptor evidence owned by Result and Validation Child Result payloads, not a standalone `HashRefV1` domain");
-    expect(contract).toContain("MetricResultSetEvidenceV1");
     expect(contract).toContain("MetricResultSetEvidenceV2");
-    expect(contract).toContain("MetricRecordEvidenceV1");
     expect(contract).toContain("MetricRecordEvidenceV2");
     expect(contract).toContain("ConsumedEvidenceRefV1");
     expect(contract).not.toContain("evidenceIdentity: ConsumedEvidenceRefV1");
@@ -256,6 +264,7 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(metricSetBlock).toContain("metricRecords");
     expect(normalized).not.toContain("If an implementation chooses to carry the full verified artifact record set");
     expect(normalized).toContain("`metricRecords` exists in exactly one canonical location");
+    expect(normalized).toContain("consumed evidence: inside `MetricResultSetEvidenceV2`");
     expect(normalized).toContain("It MUST equal the byte-sorted, duplicate-free union of exactly the metric records required by all Assessment Protocol criteria that consume that exact verified Metric Result Set artifact");
     expect(normalized).toContain("No extra metric record may be serialized");
     expect(normalized).toContain("No required consumed metric record may be omitted");
@@ -276,6 +285,26 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("A range threshold MUST satisfy `lower.kind == upper.kind`, and both range kinds MUST equal the registry-derived metric kind");
     expect(normalized).toContain("Kind mismatch fails closed before PASS/FAIL/INSUFFICIENT_EVIDENCE assessment");
     expect(normalized).toContain("INTEGER/RATIO coercion is not admitted");
+  });
+
+  it("freezes a closed compatibility matrix and total evidence ordering", () => {
+    const contract = read(contractPath);
+    const normalized = compact(contract);
+    for (const token of [
+      "The compatibility matrix between `artifactClass`, `artifactOwnerClass`, criterion `evidenceSource`, `ObservationScopeSelectorV1` and `cardinality` is closed",
+      "Nonsensical combinations fail closed during Protocol admission",
+      "No implementation may invent additional combinations",
+      "VALIDATION_RESULT / VALIDATION_AGGREGATE / VALIDATION_RESULT / { kind = AGGREGATE } / EXACTLY_ONE",
+      "VALIDATION_CHILD_RESULT / VALIDATION_CHILD / VALIDATION_CHILD_RESULT / { kind = FOLD_PHASE } / EXACTLY_ONE",
+      "METRIC_RESULT_SET_DESCRIPTOR_V2 / EXECUTION_RESULT / METRIC_RESULT_SET_DESCRIPTOR_V2 / { kind = AGGREGATE } / EXACTLY_ONE",
+      "METRIC_RESULT_SET_DESCRIPTOR_V2 / VALIDATION_CHILD / METRIC_RESULT_SET_DESCRIPTOR_V2 / { kind = ALL_EVALUATION_FOLDS } / ONE_PER_SELECTED_OBSERVATION",
+      "EVIDENCE_OBJECT / EVIDENCE_OBJECT / EVIDENCE_OBJECT",
+      "`consumedEvidence` and `ConsumedEvidenceRefV1` ordering is a total deterministic order",
+      "ref.hashAlgorithm ref.hashDomain ref.hashVersion ref.hashHex",
+      "ownerResult.hashAlgorithm ownerResult.hashDomain ownerResult.hashVersion ownerResult.hashHex",
+      "Two Metric Result Set descriptors with identical artifact bytes but different owner Result or Validation Child Result HashRefs still have a deterministic order",
+      "No ordering rule may depend on array position, insertion order, timestamp, database UUID or caller preference",
+    ]) expect(normalized).toContain(token);
   });
 
   it("freezes deterministic aggregation rather than hidden scoring", () => {

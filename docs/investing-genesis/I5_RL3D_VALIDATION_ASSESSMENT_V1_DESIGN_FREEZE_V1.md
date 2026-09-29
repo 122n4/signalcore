@@ -219,7 +219,6 @@ EvidenceRequirementDescriptorV1 {
 ```text
 VALIDATION_RESULT
 VALIDATION_CHILD_RESULT
-METRIC_RESULT_SET_DESCRIPTOR_V1
 METRIC_RESULT_SET_DESCRIPTOR_V2
 EVIDENCE_OBJECT
 ```
@@ -277,6 +276,51 @@ equal the byte-sorted deduplicated union of every criterion
 `evidenceRequirements`, with exactly one canonical instance per
 `requirementId`. There is no silent divergence between top-level and criterion
 requirements in V1, and no independent global requirements outside that union.
+
+RL-3D V1 scientific assessment is scoped to Metric Registry V2 only:
+
+```text
+METRIC_REGISTRY_V20260927 / METRIC_V2 / METRIC_RESULT_SET_V2
+```
+
+Historical V1 Validation artifacts remain preserved and may remain part of the
+accepted predecessor history, but RL-3D V1 does not promotion-assess V1 metric
+evidence and does not define a V1 metric normalization layer.
+
+The compatibility matrix between `artifactClass`, `artifactOwnerClass`,
+criterion `evidenceSource`, `ObservationScopeSelectorV1` and `cardinality` is
+closed. Nonsensical combinations fail closed during Protocol admission. No
+implementation may invent additional combinations.
+
+```text
+VALIDATION_RESULT / VALIDATION_AGGREGATE / VALIDATION_RESULT /
+  { kind = AGGREGATE } / EXACTLY_ONE
+
+VALIDATION_CHILD_RESULT / VALIDATION_CHILD / VALIDATION_CHILD_RESULT /
+  { kind = FOLD_PHASE } / EXACTLY_ONE
+
+VALIDATION_CHILD_RESULT / VALIDATION_CHILD / VALIDATION_CHILD_RESULT /
+  { kind = ALL_EVALUATION_FOLDS } / ONE_PER_SELECTED_OBSERVATION
+
+VALIDATION_CHILD_RESULT / VALIDATION_CHILD / VALIDATION_CHILD_RESULT /
+  { kind = ALL_TRAINING_FOLDS } / ONE_PER_SELECTED_OBSERVATION
+
+METRIC_RESULT_SET_DESCRIPTOR_V2 / EXECUTION_RESULT / METRIC_RESULT_SET_DESCRIPTOR_V2 /
+  { kind = AGGREGATE } / EXACTLY_ONE
+
+METRIC_RESULT_SET_DESCRIPTOR_V2 / VALIDATION_CHILD / METRIC_RESULT_SET_DESCRIPTOR_V2 /
+  { kind = FOLD_PHASE } / EXACTLY_ONE
+
+METRIC_RESULT_SET_DESCRIPTOR_V2 / VALIDATION_CHILD / METRIC_RESULT_SET_DESCRIPTOR_V2 /
+  { kind = ALL_EVALUATION_FOLDS } / ONE_PER_SELECTED_OBSERVATION
+
+METRIC_RESULT_SET_DESCRIPTOR_V2 / VALIDATION_CHILD / METRIC_RESULT_SET_DESCRIPTOR_V2 /
+  { kind = ALL_TRAINING_FOLDS } / ONE_PER_SELECTED_OBSERVATION
+
+EVIDENCE_OBJECT / EVIDENCE_OBJECT / EVIDENCE_OBJECT /
+  { kind = AGGREGATE | FOLD_PHASE | ALL_EVALUATION_FOLDS | ALL_TRAINING_FOLDS } /
+  AT_LEAST_ONE
+```
 
 ## Criterion Identity
 
@@ -354,7 +398,6 @@ behavior-identical to the frozen fail-if-any-observation-fails rule.
 ```text
 VALIDATION_RESULT
 VALIDATION_CHILD_RESULT
-METRIC_RESULT_SET_DESCRIPTOR_V1
 METRIC_RESULT_SET_DESCRIPTOR_V2
 EVIDENCE_OBJECT
 ```
@@ -417,8 +460,7 @@ parsing, implicit rounding and provider-native numeric formatting are not
 threshold authority.
 
 Metric numeric kind authority is derived from the accepted Metric Registry, not
-from caller declaration. Under `METRIC_REGISTRY_V20260918`, `TOTAL_RETURN` and
-`MAX_DRAWDOWN` are `RATIO`. Under `METRIC_REGISTRY_V20260927`, `TOTAL_RETURN`,
+from caller declaration. Under `METRIC_REGISTRY_V20260927`, `TOTAL_RETURN`,
 `MAX_DRAWDOWN`, `CAGR`, `ANNUALIZED_VOLATILITY`, `DOWNSIDE_DEVIATION`,
 `SHARPE_RATIO`, `SORTINO_RATIO`, `CALMAR_RATIO`, `TURNOVER`,
 `AVERAGE_GROSS_EXPOSURE`, `BENCHMARK_RELATIVE_RETURN` and `TRACKING_ERROR` are
@@ -432,29 +474,33 @@ equal the registry-derived metric kind. Kind mismatch fails closed before
 PASS/FAIL/INSUFFICIENT_EVIDENCE assessment. INTEGER/RATIO coercion is not
 admitted.
 
+All threshold comparisons use exact deterministic numeric comparison over the
+canonical serialized metric value. Lexical comparison, JavaScript `Number`,
+IEEE floating point, locale parsing and provider-native numeric comparison are
+not authority. Operators are exact:
+
+```text
+LT: observed < threshold
+LTE: observed <= threshold
+EQ: observed == threshold
+GTE: observed >= threshold
+GT: observed > threshold
+BETWEEN_INCLUSIVE: lower <= observed <= upper
+OUTSIDE_EXCLUSIVE: observed < lower OR observed > upper
+```
+
 Registry compatibility is exact:
 
 ```text
-METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_DESCRIPTOR_V1
 METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_DESCRIPTOR_V2
 ```
 
-V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a
-descriptor is syntactically present. Metric Result Set evidence is first-class
-descriptor evidence owned by Result and Validation Child Result payloads, not a
-standalone `HashRefV1` domain. The accepted V1/V2 shape is:
+Metric V1 evidence is not admitted by RL-3D V1 and cannot be normalized into
+Metric V2 evidence. Metric Result Set evidence is first-class descriptor
+evidence owned by Result and Validation Child Result payloads, not a standalone
+`HashRefV1` domain. The accepted V2 shape is:
 
 ```text
-MetricResultSetEvidenceV1 {
-  artifactSchemaVersion = METRIC_RESULT_SET_V1,
-  format,
-  contentSha256,
-  contentByteLength,
-  recordCount,
-  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>,
-  metricRecords
-}
-
 MetricResultSetEvidenceV2 {
   artifactSchemaVersion = METRIC_RESULT_SET_V2,
   format,
@@ -472,8 +518,8 @@ and record count before any selected metric record becomes scientific
 assessment evidence.
 
 `metricRecords` exists in exactly one canonical location for Metric Result Set
-consumed evidence: inside `MetricResultSetEvidenceV1` or
-`MetricResultSetEvidenceV2`. It MUST equal the byte-sorted, duplicate-free union
+consumed evidence: inside `MetricResultSetEvidenceV2`. It MUST equal the
+byte-sorted, duplicate-free union
 of exactly the metric records required by all Assessment Protocol criteria that
 consume that exact verified Metric Result Set artifact. No extra metric record
 may be serialized. No required consumed metric record may be omitted. The full
@@ -488,15 +534,6 @@ exactly once. Wrong metric, duplicate metric or wrong registry fails closed.
 Metric record representation is:
 
 ```text
-MetricRecordEvidenceV1 {
-  registryVersion = METRIC_REGISTRY_V20260918,
-  metricId,
-  metricVersion = METRIC_V1,
-  availability,
-  value,
-  unavailableReason
-}
-
 MetricRecordEvidenceV2 {
   registryVersion = METRIC_REGISTRY_V20260927,
   metricId,
@@ -561,7 +598,6 @@ by the Assessment Result. It binds exact post-result identities and descriptors:
 ConsumedEvidenceV1 =
   | { kind = VALIDATION_RESULT, ref: HashRef<SYNTRAKE:VALIDATION_RESULT:V1> }
   | { kind = VALIDATION_CHILD_RESULT, ref: HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>, foldOrdinal, phase }
-  | { kind = METRIC_RESULT_SET_DESCRIPTOR_V1, descriptor: MetricResultSetEvidenceV1 }
   | { kind = METRIC_RESULT_SET_DESCRIPTOR_V2, descriptor: MetricResultSetEvidenceV2 }
   | { kind = EVIDENCE_OBJECT, ref: HashRef<SYNTRAKE:EVIDENCE_OBJECT:V1> }
 ```
@@ -583,15 +619,47 @@ For Metric Result Set evidence, `ConsumedEvidenceRefV1` is derived, not
 caller-supplied, from the frozen descriptor identity
 `artifactSchemaVersion + contentSha256 + contentByteLength + recordCount` and
 the accepted owner Result or Validation Child Result HashRef. No
-`evidenceIdentity` field is serialized inside `MetricResultSetEvidenceV1` or
-`MetricResultSetEvidenceV2`. If any persistence projection repeats the derived
-identity for indexing, exact equality with the derived `ConsumedEvidenceRefV1`
-is mandatory and divergent identity fails closed.
+`evidenceIdentity` field is serialized inside `MetricResultSetEvidenceV2`. If
+any persistence projection repeats the derived identity for indexing, exact
+equality with the derived `ConsumedEvidenceRefV1` is mandatory and divergent
+identity fails closed.
 
 Canonical ordering is by `kind`, then concrete HashRef domain/hash where present,
 then descriptor `artifactSchemaVersion`, `contentSha256`, `contentByteLength`,
 `recordCount`, then fold ordinal/phase where present. Duplicate concrete
 evidence identities are forbidden.
+
+`consumedEvidence` and `ConsumedEvidenceRefV1` ordering is a total
+deterministic order. HashRef-backed evidence sorts by:
+
+```text
+kind
+ref.hashAlgorithm
+ref.hashDomain
+ref.hashVersion
+ref.hashHex
+foldOrdinal when present
+phase when present
+```
+
+Metric Result Set descriptor evidence sorts by:
+
+```text
+kind
+artifactSchemaVersion
+contentSha256
+contentByteLength
+recordCount
+ownerResult.hashAlgorithm
+ownerResult.hashDomain
+ownerResult.hashVersion
+ownerResult.hashHex
+```
+
+Two Metric Result Set descriptors with identical artifact bytes but different
+owner Result or Validation Child Result HashRefs still have a deterministic
+order by the full owner Result HashRef envelope. No ordering rule may depend on
+array position, insertion order, timestamp, database UUID or caller preference.
 
 Result evidence closure must reconstruct exactly every selected Validation
 Child Result, every exact Metric Result Set used, exact metric record(s), exact
@@ -673,9 +741,6 @@ REQUIRED_EVIDENCE_MISSING
 METRIC_UNAVAILABLE
 UNAVAILABLE_POLICY_FAILED
 UNAVAILABLE_POLICY_INSUFFICIENT_EVIDENCE
-REGISTRY_INCOMPATIBLE
-EVIDENCE_SOURCE_INCOMPATIBLE
-OBSERVED_VALUE_KIND_MISMATCH
 ```
 
 Criterion Outcome has no criterion-level `reasonCode`. Criterion status is
@@ -691,9 +756,6 @@ conditions are present, the first applicable reason in this exact precedence
 order is serialized:
 
 ```text
-REGISTRY_INCOMPATIBLE
-EVIDENCE_SOURCE_INCOMPATIBLE
-OBSERVED_VALUE_KIND_MISMATCH
 REQUIRED_EVIDENCE_MISSING
 METRIC_UNAVAILABLE
 UNAVAILABLE_POLICY_FAILED
@@ -702,6 +764,11 @@ CRITERION_THRESHOLD_FAILED
 ```
 
 No implementation-selected reason is admitted.
+
+Registry incompatibility, evidence-source incompatibility and observed-value
+kind mismatch are admission failures, not serialized scientific observation
+reasons. They fail closed before an authoritative Assessment Result exists and
+therefore cannot be represented as PASS, FAIL or INSUFFICIENT_EVIDENCE.
 
 `UNAVAILABLE_NOT_ADMITTED` means unavailable metric evidence is not a normal
 criterion outcome. If a selected observation is unavailable under
