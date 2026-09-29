@@ -109,7 +109,7 @@ VALIDATION_ASSESSMENT_PROTOCOL_V1 {
   subjectResearchIr,
   metricRegistryVersion,
   criteria,
-  requiredEvidenceSet,
+  requiredEvidenceRequirements,
   missingEvidenceSemantics,
   aggregationRule
 }
@@ -133,13 +133,29 @@ subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
 ```
 
 `VALIDATION_ASSESSMENT_PROTOCOL_V1` MUST NOT contain a Validation Result
-HashRef. It is the pre-result scientific methodology/criteria authority. It
-must be immutable before the first Validation Result for the exact validation
-scientific lineage can be assessed. A future implementation must enforce that
-the authoritative Assessment Protocol was accepted no later than the validation
-execution/result authority point frozen for that lineage. Observing a
-Validation Result and then creating a more permissive Assessment Protocol is
-not admissible authority for RL-8.
+HashRef, Validation Child Result HashRef, Result HashRef, Evidence Object
+HashRef, concrete Metric Result Set descriptor/hash, or any other concrete
+future scientific artifact identity that does not exist when the protocol
+becomes authoritative. It is the pre-result scientific methodology/criteria
+authority.
+
+V1 precommit boundary:
+
+```text
+the unique authoritative Assessment Protocol for the logical assessment key
+MUST be durably accepted before the first VALIDATION_RUN_REGISTERED event
+for the exact Validation Protocol / subject Experiment lineage
+```
+
+After the first `VALIDATION_RUN_REGISTERED` event, no new or divergent
+Assessment Protocol may acquire authority for that logical key. Identical retry
+of the already accepted protocol remains allowed. No timestamp heuristic,
+wall-clock ordering, insertion-order preference or caller-selected ordering is
+authority. Future persistence must prove this event/order authority
+relationally against the accepted validation run lifecycle.
+
+Observing validation outcome evidence and then creating a more permissive
+Assessment Protocol is not admissible authority for RL-8.
 
 The deterministic protocol-selection rule is:
 
@@ -184,31 +200,57 @@ scientific behavior.
 set or all-optional criteria set is invalid and cannot produce PASS. Duplicate
 criterion identity is forbidden.
 
-`requiredEvidenceSet.length >= 1`. Each entry is a full canonical HashRef
-envelope:
+`requiredEvidenceRequirements.length >= 1`. Protocol evidence requirements are
+closed descriptors/selectors, not future concrete hashes. Each entry is:
 
 ```text
-RequiredEvidenceRefV1 {
-  hashAlgorithm = SHA-256,
-  hashDomain,
-  hashVersion = SYNTRAKE_SHA256_V1,
-  hashHex
+EvidenceRequirementDescriptorV1 {
+  requirementId,
+  artifactClass,
+  sourceLineage,
+  metricIdentity,
+  scope,
+  cardinality,
+  missingEvidencePolicy
 }
 ```
 
-Admitted `requiredEvidenceSet.hashDomain` values are exactly:
+`artifactClass` is exactly one of:
 
 ```text
-SYNTRAKE:VALIDATION_RESULT:V1
-SYNTRAKE:VALIDATION_CHILD_RESULT:V1
-SYNTRAKE:RESULT:V1
-SYNTRAKE:EVIDENCE_OBJECT:V1
+VALIDATION_RESULT
+VALIDATION_CHILD_RESULT
+METRIC_RESULT_SET_DESCRIPTOR_V1
+METRIC_RESULT_SET_DESCRIPTOR_V2
+EVIDENCE_OBJECT
 ```
 
-Required evidence equality is by the full canonical HashRef envelope
-`hashAlgorithm`, `hashDomain`, `hashVersion`, `hashHex`. Duplicates are
-forbidden. Canonical ordering is lexicographic by
-`hashDomain`, then `hashHex`, then `hashAlgorithm`, then `hashVersion`.
+`sourceLineage` binds the required tenant authority, Investigation, subject
+Experiment, subject Research IR, Validation Protocol, fold/scope selector and
+where applicable Result or Validation Child Result lineage. It is a selector
+over the future accepted lineage, not a concrete future row ID or HashRef.
+
+`metricIdentity` is null only when the artifact class is not metric-specific.
+When present it is exactly `{ metricId, metricVersion }`.
+
+`cardinality` is exactly one of:
+
+```text
+EXACTLY_ONE
+ONE_PER_SELECTED_OBSERVATION
+AT_LEAST_ONE
+```
+
+`missingEvidencePolicy` is exactly one of:
+
+```text
+MISSING_IS_INSUFFICIENT_EVIDENCE
+MISSING_IS_FAIL
+MISSING_FAILS_CLOSED_NO_RESULT
+```
+
+Duplicate `requirementId` is forbidden. Canonical ordering is lexicographic by
+`requirementId`.
 
 ## Criterion Identity
 
@@ -223,7 +265,8 @@ VALIDATION_ASSESSMENT_CRITERION_V1 {
   metricId,
   metricVersion,
   evidenceSource,
-  phaseScope,
+  observationScope,
+  observationAggregation,
   operator,
   threshold,
   unavailablePolicy,
@@ -245,23 +288,46 @@ CRITERION_V1
 
 Duplicate `(criterionId, criterionVersion)` pairs are forbidden.
 
-`phaseScope` is exactly one of:
+`observationScope` is an exact discriminated selector:
 
 ```text
-ALL_FOLDS_ALL_PHASES
-TRAINING_PHASES
-EVALUATION_PHASES
-FOLD_ORDINAL_PHASE
-AGGREGATE_VALIDATION_RESULT
+{ kind = AGGREGATE }
+{ kind = ALL_EVALUATION_FOLDS }
+{ kind = ALL_TRAINING_FOLDS }
+{ kind = FOLD_PHASE, foldOrdinal = canonical non-negative integer string, phase = TRAINING | EVALUATION }
 ```
+
+There is no implicit fold ordinal or phase parameter. A fold-specific scope
+must carry both `foldOrdinal` and `phase`.
+
+`observationAggregation` freezes multi-observation semantics and is exactly one
+of:
+
+```text
+SINGLE_OBSERVATION
+ALL_SELECTED_OBSERVATIONS_PASS
+ANY_SELECTED_OBSERVATION_FAILS
+```
+
+`SINGLE_OBSERVATION` is required for `AGGREGATE` and `FOLD_PHASE` scopes. For
+`ALL_EVALUATION_FOLDS` and `ALL_TRAINING_FOLDS`, observations are ordered by
+numeric `foldOrdinal` ascending, then `phase`. `ALL_SELECTED_OBSERVATIONS_PASS`
+means every selected observation must individually pass the criterion;
+one explicit FAIL makes the criterion FAIL; no FAIL plus at least one
+insufficient selected observation makes the criterion INSUFFICIENT_EVIDENCE.
+`ANY_SELECTED_OBSERVATION_FAILS` is diagnostic/adverse-evidence mode: any
+selected FAIL makes the criterion FAIL; if none fail and at least one selected
+observation is insufficient, the criterion is INSUFFICIENT_EVIDENCE; otherwise
+the criterion PASSes. No runtime-selected averaging, weighting or reduction is
+admitted.
 
 `evidenceSource` is exactly one of:
 
 ```text
 VALIDATION_RESULT
 VALIDATION_CHILD_RESULT
-METRIC_RESULT_SET_V1
-METRIC_RESULT_SET_V2
+METRIC_RESULT_SET_DESCRIPTOR_V1
+METRIC_RESULT_SET_DESCRIPTOR_V2
 EVIDENCE_OBJECT
 ```
 
@@ -274,8 +340,8 @@ UNAVAILABLE_NOT_ADMITTED
 ```
 
 `evidenceRequirements` is a non-empty canonical array of
-`RequiredEvidenceRefV1` entries. Equality, duplicate rejection and ordering are
-the same as `requiredEvidenceSet`.
+`EvidenceRequirementDescriptorV1` entries. Duplicate `requirementId` is
+forbidden. Ordering is lexicographic by `requirementId`.
 
 Allowed outcome operators are closed and exact:
 
@@ -323,14 +389,40 @@ threshold authority.
 Registry compatibility is exact:
 
 ```text
-METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_V1
-METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_V2
+METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_DESCRIPTOR_V1
+METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_DESCRIPTOR_V2
 ```
 
 V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a
-HashRef is syntactically valid. Ratio metrics require `RATIO` observed values.
-Count metrics require `INTEGER` observed values. No implicit coercion between
-integer and ratio is admitted.
+descriptor is syntactically present. Metric Result Set evidence is first-class
+descriptor evidence owned by Result and Validation Child Result payloads, not a
+standalone `HashRefV1` domain. The accepted V1/V2 shape is:
+
+```text
+MetricResultSetEvidenceV1 {
+  artifactSchemaVersion = METRIC_RESULT_SET_V1,
+  format,
+  contentSha256,
+  contentByteLength,
+  recordCount,
+  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>
+}
+
+MetricResultSetEvidenceV2 {
+  artifactSchemaVersion = METRIC_RESULT_SET_V2,
+  format,
+  contentSha256,
+  contentByteLength,
+  recordCount,
+  ownerResult: HashRef<SYNTRAKE:RESULT:V1> | HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>
+}
+```
+
+The descriptor fields must equal the accepted Result or Validation Child Result
+artifact descriptor and the content bytes must verify by SHA-256, byte length
+and record count. Ratio metrics require `RATIO` observed values. Count metrics
+require `INTEGER` observed values. No implicit coercion between integer and
+ratio is admitted.
 
 Each criterion must bind every Evidence Object, Metric Result Set descriptor,
 Validation Child Result and Validation Result HashRef needed to prove its
@@ -354,6 +446,7 @@ VALIDATION_ASSESSMENT_RESULT_V1 {
   subjectExperiment,
   subjectResearchIr,
   metricRegistryVersion,
+  consumedEvidence,
   criterionOutcomes,
   outcome
 }
@@ -368,6 +461,28 @@ validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1>
 subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>
 subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
 ```
+
+`consumedEvidence` is a non-empty canonical array of concrete evidence consumed
+by the Assessment Result. It binds exact post-result identities and descriptors:
+
+```text
+ConsumedEvidenceV1 =
+  | { kind = VALIDATION_RESULT, ref: HashRef<SYNTRAKE:VALIDATION_RESULT:V1> }
+  | { kind = VALIDATION_CHILD_RESULT, ref: HashRef<SYNTRAKE:VALIDATION_CHILD_RESULT:V1>, foldOrdinal, phase }
+  | { kind = METRIC_RESULT_SET_DESCRIPTOR_V1, descriptor: MetricResultSetEvidenceV1, metricRecords }
+  | { kind = METRIC_RESULT_SET_DESCRIPTOR_V2, descriptor: MetricResultSetEvidenceV2, metricRecords }
+  | { kind = EVIDENCE_OBJECT, ref: HashRef<SYNTRAKE:EVIDENCE_OBJECT:V1> }
+```
+
+Canonical ordering is by `kind`, then concrete HashRef domain/hash where present,
+then descriptor `artifactSchemaVersion`, `contentSha256`, `contentByteLength`,
+`recordCount`, then fold ordinal/phase where present. Duplicate concrete
+evidence identities are forbidden.
+
+Result evidence closure must reconstruct exactly every selected Validation
+Child Result, every exact Metric Result Set used, exact metric record(s), exact
+Validation Result and exact Assessment Protocol without caller memory, `latest`
+lookup or mutable pointers.
 
 The closed assessment outcome vocabulary is exactly:
 
@@ -394,7 +509,7 @@ VALIDATION_ASSESSMENT_CRITERION_OUTCOME_V1 {
   observedValue,
   operator,
   threshold,
-  evidenceHashRefs,
+  consumedEvidenceRefs,
   reasonCode
 }
 ```
@@ -417,7 +532,6 @@ are never implicitly coerced.
 `reasonCode` is closed:
 
 ```text
-CRITERION_PASSED
 CRITERION_THRESHOLD_FAILED
 REQUIRED_EVIDENCE_MISSING
 METRIC_UNAVAILABLE
@@ -428,18 +542,25 @@ EVIDENCE_SOURCE_INCOMPATIBLE
 OBSERVED_VALUE_KIND_MISMATCH
 ```
 
-`reasonCode = null` only when `status = PASS`. For `FAIL` or
-`INSUFFICIENT_EVIDENCE`, `reasonCode` is required and must be one of the closed
-V1 reason codes above. No free-form reason string carries assessment authority.
+`reasonCode = null` exactly when `status = PASS`. `CRITERION_PASSED` is not a
+canonical reason code. For `FAIL` or `INSUFFICIENT_EVIDENCE`, `reasonCode` is
+required and must be one of the closed V1 reason codes above. No free-form
+reason string carries assessment authority.
+
+`UNAVAILABLE_NOT_ADMITTED` means unavailable metric evidence is not a normal
+criterion outcome. If a selected observation is unavailable under
+`UNAVAILABLE_NOT_ADMITTED`, no authoritative Assessment Result may be produced;
+admission fails closed before serializing PASS, FAIL or INSUFFICIENT_EVIDENCE.
 
 There is exactly one Criterion Outcome per Protocol Criterion. Missing criterion
 outcome, extra criterion outcome, duplicate outcome, criterionId/version
 mismatch, operator drift, threshold drift or evidence that does not satisfy the
 criterion's frozen evidence requirements all fail closed. Canonical ordering of
 `criterionOutcomes` is lexicographic by `criterionId`, then
-`criterionVersion`. Within each outcome, `evidenceHashRefs` are ordered by
-`hashDomain`, then `hashHex`, then `hashAlgorithm`, then `hashVersion`, and
-duplicates are forbidden.
+`criterionVersion`. Within each outcome, `consumedEvidenceRefs` are ordered by
+the consumed-evidence canonical order and duplicates are forbidden. Criterion
+Outcome evidence must reference concrete `consumedEvidence` entries that satisfy
+the Protocol's frozen evidence requirement descriptors.
 
 ## Outcome Aggregation
 

@@ -83,34 +83,51 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>",
       "METRIC_REGISTRY_V20260927",
       "MUST NOT contain a Validation Result",
-      "pre-result scientific methodology/criteria authority",
-      "more permissive Assessment Protocol",
+      "VALIDATION_RUN_REGISTERED",
       "not admissible authority for RL-8",
       "logicalAssessmentProtocolKey",
       "DIVERGENT_ASSESSMENT_PROTOCOL",
     ]) expect(contract).toContain(token);
+    expect(normalized).toContain("before the first VALIDATION_RUN_REGISTERED event");
+    expect(normalized).toContain("more permissive Assessment Protocol");
+    expect(normalized).toContain("pre-result scientific methodology/criteria authority");
+    expect(normalized).toContain("MUST be durably accepted before the first VALIDATION_RUN_REGISTERED event");
+    expect(normalized).toContain("MUST NOT contain a Validation Result HashRef, Validation Child Result HashRef, Result HashRef, Evidence Object HashRef, concrete Metric Result Set descriptor/hash");
     expect(normalized).toContain("Exactly one accepted Assessment Protocol may exist for one logical assessment protocol key");
     expect(normalized).toContain("must not choose by `latest`, caller preference, timestamp ordering or favorable outcome");
   });
 
-  it("freezes non-empty required criteria and required evidence set uniqueness", () => {
+  it("freezes non-empty required criteria and pre-result evidence descriptors", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
     for (const token of [
       "criteria.length >= 1",
       "required criteria count `>= 1`",
-      "requiredEvidenceSet.length >= 1",
-      "RequiredEvidenceRefV1",
-      "SYNTRAKE:VALIDATION_RESULT:V1",
-      "SYNTRAKE:VALIDATION_CHILD_RESULT:V1",
-      "SYNTRAKE:RESULT:V1",
-      "SYNTRAKE:EVIDENCE_OBJECT:V1",
+      "requiredEvidenceRequirements.length >= 1",
+      "EvidenceRequirementDescriptorV1",
+      "artifactClass",
+      "sourceLineage",
+      "metricIdentity",
+      "cardinality",
+      "missingEvidencePolicy",
+      "VALIDATION_RESULT",
+      "VALIDATION_CHILD_RESULT",
+      "METRIC_RESULT_SET_DESCRIPTOR_V1",
+      "METRIC_RESULT_SET_DESCRIPTOR_V2",
+      "EVIDENCE_OBJECT",
+      "EXACTLY_ONE",
+      "ONE_PER_SELECTED_OBSERVATION",
+      "AT_LEAST_ONE",
+      "MISSING_IS_INSUFFICIENT_EVIDENCE",
+      "MISSING_IS_FAIL",
+      "MISSING_FAILS_CLOSED_NO_RESULT",
     ]) expect(contract).toContain(token);
     expect(normalized).toContain("An empty criteria set or all-optional criteria set is invalid");
     expect(normalized).toContain("Duplicate criterion identity is forbidden");
-    expect(normalized).toContain("Required evidence equality is by the full canonical HashRef envelope");
-    expect(normalized).toContain("Duplicates are forbidden");
-    expect(normalized).toContain("Canonical ordering is lexicographic by `hashDomain`, then `hashHex`, then `hashAlgorithm`, then `hashVersion`");
+    expect(normalized).toContain("Protocol evidence requirements are closed descriptors/selectors, not future concrete hashes");
+    expect(normalized).toContain("`sourceLineage` binds the required tenant authority, Investigation, subject Experiment, subject Research IR, Validation Protocol, fold/scope selector");
+    expect(normalized).toContain("Duplicate `requirementId` is forbidden");
+    expect(normalized).toContain("Canonical ordering is lexicographic by `requirementId`");
   });
 
   it("freezes exact criterion vocabularies and threshold union", () => {
@@ -120,15 +137,17 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "VALIDATION_ASSESSMENT_CRITERION_V1",
       "[A-Z][A-Z0-9_]{2,63}",
       "CRITERION_V1",
-      "ALL_FOLDS_ALL_PHASES",
-      "TRAINING_PHASES",
-      "EVALUATION_PHASES",
-      "FOLD_ORDINAL_PHASE",
-      "AGGREGATE_VALIDATION_RESULT",
+      "{ kind = AGGREGATE }",
+      "{ kind = ALL_EVALUATION_FOLDS }",
+      "{ kind = ALL_TRAINING_FOLDS }",
+      "{ kind = FOLD_PHASE, foldOrdinal = canonical non-negative integer string, phase = TRAINING | EVALUATION }",
+      "SINGLE_OBSERVATION",
+      "ALL_SELECTED_OBSERVATIONS_PASS",
+      "ANY_SELECTED_OBSERVATION_FAILS",
       "VALIDATION_RESULT",
       "VALIDATION_CHILD_RESULT",
-      "METRIC_RESULT_SET_V1",
-      "METRIC_RESULT_SET_V2",
+      "METRIC_RESULT_SET_DESCRIPTOR_V1",
+      "METRIC_RESULT_SET_DESCRIPTOR_V2",
       "EVIDENCE_OBJECT",
       "UNAVAILABLE_IS_INSUFFICIENT_EVIDENCE",
       "UNAVAILABLE_IS_FAIL",
@@ -142,6 +161,8 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(normalized).toContain("Scalar operators `LT`, `LTE`, `EQ`, `GTE`, `GT` require exactly `ScalarThresholdV1`");
     expect(normalized).toContain("Range operators `BETWEEN_INCLUSIVE` and `OUTSIDE_EXCLUSIVE` require exactly `RangeThresholdV1` and `lower <= upper`");
     expect(normalized).toContain("Wrong threshold shape for operator fails closed");
+    expect(normalized).toContain("A fold-specific scope must carry both `foldOrdinal` and `phase`");
+    expect(normalized).toContain("No runtime-selected averaging, weighting or reduction is admitted");
     expect(contract).not.toContain("for example:");
   });
 
@@ -166,7 +187,6 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
     for (const token of [
-      "CRITERION_PASSED",
       "CRITERION_THRESHOLD_FAILED",
       "REQUIRED_EVIDENCE_MISSING",
       "METRIC_UNAVAILABLE",
@@ -176,23 +196,31 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "EVIDENCE_SOURCE_INCOMPATIBLE",
       "OBSERVED_VALUE_KIND_MISMATCH",
       "reasonCode = null",
-      "No free-form reason string carries assessment authority",
+      "UNAVAILABLE_NOT_ADMITTED",
       "There is exactly one Criterion Outcome per Protocol Criterion",
     ]) expect(contract).toContain(token);
+    const reasonBlock = fencedBlockAfter(contract, "`reasonCode` is closed:");
+    expect(reasonBlock).not.toContain("CRITERION_PASSED");
+    expect(normalized).toContain("No free-form reason string carries assessment authority");
     expect(normalized).toContain("Ratio metrics require `RATIO` observed values");
     expect(normalized).toContain("Count metrics require `INTEGER` observed values");
     expect(normalized).toContain("No implicit coercion between integer and ratio is admitted");
+    expect(normalized).toContain("`reasonCode = null` exactly when `status = PASS`");
+    expect(normalized).toContain("If a selected observation is unavailable under `UNAVAILABLE_NOT_ADMITTED`, no authoritative Assessment Result may be produced");
     expect(normalized).toContain("Missing criterion outcome, extra criterion outcome, duplicate outcome, criterionId/version mismatch, operator drift, threshold drift");
     expect(normalized).toContain("Canonical ordering of `criterionOutcomes` is lexicographic by `criterionId`, then `criterionVersion`");
-    expect(normalized).toContain("Within each outcome, `evidenceHashRefs` are ordered by `hashDomain`, then `hashHex`, then `hashAlgorithm`, then `hashVersion`, and duplicates are forbidden");
+    expect(normalized).toContain("Within each outcome, `consumedEvidenceRefs` are ordered by the consumed-evidence canonical order and duplicates are forbidden");
   });
 
   it("freezes registry compatibility and blocks V1/V2 evidence mixing", () => {
     const contract = read(contractPath);
     const normalized = compact(contract);
-    expect(normalized).toContain("METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_V1");
-    expect(normalized).toContain("METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_V2");
-    expect(normalized).toContain("V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a HashRef is syntactically valid");
+    expect(normalized).toContain("METRIC_REGISTRY_V20260918 -> METRIC_V1 -> METRIC_RESULT_SET_DESCRIPTOR_V1");
+    expect(normalized).toContain("METRIC_REGISTRY_V20260927 -> METRIC_V2 -> METRIC_RESULT_SET_DESCRIPTOR_V2");
+    expect(normalized).toContain("V1/V2 evidence cannot be mixed under a V2 assessment protocol merely because a descriptor is syntactically present");
+    expect(normalized).toContain("Metric Result Set evidence is first-class descriptor evidence owned by Result and Validation Child Result payloads, not a standalone `HashRefV1` domain");
+    expect(contract).toContain("MetricResultSetEvidenceV1");
+    expect(contract).toContain("MetricResultSetEvidenceV2");
   });
 
   it("freezes deterministic aggregation rather than hidden scoring", () => {
@@ -221,6 +249,7 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(resultPayload).toContain("assessmentProtocol");
     expect(resultPayload).toContain("validationProtocol");
     expect(resultPayload).toContain("validationResult");
+    expect(resultPayload).toContain("consumedEvidence");
     for (const token of [
       "same tenant authority",
       "same Investigation",
@@ -241,6 +270,10 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "Corrupt, incompatible, unauthorized or missing assessment authority",
       "PROMOTION_ELIGIBLE",
     ]) expect(contract).toContain(token);
+    expect(contract).toContain("ConsumedEvidenceV1");
+    expect(normalized).toContain("binds exact post-result identities and descriptors");
+    expect(normalized).toContain("Result evidence closure must reconstruct exactly every selected Validation Child Result, every exact Metric Result Set used, exact metric record(s), exact Validation Result and exact Assessment Protocol");
+    expect(normalized).toContain("without caller memory, `latest` lookup or mutable pointers");
     expect(normalized).toContain("Assessment Result admission must also re-prove that its Assessment Protocol is the unique authoritative accepted protocol");
     expect(normalized).toContain("Multiple conflicting Assessment Results for the same exact Validation lineage and Assessment Protocol authority fail closed");
     expect(normalized).toContain("RL-8 may consume only the unique authoritative accepted Assessment Result");
