@@ -112,20 +112,26 @@ export function buildScientificPromotionLedgerEventsV1(
   researchInvestigationId: string,
 ): readonly ScientificPromotionLedgerEventV1[] {
   if (scientificPromotion.availability !== "MATERIALIZED") return [];
-  const protocol = scientificPromotion.protocol;
-  const protocolEvent: ScientificPromotionLedgerEventV1 = {
-    eventKind: "SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE",
-    sourceTable: "investing.research_scientific_promotion_protocols",
-    sourceRecordId: scientificPromotion.transitions[0]?.scientificPromotionProtocolIdentityId ?? scientificPromotion.protocol.hashHex,
-    researchInvestigationId,
-    relevantParentIds: {},
-    scientificHashRefs: [protocol],
-    eventSequence: null,
-    reasonCode: null,
-    occurredAt: scientificPromotion.transitions[0]?.createdAt ?? "",
-  };
+  const protocolEvents: ScientificPromotionLedgerEventV1[] = [];
+  const seenProtocols = new Set<string>();
+  for (const transition of scientificPromotion.transitions) {
+    const key = transition.protocol.hashHex;
+    if (seenProtocols.has(key)) continue;
+    seenProtocols.add(key);
+    protocolEvents.push({
+      eventKind: "SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE",
+      sourceTable: "investing.research_scientific_promotion_protocols",
+      sourceRecordId: transition.scientificPromotionProtocolIdentityId,
+      researchInvestigationId,
+      relevantParentIds: {},
+      scientificHashRefs: [transition.protocol],
+      eventSequence: protocolEvents.length,
+      reasonCode: null,
+      occurredAt: transition.createdAt,
+    });
+  }
   return [
-    protocolEvent,
+    ...protocolEvents,
     ...scientificPromotion.transitions.map((transition, index): ScientificPromotionLedgerEventV1 => ({
       eventKind: "SCIENTIFIC_PROMOTION_TRANSITION_RECORDED",
       sourceTable: "investing.research_scientific_promotion_transitions",
@@ -137,7 +143,7 @@ export function buildScientificPromotionLedgerEventsV1(
         ...(transition.predecessorTransitionId ? { predecessorTransitionId: transition.predecessorTransitionId } : {}),
         ...(transition.supersededByChain ? { successorRootTransitionId: transition.supersededByChain.successorRootTransitionId } : {}),
       },
-      scientificHashRefs: [protocol, transition.transition],
+      scientificHashRefs: [transition.protocol, transition.transition],
       eventSequence: index,
       reasonCode: transition.transitionReasons[0] ?? null,
       occurredAt: transition.createdAt,

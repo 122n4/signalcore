@@ -88,11 +88,69 @@ async function inAppTx<T>(fn: () => Promise<T>, overrides: Parameters<typeof set
   }
 }
 
-async function persistProtocol(investigation = ids.investigationA) {
+async function setAppContextOn(pgClient: PoolClient, overrides: Partial<typeof ids> & { operation?: string; capability?: string; investigation?: string } = {}) {
+  await pgClient.query("set local role investing_app");
+  const values = {
+    operation: overrides.operation ?? "RESEARCH_SCIENTIFIC_PROMOTION_TRANSITION_RECORD_V1",
+    capability: overrides.capability ?? "RESEARCH_MUTATE",
+    tenant_id: overrides.tenant ?? ids.tenant,
+    principal_id: overrides.principal ?? ids.principal,
+    tenant_membership_id: overrides.membership ?? ids.membership,
+    research_investigation_id: overrides.investigation ?? ids.investigationA,
+  };
+  for (const [key, value] of Object.entries(values)) {
+    await pgClient.query("select set_config($1, $2, true)", [`syntrake.investing.${key}`, value]);
+  }
+}
+
+async function recordTransitionOn(pgClient: PoolClient, input: Parameters<typeof recordTransition>[0]) {
+  await pgClient.query("begin");
+  try {
+    await setAppContextOn(pgClient);
+    const result = await pgClient.query<{ scientific_promotion_transition_id: string; persistence_status: string }>(
+      "select * from investing.record_research_scientific_promotion_transition_v1($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12,$13,$14,$15::jsonb)",
+      [
+        input.protocolId,
+        input.hash,
+        input.protocolHash ?? h("A"),
+        input.chain,
+        input.root ?? null,
+        input.predecessor ?? null,
+        input.predecessorState ?? null,
+        input.state ?? "PROMOTION_ELIGIBLE",
+        JSON.stringify([]),
+        JSON.stringify([]),
+        JSON.stringify([]),
+        input.successorRoot ? input.protocolHash ?? h("A") : null,
+        input.successorRoot ?? null,
+        input.successorHash ?? null,
+        JSON.stringify({ hash: input.hash, chainKey: input.chain, protocol: { hashHex: input.protocolHash ?? h("A") } }),
+      ],
+    );
+    await pgClient.query("commit");
+    return result.rows[0]!;
+  } catch (error) {
+    await pgClient.query("rollback").catch(() => undefined);
+    throw error;
+  }
+}
+
+async function raceTransitions(left: Parameters<typeof recordTransition>[0], right: Parameters<typeof recordTransition>[0]) {
+  const a = await pool.connect();
+  const b = await pool.connect();
+  try {
+    return await Promise.allSettled([recordTransitionOn(a, left), recordTransitionOn(b, right)]);
+  } finally {
+    a.release();
+    b.release();
+  }
+}
+
+async function persistProtocol(investigation = ids.investigationA, hash = h("A")) {
   return inAppTx(async () => {
     const result = await client.query<{ scientific_promotion_protocol_identity_id: string; persistence_status: string }>(
       "select * from investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb)",
-      [h("A"), JSON.stringify({ schemaVersion: "SCIENTIFIC_PROMOTION_PROTOCOL_V1" })],
+      [hash, JSON.stringify({ schemaVersion: "SCIENTIFIC_PROMOTION_PROTOCOL_V1", hash })],
     );
     return result.rows[0]!;
   }, { investigation });
@@ -100,6 +158,7 @@ async function persistProtocol(investigation = ids.investigationA) {
 
 async function recordTransition(input: {
   protocolId: string;
+  protocolHash?: string;
   hash: string;
   chain: string;
   root?: string | null;
@@ -115,7 +174,7 @@ async function recordTransition(input: {
       [
         input.protocolId,
         input.hash,
-        h("A"),
+        input.protocolHash ?? h("A"),
         input.chain,
         input.root ?? null,
         input.predecessor ?? null,
@@ -127,7 +186,7 @@ async function recordTransition(input: {
         input.successorRoot ? h("A") : null,
         input.successorRoot ?? null,
         input.successorHash ?? null,
-        JSON.stringify({ hash: input.hash, chain: input.chain }),
+        JSON.stringify({ hash: input.hash, chainKey: input.chain, protocol: { hashHex: input.protocolHash ?? h("A") } }),
       ],
     );
     return result.rows[0]!;
@@ -198,7 +257,8 @@ maybeDescribe("I5 RL-8 Scientific Promotion PG17 physical closure", () => {
       state: "INVALIDATED",
     })).rejects.toThrow(/DIVERGENT_EXISTING_IDENTITY/);
 
-    const newRoot = await recordTransition({ protocolId: protocolA.scientific_promotion_protocol_identity_id, hash: h("F"), chain: h("2") });
+    const protocolReplacement = await persistProtocol(ids.investigationA, h("9"));
+    const newRoot = await recordTransition({ protocolId: protocolReplacement.scientific_promotion_protocol_identity_id, protocolHash: h("9"), hash: h("F"), chain: h("2") });
     await recordTransition({
       protocolId: protocolA.scientific_promotion_protocol_identity_id,
       hash: h("7"),
@@ -209,7 +269,16 @@ maybeDescribe("I5 RL-8 Scientific Promotion PG17 physical closure", () => {
       state: "SUPERSEDED",
       successorRoot: newRoot.scientific_promotion_transition_id,
       successorHash: h("F"),
+      protocolHash: h("A"),
     });
+    await expect(recordTransition({
+      protocolId: protocolA.scientific_promotion_protocol_identity_id,
+      hash: h("A"),
+      chain: h("3"),
+      state: "SUPERSEDED",
+      successorRoot: root.scientific_promotion_transition_id,
+      successorHash: h("B"),
+    })).rejects.toThrow(/RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_REQUIRES_PROTOCOL_CHANGE|RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_CYCLE/);
     await expect(recordTransition({
       protocolId: protocolA.scientific_promotion_protocol_identity_id,
       hash: h("8"),
@@ -218,5 +287,47 @@ maybeDescribe("I5 RL-8 Scientific Promotion PG17 physical closure", () => {
       successorHash: h("F"),
       state: "SUPERSEDED",
     })).rejects.toThrow(/RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_CYCLE|RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_INVALID/);
+  }, 120_000);
+
+  it("uses separate PostgreSQL connections to prove root/successor/supersession concurrency", async () => {
+    const protocolA = await persistProtocol(ids.investigationA, h("C"));
+    const rootRace = await raceTransitions(
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("1"), chain: h("A") },
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("1"), chain: h("A") },
+    );
+    expect(rootRace.filter((entry) => entry.status === "fulfilled")).toHaveLength(2);
+    const rootIds = new Set(rootRace.filter((entry): entry is PromiseFulfilledResult<{ scientific_promotion_transition_id: string; persistence_status: string }> => entry.status === "fulfilled").map((entry) => entry.value.scientific_promotion_transition_id));
+    expect(rootIds.size).toBe(1);
+    const rootId = [...rootIds][0]!;
+
+    const divergentRootRace = await raceTransitions(
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("2"), chain: h("B") },
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("3"), chain: h("B") },
+    );
+    expect(divergentRootRace.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+    expect(divergentRootRace.filter((entry) => entry.status === "rejected")).toHaveLength(1);
+
+    const successorRace = await raceTransitions(
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("4"), chain: h("A"), root: rootId, predecessor: rootId, predecessorState: "PROMOTION_ELIGIBLE", state: "INVALIDATED" },
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("4"), chain: h("A"), root: rootId, predecessor: rootId, predecessorState: "PROMOTION_ELIGIBLE", state: "INVALIDATED" },
+    );
+    expect(successorRace.filter((entry) => entry.status === "fulfilled")).toHaveLength(2);
+    const successorId = (successorRace.find((entry): entry is PromiseFulfilledResult<{ scientific_promotion_transition_id: string; persistence_status: string }> => entry.status === "fulfilled"))!.value.scientific_promotion_transition_id;
+
+    const divergentSuccessorRace = await raceTransitions(
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("5"), chain: h("A"), root: rootId, predecessor: successorId, predecessorState: "INVALIDATED", state: "SUPERSEDED" },
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("6"), chain: h("A"), root: rootId, predecessor: successorId, predecessorState: "INVALIDATED", state: "SUPERSEDED" },
+    );
+    expect(divergentSuccessorRace.filter((entry) => entry.status === "rejected").length).toBeGreaterThanOrEqual(1);
+
+    const protocolB = await persistProtocol(ids.investigationA, h("D"));
+    const successorRootA = await recordTransition({ protocolId: protocolB.scientific_promotion_protocol_identity_id, protocolHash: h("D"), hash: h("7"), chain: h("D") });
+    const successorRootB = await recordTransition({ protocolId: protocolB.scientific_promotion_protocol_identity_id, protocolHash: h("D"), hash: h("8"), chain: h("E") });
+    const supersessionRace = await raceTransitions(
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("9"), chain: h("A"), root: rootId, predecessor: successorId, predecessorState: "INVALIDATED", state: "SUPERSEDED", successorRoot: successorRootA.scientific_promotion_transition_id, successorHash: h("7") },
+      { protocolId: protocolA.scientific_promotion_protocol_identity_id, protocolHash: h("C"), hash: h("0"), chain: h("A"), root: rootId, predecessor: successorId, predecessorState: "INVALIDATED", state: "SUPERSEDED", successorRoot: successorRootB.scientific_promotion_transition_id, successorHash: h("8") },
+    );
+    expect(supersessionRace.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+    expect(supersessionRace.filter((entry) => entry.status === "rejected")).toHaveLength(1);
   }, 120_000);
 });

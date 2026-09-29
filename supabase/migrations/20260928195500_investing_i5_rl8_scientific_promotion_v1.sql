@@ -360,6 +360,10 @@ begin
   if jsonb_typeof(p_canonical_payload) <> 'object' or jsonb_typeof(p_gate_outcomes) <> 'array' or jsonb_typeof(p_evidence_hash_refs) <> 'array' or jsonb_typeof(p_transition_reasons) <> 'array' then
     raise exception 'RL8_SCIENTIFIC_PROMOTION_TRANSITION_INVALID_PAYLOAD';
   end if;
+  if p_canonical_payload #>> '{chainKey}' is distinct from p_chain_key
+     or p_canonical_payload #>> '{protocol,hashHex}' is distinct from p_protocol_hash_hex then
+    raise exception 'RL8_SCIENTIFIC_PROMOTION_CHAIN_KEY_BINDING_FAILURE';
+  end if;
   select * into v_protocol
   from investing.research_scientific_promotion_protocols
   where scientific_promotion_protocol_identity_id = p_scientific_promotion_protocol_identity_id
@@ -418,6 +422,9 @@ begin
        or p_superseded_by_successor_protocol_hash_hex is null
        or p_superseded_by_successor_root_hash_hex is null then
       raise exception 'RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_INVALID';
+    end if;
+    if p_superseded_by_successor_protocol_hash_hex = p_protocol_hash_hex then
+      raise exception 'RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_REQUIRES_PROTOCOL_CHANGE';
     end if;
     select * into v_successor_root
     from investing.research_scientific_promotion_transitions

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reconstructScientificPromotionProjectionV1 } from "../lib/investing/research/scientificPromotionPassport";
+import { buildScientificPromotionLedgerEventsV1, reconstructScientificPromotionProjectionV1 } from "../lib/investing/research/scientificPromotionPassport";
 
 const ref = (domain: string, hashHex: string) => ({ hashAlgorithm: "SHA-256", hashDomain: domain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex });
 const gateOutcomes = [{ gateId: "GATE_RL7_ROBUSTNESS_COMPARISON", status: "PASS", reasons: [], evidence: [] }] as any;
@@ -108,5 +108,32 @@ describe("I5 RL-8 Scientific Promotion Passport projection", () => {
       }),
       row("newroot", { chain_key: "2".repeat(64), root_transition_id: "newroot", resulting_state: "PROMOTION_ELIGIBLE", hash_hex: "3".repeat(64) }),
     ])).toThrow("DIVERGENT_EXISTING_IDENTITY");
+  });
+
+  it("emits ledger events with each transition's own historical protocol across cross-chain supersession", () => {
+    const projection = reconstructScientificPromotionProjectionV1([
+      row("oldroot", { scientific_promotion_protocol_identity_id: "pa", chain_key: "1".repeat(64), root_transition_id: "oldroot", protocol_hash_hex: "A".repeat(64), hash_hex: "1".repeat(64), resulting_state: "PROMOTION_ELIGIBLE" }),
+      row("oldleaf", {
+        scientific_promotion_protocol_identity_id: "pa",
+        chain_key: "1".repeat(64),
+        root_transition_id: "oldroot",
+        protocol_hash_hex: "A".repeat(64),
+        hash_hex: "2".repeat(64),
+        predecessor_transition_id: "oldroot",
+        predecessor_state: "PROMOTION_ELIGIBLE",
+        resulting_state: "SUPERSEDED",
+        superseded_by_successor_protocol_hash_hex: "B".repeat(64),
+        superseded_by_successor_root_transition_id: "newroot",
+        superseded_by_successor_root_hash_hex: "3".repeat(64),
+      }),
+      row("newroot", { scientific_promotion_protocol_identity_id: "pb", chain_key: "2".repeat(64), root_transition_id: "newroot", protocol_hash_hex: "B".repeat(64), resulting_state: "PROMOTION_ELIGIBLE", hash_hex: "3".repeat(64) }),
+    ]);
+    expect(projection.availability).toBe("MATERIALIZED");
+    if (projection.availability !== "MATERIALIZED") throw new Error("projection unavailable");
+    const events = buildScientificPromotionLedgerEventsV1(projection, "investigation");
+    expect(events.filter((event) => event.eventKind === "SCIENTIFIC_PROMOTION_PROTOCOL_AVAILABLE").map((event) => event.scientificHashRefs[0]?.hashHex)).toEqual(["A".repeat(64), "B".repeat(64)]);
+    const transitionEvents = events.filter((event) => event.eventKind === "SCIENTIFIC_PROMOTION_TRANSITION_RECORDED");
+    expect(transitionEvents.map((event) => event.scientificHashRefs[0]?.hashHex)).toEqual(["A".repeat(64), "A".repeat(64), "B".repeat(64)]);
+    expect(transitionEvents.map((event) => event.scientificHashRefs[1]?.hashHex)).toEqual(["1".repeat(64), "2".repeat(64), "3".repeat(64)]);
   });
 });

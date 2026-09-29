@@ -4,6 +4,7 @@ import {
   canonicalScientificPromotionProtocolV1,
   canonicalScientificPromotionEvidenceAggregateV1,
   canonicalScientificPromotionTransitionV1,
+  deriveScientificPromotionEvidenceAggregateFromAcceptedPredecessorsV1,
   evaluateScientificPromotionGatesV1,
   hashScientificPromotionChainKeyV1,
   hashScientificPromotionProtocolV1,
@@ -72,6 +73,7 @@ function aggregate(overrides: Partial<ScientificPromotionEvidenceAggregateV1> = 
   } satisfies ScientificPromotionEvidenceAggregateV1["gateEvidence"];
   return {
     schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1",
+    authoritySource: "ACCEPTED_PREDECESSOR_PROJECTION_DERIVED",
     tenantAuthority: s.tenantAuthority,
     investigationId: s.investigationId,
     subject: s,
@@ -82,6 +84,46 @@ function aggregate(overrides: Partial<ScientificPromotionEvidenceAggregateV1> = 
     gateEvidence,
     ...overrides,
   };
+}
+
+function acceptedPassportForSubject(s: ScientificPromotionSubjectV1 = subject()) {
+  return {
+    investigation: { tenantId: "alpha", researchInvestigationId: s.investigationId },
+    experiments: [{
+      researchExperimentId: "experiment-row",
+      experiment: s.subjectExperiment,
+      experimentParameters: s.subjectExperimentParameters,
+      researchIr: s.subjectResearchIr,
+    }],
+    runInputs: [{
+      runInputIdentityId: "run-input-row",
+      runInput: s.subjectRunInput,
+      researchIrHashHex: s.subjectResearchIr.hashHex,
+      experimentHashHex: s.subjectExperiment.hashHex,
+      metricRegistryVersion: scientificPromotionMetricRegistryVersionV1,
+    }],
+    results: [{
+      resultIdentityId: "result-row",
+      runInputIdentityId: "run-input-row",
+      result: s.subjectResult,
+      artifacts: [{ artifactKind: "METRIC_RESULT_SET", artifactSchemaVersion: "METRIC_RESULT_SET_V2" }],
+    }],
+    evidence: [{
+      evidenceIdentityId: "evidence-row",
+      resultIdentityId: "result-row",
+      runInputIdentityId: "run-input-row",
+      evidence: s.subjectEvidenceObject,
+    }],
+    validation: {
+      availability: "AVAILABLE_RL3",
+      episodes: [{
+        validationProtocol: s.subjectValidationProtocol,
+        subjectExperiment: s.subjectExperiment,
+        state: "AGGREGATE_AVAILABLE",
+        aggregate: { validationResult: s.subjectValidationResult },
+      }],
+    },
+  } as any;
 }
 
 function rootTransition(overrides: Partial<ScientificPromotionTransitionV1> = {}): ScientificPromotionTransitionV1 {
@@ -177,6 +219,42 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 runtime", () => {
         protocol: ref("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1", "9"),
       },
     }).resultingState).toBe(null);
+  });
+
+  it("does not promote internally consistent invented HashRefs without accepted predecessor projections", () => {
+    const invented = subject({ tenantAuthority: "tenant:alpha" });
+    const derived = deriveScientificPromotionEvidenceAggregateFromAcceptedPredecessorsV1({
+      passport: { ...acceptedPassportForSubject(invented), results: [], evidence: [] },
+      subject: invented,
+      rl7: {
+        protocol: invented.robustnessComparisonProtocol,
+        result: invented.robustnessComparisonResult,
+        classification: "ROBUSTNESS_STABLE",
+        subjectExperiment: invented.subjectExperiment,
+        subjectResult: invented.subjectResult,
+        subjectMetricResultSet: invented.subjectMetricResultSet,
+      },
+    });
+    const evaluated = evaluateScientificPromotionGatesV1({ evidenceAggregate: derived });
+    expect(evaluated.resultingState).not.toBe("PROMOTION_ELIGIBLE");
+    expect(evaluated.gateOutcomes.find((gate) => gate.gateId === "GATE_ACCEPTED_EXECUTION_RESULT")?.status).not.toBe("PASS");
+  });
+
+  it("derives PROMOTION_ELIGIBLE only from accepted predecessor projections", () => {
+    const s = subject({ tenantAuthority: "tenant:alpha" });
+    const derived = deriveScientificPromotionEvidenceAggregateFromAcceptedPredecessorsV1({
+      passport: acceptedPassportForSubject(s),
+      subject: s,
+      rl7: {
+        protocol: s.robustnessComparisonProtocol,
+        result: s.robustnessComparisonResult,
+        classification: "ROBUSTNESS_STABLE",
+        subjectExperiment: s.subjectExperiment,
+        subjectResult: s.subjectResult,
+        subjectMetricResultSet: s.subjectMetricResultSet,
+      },
+    });
+    expect(evaluateScientificPromotionGatesV1({ evidenceAggregate: derived }).resultingState).toBe("PROMOTION_ELIGIBLE");
   });
 
   it("requires PROMOTION_ELIGIBLE gates to be all PASS", () => {

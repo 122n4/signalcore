@@ -53,8 +53,16 @@ describe("I5 RL-8 scientific promotion persistence migration", () => {
     expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_PREDECESSOR_AUTHORITY_FAILURE");
     expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_PREDECESSOR_STATE_MISMATCH");
     expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_ROOT_AUTHORITY_FAILURE");
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_CHAIN_KEY_BINDING_FAILURE");
+    expect(sql).toContain("p_canonical_payload #>> '{chainKey}' is distinct from p_chain_key");
+    expect(sql).toContain("p_canonical_payload #>> '{protocol,hashHex}' is distinct from p_protocol_hash_hex");
     expect(sql).toContain("and chain_key = p_chain_key");
     expect(sql).toContain("and protocol_hash_hex = p_protocol_hash_hex");
+  });
+
+  it("requires cross-chain supersession to replace protocol methodology", () => {
+    expect(sql).toContain("RL8_SCIENTIFIC_PROMOTION_SUPERSESSION_REQUIRES_PROTOCOL_CHANGE");
+    expect(sql).toContain("p_superseded_by_successor_protocol_hash_hex = p_protocol_hash_hex");
   });
 
   it("enforces owner role, RLS, FORCE RLS and no public mutation authority", () => {

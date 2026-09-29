@@ -8,6 +8,7 @@ import {
   type CanonicalSha256HexV1,
   type HashRefV1,
 } from "./canonical";
+import type { ResearchPassportV1 } from "./researchPassportReader";
 
 export const scientificPromotionProtocolIdV1 = "SCIENTIFIC_PROMOTION_PROTOCOL_V20260928" as const;
 export const scientificPromotionMetricRegistryVersionV1 = "METRIC_REGISTRY_V20260927" as const;
@@ -137,6 +138,7 @@ export type ScientificPromotionEvidenceAggregateGateV1 = Readonly<{
 
 export type ScientificPromotionEvidenceAggregateV1 = Readonly<{
   schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1";
+  authoritySource: "ACCEPTED_PREDECESSOR_PROJECTION_DERIVED";
   tenantAuthority: string;
   investigationId: string;
   subject: ScientificPromotionSubjectV1;
@@ -150,6 +152,15 @@ export type ScientificPromotionEvidenceAggregateV1 = Readonly<{
     | "ROBUSTNESS_UNSTABLE"
     | "ROBUSTNESS_INSUFFICIENT_EVIDENCE";
   gateEvidence: Readonly<Record<ScientificPromotionGateIdV1, ScientificPromotionEvidenceAggregateGateV1>>;
+}>;
+
+export type ScientificPromotionAcceptedRl7EvidenceV1 = Readonly<{
+  protocol: HashRefV1;
+  result: HashRefV1;
+  classification: "ROBUSTNESS_STABLE" | "ROBUSTNESS_MIXED" | "ROBUSTNESS_DEGRADED" | "ROBUSTNESS_UNSTABLE" | "ROBUSTNESS_INSUFFICIENT_EVIDENCE";
+  subjectExperiment: HashRefV1;
+  subjectResult: HashRefV1;
+  subjectMetricResultSet: ScientificPromotionMetricResultSetRefV1;
 }>;
 
 export type ScientificPromotionTransitionV1 = Readonly<{
@@ -491,6 +502,7 @@ export function evaluateScientificPromotionGatesV1(input: {
 export function canonicalScientificPromotionEvidenceAggregateV1(input: ScientificPromotionEvidenceAggregateV1): ScientificPromotionEvidenceAggregateV1 {
   assertClosedPlainObject(input, new Set([
     "schemaVersion",
+    "authoritySource",
     "tenantAuthority",
     "investigationId",
     "subject",
@@ -501,6 +513,7 @@ export function canonicalScientificPromotionEvidenceAggregateV1(input: Scientifi
     "gateEvidence",
   ]), "ScientificPromotionEvidenceAggregate");
   if (input.schemaVersion !== "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1") throw new Error("INCOMPATIBLE_SCHEMA_VERSION");
+  if (input.authoritySource !== "ACCEPTED_PREDECESSOR_PROJECTION_DERIVED") throw new Error("UNAUTHORIZED_EVIDENCE");
   const subject = canonicalScientificPromotionSubjectV1(input.subject) as unknown as ScientificPromotionSubjectV1;
   if (input.tenantAuthority !== input.subject.tenantAuthority) throw new Error("WRONG_TENANT");
   if (input.investigationId !== input.subject.investigationId) throw new Error("WRONG_INVESTIGATION");
@@ -543,6 +556,7 @@ export function canonicalScientificPromotionEvidenceAggregateV1(input: Scientifi
   }
   return {
     schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1",
+    authoritySource: "ACCEPTED_PREDECESSOR_PROJECTION_DERIVED",
     tenantAuthority: input.tenantAuthority,
     investigationId: input.investigationId,
     subject: subject as ScientificPromotionSubjectV1,
@@ -552,6 +566,95 @@ export function canonicalScientificPromotionEvidenceAggregateV1(input: Scientifi
     rl7Classification: input.rl7Classification,
     gateEvidence,
   };
+}
+
+export function deriveScientificPromotionEvidenceAggregateFromAcceptedPredecessorsV1(input: {
+  passport: ResearchPassportV1;
+  subject: ScientificPromotionSubjectV1;
+  rl7: ScientificPromotionAcceptedRl7EvidenceV1 | null;
+}): ScientificPromotionEvidenceAggregateV1 {
+  const subject = input.subject;
+  const protocol = scientificPromotionProtocolRefV1();
+  const fail = (status: ScientificPromotionGateStatusV1, reasons: readonly ScientificPromotionReasonCodeV1[] = []): ScientificPromotionEvidenceAggregateGateV1 => ({ status, reasons, evidence: [] });
+  const pass = (evidence: readonly ScientificPromotionEvidenceRefV1[]): ScientificPromotionEvidenceAggregateGateV1 => ({ status: "PASS", reasons: [], evidence });
+  const gateEvidence = Object.fromEntries(scientificPromotionGateIdsV1.map((gate) => [gate, fail("UNAVAILABLE", ["CORRUPTED_EVIDENCE"])])) as Record<ScientificPromotionGateIdV1, ScientificPromotionEvidenceAggregateGateV1>;
+  const tenantOk = input.passport.investigation.tenantId === subject.tenantAuthority || `tenant:${input.passport.investigation.tenantId}` === subject.tenantAuthority;
+  const investigationOk = input.passport.investigation.researchInvestigationId === subject.investigationId;
+  gateEvidence.GATE_AUTHORITY_AND_TENANCY = tenantOk && investigationOk ? pass([subject.subjectResult]) : fail("INCOMPATIBLE_EVIDENCE", [tenantOk ? "WRONG_INVESTIGATION" : "WRONG_TENANT"]);
+
+  const experiment = input.passport.experiments.find((row) =>
+    row.experiment?.hashHex === subject.subjectExperiment.hashHex &&
+    row.experimentParameters?.hashHex === subject.subjectExperimentParameters.hashHex &&
+    row.researchIr.hashHex === subject.subjectResearchIr.hashHex
+  );
+  const runInput = input.passport.runInputs.find((row) =>
+    row.runInput.hashHex === subject.subjectRunInput.hashHex &&
+    row.researchIrHashHex === subject.subjectResearchIr.hashHex &&
+    row.experimentHashHex === subject.subjectExperiment.hashHex &&
+    row.metricRegistryVersion === scientificPromotionMetricRegistryVersionV1
+  );
+  gateEvidence.GATE_SUBJECT_IDENTITY = experiment && runInput ? pass([subject.subjectExperiment, subject.subjectExperimentParameters, subject.subjectResearchIr, subject.subjectRunInput]) : fail("INCOMPATIBLE_EVIDENCE", ["WRONG_LINEAGE"]);
+
+  const result = input.passport.results.find((row) =>
+    row.result.hashHex === subject.subjectResult.hashHex &&
+    row.runInputIdentityId === runInput?.runInputIdentityId
+  );
+  gateEvidence.GATE_ACCEPTED_EXECUTION_RESULT = result ? pass([subject.subjectResult]) : fail("UNAVAILABLE", ["MISSING_RESULT"]);
+
+  const evidence = input.passport.evidence.find((row) =>
+    row.evidence.hashHex === subject.subjectEvidenceObject.hashHex &&
+    row.resultIdentityId === result?.resultIdentityId &&
+    row.runInputIdentityId === runInput?.runInputIdentityId
+  );
+  gateEvidence.GATE_EVIDENCE_OBJECT_BINDING = evidence ? pass([subject.subjectEvidenceObject, subject.subjectResult]) : fail("UNAVAILABLE", ["MISSING_EVIDENCE_OBJECT"]);
+
+  const validationEpisode = input.passport.validation.availability === "AVAILABLE_RL3"
+    ? input.passport.validation.episodes.find((episode) =>
+      episode.validationProtocol.hashHex === subject.subjectValidationProtocol.hashHex &&
+      episode.aggregate?.validationResult.hashHex === subject.subjectValidationResult.hashHex &&
+      episode.subjectExperiment.hashHex === subject.subjectExperiment.hashHex &&
+      episode.state === "AGGREGATE_AVAILABLE"
+    )
+    : null;
+  gateEvidence.GATE_VALIDATION_RESULT = validationEpisode ? pass([subject.subjectValidationProtocol, subject.subjectValidationResult]) : fail("FAIL", ["FAILED_VALIDATION"]);
+
+  const metricResultSetV2 = result?.artifacts.some((artifact) => artifact.artifactKind === "METRIC_RESULT_SET" && artifact.artifactSchemaVersion === "METRIC_RESULT_SET_V2");
+  gateEvidence.GATE_METRIC_RESULT_SET_V2 = metricResultSetV2 === true ? pass([subject.subjectMetricResultSet]) : fail("INCOMPATIBLE_EVIDENCE", ["INCOMPATIBLE_ARTIFACT_SCHEMA"]);
+
+  const rl7 = input.rl7;
+  const rl7Matches = rl7 !== null &&
+    rl7.protocol.hashHex === subject.robustnessComparisonProtocol.hashHex &&
+    rl7.result.hashHex === subject.robustnessComparisonResult.hashHex &&
+    rl7.subjectExperiment.hashHex === subject.subjectExperiment.hashHex &&
+    rl7.subjectResult.hashHex === subject.subjectResult.hashHex &&
+    rl7.subjectMetricResultSet.hashHex === subject.subjectMetricResultSet.hashHex;
+  if (!rl7Matches || rl7 === null) gateEvidence.GATE_RL7_ROBUSTNESS_COMPARISON = fail("UNAVAILABLE", ["MISSING_RL7_COMPARISON"]);
+  else if (rl7.classification === "ROBUSTNESS_STABLE") gateEvidence.GATE_RL7_ROBUSTNESS_COMPARISON = pass([subject.robustnessComparisonProtocol, subject.robustnessComparisonResult]);
+  else if (rl7.classification === "ROBUSTNESS_MIXED" || rl7.classification === "ROBUSTNESS_INSUFFICIENT_EVIDENCE") gateEvidence.GATE_RL7_ROBUSTNESS_COMPARISON = fail("INSUFFICIENT_EVIDENCE", ["INSUFFICIENT_RL7_EVIDENCE"]);
+  else gateEvidence.GATE_RL7_ROBUSTNESS_COMPARISON = fail("FAIL", ["FAILED_ROBUSTNESS_GATE"]);
+
+  gateEvidence.GATE_LINEAGE_INTEGRITY = experiment && runInput && result && evidence && validationEpisode && rl7Matches
+    ? pass([subject.subjectRunInput, subject.subjectResult, subject.subjectEvidenceObject, subject.subjectValidationResult, subject.robustnessComparisonResult])
+    : fail("INCOMPATIBLE_EVIDENCE", ["WRONG_LINEAGE"]);
+  gateEvidence.GATE_PROTOCOL_COMPATIBILITY = pass([protocol]);
+  gateEvidence.GATE_EVIDENCE_COMPLETENESS = scientificPromotionGateIdsV1
+    .filter((gate) => gate !== "GATE_EVIDENCE_COMPLETENESS")
+    .every((gate) => gateEvidence[gate].status === "PASS")
+    ? pass([subject.subjectResult, subject.subjectEvidenceObject, subject.subjectValidationResult, subject.subjectMetricResultSet, subject.robustnessComparisonResult])
+    : fail("INSUFFICIENT_EVIDENCE", ["CORRUPTED_EVIDENCE"]);
+
+  return canonicalScientificPromotionEvidenceAggregateV1({
+    schemaVersion: "SCIENTIFIC_PROMOTION_EVIDENCE_AGGREGATE_V1",
+    authoritySource: "ACCEPTED_PREDECESSOR_PROJECTION_DERIVED",
+    tenantAuthority: subject.tenantAuthority,
+    investigationId: subject.investigationId,
+    subject,
+    protocol,
+    metricRegistryVersion: scientificPromotionMetricRegistryVersionV1,
+    rl7PolicyId: scientificPromotionRl7PolicyIdV1,
+    rl7Classification: rl7?.classification ?? "ROBUSTNESS_INSUFFICIENT_EVIDENCE",
+    gateEvidence,
+  });
 }
 
 function checkedRef(ref: HashRefV1, domain: Parameters<typeof assertHashRefDomainV1>[1]): HashRefV1 {
