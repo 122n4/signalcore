@@ -48,6 +48,7 @@ const requiredCurrentDocs = [
   "I5_RL2_EVIDENCE_LEDGER_PASSPORT_OWNER_CONTRACT_V1.md",
   "I5_RL3_VALIDATION_PROTOCOL_OWNER_CONTRACT_V1.md",
   "I5_RL3B_VALIDATION_CHILD_EXECUTION_OWNER_CONTRACT_V1.md",
+  "I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md",
   "I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md",
   "I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md",
@@ -372,6 +373,50 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE");
+    expect(row).toContain("| NONE |");
+  });
+
+  it("records accepted RL-3D Validation Assessment design freeze without runtime admission", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md");
+    const row = tableRow(state, "RL-3D Validation Assessment V1 Design Freeze / unnumbered");
+
+    expect(contract).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED");
+    expect(contract).toContain("ecbd878b13f28e331ae632c2cc78eb94f008e7b3");
+    expect(contract).toContain("#107");
+    expect(contract).toContain("7c5d5dac9f45b8f9c2fb9f55037040f045c70268");
+    expect(contract).toContain("a4f18592cbf180171b6536ac57f0305b57304201");
+    expect(contract).toContain("36608967214 / #1316 / SUCCESS");
+    expect(contract).toContain("109545186722 - SUCCESS");
+    expect(contract).toContain("109545186434 - SUCCESS");
+    expect(contract).toContain("Runtime implementation:\n`NOT IMPLEMENTED BY THIS SLICE`");
+    expect(contract).toContain("Migration:\n`NONE`");
+    expect(contract).toContain("Production mutation:\n`NONE`");
+    expect(contract).toContain("Supabase Production:\n`UNCHANGED`");
+
+    expect(state).toContain("I5 RL-3D Validation Assessment V1 Design Freeze (unnumbered)");
+    expect(state).toContain("I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md");
+    expect(state).toContain("I5 RL-3D Validation Assessment V1 Design Freeze acceptance evidence:");
+    expect(state).toContain("ecbd878b13f28e331ae632c2cc78eb94f008e7b3");
+    expect(state).toContain("#107");
+    expect(state).toContain("7c5d5dac9f45b8f9c2fb9f55037040f045c70268");
+    expect(state).toContain("a4f18592cbf180171b6536ac57f0305b57304201");
+    expect(state).toContain("36608967214 / #1316 / SUCCESS");
+    expect(state).toContain("109545186722 - SUCCESS");
+    expect(state).toContain("109545186434 - SUCCESS");
+    expect(state).toContain("243 passed / 18 skipped files");
+    expect(state).toContain("1416 passed / 53 skipped");
+    expect(state).toContain("PG17:");
+    expect(state).toContain("`NOT REQUIRED / DESIGN-ONLY`");
+    expect(state).toContain("`RL-3D Production migration = NONE`");
+    expect(state).toContain("`RL-3D Supabase Production mutation = NONE`");
+    expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+
+    expect(row).toContain("| NO | YES |");
+    expect(row).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE");
     expect(row).toContain("| NONE |");
   });
 

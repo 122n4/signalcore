@@ -22,15 +22,25 @@ function fencedBlockAfter(contract: string, marker: string): string {
 }
 
 describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
-  it("remains candidate-only and design-only", () => {
+  it("records accepted design-only state without runtime admission", () => {
     const contract = read(contractPath);
-    expect(contract).toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED");
+    expect(contract).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED");
     expect(contract).toContain("Canonical predecessor:\n`b3f48e3f55a1f0c41004c60a3119fbd2cb7f84f0`");
+    expect(contract).toContain("RL-3D acceptance:\n`CURRENT_ACCEPTED`");
+    expect(contract).toContain("ecbd878b13f28e331ae632c2cc78eb94f008e7b3");
+    expect(contract).toContain("#107");
+    expect(contract).toContain("7c5d5dac9f45b8f9c2fb9f55037040f045c70268");
+    expect(contract).toContain("a4f18592cbf180171b6536ac57f0305b57304201");
+    expect(contract).toContain("Tree equality:\n`PASS`");
+    expect(contract).toContain("36608967214 / #1316 / SUCCESS");
+    expect(contract).toContain("109545186722 - SUCCESS");
+    expect(contract).toContain("109545186434 - SUCCESS");
     expect(contract).toContain("Runtime implementation:\n`NOT IMPLEMENTED BY THIS SLICE`");
     expect(contract).toContain("Migration:\n`NONE`");
     expect(contract).toContain("Production mutation:\n`NONE`");
     expect(contract).toContain("Supabase Production:\n`UNCHANGED`");
-    expect(contract).not.toContain("CURRENT_ACCEPTED / RL-3D");
+    expect(contract).not.toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED");
   });
 
   it("does not retrofit accepted RL-3C Validation Result semantics", () => {

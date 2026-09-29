@@ -1,10 +1,45 @@
 # Syntrake Investing Genesis I5 RL-3D - Validation Assessment V1 Design Freeze
 
-Status:
-`CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED`
+Status: CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED
+
+Classification:
+`CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED`
 
 Canonical predecessor:
 `b3f48e3f55a1f0c41004c60a3119fbd2cb7f84f0`
+
+RL-3D acceptance:
+`CURRENT_ACCEPTED`
+
+Final independently audited technical candidate:
+`ecbd878b13f28e331ae632c2cc78eb94f008e7b3`
+
+PR:
+`#107`
+
+Accepted squash merge / canonical main anchor:
+`7c5d5dac9f45b8f9c2fb9f55037040f045c70268`
+
+Candidate/merge tree:
+`a4f18592cbf180171b6536ac57f0305b57304201`
+
+Tree equality:
+`PASS`
+
+CI:
+`36608967214 / #1316 / SUCCESS`
+
+Verify:
+`109545186722 - SUCCESS`
+
+Dependency-audit:
+`109545186434 - SUCCESS`
+
+Vercel:
+`SUCCESS`
+
+Independent auditor verdict:
+`PASS`
 
 Runtime implementation:
 `NOT IMPLEMENTED BY THIS SLICE`
@@ -933,9 +968,9 @@ LAB != PAPER
 INVESTING != TRADING
 ```
 
-## Design Candidate Evidence
+## Accepted Design Evidence
 
-This candidate is documentation/test only.
+This accepted design freeze is documentation/test only. Acceptance changes no runtime, SQL, migration, Supabase Production state, RL-8 implementation or RL-9 state.
 
 ```text
 Runtime changed: NO
