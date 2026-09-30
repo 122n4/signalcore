@@ -23,6 +23,10 @@ jobs:
           cache: npm
       - name: Generate exact lockfile
         run: npm install --package-lock-only --ignore-scripts --save-exact next@16.3.6 @next/third-parties@16.3.6
+      - name: Apply dependency audit fixes to lockfile
+        run: npm audit fix --package-lock-only
+      - name: Verify full dependency audit
+        run: npm audit --audit-level=low
       - name: Verify production dependency audit
         run: npm audit --omit=dev
       - name: Commit generated lockfile
