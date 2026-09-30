@@ -18,6 +18,8 @@ describe("I5 RL-7 recovery acceptance closure", () => {
     expect(contract).toContain("05b4192557e8e2c22f63769774a1ca2985199e62");
     expect(contract).toContain("cc12b1619e014d3deb566d303f878e99c04aef0c");
     expect(contract).toContain("PENDING INDEPENDENT ACCEPTANCE AUDIT / PRODUCTION GATE STILL REQUIRED");
+    expect(contract).toContain("Fresh exact-candidate real PG17 execution:\n`PENDING EXTERNAL PG17 GATE`");
+    expect(contract).toContain("Skipped local PG17 tests without `PG17_RECONCILIATION_URL` are not real PG17");
 
     expect(design).toContain("RL-7 acceptance:\n`NOT ACCEPTED`");
     expect(design).toContain("Runtime implementation:\n`NOT IMPLEMENTED BY THIS SLICE`");
@@ -39,6 +41,9 @@ describe("I5 RL-7 recovery acceptance closure", () => {
       "ROBUSTNESS_UNSTABLE",
       "ROBUSTNESS_INSUFFICIENT_EVIDENCE",
     ]) expect(contract).toContain(token);
+
+    expect(contract).toContain("`buildExperimentComparisonResultV1` is the recovery candidate's pure");
+    expect(contract).toContain("Caller-provided deltas, compatibility conclusions, PASS/FAIL");
 
     expect(canonical).toContain("\"SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1\": \"OWNER_PAYLOAD_EXACT\"");
     expect(canonical).toContain("\"SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1\": \"OWNER_PAYLOAD_EXACT\"");

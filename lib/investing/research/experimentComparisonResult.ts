@@ -5,9 +5,13 @@ import {
   sha256HexV1,
   type CanonicalJsonValue,
   type CanonicalSha256HexV1,
+  canonicalDateV1,
+  canonicalDecimalV1,
+  canonicalIntegerV1,
 } from "./canonical";
-import { decimalStringToRationalV1 } from "./exactRational";
-import type { ExactMetricDeltaV1 } from "./experimentComparisonEvidence";
+import { decimalStringToRationalV1, reduceRationalV1 } from "./exactRational";
+import { metricDirectionV1 } from "./experimentComparison";
+import { compareExactMetricObservationV1, type ExactMetricDeltaV1, type ExactMetricObservationV1 } from "./experimentComparisonEvidence";
 import {
   classifyRobustnessV1,
   type ComparisonFailClosedErrorV1,
@@ -23,7 +27,7 @@ export type ComparisonProtocolHashRefV1 = Readonly<{
 }>;
 
 export type ParameterDeltaV1 =
-  | Readonly<{ kind: "COMPARE_LITERAL_VALUE_DELTA"; pipelineOperationIndex: string; operationType: "FILTER" | "ENTER" | "EXIT" | "GUARD"; expressionPath: readonly string[]; literalType: "DECIMAL" | "INTEGER" | "DATE"; referenceValue: string; subjectValue: string }>
+  | Readonly<{ kind: "COMPARE_LITERAL_VALUE_DELTA"; pipelineOperationIndex: string; operationType: "FILTER" | "ENTER" | "EXIT"; expressionPath: readonly string[]; literalType: "DECIMAL" | "INTEGER" | "DATE"; referenceValue: string; subjectValue: string }>
   | Readonly<{ kind: "TAKE_COUNT_DELTA"; pipelineOperationIndex: string; operationType: "TAKE"; path: readonly ["count"]; referenceValue: string; subjectValue: string }>
   | Readonly<{ kind: "FIXED_TARGET_WEIGHT_DELTA"; pipelineOperationIndex: string; operationType: "WEIGHT"; path: readonly ["targets", string, "weight"]; instrumentId: string; referenceValue: string; subjectValue: string }>
   | Readonly<{ kind: "REBALANCE_SCHEDULE_DELTA"; pipelineOperationIndex: string; operationType: "REBALANCE"; path: readonly ["schedule"]; referenceValue: string; subjectValue: string }>;
@@ -54,6 +58,8 @@ const classificationValues = new Set<RobustnessClassificationV1>(["ROBUSTNESS_IN
 const failureValues = new Set<ComparisonFailClosedErrorV1>(["INCOMPARABLE_LINEAGE", "INCOMPARABLE_PARAMETER_STRUCTURE", "INCOMPATIBLE_SCIENTIFIC_INPUTS", "INCOMPATIBLE_METRIC_VERSIONS", "INCOMPARABLE_VALIDATION_PROTOCOL", "CORRUPTED_EVIDENCE", "AUTHORITY_FAILURE"]);
 const diagnosticValues: ReadonlySet<string> = new Set<RobustnessDiagnosticV1>(["INSUFFICIENT_EVIDENCE", "MISSING_RESULT", "MISSING_VALIDATION_RESULT", "INCOMPLETE_VALIDATION", "METRIC_UNAVAILABLE", "MISSING_METRIC", "METRIC_UNAVAILABLE_ON_ONE_SIDE", "MISSING_EXACT_COST_EVIDENCE", "UNSUPPORTED_CONCENTRATION_EVIDENCE", "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", "LOW_EVENT_COUNT_DEPENDENCE", "FOLD_DIRECTION_CONCENTRATION"]);
 const scientificInputFields = new Set(["EXPERIMENT", "EXPERIMENT_PARAMETERS", "RESOLVED_RESEARCH_IR", "DATASET_SNAPSHOT", "EXECUTION_CONFIG", "METRIC_REQUEST_SET", "ENGINE", "METRIC_REGISTRY", "BENCHMARK", "EVALUATION_PERIOD", "VALIDATION_PROTOCOL", "VALIDATION_RESULT"]);
+const incompatibleScientificInputFields = new Set(["DATASET_SNAPSHOT", "EXECUTION_CONFIG", "METRIC_REQUEST_SET", "ENGINE", "METRIC_REGISTRY", "BENCHMARK", "EVALUATION_PERIOD"]);
+const validationProtocolInputFields = new Set(["VALIDATION_PROTOCOL"]);
 const scheduleValues = new Set(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "ANNUAL"]);
 
 export function canonicalExperimentComparisonResultV1(input: ExperimentComparisonResultV1): CanonicalJsonValue {
@@ -68,6 +74,7 @@ export function canonicalExperimentComparisonResultV1(input: ExperimentCompariso
   const costEvidence = canonicalCostEvidence(input.costEvidence);
   const neighborhoodEvidence = canonicalNeighborhoodEvidence(input.neighborhoodEvidence);
   const concentrationEvidence = canonicalConcentrationEvidence(input.concentrationEvidence);
+  const scientificInputDelta = canonicalScientificInputDelta(input.scientificInputDelta);
   const diagnostics = canonicalDiagnosticsWithEvidence(input.diagnostics, costEvidence, neighborhoodEvidence, concentrationEvidence);
   assertStoredDecisionMatchesEvidence({
     classification,
@@ -75,12 +82,13 @@ export function canonicalExperimentComparisonResultV1(input: ExperimentCompariso
     diagnostics,
     validationEvidence,
     neighborhoodEvidence,
+    scientificInputDelta,
   });
   return {
     schemaVersion: input.schemaVersion,
     protocol,
     parameterDeltas: canonicalParameterDeltas(input.parameterDeltas),
-    scientificInputDelta: canonicalScientificInputDelta(input.scientificInputDelta),
+    scientificInputDelta,
     metricDeltas: canonicalMetricDeltas(input.metricDeltas),
     validationEvidence,
     costEvidence,
@@ -129,16 +137,16 @@ function canonicalParameterDelta(input: ParameterDeltaV1): CanonicalJsonValue {
   switch (input.kind) {
     case "COMPARE_LITERAL_VALUE_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "expressionPath", "literalType", "referenceValue", "subjectValue"]), "ParameterDelta");
-      if (!["FILTER", "ENTER", "EXIT", "GUARD"].includes(input.operationType) || !["DECIMAL", "INTEGER", "DATE"].includes(input.literalType)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+      if (!["FILTER", "ENTER", "EXIT"].includes(input.operationType) || !["DECIMAL", "INTEGER", "DATE"].includes(input.literalType)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
       return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), expressionPath: canonicalPath(input.expressionPath), referenceValue: canonicalLiteral(input.referenceValue, input.literalType), subjectValue: canonicalLiteral(input.subjectValue, input.literalType) });
     case "TAKE_COUNT_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "TAKE" || pathKey(input.path) !== "count") throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["count"]), referenceValue: canonicalPositiveInteger(input.referenceValue), subjectValue: canonicalPositiveInteger(input.subjectValue) });
+      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["count"]), referenceValue: canonicalTakeCount(input.referenceValue), subjectValue: canonicalTakeCount(input.subjectValue) });
     case "FIXED_TARGET_WEIGHT_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "instrumentId", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "WEIGHT" || pathKey(input.path) !== `targets\u0000${input.instrumentId}\u0000weight` || !/^[A-Z0-9._:-]{1,96}$/u.test(input.instrumentId)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["targets", input.instrumentId, "weight"]), referenceValue: canonicalDecimal(input.referenceValue), subjectValue: canonicalDecimal(input.subjectValue) });
+      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["targets", input.instrumentId, "weight"]), referenceValue: canonicalTargetWeight(input.referenceValue), subjectValue: canonicalTargetWeight(input.subjectValue) });
     case "REBALANCE_SCHEDULE_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "REBALANCE" || pathKey(input.path) !== "schedule" || !scheduleValues.has(input.referenceValue) || !scheduleValues.has(input.subjectValue)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
@@ -192,7 +200,7 @@ function canonicalMetricDeltas(input: readonly ExactMetricDeltaV1[]): readonly C
   const copy = input.map(canonicalMetricDelta);
   copy.sort((a, b) => byteCompare(`${a.registryVersion}\u0000${a.metricVersion}\u0000${a.metricId}`, `${b.registryVersion}\u0000${b.metricVersion}\u0000${b.metricId}`));
   for (let i = 1; i < copy.length; i += 1) if (copy[i - 1]!.metricId === copy[i]!.metricId) throw new Error("METRIC_DELTAS_DUPLICATE_METRIC");
-  return Object.freeze(copy as unknown as CanonicalJsonValue[]);
+  return Object.freeze(copy as CanonicalJsonValue[]);
 }
 
 function canonicalDiagnosticStrings(input: readonly RobustnessDiagnosticV1[]): readonly RobustnessDiagnosticV1[] {
@@ -284,7 +292,15 @@ function assertStoredDecisionMatchesEvidence(input: {
   diagnostics: readonly RobustnessDiagnosticV1[];
   validationEvidence: CanonicalJsonValue;
   neighborhoodEvidence: CanonicalJsonValue;
+  scientificInputDelta: readonly CanonicalJsonValue[];
 }): void {
+  const deltaFields = input.scientificInputDelta.map((entry) => String((entry as Record<string, unknown>).field));
+  if (deltaFields.some((field) => incompatibleScientificInputFields.has(field)) && input.failure !== "INCOMPATIBLE_SCIENTIFIC_INPUTS") {
+    throw new Error("INCOMPATIBLE_SCIENTIFIC_INPUTS");
+  }
+  if (deltaFields.some((field) => validationProtocolInputFields.has(field)) && input.failure !== "INCOMPARABLE_VALIDATION_PROTOCOL") {
+    throw new Error("INCOMPARABLE_VALIDATION_PROTOCOL");
+  }
   const validation = input.validationEvidence as Record<string, string>;
   const neighborhood = input.neighborhoodEvidence as Record<string, string>;
   const decision = classifyRobustnessV1({
@@ -303,19 +319,36 @@ function assertStoredDecisionMatchesEvidence(input: {
   if (decision.failure !== input.failure || decision.classification !== input.classification) throw new Error("CLASSIFICATION_EVIDENCE_DRIFT");
 }
 
-function canonicalMetricDelta(input: ExactMetricDeltaV1): ExactMetricDeltaV1 {
+function canonicalMetricDelta(input: ExactMetricDeltaV1): CanonicalJsonValue & { readonly metricId: string; readonly metricVersion: string; readonly registryVersion: string } {
   assertClosed(input, new Set(["metricId", "metricVersion", "registryVersion", "artifactSchemaVersion", "direction", "referenceValue", "subjectValue", "rawDelta", "orientedDelta", "orientedDeltaSign"]), "MetricDelta");
   if (input.metricVersion !== "METRIC_V2" || input.registryVersion !== "METRIC_REGISTRY_V20260927" || input.artifactSchemaVersion !== "METRIC_RESULT_SET_V2") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
-  canonicalDecimal(input.referenceValue);
-  canonicalDecimal(input.subjectValue);
-  canonicalRationalRecord(input.rawDelta, "MetricDeltaRaw");
-  if (input.direction === "DESCRIPTIVE_ONLY") {
-    if (input.orientedDelta !== null || input.orientedDeltaSign !== null) throw new Error("METRIC_DELTA_DIRECTION_MISMATCH");
-  } else {
-    if (input.orientedDelta === null || ![-1, 0, 1].includes(input.orientedDeltaSign as number)) throw new Error("METRIC_DELTA_DIRECTION_MISMATCH");
-    canonicalRationalRecord(input.orientedDelta, "MetricDeltaOriented");
+  const direction = metricDirectionV1(input.metricId);
+  if (input.direction !== direction) throw new Error("METRIC_DELTA_DIRECTION_MISMATCH");
+  const referenceValue = canonicalMetricDecimal(input.referenceValue);
+  const subjectValue = canonicalMetricDecimal(input.subjectValue);
+  const rawDelta = canonicalRationalRecord(input.rawDelta, "MetricDeltaRaw");
+  const orientedDelta = input.orientedDelta === null ? null : canonicalRationalRecord(input.orientedDelta, "MetricDeltaOriented");
+  const canonicalInput = Object.freeze({ ...input, referenceValue, subjectValue, rawDelta, orientedDelta });
+  const expected = compareExactMetricObservationV1(metricObservation(input.metricId, referenceValue), metricObservation(input.metricId, subjectValue));
+  if (expected.state !== "AVAILABLE") throw new Error("METRIC_DELTA_MATH_MISMATCH");
+  const expectedDelta = expected.delta;
+  if (
+    canonicalInput.direction !== expectedDelta.direction ||
+    canonicalInput.rawDelta.numerator !== expectedDelta.rawDelta.numerator ||
+    canonicalInput.rawDelta.denominator !== expectedDelta.rawDelta.denominator ||
+    canonicalInput.orientedDeltaSign !== expectedDelta.orientedDeltaSign ||
+    (canonicalInput.orientedDelta === null) !== (expectedDelta.orientedDelta === null) ||
+    (canonicalInput.orientedDelta !== null && expectedDelta.orientedDelta !== null && (
+      canonicalInput.orientedDelta.numerator !== expectedDelta.orientedDelta.numerator ||
+      canonicalInput.orientedDelta.denominator !== expectedDelta.orientedDelta.denominator
+    ))
+  ) {
+    throw new Error("METRIC_DELTA_MATH_MISMATCH");
   }
-  return Object.freeze({ ...input });
+  return Object.freeze({
+    ...canonicalInput,
+    orientedDeltaSign: canonicalInput.orientedDeltaSign === null ? null : String(canonicalInput.orientedDeltaSign),
+  }) as CanonicalJsonValue & { readonly metricId: string; readonly metricVersion: string; readonly registryVersion: string };
 }
 
 function canonicalClassification(input: RobustnessClassificationV1 | null): RobustnessClassificationV1 | null {
@@ -331,10 +364,13 @@ function canonicalFailure(input: ComparisonFailClosedErrorV1 | null): Comparison
 }
 
 function canonicalLiteral(value: string, literalType: "DECIMAL" | "INTEGER" | "DATE"): string {
-  if (literalType === "DECIMAL") return canonicalDecimal(value);
-  if (literalType === "INTEGER") return canonicalInteger(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-  return value;
+  try {
+    if (literalType === "DECIMAL") return canonicalDecimalV1(value, { allowNegative: true, min: "-1", max: "100", maxIntegerDigits: 3, maxScale: 8 });
+    if (literalType === "INTEGER") return canonicalIntegerV1(value, { allowNegative: false, min: "0", max: "1000000000000" });
+    return canonicalDateV1(value);
+  } catch {
+    throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  }
 }
 
 function canonicalDecimal(value: string): string {
@@ -352,10 +388,28 @@ function canonicalInteger(value: string): string {
   return value;
 }
 
-function canonicalPositiveInteger(value: string): string {
-  const canonical = canonicalNonNegativeInteger(value);
-  if (BigInt(canonical) <= 0n) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-  return canonical;
+function canonicalTakeCount(value: string): string {
+  try {
+    return canonicalIntegerV1(value, { allowNegative: false, min: "1", max: "10000" });
+  } catch {
+    throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  }
+}
+
+function canonicalTargetWeight(value: string): string {
+  try {
+    return canonicalDecimalV1(value, { allowNegative: false, min: "0", max: "1", maxIntegerDigits: 1, maxScale: 8 });
+  } catch {
+    throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  }
+}
+
+function canonicalMetricDecimal(value: string): string {
+  try {
+    return canonicalDecimalV1(value);
+  } catch {
+    throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  }
 }
 
 function canonicalNonNegativeInteger(value: string): string {
@@ -363,12 +417,26 @@ function canonicalNonNegativeInteger(value: string): string {
   return value;
 }
 
-function canonicalRationalRecord(input: unknown, label: string): void {
+function canonicalRationalRecord(input: unknown, label: string): Readonly<{ numerator: string; denominator: string }> {
   assertClosed(input, new Set(["numerator", "denominator"]), label);
   const record = input as Record<string, unknown>;
   if (typeof record.numerator !== "string" || typeof record.denominator !== "string") throw new Error(label + "_INVALID");
   canonicalInteger(record.numerator);
   if (!/^(?:[1-9][0-9]*)$/u.test(record.denominator)) throw new Error(label + "_INVALID");
+  const reduced = reduceRationalV1({ numerator: BigInt(record.numerator), denominator: BigInt(record.denominator) });
+  if (reduced.numerator.toString() !== record.numerator || reduced.denominator.toString() !== record.denominator) throw new Error(label + "_NON_CANONICAL");
+  return Object.freeze({ numerator: record.numerator, denominator: record.denominator });
+}
+
+function metricObservation(metricId: ExactMetricDeltaV1["metricId"], canonicalDecimal: string): ExactMetricObservationV1 {
+  return Object.freeze({
+    metricId,
+    metricVersion: "METRIC_V2",
+    registryVersion: "METRIC_REGISTRY_V20260927",
+    artifactSchemaVersion: "METRIC_RESULT_SET_V2",
+    state: "VALUE",
+    canonicalDecimal,
+  });
 }
 
 function toSafeCount(value: string, label: string): number {

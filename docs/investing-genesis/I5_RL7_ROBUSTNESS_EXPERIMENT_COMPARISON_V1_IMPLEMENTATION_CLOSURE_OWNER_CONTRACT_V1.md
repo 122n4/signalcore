@@ -71,6 +71,7 @@ Recovery candidate runtime surfaces:
 - `lib/investing/research/experimentComparisonStability.ts`;
 - `lib/investing/research/experimentComparisonAggregate.ts`;
 - `lib/investing/research/experimentComparisonClassification.ts`;
+- `lib/investing/research/experimentComparisonBuilder.ts`;
 - `lib/investing/research/experimentComparisonResult.ts`;
 - RL-7 exports from `lib/investing/research/index.ts`;
 - RL-7 scientific-domain admission in `lib/investing/research/canonical.ts`.
@@ -82,6 +83,14 @@ Recovery candidate scientific domains:
 
 The protocol and result payloads are closed, deterministic and domain-separated.
 No undocumented composite score is scientific authority.
+
+`buildExperimentComparisonResultV1` is the recovery candidate's pure
+authoritative derivation kernel. It consumes verified canonical evidence and
+derives lineage compatibility, parameter deltas, scientific-input deltas,
+exact metric deltas, validation/fold/neighborhood/cost/concentration evidence,
+fail-closed state and robustness classification before strict canonicalization
+and hashing. Caller-provided deltas, compatibility conclusions, PASS/FAIL
+labels or classification claims are not scientific authority.
 
 ## Deterministic Robustness Semantics
 
@@ -169,6 +178,12 @@ Current trust-recovery baseline verification:
 
 Recovery implementation status:
 `PENDING INDEPENDENT ACCEPTANCE AUDIT / PRODUCTION GATE STILL REQUIRED`
+
+Fresh exact-candidate real PG17 execution:
+`PENDING EXTERNAL PG17 GATE`
+
+Skipped local PG17 tests without `PG17_RECONCILIATION_URL` are not real PG17
+evidence and must not be reported as a fresh exact-candidate PG17 PASS.
 
 ## Production Boundary
 

@@ -72,7 +72,8 @@ describe("I5 RL-7 comparison result payload", () => {
         { field: "BENCHMARK", referenceValue: "x", subjectValue: "y" },
       ],
       diagnostics: ["MISSING_EXACT_COST_EVIDENCE", "FOLD_DIRECTION_CONCENTRATION"],
-      classification: "ROBUSTNESS_MIXED",
+      classification: null,
+      failure: "INCOMPATIBLE_SCIENTIFIC_INPUTS",
     })) as any;
     expect(value.scientificInputDelta.map((x: any) => x.field)).toEqual(["BENCHMARK", "VALIDATION_RESULT"]);
     expect(value.diagnostics).toEqual(["FOLD_DIRECTION_CONCENTRATION", "MISSING_EXACT_COST_EVIDENCE"]);
@@ -147,7 +148,7 @@ describe("I5 RL-7 comparison result payload", () => {
         orientedDelta: { numerator: "1", denominator: "1" },
         orientedDeltaSign: 1,
       }],
-    }))).toThrow("METRIC_DELTA_DIRECTION_MISMATCH");
+    }))).toThrow("METRIC_DELTA_MATH_MISMATCH");
   });
 
   it("is closed against extra top-level keys", () => {
@@ -185,8 +186,67 @@ describe("I5 RL-7 comparison result payload", () => {
       parameterDeltas: [{ kind: "COMPARE_LITERAL_VALUE_DELTA", pipelineOperationIndex: "0", operationType: "FILTER", expressionPath: ["where", "date"], literalType: "DATE", referenceValue: "2026/01/01", subjectValue: "2026-01-02" }],
     }))).toThrow("INCOMPARABLE_PARAMETER_STRUCTURE");
     expect(() => canonicalExperimentComparisonResultV1(valid({
+      parameterDeltas: [{ kind: "COMPARE_LITERAL_VALUE_DELTA", pipelineOperationIndex: "0", operationType: "FILTER", expressionPath: ["where", "date"], literalType: "DATE", referenceValue: "2026-99-99", subjectValue: "2026-01-02" }],
+    }))).toThrow("INCOMPARABLE_PARAMETER_STRUCTURE");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      parameterDeltas: [{ kind: "COMPARE_LITERAL_VALUE_DELTA", pipelineOperationIndex: "0", operationType: "GUARD", expressionPath: ["where", "close"], literalType: "DECIMAL", referenceValue: "1", subjectValue: "2" } as any],
+    }))).toThrow("INCOMPARABLE_PARAMETER_STRUCTURE");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      parameterDeltas: [{ kind: "FIXED_TARGET_WEIGHT_DELTA", pipelineOperationIndex: "2", operationType: "WEIGHT", path: ["targets", "XNYS:ABC", "weight"], instrumentId: "XNYS:ABC", referenceValue: "0.5", subjectValue: "2" }],
+    }))).toThrow("INCOMPARABLE_PARAMETER_STRUCTURE");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
       parameterDeltas: [{ kind: "REBALANCE_SCHEDULE_DELTA", pipelineOperationIndex: "3", operationType: "REBALANCE", path: ["schedule"], referenceValue: "HOURLY", subjectValue: "MONTHLY" } as any],
     }))).toThrow("INCOMPARABLE_PARAMETER_STRUCTURE");
+  });
+
+  it("recomputes metric deltas and rejects fabricated math, directions, signs and non-canonical rationals", () => {
+    const cagrDelta = {
+      metricId: "CAGR",
+      metricVersion: "METRIC_V2",
+      registryVersion: "METRIC_REGISTRY_V20260927",
+      artifactSchemaVersion: "METRIC_RESULT_SET_V2",
+      direction: "HIGHER_IS_BETTER",
+      referenceValue: "0.1",
+      subjectValue: "0.15",
+      rawDelta: { numerator: "1", denominator: "20" },
+      orientedDelta: { numerator: "1", denominator: "20" },
+      orientedDeltaSign: 1,
+    } as const;
+    expect(canonicalExperimentComparisonResultV1(valid({ metricDeltas: [cagrDelta] }))).toMatchObject({
+      metricDeltas: [{ ...cagrDelta, orientedDeltaSign: "1" }],
+    });
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      metricDeltas: [{ ...cagrDelta, rawDelta: { numerator: "1", denominator: "10" } }],
+    }))).toThrow("METRIC_DELTA_MATH_MISMATCH");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      metricDeltas: [{ ...cagrDelta, direction: "LOWER_IS_BETTER" as any }],
+    }))).toThrow("METRIC_DELTA_DIRECTION_MISMATCH");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      metricDeltas: [{ ...cagrDelta, orientedDeltaSign: -1 as const }],
+    }))).toThrow("METRIC_DELTA_MATH_MISMATCH");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      metricDeltas: [{ ...cagrDelta, rawDelta: { numerator: "2", denominator: "40" } }],
+    }))).toThrow("MetricDeltaRaw_NON_CANONICAL");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      metricDeltas: [{ ...cagrDelta, metricId: "UNKNOWN_METRIC" as any }],
+    }))).toThrow("UNSUPPORTED_COMPARISON_METRIC");
+
+    const drawdownDelta = { ...cagrDelta, metricId: "MAX_DRAWDOWN", direction: "LOWER_IS_BETTER", referenceValue: "0.2", subjectValue: "0.1", rawDelta: { numerator: "-1", denominator: "10" }, orientedDelta: { numerator: "1", denominator: "10" }, orientedDeltaSign: 1 as const } as const;
+    expect(canonicalExperimentComparisonResultV1(valid({ metricDeltas: [drawdownDelta] }))).toMatchObject({ metricDeltas: [{ ...drawdownDelta, orientedDeltaSign: "1" }] });
+  });
+
+  it("requires scientific-input and validation-protocol mismatches to fail closed with the matching reason", () => {
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      scientificInputDelta: [{ field: "DATASET_SNAPSHOT", referenceValue: "dataset-a", subjectValue: "dataset-b" }],
+    }))).toThrow("INCOMPATIBLE_SCIENTIFIC_INPUTS");
+    expect(() => canonicalExperimentComparisonResultV1(valid({
+      scientificInputDelta: [{ field: "VALIDATION_PROTOCOL", referenceValue: "vp-a", subjectValue: "vp-b" }],
+    }))).toThrow("INCOMPARABLE_VALIDATION_PROTOCOL");
+    expect(canonicalExperimentComparisonResultV1(valid({
+      scientificInputDelta: [{ field: "DATASET_SNAPSHOT", referenceValue: "dataset-a", subjectValue: "dataset-b" }],
+      failure: "INCOMPATIBLE_SCIENTIFIC_INPUTS",
+      classification: null,
+    }))).toMatchObject({ failure: "INCOMPATIBLE_SCIENTIFIC_INPUTS", classification: null });
   });
 
   it("hashes result payloads in the admitted RL-7 result domain", () => {
