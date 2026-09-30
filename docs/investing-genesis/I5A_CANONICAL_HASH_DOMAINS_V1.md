@@ -64,6 +64,8 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:VALIDATION_RUN_INPUT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:VALIDATION_CHILD_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:VALIDATION_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT` |
@@ -198,6 +200,29 @@ is applied in Supabase Production.
 This acceptance closes RL-3 together with accepted RL-3A and RL-3B. It does not
 create promotion, robustness/comparison, Blind Truth, Paper, Live or Core
 authority.
+
+## RL-3D Validation Assessment V1
+
+The RL-3D implementation candidate activates exactly two owner-exact domains
+whose payloads are already frozen by the accepted RL-3D Design Freeze:
+
+- `SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1 = OWNER_PAYLOAD_EXACT`;
+- `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
+
+The Protocol is pre-result scientific methodology authority and binds the exact
+Validation Protocol, subject Experiment, subject Research IR, immutable Metric
+Registry V2 identity, criteria and evidence requirements. It contains no future
+Validation Result, Child Result, Result, Evidence Object or concrete metric
+artifact identity.
+
+The Result binds one accepted Assessment Protocol, exact Validation Result,
+exact concrete consumed evidence, deterministic criterion outcomes and exactly
+one closed outcome: `PASS`, `FAIL` or `INSUFFICIENT_EVIDENCE`.
+Integrity, authority, schema and lineage failures remain fail-closed operational
+failures rather than serialized scientific outcomes.
+
+These domains do not authorize RL-8 promotion, Paper, Live, recommendations,
+suitability, brokerage or Capital Kernel actions.
 
 ## Explicit Exclusions
 

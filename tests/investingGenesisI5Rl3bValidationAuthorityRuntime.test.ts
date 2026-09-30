@@ -3,9 +3,13 @@ import {
   isAuthorizedResearchValidationChildExecutionContext,
   isAuthorizedResearchValidationProtocolCreateContext,
   isAuthorizedResearchValidationResultFinalizeContext,
+  isAuthorizedResearchValidationAssessmentProtocolCreateContext,
+  isAuthorizedResearchValidationAssessmentResultFinalizeContext,
   resolveAuthorizedResearchValidationChildExecutionContext,
   resolveAuthorizedResearchValidationProtocolCreateContext,
   resolveAuthorizedResearchValidationResultFinalizeContext,
+  resolveAuthorizedResearchValidationAssessmentProtocolCreateContext,
+  resolveAuthorizedResearchValidationAssessmentResultFinalizeContext,
   type InvestingAuthorityTransactionClient,
 } from "../lib/investing/authority/context";
 import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
@@ -293,4 +297,58 @@ describe("I5 RL-3B Validation authority contexts", () => {
       expect(result.context.researchExperimentId).toBe(ids.experiment);
     }
   });
+  it.each([
+    ["Assessment Protocol create", "PROTOCOL", "RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1"],
+    ["Assessment Result finalize", "RESULT", "RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1"],
+  ] as const)("resolves RL-3D %s authority server-side", async (_label, kind, operation) => {
+    mockClerkOk();
+    mockDatabase();
+    const input = {
+      researchInvestigationId: ids.investigation,
+      researchValidationProtocolIdentityId: ids.protocol,
+      correlationId: `corr-rl3d-${kind.toLowerCase()}-0001`,
+    };
+    const result = kind === "PROTOCOL"
+      ? await resolveAuthorizedResearchValidationAssessmentProtocolCreateContext(input)
+      : await resolveAuthorizedResearchValidationAssessmentResultFinalizeContext(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      if (kind === "PROTOCOL") {
+        expect(isAuthorizedResearchValidationAssessmentProtocolCreateContext(result.context)).toBe(true);
+      } else {
+        expect(isAuthorizedResearchValidationAssessmentResultFinalizeContext(result.context)).toBe(true);
+      }
+      expect(result.context.operation).toBe(operation);
+      expect(result.context.capability).toBe("RESEARCH_MUTATE");
+      expect(result.context.operationScope).toBe("TENANT_SCOPE");
+      expect(result.context.sourceContext).toBe("PURE_RESEARCH");
+      expect(result.context.researchExperimentId).toBe(ids.experiment);
+      expect("accountId" in result.context).toBe(false);
+      expect("accountAccessId" in result.context).toBe(false);
+    }
+  });
+
+  it.each([
+    ["Assessment Protocol create", "PROTOCOL"],
+    ["Assessment Result finalize", "RESULT"],
+  ] as const)("rejects caller-injected authority for RL-3D %s", async (_label, kind) => {
+    mockClerkOk();
+    mockDatabase();
+    const input = {
+      researchInvestigationId: ids.investigation,
+      researchValidationProtocolIdentityId: ids.protocol,
+      correlationId: `corr-rl3d-${kind.toLowerCase()}-inject`,
+      tenantId: ids.tenant,
+      principalId: ids.principal,
+      tenantMembershipId: ids.membership,
+      operation: kind === "PROTOCOL"
+        ? "RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1"
+        : "RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1",
+    } as never;
+    const result = kind === "PROTOCOL"
+      ? await resolveAuthorizedResearchValidationAssessmentProtocolCreateContext(input)
+      : await resolveAuthorizedResearchValidationAssessmentResultFinalizeContext(input);
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+
 });

@@ -58,7 +58,7 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
     expect(rl3c).toContain("- pass/fail;");
   });
 
-  it("freezes exactly two new design-only assessment domains without runtime admission", () => {
+  it("preserves design-freeze history while the later implementation admits only the two frozen domains", () => {
     const contract = read(contractPath);
     const canonicalContract = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
     const canonicalRuntime = read("lib/investing/research/canonical.ts");
@@ -67,11 +67,12 @@ describe("I5 RL-3D Validation Assessment V1 design freeze", () => {
       "SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1",
     ]) {
       expect(contract).toContain(domain);
-      expect(canonicalContract).not.toContain(domain);
-      expect(canonicalRuntime).not.toContain(domain);
+      expect(canonicalContract).toContain(`| \`${domain}\` | \`OWNER_PAYLOAD_EXACT\` |`);
+      expect(canonicalRuntime).toContain(domain);
     }
     expect(contract).toContain("They are design-frozen only in this slice");
     expect(contract).toContain("not added to `HashDomainV1` here");
+    expect(canonicalContract).toContain("RL-3D implementation candidate activates exactly two owner-exact domains");
   });
 
   it("freezes pre-result assessment protocol authority without Validation Result binding", () => {
