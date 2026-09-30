@@ -456,7 +456,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("`RL-3D post-apply audit = PASSED`");
     expect(state).toContain("`RL-3D advisor remediation = APPLIED / AUDITED / CANONICAL`");
     expect(state).toContain("`RL-3D Git/Production alignment = PASS`");
-    expect(state).toContain("`RL-7 Production migrations = NOT APPLIED / OUTSIDE RL-3D PRODUCTION CLOSURE`");
+    expect(state).toContain("`RL-7 Production migrations = NOT APPLIED / SEPARATE PRODUCTION GATE REQUIRED`");
     expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
     expect(state).toContain("RL-8 implementation:\n  `NOT STARTED BY THIS PRODUCTION CLOSURE`");
 
