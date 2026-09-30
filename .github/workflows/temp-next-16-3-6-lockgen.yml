@@ -1,0 +1,35 @@
+name: Temporary Next 16.3.6 lock generator
+
+on:
+  push:
+    branches:
+      - automation/next-16-3-6-lockgen-20260930
+
+permissions:
+  contents: write
+
+jobs:
+  generate-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: automation/next-16-3-6-lockgen-20260930
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Generate exact lockfile
+        run: npm install --package-lock-only --ignore-scripts --save-exact next@16.3.6 @next/third-parties@16.3.6
+      - name: Verify production dependency audit
+        run: npm audit --omit=dev
+      - name: Commit generated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git diff --cached --exit-code && exit 0
+          git commit -m "chore: generate Next.js 16.3.6 lockfile"
+          git push origin HEAD:automation/next-16-3-6-lockgen-20260930
