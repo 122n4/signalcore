@@ -6,8 +6,14 @@ import {
   type CanonicalJsonValue,
   type CanonicalSha256HexV1,
 } from "./canonical";
+import { decimalStringToRationalV1 } from "./exactRational";
 import type { ExactMetricDeltaV1 } from "./experimentComparisonEvidence";
-import type { ComparisonFailClosedErrorV1, RobustnessClassificationV1, RobustnessDiagnosticV1 } from "./experimentComparisonClassification";
+import {
+  classifyRobustnessV1,
+  type ComparisonFailClosedErrorV1,
+  type RobustnessClassificationV1,
+  type RobustnessDiagnosticV1,
+} from "./experimentComparisonClassification";
 
 export type ComparisonProtocolHashRefV1 = Readonly<{
   hashAlgorithm: "SHA-256";
@@ -44,26 +50,45 @@ export type ExperimentComparisonResultV1 = Readonly<{
 }>;
 
 const resultKeys = new Set(["schemaVersion", "protocol", "parameterDeltas", "scientificInputDelta", "metricDeltas", "validationEvidence", "costEvidence", "neighborhoodEvidence", "concentrationEvidence", "diagnostics", "classification", "failure"]);
+const classificationValues = new Set<RobustnessClassificationV1>(["ROBUSTNESS_INSUFFICIENT_EVIDENCE", "ROBUSTNESS_UNSTABLE", "ROBUSTNESS_DEGRADED", "ROBUSTNESS_STABLE", "ROBUSTNESS_MIXED"]);
+const failureValues = new Set<ComparisonFailClosedErrorV1>(["INCOMPARABLE_LINEAGE", "INCOMPARABLE_PARAMETER_STRUCTURE", "INCOMPATIBLE_SCIENTIFIC_INPUTS", "INCOMPATIBLE_METRIC_VERSIONS", "INCOMPARABLE_VALIDATION_PROTOCOL", "CORRUPTED_EVIDENCE", "AUTHORITY_FAILURE"]);
+const diagnosticValues: ReadonlySet<string> = new Set<RobustnessDiagnosticV1>(["INSUFFICIENT_EVIDENCE", "MISSING_RESULT", "MISSING_VALIDATION_RESULT", "INCOMPLETE_VALIDATION", "METRIC_UNAVAILABLE", "MISSING_METRIC", "METRIC_UNAVAILABLE_ON_ONE_SIDE", "MISSING_EXACT_COST_EVIDENCE", "UNSUPPORTED_CONCENTRATION_EVIDENCE", "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", "LOW_EVENT_COUNT_DEPENDENCE", "FOLD_DIRECTION_CONCENTRATION"]);
+const scientificInputFields = new Set(["EXPERIMENT", "EXPERIMENT_PARAMETERS", "RESOLVED_RESEARCH_IR", "DATASET_SNAPSHOT", "EXECUTION_CONFIG", "METRIC_REQUEST_SET", "ENGINE", "METRIC_REGISTRY", "BENCHMARK", "EVALUATION_PERIOD", "VALIDATION_PROTOCOL", "VALIDATION_RESULT"]);
+const scheduleValues = new Set(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "ANNUAL"]);
 
 export function canonicalExperimentComparisonResultV1(input: ExperimentComparisonResultV1): CanonicalJsonValue {
   assertClosed(input, resultKeys, "ExperimentComparisonResult");
   if (input.schemaVersion !== "EXPERIMENT_COMPARISON_RESULT_V1") throw new Error("COMPARISON_RESULT_SCHEMA_INVALID");
   const protocol = canonicalProtocolRef(input.protocol);
-  if (input.failure !== null && input.classification !== null) throw new Error("FAILURE_REQUIRES_NULL_CLASSIFICATION");
-  if (input.failure === null && input.classification === null) throw new Error("SUCCESS_REQUIRES_CLASSIFICATION");
+  const failure = canonicalFailure(input.failure);
+  const classification = canonicalClassification(input.classification);
+  if (failure !== null && classification !== null) throw new Error("FAILURE_REQUIRES_NULL_CLASSIFICATION");
+  if (failure === null && classification === null) throw new Error("SUCCESS_REQUIRES_CLASSIFICATION");
+  const validationEvidence = canonicalValidationEvidence(input.validationEvidence);
+  const costEvidence = canonicalCostEvidence(input.costEvidence);
+  const neighborhoodEvidence = canonicalNeighborhoodEvidence(input.neighborhoodEvidence);
+  const concentrationEvidence = canonicalConcentrationEvidence(input.concentrationEvidence);
+  const diagnostics = canonicalDiagnosticsWithEvidence(input.diagnostics, costEvidence, neighborhoodEvidence, concentrationEvidence);
+  assertStoredDecisionMatchesEvidence({
+    classification,
+    failure,
+    diagnostics,
+    validationEvidence,
+    neighborhoodEvidence,
+  });
   return {
     schemaVersion: input.schemaVersion,
     protocol,
     parameterDeltas: canonicalParameterDeltas(input.parameterDeltas),
     scientificInputDelta: canonicalScientificInputDelta(input.scientificInputDelta),
     metricDeltas: canonicalMetricDeltas(input.metricDeltas),
-    validationEvidence: canonicalRecord(input.validationEvidence),
-    costEvidence: canonicalRecord(input.costEvidence),
-    neighborhoodEvidence: canonicalRecord(input.neighborhoodEvidence),
-    concentrationEvidence: canonicalRecord(input.concentrationEvidence),
-    diagnostics: canonicalStrings(input.diagnostics, "DIAGNOSTICS") as readonly RobustnessDiagnosticV1[],
-    classification: input.classification,
-    failure: input.failure,
+    validationEvidence,
+    costEvidence,
+    neighborhoodEvidence,
+    concentrationEvidence,
+    diagnostics,
+    classification,
+    failure,
   } as CanonicalJsonValue;
 }
 
@@ -99,23 +124,24 @@ function canonicalParameterDeltas(input: readonly ParameterDeltaV1[]): readonly 
 }
 
 function canonicalParameterDelta(input: ParameterDeltaV1): CanonicalJsonValue {
+  if (input === null || typeof input !== "object" || Array.isArray(input) || Object.getPrototypeOf(input) !== Object.prototype) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
   if (input.referenceValue === input.subjectValue) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
   switch (input.kind) {
     case "COMPARE_LITERAL_VALUE_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "expressionPath", "literalType", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (!["FILTER", "ENTER", "EXIT", "GUARD"].includes(input.operationType) || !["DECIMAL", "INTEGER", "DATE"].includes(input.literalType)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), expressionPath: canonicalPath(input.expressionPath) });
+      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), expressionPath: canonicalPath(input.expressionPath), referenceValue: canonicalLiteral(input.referenceValue, input.literalType), subjectValue: canonicalLiteral(input.subjectValue, input.literalType) });
     case "TAKE_COUNT_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "TAKE" || pathKey(input.path) !== "count") throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["count"]) });
+      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["count"]), referenceValue: canonicalPositiveInteger(input.referenceValue), subjectValue: canonicalPositiveInteger(input.subjectValue) });
     case "FIXED_TARGET_WEIGHT_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "instrumentId", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "WEIGHT" || pathKey(input.path) !== `targets\u0000${input.instrumentId}\u0000weight` || !/^[A-Z0-9._:-]{1,96}$/u.test(input.instrumentId)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["targets", input.instrumentId, "weight"]) });
+      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["targets", input.instrumentId, "weight"]), referenceValue: canonicalDecimal(input.referenceValue), subjectValue: canonicalDecimal(input.subjectValue) });
     case "REBALANCE_SCHEDULE_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "referenceValue", "subjectValue"]), "ParameterDelta");
-      if (input.operationType !== "REBALANCE" || pathKey(input.path) !== "schedule") throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+      if (input.operationType !== "REBALANCE" || pathKey(input.path) !== "schedule" || !scheduleValues.has(input.referenceValue) || !scheduleValues.has(input.subjectValue)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
       return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["schedule"]) });
     default:
       throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
@@ -149,7 +175,13 @@ function pathKey(path: readonly string[]): string {
 
 function canonicalScientificInputDelta(input: readonly ScientificInputDeltaV1[]): readonly CanonicalJsonValue[] {
   if (!Array.isArray(input)) throw new Error("SCIENTIFIC_INPUT_DELTA_NOT_ARRAY");
-  const copy = input.map((entry) => ({ ...entry }));
+  const copy = input.map((entry) => {
+    assertClosed(entry, new Set(["field", "referenceValue", "subjectValue"]), "ScientificInputDelta");
+    if (!scientificInputFields.has(entry.field)) throw new Error("SCIENTIFIC_INPUT_DELTA_FIELD_INVALID");
+    if (typeof entry.referenceValue !== "string" || typeof entry.subjectValue !== "string" || entry.referenceValue.length === 0 || entry.subjectValue.length === 0) throw new Error("SCIENTIFIC_INPUT_DELTA_VALUE_INVALID");
+    if (entry.referenceValue === entry.subjectValue) throw new Error("SCIENTIFIC_INPUT_DELTA_EQUAL_VALUES");
+    return Object.freeze({ ...entry });
+  });
   copy.sort((a, b) => byteCompare(a.field, b.field));
   for (let i = 1; i < copy.length; i += 1) if (copy[i - 1]!.field === copy[i]!.field) throw new Error("SCIENTIFIC_INPUT_DELTA_DUPLICATE_FIELD");
   return Object.freeze(copy as CanonicalJsonValue[]);
@@ -157,22 +189,192 @@ function canonicalScientificInputDelta(input: readonly ScientificInputDeltaV1[])
 
 function canonicalMetricDeltas(input: readonly ExactMetricDeltaV1[]): readonly CanonicalJsonValue[] {
   if (!Array.isArray(input)) throw new Error("METRIC_DELTAS_NOT_ARRAY");
-  const copy = input.map((entry) => ({ ...entry }));
+  const copy = input.map(canonicalMetricDelta);
   copy.sort((a, b) => byteCompare(`${a.registryVersion}\u0000${a.metricVersion}\u0000${a.metricId}`, `${b.registryVersion}\u0000${b.metricVersion}\u0000${b.metricId}`));
   for (let i = 1; i < copy.length; i += 1) if (copy[i - 1]!.metricId === copy[i]!.metricId) throw new Error("METRIC_DELTAS_DUPLICATE_METRIC");
   return Object.freeze(copy as unknown as CanonicalJsonValue[]);
 }
 
-function canonicalStrings(input: readonly string[], label: string): readonly string[] {
-  if (!Array.isArray(input)) throw new Error(label + "_NOT_ARRAY");
-  const copy = [...input].sort(byteCompare);
-  if (new Set(copy).size !== copy.length) throw new Error(label + "_DUPLICATE");
+function canonicalDiagnosticStrings(input: readonly RobustnessDiagnosticV1[]): readonly RobustnessDiagnosticV1[] {
+  if (!Array.isArray(input)) throw new Error("DIAGNOSTICS_NOT_ARRAY");
+  const copy: RobustnessDiagnosticV1[] = [];
+  for (const value of input) {
+    if (typeof value !== "string" || !diagnosticValues.has(value)) throw new Error("DIAGNOSTICS_INVALID");
+    copy.push(value as RobustnessDiagnosticV1);
+  }
+  copy.sort(byteCompare);
+  if (new Set(copy).size !== copy.length) throw new Error("DIAGNOSTICS_DUPLICATE");
   return Object.freeze(copy);
 }
 
-function canonicalRecord(input: object): CanonicalJsonValue {
-  if (input === null || Array.isArray(input) || Object.getPrototypeOf(input) !== Object.prototype) throw new Error("EVIDENCE_RECORD_INVALID");
-  return { ...input } as CanonicalJsonValue;
+function canonicalValidationEvidence(input: ValidationEvidenceV1): CanonicalJsonValue {
+  assertClosed(input, new Set(["completeFoldCount", "degradedFoldCount", "nonDegradedFoldCount", "aggregateOosOrientedDeltaSign"]), "ValidationEvidence");
+  const completeFoldCount = canonicalNonNegativeInteger(input.completeFoldCount);
+  const degradedFoldCount = canonicalNonNegativeInteger(input.degradedFoldCount);
+  const nonDegradedFoldCount = canonicalNonNegativeInteger(input.nonDegradedFoldCount);
+  if (BigInt(degradedFoldCount) + BigInt(nonDegradedFoldCount) !== BigInt(completeFoldCount)) throw new Error("VALIDATION_EVIDENCE_COUNT_MISMATCH");
+  if (!["-1", "0", "1"].includes(input.aggregateOosOrientedDeltaSign)) throw new Error("VALIDATION_EVIDENCE_SIGN_INVALID");
+  return Object.freeze({ completeFoldCount, degradedFoldCount, nonDegradedFoldCount, aggregateOosOrientedDeltaSign: input.aggregateOosOrientedDeltaSign });
+}
+
+function canonicalCostEvidence(input: CostEvidenceV1): CanonicalJsonValue {
+  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "explicitFeeTotalReference", "explicitFeeTotalSubject", "slippageCostTotalReference", "slippageCostTotalSubject"]) : new Set(["state", "reason"]), "CostEvidence");
+  if (input.state === "AVAILABLE") return Object.freeze({
+    state: "AVAILABLE",
+    explicitFeeTotalReference: canonicalDecimal(input.explicitFeeTotalReference),
+    explicitFeeTotalSubject: canonicalDecimal(input.explicitFeeTotalSubject),
+    slippageCostTotalReference: canonicalDecimal(input.slippageCostTotalReference),
+    slippageCostTotalSubject: canonicalDecimal(input.slippageCostTotalSubject),
+  });
+  if (input.state === "UNAVAILABLE" && input.reason === "MISSING_EXACT_COST_EVIDENCE") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason });
+  throw new Error("COST_EVIDENCE_INVALID");
+}
+
+function canonicalNeighborhoodEvidence(input: NeighborhoodEvidenceV1): CanonicalJsonValue {
+  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "neighborhoodMemberCount", "degradedMemberCount", "improvedOrEqualMemberCount"]) : new Set(["state", "reason"]), "NeighborhoodEvidence");
+  if (input.state === "AVAILABLE") {
+    const neighborhoodMemberCount = canonicalNonNegativeInteger(input.neighborhoodMemberCount);
+    const degradedMemberCount = canonicalNonNegativeInteger(input.degradedMemberCount);
+    const improvedOrEqualMemberCount = canonicalNonNegativeInteger(input.improvedOrEqualMemberCount);
+    if (BigInt(degradedMemberCount) + BigInt(improvedOrEqualMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
+    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, degradedMemberCount, improvedOrEqualMemberCount });
+  }
+  if (input.state === "UNAVAILABLE" && input.reason === "INSUFFICIENT_PARAMETER_NEIGHBORHOOD") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason });
+  throw new Error("NEIGHBORHOOD_EVIDENCE_INVALID");
+}
+
+function canonicalConcentrationEvidence(input: ConcentrationEvidenceV1): CanonicalJsonValue {
+  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "tradeCount", "rebalanceCount", "foldDirectionConcentration"]) : new Set(["state", "reason"]), "ConcentrationEvidence");
+  if (input.state === "AVAILABLE") {
+    if (typeof input.foldDirectionConcentration !== "boolean") throw new Error("CONCENTRATION_EVIDENCE_INVALID");
+    return Object.freeze({
+      state: "AVAILABLE",
+      tradeCount: canonicalNonNegativeInteger(input.tradeCount),
+      rebalanceCount: canonicalNonNegativeInteger(input.rebalanceCount),
+      foldDirectionConcentration: input.foldDirectionConcentration,
+    });
+  }
+  if (input.state === "UNAVAILABLE" && input.reason === "UNSUPPORTED_CONCENTRATION_EVIDENCE") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason });
+  throw new Error("CONCENTRATION_EVIDENCE_INVALID");
+}
+
+function canonicalDiagnosticsWithEvidence(
+  input: readonly RobustnessDiagnosticV1[],
+  costEvidence: CanonicalJsonValue,
+  neighborhoodEvidence: CanonicalJsonValue,
+  concentrationEvidence: CanonicalJsonValue,
+): readonly RobustnessDiagnosticV1[] {
+  const diagnostics = new Set(canonicalDiagnosticStrings(input));
+  const cost = costEvidence as Record<string, unknown>;
+  if (cost.state === "UNAVAILABLE") diagnostics.add("MISSING_EXACT_COST_EVIDENCE");
+  const neighborhood = neighborhoodEvidence as Record<string, unknown>;
+  if (neighborhood.state === "UNAVAILABLE" || BigInt(String(neighborhood.neighborhoodMemberCount ?? "0")) < 3n) diagnostics.add("INSUFFICIENT_PARAMETER_NEIGHBORHOOD");
+  const concentration = concentrationEvidence as Record<string, unknown>;
+  if (concentration.state === "UNAVAILABLE") diagnostics.add("UNSUPPORTED_CONCENTRATION_EVIDENCE");
+  if (concentration.state === "AVAILABLE") {
+    if (BigInt(String(concentration.tradeCount)) < 20n || BigInt(String(concentration.rebalanceCount)) < 5n) diagnostics.add("LOW_EVENT_COUNT_DEPENDENCE");
+    if (concentration.foldDirectionConcentration === true) diagnostics.add("FOLD_DIRECTION_CONCENTRATION");
+  }
+  return Object.freeze([...diagnostics].sort(byteCompare));
+}
+
+function assertStoredDecisionMatchesEvidence(input: {
+  classification: RobustnessClassificationV1 | null;
+  failure: ComparisonFailClosedErrorV1 | null;
+  diagnostics: readonly RobustnessDiagnosticV1[];
+  validationEvidence: CanonicalJsonValue;
+  neighborhoodEvidence: CanonicalJsonValue;
+}): void {
+  const validation = input.validationEvidence as Record<string, string>;
+  const neighborhood = input.neighborhoodEvidence as Record<string, string>;
+  const decision = classifyRobustnessV1({
+    primaryMetricId: "CAGR",
+    completeFoldCount: toSafeCount(validation.completeFoldCount, "completeFoldCount"),
+    neighborhoodMemberCount: neighborhood.state === "AVAILABLE" ? toSafeCount(neighborhood.neighborhoodMemberCount, "neighborhoodMemberCount") : 0,
+    requiredMetricAvailable: !input.diagnostics.some((diagnostic) => diagnostic === "MISSING_METRIC" || diagnostic === "METRIC_UNAVAILABLE" || diagnostic === "METRIC_UNAVAILABLE_ON_ONE_SIDE"),
+    aggregateOosOrientedDeltaSign: Number(validation.aggregateOosOrientedDeltaSign) as -1 | 0 | 1,
+    degradedFoldCount: toSafeCount(validation.degradedFoldCount, "degradedFoldCount"),
+    nonDegradedFoldCount: toSafeCount(validation.nonDegradedFoldCount, "nonDegradedFoldCount"),
+    degradedMemberCount: neighborhood.state === "AVAILABLE" ? toSafeCount(neighborhood.degradedMemberCount, "degradedMemberCount") : 0,
+    improvedOrEqualMemberCount: neighborhood.state === "AVAILABLE" ? toSafeCount(neighborhood.improvedOrEqualMemberCount, "improvedOrEqualMemberCount") : 0,
+    diagnostics: input.diagnostics,
+    failure: input.failure,
+  });
+  if (decision.failure !== input.failure || decision.classification !== input.classification) throw new Error("CLASSIFICATION_EVIDENCE_DRIFT");
+}
+
+function canonicalMetricDelta(input: ExactMetricDeltaV1): ExactMetricDeltaV1 {
+  assertClosed(input, new Set(["metricId", "metricVersion", "registryVersion", "artifactSchemaVersion", "direction", "referenceValue", "subjectValue", "rawDelta", "orientedDelta", "orientedDeltaSign"]), "MetricDelta");
+  if (input.metricVersion !== "METRIC_V2" || input.registryVersion !== "METRIC_REGISTRY_V20260927" || input.artifactSchemaVersion !== "METRIC_RESULT_SET_V2") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
+  canonicalDecimal(input.referenceValue);
+  canonicalDecimal(input.subjectValue);
+  canonicalRationalRecord(input.rawDelta, "MetricDeltaRaw");
+  if (input.direction === "DESCRIPTIVE_ONLY") {
+    if (input.orientedDelta !== null || input.orientedDeltaSign !== null) throw new Error("METRIC_DELTA_DIRECTION_MISMATCH");
+  } else {
+    if (input.orientedDelta === null || ![-1, 0, 1].includes(input.orientedDeltaSign as number)) throw new Error("METRIC_DELTA_DIRECTION_MISMATCH");
+    canonicalRationalRecord(input.orientedDelta, "MetricDeltaOriented");
+  }
+  return Object.freeze({ ...input });
+}
+
+function canonicalClassification(input: RobustnessClassificationV1 | null): RobustnessClassificationV1 | null {
+  if (input === null) return null;
+  if (!classificationValues.has(input)) throw new Error("CLASSIFICATION_INVALID");
+  return input;
+}
+
+function canonicalFailure(input: ComparisonFailClosedErrorV1 | null): ComparisonFailClosedErrorV1 | null {
+  if (input === null) return null;
+  if (!failureValues.has(input)) throw new Error("FAILURE_INVALID");
+  return input;
+}
+
+function canonicalLiteral(value: string, literalType: "DECIMAL" | "INTEGER" | "DATE"): string {
+  if (literalType === "DECIMAL") return canonicalDecimal(value);
+  if (literalType === "INTEGER") return canonicalInteger(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  return value;
+}
+
+function canonicalDecimal(value: string): string {
+  if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(value)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  try {
+    decimalStringToRationalV1(value);
+  } catch {
+    throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  }
+  return value;
+}
+
+function canonicalInteger(value: string): string {
+  if (!/^-?(?:0|[1-9][0-9]*)$/u.test(value)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  return value;
+}
+
+function canonicalPositiveInteger(value: string): string {
+  const canonical = canonicalNonNegativeInteger(value);
+  if (BigInt(canonical) <= 0n) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  return canonical;
+}
+
+function canonicalNonNegativeInteger(value: string): string {
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) throw new Error("EVIDENCE_COUNTER_INVALID");
+  return value;
+}
+
+function canonicalRationalRecord(input: unknown, label: string): void {
+  assertClosed(input, new Set(["numerator", "denominator"]), label);
+  const record = input as Record<string, unknown>;
+  if (typeof record.numerator !== "string" || typeof record.denominator !== "string") throw new Error(label + "_INVALID");
+  canonicalInteger(record.numerator);
+  if (!/^(?:[1-9][0-9]*)$/u.test(record.denominator)) throw new Error(label + "_INVALID");
+}
+
+function toSafeCount(value: string, label: string): number {
+  const count = BigInt(value);
+  if (count > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(label + " exceeds safe integer");
+  return Number(count);
 }
 
 function byteCompare(a: string, b: string): number { return Buffer.from(a, "utf8").compare(Buffer.from(b, "utf8")); }

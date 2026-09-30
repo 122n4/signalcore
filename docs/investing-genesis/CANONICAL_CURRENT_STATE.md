@@ -258,13 +258,13 @@ freeze/master evidence still relies on its narrow classifications.
   V2 compatibility. It required no database migration and caused no Supabase
   Production mutation.
 - I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure:
-  `CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
-  This trust-recovery closure accepts the already-merged deterministic RL-7
-  comparison runtime, the two owner-exact comparison hash domains and the
-  append-only internal persistence contract. The two RL-7 migrations remain in
-  Git only and are `NOT APPLIED` to Supabase Production. RL-8 promotion,
-  RL-9 Blind Truth, RL-10 orchestration, Paper, Live, suitability and Capital
-  Kernel authority remain outside RL-7.
+  `RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE /
+  UNNUMBERED / NOT_ACCEPTED_YET`. This recovery candidate repairs the
+  already-merged deterministic RL-7 comparison runtime, the two owner-exact
+  comparison hash domains and the append-only internal persistence contract.
+  The two RL-7 migrations remain in Git only and are `NOT APPLIED` to Supabase
+  Production. RL-8 promotion, RL-9 Blind Truth, RL-10 orchestration, Paper,
+  Live, suitability and Capital Kernel authority remain outside RL-7.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -456,7 +456,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-7_RECOVERY_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -1175,9 +1175,9 @@ RL-7 runtime/progression state:
 
 - design evidence: `YES / HISTORICAL CANDIDATE DESIGN SLICE`.
 - implementation: `YES`.
-- Git acceptance: `YES`.
+- Git acceptance: `NO / RECOVERY CANDIDATE PENDING INDEPENDENT ACCEPTANCE AUDIT`.
 - Production migrations: `NOT APPLIED`.
-- state: `CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE`.
+- state: `RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / NOT_ACCEPTED_YET`.
 - permanent A-number: `NONE`.
 
 I5 RL-7 recovery/acceptance evidence:
@@ -1207,18 +1207,18 @@ I5 RL-7 recovery/acceptance evidence:
 - scientific domains:
   `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1 = OWNER_PAYLOAD_EXACT`;
   `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
-- accepted migration set in Git:
+- candidate migration set in Git:
   `20260928080318 + 20260928090809`.
 - Production migration set:
   `NOT APPLIED`.
 - Supabase Production mutation by this closure:
   `NONE`.
-- independent recovery audit:
-  `PASS FOR GIT ACCEPTANCE / PRODUCTION GATE STILL REQUIRED`.
+- recovery implementation status:
+  `PENDING INDEPENDENT ACCEPTANCE AUDIT / PRODUCTION GATE STILL REQUIRED`.
 - permanent A-number:
   `NOT ASSIGNED`.
 
-Accepted RL-7 invariants:
+Candidate RL-7 invariants:
 
 - comparison truth is deterministic and evidence-backed;
 - exact parameter and scientific-input deltas remain distinct;
@@ -1234,7 +1234,7 @@ Accepted RL-7 invariants:
 - Paper, Live, recommendation, suitability and Capital Kernel authority remain
   outside RL-7.
 
-`I5 RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+`I5 RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE = RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED / NOT_ACCEPTED_YET`.
 
 ## Production Supabase Migration State
 
@@ -1328,7 +1328,7 @@ Current production closure is:
 - `RL-3D migration-history alignment = PASS`.
 - `RL-3D Git/Production alignment = PASS`.
 - `RL-3D Production scientific/financial row mutation = NONE`.
-- `RL-7 = CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+- `RL-7 = RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED / NOT_ACCEPTED_YET`.
 - `RL-7 Git migrations = 20260928080318 + 20260928090809`.
 - `RL-7 Production migrations = NOT APPLIED / SEPARATE PRODUCTION GATE REQUIRED`.
 - `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
@@ -1380,7 +1380,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-4 Research Engine V2 Design Freeze / unnumbered | NO | YES | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` + static contract tests + independent design audit + CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED | CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE | NONE |
 | RL-5 Research Engine V2 Implementation Closure / unnumbered | YES | YES | RL-5 owner contract + Engine V2 runtime + scientific admission + Validation V2 + V2 goldens + migration + independent implementation audit + real PostgreSQL 17 rehearsal + PR/CI + Vercel + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE | NONE |
 | RL-6 Metric Registry V2 / unnumbered | YES | YES | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` + Metric Registry V2 runtime + certified arithmetic + V2 metric goldens + Validation V2 compatibility + PR/CI + Vercel + independent audit | CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED | CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 | NONE |
-| RL-7 Robustness And Experiment Comparison V1 Implementation Closure / unnumbered | YES | YES | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic comparison runtime + owner-exact hash domains + append-only persistence migrations/functions + runtime/migration tests + PG17 + recovery audit | CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS NOT APPLIED |
+| RL-7 Robustness And Experiment Comparison V1 Implementation Closure / unnumbered | YES | YES | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic comparison runtime + owner-exact hash domains + append-only persistence migrations/functions + runtime/migration tests + PG17 + recovery audit | RECOVERY CANDIDATE OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED | RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / NOT_ACCEPTED_YET | PRODUCTION MIGRATIONS NOT APPLIED |
 
 RL-1 runtime/progression state:
 
@@ -1455,9 +1455,9 @@ RL-6 runtime/progression state:
 RL-7 runtime/progression state:
 
 - implementation: `YES`.
-- Git acceptance: `YES`.
+- Git acceptance: `NO / RECOVERY CANDIDATE PENDING INDEPENDENT ACCEPTANCE AUDIT`.
 - Production migrations: `NOT APPLIED`.
-- state: `CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE`.
+- state: `RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / NOT_ACCEPTED_YET`.
 - permanent A-number: `NONE`.
 
 RL-3 Validation Protocol V1 progression state:

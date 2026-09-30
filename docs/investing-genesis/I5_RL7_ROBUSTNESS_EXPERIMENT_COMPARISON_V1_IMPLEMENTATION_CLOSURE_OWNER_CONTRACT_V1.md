@@ -1,9 +1,9 @@
 # I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure Owner Contract
 
-Status: CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED
+Status: RECOVERY CANDIDATE OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED
 
 Classification:
-`CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`
+`RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED / NOT_ACCEPTED_YET`
 
 Trust-recovery predecessor:
 `425c635ba822e8c9c6fe78f673b1889a827b92be`
@@ -33,7 +33,7 @@ Tree equality:
 `PASS`
 
 Runtime implementation:
-`PRESENT / ACCEPTED BY THIS CLOSURE`
+`PRESENT / RECOVERY CANDIDATE / PENDING INDEPENDENT ACCEPTANCE AUDIT`
 
 Production migration:
 `NOT APPLIED`
@@ -56,14 +56,15 @@ actual merged runtime, persistence and test evidence and establishes current
 authority without rewriting the historical design-slice facts.
 
 The historical design document remains evidence of what that design-only slice
-claimed at the time. This contract is the current implementation authority.
+claimed at the time. This contract is a recovery candidate for independent
+acceptance audit and is not yet current acceptance authority.
 
-## Accepted Scope
+## Recovery Candidate Scope
 
 RL-7 owns deterministic robustness and BASELINE/VARIANT experiment-comparison
 scientific evidence only.
 
-Accepted runtime surfaces:
+Recovery candidate runtime surfaces:
 
 - `lib/investing/research/experimentComparison.ts`;
 - `lib/investing/research/experimentComparisonEvidence.ts`;
@@ -74,7 +75,7 @@ Accepted runtime surfaces:
 - RL-7 exports from `lib/investing/research/index.ts`;
 - RL-7 scientific-domain admission in `lib/investing/research/canonical.ts`.
 
-Accepted scientific domains:
+Recovery candidate scientific domains:
 
 - `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1 = OWNER_PAYLOAD_EXACT`;
 - `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
@@ -84,7 +85,7 @@ No undocumented composite score is scientific authority.
 
 ## Deterministic Robustness Semantics
 
-The accepted `ROBUSTNESS_COMPARISON_POLICY_V20260927` freezes:
+The recovery candidate `ROBUSTNESS_COMPARISON_POLICY_V20260927` freezes:
 
 - exact parameter delta;
 - exact scientific-input delta;
@@ -96,7 +97,7 @@ The accepted `ROBUSTNESS_COMPARISON_POLICY_V20260927` freezes:
 - event-count and fold-direction concentration diagnostics;
 - deterministic fail-closed classification.
 
-The admitted scientific classifications remain:
+The candidate scientific classifications remain:
 
 - `ROBUSTNESS_STABLE`;
 - `ROBUSTNESS_MIXED`;
@@ -109,15 +110,15 @@ and does not become a fabricated scientific result.
 
 ## Persistence Authority
 
-The accepted Git persistence set is:
+The candidate Git persistence set is:
 
 - `20260928080318_investing_i5_rl7_experiment_comparison_v1.sql`;
 - `20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql`.
 
-These migrations establish append-only protocol/result scientific identities,
+These migrations are intended to establish append-only protocol/result scientific identities,
 RLS + FORCE RLS, minimal table grants and internal persistence functions.
 
-The accepted internal functions are:
+The candidate internal functions are:
 
 - `investing.persist_research_experiment_comparison_protocol_v1(text,text,jsonb)`;
 - `investing.finalize_research_experiment_comparison_result_v1(uuid,text,jsonb)`.
@@ -128,7 +129,7 @@ inside the existing server-authorized Investing context.
 
 Tenant, principal, membership and Investigation authority are bound to the
 database context and preserved by composite constraints/RLS. A client-supplied
-protocol UUID is not authority and cannot cross the accepted authority tuple.
+protocol UUID is not authority and cannot cross the candidate authority tuple.
 
 Protocol/result reuse is exact and deterministic:
 
@@ -142,7 +143,7 @@ Protocol/result reuse is exact and deterministic:
 RL-7 does not create a product API, UI or general research orchestrator.
 
 A dedicated TypeScript product writer/service is not required by this closure:
-the accepted persistence boundary is the internal `investing_app` SQL contract.
+the candidate persistence boundary is the internal `investing_app` SQL contract.
 Headless cross-slice orchestration is explicitly owned by RL-10.
 
 This limitation must not be misrepresented as missing scientific persistence.
@@ -166,21 +167,22 @@ Current trust-recovery baseline verification:
 - RL-7 migrations present in Git: `YES`;
 - RL-7 migrations present in Production ledger: `NO`.
 
-Independent recovery audit verdict:
-`PASS FOR GIT ACCEPTANCE / PRODUCTION GATE STILL REQUIRED`
+Recovery implementation status:
+`PENDING INDEPENDENT ACCEPTANCE AUDIT / PRODUCTION GATE STILL REQUIRED`
 
 ## Production Boundary
 
 This closure performs no Supabase mutation and no financial/scientific row
 mutation.
 
-RL-7 is accepted in Git, but its two migrations remain `NOT APPLIED` to
-Supabase Production. Production application is a separate gate requiring exact
-migration scope, rehearsal, migration-ledger verification and post-apply audit.
+RL-7 is a Git recovery candidate, but its two migrations remain `NOT APPLIED`
+to Supabase Production. Production application is a separate gate requiring
+exact migration scope, rehearsal, migration-ledger verification and post-apply
+audit.
 
 Until that gate passes:
 
-`RL-7 GIT ACCEPTED != RL-7 PRODUCTION APPLIED`
+`RL-7 RECOVERY CANDIDATE != RL-7 CURRENT_ACCEPTED != RL-7 PRODUCTION APPLIED`
 
 ## Downstream Boundary
 

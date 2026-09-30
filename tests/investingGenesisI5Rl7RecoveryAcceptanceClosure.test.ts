@@ -6,24 +6,24 @@ const root = path.resolve(__dirname, "..");
 const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
 
 describe("I5 RL-7 recovery acceptance closure", () => {
-  it("records a dedicated accepted owner contract without rewriting historical design-slice facts", () => {
+  it("records a dedicated recovery candidate contract without rewriting historical design-slice facts", () => {
     const contract = read("docs/investing-genesis/I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
     const design = read("docs/investing-genesis/I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_DESIGN_FREEZE_V1.md");
 
-    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
-    expect(contract).toContain("CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
+    expect(contract).toContain("RECOVERY CANDIDATE OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
+    expect(contract).toContain("RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED / NOT_ACCEPTED_YET");
     expect(contract).toContain("425c635ba822e8c9c6fe78f673b1889a827b92be");
     expect(contract).toContain("#105");
     expect(contract).toContain("6cfd148cba970d81bbd3f32a2435f4994a242847");
     expect(contract).toContain("05b4192557e8e2c22f63769774a1ca2985199e62");
     expect(contract).toContain("cc12b1619e014d3deb566d303f878e99c04aef0c");
-    expect(contract).toContain("PASS FOR GIT ACCEPTANCE / PRODUCTION GATE STILL REQUIRED");
+    expect(contract).toContain("PENDING INDEPENDENT ACCEPTANCE AUDIT / PRODUCTION GATE STILL REQUIRED");
 
     expect(design).toContain("RL-7 acceptance:\n`NOT ACCEPTED`");
     expect(design).toContain("Runtime implementation:\n`NOT IMPLEMENTED BY THIS SLICE`");
   });
 
-  it("accepts the exact RL-7 scientific identities and deterministic comparison boundaries", () => {
+  it("keeps exact RL-7 scientific identities and deterministic comparison boundaries in the recovery candidate", () => {
     const contract = read("docs/investing-genesis/I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
     const canonical = read("lib/investing/research/canonical.ts");
     const hash = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
@@ -65,14 +65,14 @@ describe("I5 RL-7 recovery acceptance closure", () => {
     expect(migrationB).toContain("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT");
   });
 
-  it("moves the canonical frontier to RL-8 while preserving RL-7 Production pending truth", () => {
+  it("keeps the canonical frontier at RL-7 recovery while preserving Production pending truth", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(state).toContain("I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure (unnumbered)");
     expect(state).toContain("I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
-    expect(state).toContain("CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
-    expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_RECOVERY_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("RL-7 Production migrations = NOT APPLIED / SEPARATE PRODUCTION GATE REQUIRED");
     expect(state).toContain("20260928080318 + 20260928090809");
     expect(state).toContain("101 versions");
