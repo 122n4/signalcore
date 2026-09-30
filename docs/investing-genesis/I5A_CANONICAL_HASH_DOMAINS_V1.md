@@ -66,6 +66,8 @@ Current `HashDomainV1` states:
 | `SYNTRAKE:VALIDATION_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1` | `OWNER_PAYLOAD_EXACT` |
+| `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:RESEARCH_TEMPLATE:V1` | `DECLARED_BUT_HASHING_DISABLED` |
 | `SYNTRAKE:METRIC_REQUEST_SET:V1` | `OWNER_PAYLOAD_EXACT` |
 | `SYNTRAKE:EXECUTION_CONFIG:V1` | `OWNER_PAYLOAD_EXACT` |
@@ -223,6 +225,30 @@ failures rather than serialized scientific outcomes.
 
 These domains do not authorize RL-8 promotion, Paper, Live, recommendations,
 suitability, brokerage or Capital Kernel actions.
+
+## RL-7 Robustness And Experiment Comparison V1
+
+`SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1` is current accepted as
+`OWNER_PAYLOAD_EXACT` for the exact deterministic RL-7 Comparison Protocol V1
+owner payload only.
+
+`SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1` is current accepted as
+`OWNER_PAYLOAD_EXACT` for the exact deterministic RL-7 Comparison Result V1
+owner payload only.
+
+The accepted protocol binds the reference/subject Experiment and
+ExperimentParameters identities, exact Results and Validation Results, Metric
+Registry V2 identity, primary/requested metrics and explicit deterministic
+parameter-neighborhood membership.
+
+The accepted result binds one exact Comparison Protocol plus canonical parameter
+and scientific-input deltas, exact metric deltas, validation/fold evidence,
+cost evidence, neighborhood evidence, concentration diagnostics and exactly one
+closed robustness classification or fail-closed failure state.
+
+These identities do not create promotion, recommendation, suitability, Paper,
+Live, broker, allocation or Capital Kernel authority. RL-8 remains the separate
+owner of Scientific Promotion State Machine authority.
 
 ## Explicit Exclusions
 

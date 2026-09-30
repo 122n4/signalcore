@@ -135,7 +135,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 Research Lab completion program (unnumbered)");
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -173,7 +173,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(hash).toContain("RESEARCH_EXECUTION_EVIDENCE_V1");
     expect(hash).toContain("Generic or arbitrary raw Evidence hashing is not a sanctioned");
     expect(hash).toContain("Arbitrary raw Evidence objects remain outside the public hashing boundary");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 
@@ -220,7 +220,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Permanent A-number:");
     expect(state).toContain("NOT ASSIGNED");
     expect(state).toContain("I5 RL-2 EVIDENCE LEDGER AND PASSPORT V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("Research Lab is not yet backend-complete");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
     expect(row).toContain("| YES | YES |");
@@ -267,7 +267,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Independent auditor verdict:");
     expect(state).toContain("PASS");
     expect(state).toContain("I5 RL-3A VALIDATION PROTOCOL FOUNDATION V1 = CURRENT_ACCEPTED / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3A VALIDATION PROTOCOL FOUNDATION - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3A_VALIDATION_PROTOCOL_FOUNDATION");
@@ -368,7 +368,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("Validation-specific `multiple_permissive_policies` findings:");
     expect(state).toContain("Performance Advisor debt:");
     expect(state).toContain("`PRESENT / NON-BLOCKING`");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED");
@@ -412,7 +412,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("`RL-3D Production migration set = APPLIED`");
     expect(state).toContain("`RL-3D Git/Production alignment = PASS`");
     expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| NO | YES |");
     expect(row).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED");
@@ -497,7 +497,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("RL-5 subsequently implemented and accepted `ENGINE_V20260926`.");
     expect(state).toContain("No RL-4 migration exists.");
     expect(state).toContain("No RL-4 Production mutation occurred.");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-4_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| NO | YES |");
@@ -550,7 +550,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("20260927073226");
     expect(state).toContain("Post-repair canonical history row `20260926201750`: `exactly 1`");
     expect(state).toContain("Incorrect history row `20260927073226`: `0`");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-5_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
     expect(row).toContain("| YES | YES |");
@@ -592,7 +592,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("independent auditor verdict:");
     expect(state).toContain("Production migration:\n  `NONE`");
     expect(state).toContain("Supabase Production mutation:\n  `NONE`");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
     expect(state).toContain("Production Supabase migration state:\n`RL-3D PRODUCTION CLOSURE ALIGNED / RL-7 NOT APPLIED`.");
