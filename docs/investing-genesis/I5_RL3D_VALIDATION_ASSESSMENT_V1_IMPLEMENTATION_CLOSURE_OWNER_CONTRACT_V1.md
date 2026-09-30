@@ -48,10 +48,10 @@ Independent auditor verdict:
 `PASS`
 
 Production migration:
-`NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`
+`APPLIED / 20260929193000 + 20260930175542 + 20260930190148`
 
 Supabase Production:
-`UNCHANGED / RL-3D MIGRATION NOT APPLIED`
+`APPLIED / POST-APPLY AUDIT PASS / GIT-PRODUCTION ALIGNMENT PASS`
 
 Production financial state:
 `UNCHANGED`
@@ -509,8 +509,64 @@ independently proved on the exact accepted candidate and merge lineage:
 18. independent auditor verdict:
     `PASS`.
 
-Git acceptance does not authorize database application. The migration
-`20260929193000_investing_i5_rl3d_validation_assessment_v1.sql` is accepted in
-Git but remains `NOT APPLIED` to Supabase Production. Production application is
-a separate gate and requires separate authorization, rehearsal and post-apply
-audit.
+Production application was separately authorized and completed after Git
+acceptance. The exact applied and audited chain is:
+
+1. `20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`;
+2. `20260930175542_investing_i5_rl3d_preproduction_policy_consolidation.sql`;
+3. `20260930190148_investing_i5_rl3d_postapply_performance_remediation.sql`.
+
+Production closure evidence:
+
+- initial RL-3D Production apply workflow:
+  `36761859894 / SUCCESS`;
+- post-apply audit after the first two migrations:
+  authority/RLS/ACL/trigger/function state `PASS`;
+- post-apply performance debt discovered:
+  `unindexed_foreign_keys 159 -> 164` and
+  `auth_rls_initplan 317 -> 328`, with
+  `multiple_permissive_policies 73 -> 73` and no security-advisor regression;
+- remediation final candidate:
+  `4163ef0f03aea0e0f9534ba2556367bc765eb33d`;
+- remediation PR:
+  `#113`;
+- remediation accepted squash merge/main anchor:
+  `8cb1e4437eebb155e01d04eef6ee6f23bae9a6c4`;
+- remediation candidate/merge tree:
+  `2a1af1ddd73e8250621c25f6223c8dc61c72d4d1`;
+- corrected push CI:
+  `#1398 / SUCCESS`;
+- corrected PR CI:
+  `#1399 / SUCCESS`;
+- PostgreSQL 17:
+  `#152 / SUCCESS`;
+- remediation post-merge CI:
+  `#1400 / SUCCESS`;
+- remediation Production apply workflow:
+  `36764877624 / SUCCESS`;
+- remote migration-history latest:
+  `20260930190148 / MATCHES GIT`;
+- five RL-3D FK covering indexes:
+  `investing_owner / VALID / READY`;
+- eleven RL-3D policies:
+  `roles/commands preserved / all current_setting call sets initplan-safe`;
+- post-remediation performance advisors:
+  `unindexed_foreign_keys 164 -> 159`;
+  `auth_rls_initplan 328 -> 317`;
+  `multiple_permissive_policies 73 -> 73`;
+- security advisors:
+  `UNCHANGED`;
+- `unused_index 62 -> 67` is the exact informational delta from the five
+  newly created FK covering indexes on empty RL-3D assessment tables; removing
+  them would recreate the five unindexed-FK findings;
+- RL-7 Production:
+  `NOT APPLIED / RL-7 TABLES ABSENT`;
+- Assessment/Validation data counts at closure:
+  `0` for Assessment Protocols, Assessment Results, Validation Protocols,
+  Validation Results, Validation Runs and Validation Events;
+- Production financial state:
+  `UNCHANGED`.
+
+RL-3D Git/Production alignment and migration-history alignment are therefore
+`PASS`. This Production closure does not start RL-8, RL-9, Paper, Live,
+recommendation, suitability or Capital Kernel authority.

@@ -341,7 +341,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("e1721482b0ba2b9a67b3d8751778ba2695e3e751");
     expect(state).toContain("107782658459 - SUCCESS");
     expect(state).toContain("107782658690 - SUCCESS");
-    expect(state).toContain("`CURRENT THROUGH RL-5`");
+    expect(state).toContain("`CURRENT THROUGH RL-3D PRODUCTION CLOSURE / RL-7 EXCLUDED`");
     expect(state).toContain("80671f349d38405393476a0978ce6e7f015cfea1");
     expect(state).toContain("#94");
     expect(state).toContain("RL-5 implementation accepted merge/main anchor:");
@@ -409,8 +409,9 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("1416 passed / 53 skipped");
     expect(state).toContain("PG17:");
     expect(state).toContain("`NOT REQUIRED / DESIGN-ONLY`");
-    expect(state).toContain("`RL-3D Production migration = NOT APPLIED`");
-    expect(state).toContain("`RL-3D Supabase Production mutation = NONE`");
+    expect(state).toContain("- PG17:\n  `NOT REQUIRED / DESIGN-ONLY`.\n- Production migration:\n  `NONE`.\n- Supabase Production mutation:\n  `NONE`.");
+    expect(state).toContain("`RL-3D Production migration = APPLIED`");
+    expect(state).toContain("`RL-3D Git/Production alignment = PASS`");
     expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
 
@@ -420,7 +421,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(row).toContain("| NONE |");
   });
 
-  it("records accepted RL-3D Validation Assessment implementation closure while Production remains unapplied", () => {
+  it("records accepted RL-3D Validation Assessment implementation closure with audited Production alignment", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
     const contract = read("docs/investing-genesis/I5_RL3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
     const row = tableRow(state, "RL-3D Validation Assessment V1 Implementation Closure / unnumbered");
@@ -433,8 +434,17 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(contract).toContain("c24e2d31f48288e9a21fe16851138ab22e18dfe3");
     expect(contract).toContain("#1366 / SUCCESS");
     expect(contract).toContain("#149 / SUCCESS");
-    expect(contract).toContain("NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql");
-    expect(contract).toContain("UNCHANGED / RL-3D MIGRATION NOT APPLIED");
+    expect(contract).toContain("APPLIED / 20260929193000 + 20260930175542 + 20260930190148");
+    expect(contract).toContain("APPLIED / POST-APPLY AUDIT PASS / GIT-PRODUCTION ALIGNMENT PASS");
+    expect(contract).toContain("4163ef0f03aea0e0f9534ba2556367bc765eb33d");
+    expect(contract).toContain("#113");
+    expect(contract).toContain("8cb1e4437eebb155e01d04eef6ee6f23bae9a6c4");
+    expect(contract).toContain("2a1af1ddd73e8250621c25f6223c8dc61c72d4d1");
+    expect(contract).toContain("#152 / SUCCESS");
+    expect(contract).toContain("36764877624 / SUCCESS");
+    expect(contract).toContain("unindexed_foreign_keys 164 -> 159");
+    expect(contract).toContain("auth_rls_initplan 328 -> 317");
+    expect(contract).toContain("multiple_permissive_policies 73 -> 73");
     expect(contract).not.toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
 
     expect(state).toContain("I5 RL-3D Validation Assessment V1 Implementation Closure (unnumbered)");
@@ -447,15 +457,18 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("247 passed / 18 skipped files");
     expect(state).toContain("1446 passed / 60 skipped");
     expect(state).toContain("`RL-3D Implementation = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`");
-    expect(state).toContain("`RL-3D Production migration = NOT APPLIED`");
-    expect(state).toContain("`RL-3D Git/Production alignment = PENDING PRODUCTION APPLICATION`");
+    expect(state).toContain("`RL-3D Production migration = APPLIED`");
+    expect(state).toContain("`RL-3D post-apply audit = PASSED`");
+    expect(state).toContain("`RL-3D advisor remediation = APPLIED / AUDITED / CANONICAL`");
+    expect(state).toContain("`RL-3D Git/Production alignment = PASS`");
+    expect(state).toContain("`RL-3D migration-history alignment = PASS / LATEST 20260930190148`");
     expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
-    expect(state).toContain("RL-8 implementation:\n  `NOT STARTED BY THIS ACCEPTANCE SYNC`");
+    expect(state).toContain("RL-8 implementation:\n  `NOT STARTED BY THIS PRODUCTION CLOSURE SYNC`");
 
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE");
-    expect(row).toContain("PRODUCTION MIGRATION NOT APPLIED");
+    expect(row).toContain("| NONE |");
   });
 
   it("records accepted RL-4 Research Engine V2 design freeze without accepting runtime", () => {
@@ -587,10 +600,14 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
-    expect(state).toContain("Production Supabase migration state:\n`CURRENT THROUGH RL-5`.");
+    expect(state).toContain("Production Supabase migration state:\n`CURRENT THROUGH RL-3D PRODUCTION CLOSURE / RL-7 EXCLUDED`.");
     expect(state).toContain("RL-6 Production migration = NONE");
     expect(state).toContain("RL-6 Supabase Production mutation = NONE");
     expect(state).toContain("RL-6 is accepted in Git and required no database migration");
+    expect(state).toContain("`20260930190148 investing_i5_rl3d_postapply_performance_remediation`");
+    expect(state).toContain("`101 versions`");
+    expect(state).toContain("Applied Production migration batch through RL-3D Production closure:");
+    expect(state).toContain("20260930190148_investing_i5_rl3d_postapply_performance_remediation.sql");
 
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED");
