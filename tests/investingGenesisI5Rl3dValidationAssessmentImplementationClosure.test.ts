@@ -11,12 +11,21 @@ const migrationPath =
   "supabase/migrations/20260929193000_investing_i5_rl3d_validation_assessment_v1.sql";
 
 describe("I5 RL-3D Validation Assessment V1 implementation closure", () => {
-  it("remains candidate-only before independent acceptance", () => {
+  it("records accepted implementation closure while Production application remains separate", () => {
     const contract = read(contractPath);
-    expect(contract).toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
     expect(contract).toContain("a7cd8fbbcf7b7f064b223bffb6501e92ebe746f5");
-    expect(contract).toContain("NOT CHANGED BY THIS CANDIDATE");
-    expect(contract).toContain("NOT APPLIED BY THIS CANDIDATE");
+    expect(contract).toContain("b7a06290ac68355ba0a403c992d9706cb26e846b");
+    expect(contract).toContain("432e02f8bf5d9c805aecc2e3d367ac9b6b097ff4");
+    expect(contract).toContain("#109");
+    expect(contract).toContain("45de40e9d66bc2e11e30a449e80224a89d5a585a");
+    expect(contract).toContain("c24e2d31f48288e9a21fe16851138ab22e18dfe3");
+    expect(contract).toContain("#1366 / SUCCESS");
+    expect(contract).toContain("#149 / SUCCESS");
+    expect(contract).toContain("NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql");
+    expect(contract).toContain("UNCHANGED / RL-3D MIGRATION NOT APPLIED");
+    expect(contract).not.toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
   });
 
   it("binds exactly the two accepted owner-exact assessment domains", () => {
