@@ -241,9 +241,12 @@ freeze/master evidence still relies on its narrow classifications.
   `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` as owner-exact runtime domains,
   adds deterministic assessment runtime, server-derived authority, append-only
   persistence/RLS, V2 precommit gating, writer/service integration and real
-  PostgreSQL 17 rehearsal. Its migration exists in Git but is `NOT APPLIED`
-  to Supabase Production. RL-8 promotion, RL-9, Paper, Live, recommendation,
-  suitability and Capital Kernel authority remain outside RL-3D.
+  PostgreSQL 17 rehearsal. Its three-migration Production closure is now
+  `APPLIED / POST-APPLY AUDITED`: the accepted assessment migration, the
+  pre-Production Validation policy consolidation and the post-apply performance
+  remediation are present in the remote migration ledger. RL-8 promotion, RL-9,
+  Paper, Live, recommendation, suitability and Capital Kernel authority remain
+  outside RL-3D.
 - I5 RL-6 Metric Registry V2:
   `CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 / UNNUMBERED`. This accepted
   slice adds the immutable `METRIC_REGISTRY_V20260927` and
@@ -852,8 +855,9 @@ RL-3D current runtime/progression state:
 - implementation: `YES`.
 - runtime/persistence present: `YES`.
 - dedicated owner contract present: `YES`.
-- Production migration: `NOT APPLIED`.
-- Supabase Production mutation: `NONE`.
+- Production migration set: `APPLIED / POST-APPLY AUDITED`.
+- Supabase Production mutation: `APPLIED / DDL-RLS-INDEX ONLY`.
+- scientific/financial row mutation: `NONE`.
 - state: `CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE`.
 - permanent A-number: `NONE`.
 
@@ -893,16 +897,58 @@ I5 RL-3D Validation Assessment V1 Implementation Closure acceptance evidence:
   `SUCCESS`.
 - Vercel:
   `SUCCESS`.
-- migration in Git:
+- accepted assessment migration:
   `20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`.
-- Production migration application:
-  `NOT APPLIED`.
-- Supabase Production mutation:
+- accepted pre-Production policy consolidation:
+  `20260930175542_investing_i5_rl3d_preproduction_policy_consolidation.sql`.
+- accepted post-apply performance remediation:
+  `20260930190148_investing_i5_rl3d_postapply_performance_remediation.sql`.
+- initial Production application workflow:
+  `36761859894 / Temporary RL3D Production Apply #3 / SUCCESS`.
+- initial Production dry-run:
+  `EXACTLY 2 AUTHORIZED RL-3D MIGRATIONS`.
+- initial Production migration ledger:
+  `20260929193000 + 20260930175542 / MATCH`.
+- post-apply remediation final candidate:
+  `4163ef0f03aea0e0f9534ba2556367bc765eb33d`.
+- remediation PR:
+  `#113`.
+- remediation accepted merge/main anchor:
+  `8cb1e4437eebb155e01d04eef6ee6f23bae9a6c4`.
+- remediation candidate/merge tree:
+  `2a1af1ddd73e8250621c25f6223c8dc61c72d4d1`.
+- remediation push CI:
+  `#1398 / SUCCESS`.
+- remediation PR CI:
+  `#1399 / SUCCESS`.
+- remediation PostgreSQL 17:
+  `#152 / SUCCESS`.
+- remediation Vercel:
+  `SUCCESS`.
+- remediation Production application workflow:
+  `36764877624 / Temporary RL3D Performance Remediation Production Apply #1 / SUCCESS`.
+- remediation Production dry-run:
+  `EXACTLY 1 AUTHORIZED MIGRATION / 20260930190148`.
+- remediation Production migration ledger:
+  `20260930190148 / MATCH`.
+- post-apply advisor closure:
+  `unindexed_foreign_keys 159 / auth_rls_initplan 317 / multiple_permissive_policies 73`.
+- RL-3D-specific `unindexed_foreign_keys` findings:
   `NONE`.
+- RL-3D-specific `auth_rls_initplan` findings:
+  `NONE`.
+- new covering indexes:
+  `5 / VALID / READY / investing_owner`.
+- Validation relations affected by policy consolidation:
+  `7 / EXACTLY 1 investing_app SELECT POLICY EACH`.
+- Assessment/Validation scientific rows after closure:
+  `0`.
 - Production financial state:
   `UNCHANGED`.
+- RL-3D Git/Production alignment:
+  `PASS`.
 - RL-8 implementation:
-  `NOT STARTED BY THIS ACCEPTANCE SYNC`.
+  `NOT STARTED BY THIS PRODUCTION CLOSURE`.
 - RL-9:
   `NOT STARTED`.
 - independent auditor verdict:
@@ -1117,12 +1163,14 @@ Accepted RL-6 invariants:
 ## Production Supabase Migration State
 
 Production Supabase migration state:
-`CURRENT THROUGH RL-5`.
+`RL-3D PRODUCTION CLOSURE ALIGNED / RL-7 NOT APPLIED`.
 
-- Latest:
-  `20260926201750 investing_i5_rl5_engine_v2_admission`.
+- Latest applied migration:
+  `20260930190148 investing_i5_rl3d_postapply_performance_remediation`.
 - Migration ledger:
-  `98 versions`.
+  `101 versions`.
+- RL-7 timestamp-earlier migrations:
+  `NOT APPLIED / INTENTIONALLY EXCLUDED FROM RL-3D PRODUCTION CLOSURE`.
 - RL-5 implementation accepted merge/main anchor:
   `76ca5d50e907cd07c7400f5fbba61e8dae1ad530`.
   This SHA is the immutable Git anchor where PR #98 placed the independently
@@ -1197,10 +1245,14 @@ Current production closure is:
 - `RL-3 = CURRENT_ACCEPTED / RL-3_VALIDATION_PROTOCOL_V1 / UNNUMBERED`.
 - `RL-3D Design Freeze = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE / UNNUMBERED`.
 - `RL-3D Implementation = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
-- `RL-3D migration in Git = 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`.
-- `RL-3D Production migration = NOT APPLIED`.
-- `RL-3D Supabase Production mutation = NONE`.
-- `RL-3D Git/Production alignment = PENDING PRODUCTION APPLICATION`.
+- `RL-3D migration set in Git = 20260929193000 + 20260930175542 + 20260930190148`.
+- `RL-3D Production migration set = APPLIED`.
+- `RL-3D post-apply audit = PASSED`.
+- `RL-3D advisor remediation = APPLIED / AUDITED / CANONICAL`.
+- `RL-3D migration-history alignment = PASS`.
+- `RL-3D Git/Production alignment = PASS`.
+- `RL-3D Production scientific/financial row mutation = NONE`.
+- `RL-7 Production migrations = NOT APPLIED / OUTSIDE RL-3D PRODUCTION CLOSURE`.
 - `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 - `RL-5 Production migration = APPLIED`.
 - `RL-5 post-apply audit = PASSED`.
@@ -1211,14 +1263,13 @@ Current production closure is:
 - `RL-6 Supabase Production mutation = NONE`.
 
 This production state records RL-5 accepted in Git and applied in Production.
-RL-6 is accepted in Git and required no database migration. RL-3D design and
-implementation are accepted in Git, but
-`20260929193000_investing_i5_rl3d_validation_assessment_v1.sql` remains
-`NOT APPLIED` to Supabase Production. Therefore the Production Supabase
-migration state remains `CURRENT THROUGH RL-5` with one accepted RL-3D
-migration pending a separate Production gate. Git/Production alignment must not
-be claimed for RL-3D until that gate passes. This state does not accept RL-8
-promotion, RL-9, Blind Truth, Paper, Live, Core or any permanent A-number.
+RL-6 is accepted in Git and required no database migration. RL-3D design,
+implementation and its separately authorized Production closure are now aligned:
+`20260929193000`, `20260930175542` and `20260930190148` are present in the
+remote migration ledger and the post-apply audit passed. This does not imply
+that timestamp-earlier RL-7 migrations are applied; RL-7 remains explicitly
+outside this Production closure. This state does not accept RL-8 promotion,
+RL-9, Blind Truth, Paper, Live, Core or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -1247,7 +1298,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-3B Validation Child Execution / unnumbered | YES | YES | owner contract + runtime + writer/service + migration + authority/runtime tests + real PostgreSQL 17 rehearsal | CURRENT ACCEPTED OWNER CONTRACT - RL-3B VALIDATION CHILD EXECUTION V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3B_VALIDATION_CHILD_EXECUTION | NONE |
 | RL-3C Validation Aggregate Closure / unnumbered | YES | YES | `I5_RL3C_VALIDATION_AGGREGATE_CLOSURE_OWNER_CONTRACT_V1.md` + Validation Result runtime/finalizer + Passport/Evidence Ledger projection + migration + PG17 physical/finalizer/cumulative rehearsals + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3C VALIDATION AGGREGATE CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3C_VALIDATION_AGGREGATE_CLOSURE | NONE |
 | RL-3D Validation Assessment V1 Design Freeze / unnumbered | NO | YES | `I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md` + static design contract tests + independent audit + PR/CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE | NONE |
-| RL-3D Validation Assessment V1 Implementation Closure / unnumbered | YES | YES | `I5_RL3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + assessment runtime + server authority + writer/service + migration + runtime/writer tests + real PostgreSQL 17 rehearsal + independent audit + PR/CI + Vercel; Production migration not yet applied | CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATION NOT APPLIED |
+| RL-3D Validation Assessment V1 Implementation Closure / unnumbered | YES | YES | `I5_RL3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + assessment runtime + server authority + writer/service + accepted migration set + runtime/writer tests + real PostgreSQL 17 rehearsal + independent audit + PR/CI + Vercel + Production application + policy consolidation + performance remediation + post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE | NONE |
 | RL-4 Research Engine V2 Design Freeze / unnumbered | NO | YES | `I5_RL4_RESEARCH_ENGINE_V2_DESIGN_FREEZE_V1.md` + static contract tests + independent design audit + CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-4 RESEARCH ENGINE V2 DESIGN FREEZE - UNNUMBERED | CURRENT_ACCEPTED / RL-4_RESEARCH_ENGINE_V2_DESIGN_FREEZE | NONE |
 | RL-5 Research Engine V2 Implementation Closure / unnumbered | YES | YES | RL-5 owner contract + Engine V2 runtime + scientific admission + Validation V2 + V2 goldens + migration + independent implementation audit + real PostgreSQL 17 rehearsal + PR/CI + Vercel + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE | NONE |
 | RL-6 Metric Registry V2 / unnumbered | YES | YES | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` + Metric Registry V2 runtime + certified arithmetic + V2 metric goldens + Validation V2 compatibility + PR/CI + Vercel + independent audit | CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED | CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 | NONE |
@@ -1294,8 +1345,9 @@ RL-3D runtime/progression state:
 - design: `YES`.
 - implementation: `YES`.
 - state: `CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE`.
-- migration in Git: `20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`.
-- Production: `NOT APPLIED`.
+- migration set in Git: `20260929193000 + 20260930175542 + 20260930190148`.
+- Production: `APPLIED / POST-APPLY AUDITED`.
+- Git/Production alignment: `PASS`.
 - permanent A-number: `NONE`.
 
 RL-4 runtime/progression state:

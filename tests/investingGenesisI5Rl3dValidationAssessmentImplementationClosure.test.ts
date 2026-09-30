@@ -11,20 +11,28 @@ const migrationPath =
   "supabase/migrations/20260929193000_investing_i5_rl3d_validation_assessment_v1.sql";
 
 describe("I5 RL-3D Validation Assessment V1 implementation closure", () => {
-  it("records accepted implementation closure while Production application remains separate", () => {
+  it("records accepted implementation closure with subsequent Production alignment", () => {
     const contract = read(contractPath);
     expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
     expect(contract).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
     expect(contract).toContain("a7cd8fbbcf7b7f064b223bffb6501e92ebe746f5");
-    expect(contract).toContain("b7a06290ac68355ba0a403c992d9706cb26e846b");
     expect(contract).toContain("432e02f8bf5d9c805aecc2e3d367ac9b6b097ff4");
     expect(contract).toContain("#109");
     expect(contract).toContain("45de40e9d66bc2e11e30a449e80224a89d5a585a");
-    expect(contract).toContain("c24e2d31f48288e9a21fe16851138ab22e18dfe3");
-    expect(contract).toContain("#1366 / SUCCESS");
-    expect(contract).toContain("#149 / SUCCESS");
-    expect(contract).toContain("NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql");
-    expect(contract).toContain("UNCHANGED / RL-3D MIGRATION NOT APPLIED");
+    expect(contract).toContain("At the implementation-acceptance gate above");
+    expect(contract).toContain("Subsequent Production Closure Evidence");
+    expect(contract).toContain("20260929193000 + 20260930175542 + 20260930190148");
+    expect(contract).toContain("36761859894 / Temporary RL3D Production Apply #3 / SUCCESS");
+    expect(contract).toContain("4163ef0f03aea0e0f9534ba2556367bc765eb33d");
+    expect(contract).toContain("#113");
+    expect(contract).toContain("8cb1e4437eebb155e01d04eef6ee6f23bae9a6c4");
+    expect(contract).toContain("2a1af1ddd73e8250621c25f6223c8dc61c72d4d1");
+    expect(contract).toContain("#152 / SUCCESS");
+    expect(contract).toContain("36764877624 / Temporary RL3D Performance Remediation Production Apply #1 / SUCCESS");
+    expect(contract).toContain("unindexed_foreign_keys 159 / auth_rls_initplan 317 / multiple_permissive_policies 73");
+    expect(contract).toContain("RL-3D Git/Production alignment:");
+    expect(contract).toContain("`PASS`");
+    expect(contract).not.toContain("UNCHANGED / RL-3D MIGRATION NOT APPLIED");
     expect(contract).not.toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
   });
 

@@ -47,11 +47,17 @@ Vercel:
 Independent auditor verdict:
 `PASS`
 
-Production migration:
-`NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`
+Production migration set:
+`APPLIED / POST-APPLY AUDITED`
+
+Production migration ledger:
+`20260929193000 + 20260930175542 + 20260930190148`
 
 Supabase Production:
-`UNCHANGED / RL-3D MIGRATION NOT APPLIED`
+`ALIGNED FOR RL-3D / RL-7 NOT APPLIED`
+
+Production scientific/financial row mutation:
+`NONE`
 
 Production financial state:
 `UNCHANGED`
@@ -509,8 +515,58 @@ independently proved on the exact accepted candidate and merge lineage:
 18. independent auditor verdict:
     `PASS`.
 
-Git acceptance does not authorize database application. The migration
-`20260929193000_investing_i5_rl3d_validation_assessment_v1.sql` is accepted in
-Git but remains `NOT APPLIED` to Supabase Production. Production application is
-a separate gate and requires separate authorization, rehearsal and post-apply
-audit.
+At the implementation-acceptance gate above, Git acceptance did not authorize
+database application and the RL-3D migration was still `NOT APPLIED`. That
+historical fact remains part of the acceptance evidence. A later separately
+authorized Production gate applied the accepted RL-3D migration set and completed
+the post-apply remediation/audit documented below; this subsequent Production
+closure does not rewrite the original implementation-acceptance boundary.
+
+## Subsequent Production Closure Evidence
+
+- initial Production source main anchor:
+  `de9b2ffb959ca6bb2abcea0e442e462d71249d8d`;
+- initial Production application:
+  `36761859894 / Temporary RL3D Production Apply #3 / SUCCESS`;
+- initial dry-run:
+  `EXACTLY 2 AUTHORIZED RL-3D MIGRATIONS`;
+- remote ledger after initial application:
+  `20260929193000 + 20260930175542 / MATCH`;
+- post-apply audit detected RL-3D-specific performance debt only:
+  `+5 unindexed_foreign_keys / +11 auth_rls_initplan / +0 multiple_permissive_policies`;
+- accepted remediation final candidate:
+  `4163ef0f03aea0e0f9534ba2556367bc765eb33d`;
+- remediation PR:
+  `#113`;
+- remediation accepted merge/main anchor:
+  `8cb1e4437eebb155e01d04eef6ee6f23bae9a6c4`;
+- remediation candidate/merge tree:
+  `2a1af1ddd73e8250621c25f6223c8dc61c72d4d1`;
+- remediation CI:
+  `#1398 / #1399 / SUCCESS`;
+- remediation PostgreSQL 17:
+  `#152 / SUCCESS`;
+- remediation Production application:
+  `36764877624 / Temporary RL3D Performance Remediation Production Apply #1 / SUCCESS`;
+- remediation dry-run:
+  `EXACTLY 1 AUTHORIZED MIGRATION / 20260930190148`;
+- remote ledger after remediation:
+  `20260930190148 / MATCH`;
+- post-remediation advisors:
+  `unindexed_foreign_keys 159 / auth_rls_initplan 317 / multiple_permissive_policies 73`;
+- RL-3D-specific unindexed FK findings:
+  `NONE`;
+- RL-3D-specific auth RLS initplan findings:
+  `NONE`;
+- five remediation indexes:
+  `VALID / READY / investing_owner`;
+- seven consolidated Validation relations:
+  `EXACTLY 1 investing_app SELECT POLICY EACH`;
+- Assessment/Validation scientific row counts:
+  `0`;
+- Production scientific/financial row mutation:
+  `NONE`;
+- RL-3D Git/Production alignment:
+  `PASS`;
+- RL-7 Production migrations:
+  `NOT APPLIED / OUTSIDE RL-3D PRODUCTION CLOSURE`.
