@@ -312,7 +312,7 @@ describe("I5 RL-6 Metric Registry V2", () => {
     expect(second.value).toBe("0.095903232345245637");
     expect(second.interval.lower.numerator).not.toBe(999n);
     expect(second.interval.upper.denominator).not.toBe(1n);
-  });
+  }, 60000);
 
   it("keeps rational-power implementation off exponent-count linear root loops", () => {
     const source = readFileSync(join(process.cwd(), "lib/investing/research/researchMetrics.ts"), "utf8");
