@@ -34,6 +34,7 @@ const migrations = [
   "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql",
   "supabase/migrations/20260929193000_investing_i5_rl3d_validation_assessment_v1.sql",
   "supabase/migrations/20260930175542_investing_i5_rl3d_preproduction_policy_consolidation.sql",
+  "supabase/migrations/20260930190148_investing_i5_rl3d_postapply_performance_remediation.sql",
 ] as const;
 
 const ids = {
@@ -566,6 +567,62 @@ maybeDescribe("I5 RL-3D Validation Assessment real PG17 rehearsal", () => {
       client.release();
     }
   });
+  it("materializes the RL-3D performance remediation without changing assessment authority", async () => {
+    const client = await pool.connect();
+    try {
+      const indexes = await client.query<{ index_name: string; owner: string; valid: boolean; ready: boolean }>(`
+        select
+          c.relname as index_name,
+          pg_get_userbyid(c.relowner) as owner,
+          i.indisvalid as valid,
+          i.indisready as ready
+        from pg_class c
+        join pg_namespace n on n.oid=c.relnamespace
+        join pg_index i on i.indexrelid=c.oid
+        where n.nspname='investing'
+          and c.relname in (
+            'rl3d_assessment_protocols_authority_fk_idx',
+            'rl3d_assessment_protocols_validation_fk_idx',
+            'rl3d_assessment_results_authority_fk_idx',
+            'rl3d_assessment_results_protocol_fk_idx',
+            'rl3d_assessment_results_validation_result_fk_idx'
+          )
+        order by c.relname
+      `);
+      expect(indexes.rows).toHaveLength(5);
+      expect(indexes.rows.every((row) => row.owner === "investing_owner" && row.valid && row.ready)).toBe(true);
+
+      const policies = await client.query<{ policyname: string; expr: string }>(`
+        select policyname, coalesce(qual,'') || '|' || coalesce(with_check,'') as expr
+        from pg_policies
+        where schemaname='investing'
+          and policyname in (
+            'principals_rl3d_assessment_read',
+            'tenants_rl3d_assessment_read',
+            'tenant_memberships_rl3d_assessment_read',
+            'research_validation_assessment_protocol_select',
+            'research_validation_assessment_protocol_insert',
+            'research_validation_assessment_result_select',
+            'research_validation_assessment_result_insert',
+            'research_run_inputs_rl3d_assessment_read',
+            'research_results_rl3d_assessment_read',
+            'research_result_artifacts_rl3d_assessment_read',
+            'research_evidence_rl3d_assessment_read'
+          )
+        order by policyname
+      `);
+      expect(policies.rows).toHaveLength(11);
+      for (const row of policies.rows) {
+        const allCalls = row.expr.match(/current_setting\(/gi) ?? [];
+        const wrappedCalls = row.expr.match(/select\s+current_setting\(/gi) ?? [];
+        expect(allCalls.length).toBeGreaterThan(0);
+        expect(wrappedCalls).toHaveLength(allCalls.length);
+      }
+    } finally {
+      client.release();
+    }
+  });
+
   it("bootstraps Assessment authority from principal + Investigation before tenant context is known", async () => {
     const client = await pool.connect();
     try {
