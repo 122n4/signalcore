@@ -1,7 +1,12 @@
 # I5 RL-3D Validation Assessment V1 Implementation Closure Owner Contract V1
 
-Status:
-`CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`
+Status: CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED
+
+Classification:
+`CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`
+
+Permanent A-number:
+`NOT ASSIGNED`
 
 Accepted design predecessor:
 `I5_RL3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE_V1.md`
@@ -9,11 +14,47 @@ Accepted design predecessor:
 Canonical implementation predecessor:
 `a7cd8fbbcf7b7f064b223bffb6501e92ebe746f5`
 
-Production:
-`NOT CHANGED BY THIS CANDIDATE`
+Canonical acceptance-sync predecessor:
+`b7a06290ac68355ba0a403c992d9706cb26e846b`
+
+RL-3D implementation acceptance:
+`CURRENT_ACCEPTED`
+
+Final independently audited implementation candidate:
+`432e02f8bf5d9c805aecc2e3d367ac9b6b097ff4`
+
+PR:
+`#109`
+
+Accepted squash merge/main anchor:
+`45de40e9d66bc2e11e30a449e80224a89d5a585a`
+
+Candidate/merge tree:
+`c24e2d31f48288e9a21fe16851138ab22e18dfe3`
+
+Tree equality:
+`PASS`
+
+CI:
+`#1366 / SUCCESS`
+
+PostgreSQL 17:
+`#149 / SUCCESS`
+
+Vercel:
+`SUCCESS`
+
+Independent auditor verdict:
+`PASS`
+
+Production migration:
+`NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql`
 
 Supabase Production:
-`NOT APPLIED BY THIS CANDIDATE`
+`UNCHANGED / RL-3D MIGRATION NOT APPLIED`
+
+Production financial state:
+`UNCHANGED`
 
 RL-8 implementation:
 `NOT STARTED BY RL-3D`
@@ -426,22 +467,50 @@ RL-3D does not authorize or implement:
 
 `PROMOTION_ELIGIBLE` is not produced by RL-3D.
 
-## Candidate Gate
+## Accepted Implementation Evidence
 
-This contract becomes `CURRENT_ACCEPTED` only after:
+The implementation closure is `CURRENT_ACCEPTED` because the full gate was
+independently proved on the exact accepted candidate and merge lineage:
 
-1. exact candidate lineage is proved;
-2. targeted tests pass;
-3. full tests pass;
-4. TypeScript passes;
-5. lint passes;
-6. build passes;
-7. dependency audit passes;
-8. real PostgreSQL 17 RL-3D rehearsal passes;
-9. cumulative PG17 compatibility passes;
-10. independent diff/security audit passes;
-11. exact PR head remains unchanged through merge gate;
-12. accepted squash merge is verified on `main`.
+1. canonical implementation predecessor:
+   `a7cd8fbbcf7b7f064b223bffb6501e92ebe746f5`;
+2. final independently audited implementation candidate:
+   `432e02f8bf5d9c805aecc2e3d367ac9b6b097ff4`;
+3. accepted PR:
+   `#109`;
+4. accepted squash merge/main anchor:
+   `45de40e9d66bc2e11e30a449e80224a89d5a585a`;
+5. candidate/merge tree:
+   `c24e2d31f48288e9a21fe16851138ab22e18dfe3`;
+6. tree equality:
+   `PASS`;
+7. CI:
+   `#1366 / SUCCESS`;
+8. full suite:
+   `247 passed / 18 skipped files`;
+9. tests:
+   `1446 passed / 60 skipped`;
+10. lint:
+    `0 errors / 3 pre-existing warnings`;
+11. TypeScript:
+    `PASS`;
+12. build:
+    `PASS`;
+13. dependency audit:
+    `0 vulnerabilities at the accepted implementation gate`;
+14. PostgreSQL 17 reconciliation:
+    `#149 / SUCCESS`;
+15. cumulative PostgreSQL 17 compatibility:
+    `SUCCESS`;
+16. RL-3D PostgreSQL 17 assessment rehearsal:
+    `SUCCESS`;
+17. Vercel:
+    `SUCCESS`;
+18. independent auditor verdict:
+    `PASS`.
 
-Production migration application is a separate authorization and is not implied
-by Git acceptance.
+Git acceptance does not authorize database application. The migration
+`20260929193000_investing_i5_rl3d_validation_assessment_v1.sql` is accepted in
+Git but remains `NOT APPLIED` to Supabase Production. Production application is
+a separate gate and requires separate authorization, rehearsal and post-apply
+audit.

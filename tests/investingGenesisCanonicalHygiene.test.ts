@@ -409,7 +409,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("1416 passed / 53 skipped");
     expect(state).toContain("PG17:");
     expect(state).toContain("`NOT REQUIRED / DESIGN-ONLY`");
-    expect(state).toContain("`RL-3D Production migration = NONE`");
+    expect(state).toContain("`RL-3D Production migration = NOT APPLIED`");
     expect(state).toContain("`RL-3D Supabase Production mutation = NONE`");
     expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_TO_RL-11 / PRODUCT_UI_DEFERRED");
@@ -418,6 +418,44 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(row).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-3D VALIDATION ASSESSMENT V1 - UNNUMBERED");
     expect(row).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_DESIGN_FREEZE");
     expect(row).toContain("| NONE |");
+  });
+
+  it("records accepted RL-3D Validation Assessment implementation closure while Production remains unapplied", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
+    const row = tableRow(state, "RL-3D Validation Assessment V1 Implementation Closure / unnumbered");
+
+    expect(contract).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
+    expect(contract).toContain("432e02f8bf5d9c805aecc2e3d367ac9b6b097ff4");
+    expect(contract).toContain("#109");
+    expect(contract).toContain("45de40e9d66bc2e11e30a449e80224a89d5a585a");
+    expect(contract).toContain("c24e2d31f48288e9a21fe16851138ab22e18dfe3");
+    expect(contract).toContain("#1366 / SUCCESS");
+    expect(contract).toContain("#149 / SUCCESS");
+    expect(contract).toContain("NOT APPLIED / 20260929193000_investing_i5_rl3d_validation_assessment_v1.sql");
+    expect(contract).toContain("UNCHANGED / RL-3D MIGRATION NOT APPLIED");
+    expect(contract).not.toContain("CANDIDATE / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
+
+    expect(state).toContain("I5 RL-3D Validation Assessment V1 Implementation Closure (unnumbered)");
+    expect(state).toContain("I5_RL3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
+    expect(state).toContain("I5 RL-3D Validation Assessment V1 Implementation Closure acceptance evidence:");
+    expect(state).toContain("432e02f8bf5d9c805aecc2e3d367ac9b6b097ff4");
+    expect(state).toContain("#109");
+    expect(state).toContain("45de40e9d66bc2e11e30a449e80224a89d5a585a");
+    expect(state).toContain("c24e2d31f48288e9a21fe16851138ab22e18dfe3");
+    expect(state).toContain("247 passed / 18 skipped files");
+    expect(state).toContain("1446 passed / 60 skipped");
+    expect(state).toContain("`RL-3D Implementation = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`");
+    expect(state).toContain("`RL-3D Production migration = NOT APPLIED`");
+    expect(state).toContain("`RL-3D Git/Production alignment = PENDING PRODUCTION APPLICATION`");
+    expect(state).toContain("I5 RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
+    expect(state).toContain("RL-8 implementation:\n  `NOT STARTED BY THIS ACCEPTANCE SYNC`");
+
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT ACCEPTED OWNER CONTRACT - RL-3D VALIDATION ASSESSMENT V1 IMPLEMENTATION CLOSURE - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-3D_VALIDATION_ASSESSMENT_V1_IMPLEMENTATION_CLOSURE");
+    expect(row).toContain("PRODUCTION MIGRATION NOT APPLIED");
   });
 
   it("records accepted RL-4 Research Engine V2 design freeze without accepting runtime", () => {
