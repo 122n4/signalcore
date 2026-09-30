@@ -33,6 +33,7 @@ const migrations = [
   "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql",
   "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql",
   "supabase/migrations/20260929193000_investing_i5_rl3d_validation_assessment_v1.sql",
+  "supabase/migrations/20260930175542_investing_i5_rl3d_preproduction_policy_consolidation.sql",
 ] as const;
 
 const ids = {
@@ -481,6 +482,90 @@ maybeDescribe("I5 RL-3D Validation Assessment real PG17 rehearsal", () => {
     }
   });
 
+  it("keeps exactly one permissive investing_app SELECT policy on each Validation relation after RL-3D consolidation", async () => {
+    const client = await pool.connect();
+    try {
+      const policyCounts = await client.query<{ tablename: string; policy_count: string }>(`
+        select t.tablename,
+               count(p.policyname) filter (
+                 where p.permissive='PERMISSIVE'
+                   and p.cmd='SELECT'
+                   and 'investing_app'=any(p.roles)
+               )::text as policy_count
+        from (
+          values
+            ('research_validation_protocols_scientific_identities'),
+            ('research_validation_execution_runs'),
+            ('research_validation_execution_run_events'),
+            ('research_validation_results_scientific_identities'),
+            ('research_validation_run_inputs_scientific_identities'),
+            ('research_validation_child_results_scientific_identities'),
+            ('research_validation_result_artifacts')
+        ) as t(tablename)
+        left join pg_policies p
+          on p.schemaname='investing'
+         and p.tablename=t.tablename
+        group by t.tablename
+        order by t.tablename
+      `);
+
+      expect(policyCounts.rows).toEqual([
+        { tablename: "research_validation_child_results_scientific_identities", policy_count: "1" },
+        { tablename: "research_validation_execution_run_events", policy_count: "1" },
+        { tablename: "research_validation_execution_runs", policy_count: "1" },
+        { tablename: "research_validation_protocols_scientific_identities", policy_count: "1" },
+        { tablename: "research_validation_result_artifacts", policy_count: "1" },
+        { tablename: "research_validation_results_scientific_identities", policy_count: "1" },
+        { tablename: "research_validation_run_inputs_scientific_identities", policy_count: "1" },
+      ]);
+
+      const stale = await client.query<{ count: string }>(`
+        select count(*)::text as count
+        from pg_policies
+        where schemaname='investing'
+          and policyname in (
+            'research_validation_protocols_rl3d_assessment_selector_read',
+            'research_validation_runs_rl3d_protocol_create_read',
+            'research_validation_events_rl3d_protocol_create_read',
+            'research_validation_results_rl3d_assessment_read',
+            'research_validation_run_inputs_rl3d_assessment_read',
+            'research_validation_child_results_rl3d_assessment_read',
+            'research_validation_artifacts_rl3d_assessment_read'
+          )
+      `);
+      expect(stale.rows[0]!.count).toBe("0");
+
+      const consolidated = await client.query<{ policyname: string; qual: string }>(`
+        select policyname, qual
+        from pg_policies
+        where schemaname='investing'
+          and policyname in (
+            'research_validation_protocols_select',
+            'research_validation_execution_runs_select',
+            'research_validation_execution_run_events_select',
+            'research_validation_results_select',
+            'research_validation_run_inputs_select',
+            'research_validation_child_results_select',
+            'research_validation_result_artifacts_select'
+          )
+        order by policyname
+      `);
+      expect(consolidated.rows).toHaveLength(7);
+      expect(consolidated.rows.find((row) => row.policyname === "research_validation_protocols_select")!.qual)
+        .toContain("RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1");
+      for (const policy of [
+        "research_validation_results_select",
+        "research_validation_run_inputs_select",
+        "research_validation_child_results_select",
+        "research_validation_result_artifacts_select",
+      ]) {
+        expect(consolidated.rows.find((row) => row.policyname === policy)!.qual)
+          .toContain("RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1");
+      }
+    } finally {
+      client.release();
+    }
+  });
   it("bootstraps Assessment authority from principal + Investigation before tenant context is known", async () => {
     const client = await pool.connect();
     try {
