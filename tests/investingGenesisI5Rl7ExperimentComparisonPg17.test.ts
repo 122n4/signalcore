@@ -44,7 +44,13 @@ const ids = {
   otherMembership: "33333333-0000-4000-8000-000000000702",
 } as const;
 
-const h = (value: string) => value.repeat(64).slice(0, 64).toUpperCase();
+const h = (value: string) => {
+  const normalized = value.toUpperCase();
+  if (!/^[0-9A-F]+$/u.test(normalized)) {
+    throw new Error(`Invalid PG17 RL-7 fixture identity seed: ${value}`);
+  }
+  return normalized.repeat(64).slice(0, 64);
+};
 const protocolPayload = (marker: string) => ({ schemaVersion: "EXPERIMENT_COMPARISON_PROTOCOL_V1", marker });
 const resultPayload = (marker: string) => ({ schemaVersion: "EXPERIMENT_COMPARISON_RESULT_V1", marker });
 
@@ -53,19 +59,52 @@ const protocolIdentities = {
   concurrentIdentical: { logicalKey: h("2"), hashHex: h("D") },
   concurrentDivergent: { logicalKey: h("3"), firstHashHex: h("E"), secondHashHex: h("F") },
   resultReplay: { logicalKey: h("4"), hashHex: h("7") },
-  resultConcurrentIdentical: { logicalKey: h("6I"), hashHex: h("6H") },
-  resultConcurrentDivergent: { logicalKey: h("6D"), hashHex: h("6G") },
+  resultConcurrentIdentical: { logicalKey: h("61"), hashHex: h("62") },
+  resultConcurrentDivergent: { logicalKey: h("63"), hashHex: h("64") },
   appendOnly: { logicalKey: h("5"), hashHex: h("9") },
 } as const;
 
 const resultHashes = {
   replay: h("B"),
   replayConflict: h("8"),
-  concurrentIdentical: h("6J"),
-  concurrentDivergentFirst: h("6K"),
-  concurrentDivergentSecond: h("6L"),
-  appendOnly: h("A"),
+  concurrentIdentical: h("65"),
+  concurrentDivergentFirst: h("66"),
+  concurrentDivergentSecond: h("67"),
+  appendOnly: h("6B"),
 } as const;
+
+const testOnlyIdentityInputs = {
+  protocolReplayConflictHash: h("C"),
+  unauthorizedInsertHash: h("6C"),
+  unauthorizedInsertLogicalKey: h("6E"),
+  privilegedProtocolMutationHash: h("68"),
+  privilegedResultMutationHash: h("69"),
+} as const;
+
+const pg17FixtureIdentities = [
+  protocolIdentities.replay.logicalKey,
+  protocolIdentities.replay.hashHex,
+  protocolIdentities.concurrentIdentical.logicalKey,
+  protocolIdentities.concurrentIdentical.hashHex,
+  protocolIdentities.concurrentDivergent.logicalKey,
+  protocolIdentities.concurrentDivergent.firstHashHex,
+  protocolIdentities.concurrentDivergent.secondHashHex,
+  protocolIdentities.resultReplay.logicalKey,
+  protocolIdentities.resultReplay.hashHex,
+  protocolIdentities.resultConcurrentIdentical.logicalKey,
+  protocolIdentities.resultConcurrentIdentical.hashHex,
+  protocolIdentities.resultConcurrentDivergent.logicalKey,
+  protocolIdentities.resultConcurrentDivergent.hashHex,
+  protocolIdentities.appendOnly.logicalKey,
+  protocolIdentities.appendOnly.hashHex,
+  resultHashes.replay,
+  resultHashes.replayConflict,
+  resultHashes.concurrentIdentical,
+  resultHashes.concurrentDivergentFirst,
+  resultHashes.concurrentDivergentSecond,
+  resultHashes.appendOnly,
+  ...Object.values(testOnlyIdentityInputs),
+] as const;
 
 let pool: Pool;
 
@@ -186,6 +225,11 @@ describe("I5 RL-7 Experiment Comparison PG17 readiness", () => {
   it("records BLOCKED when PG17_RECONCILIATION_URL is absent", () => {
     expect(connectionString ? "READY - PG17 WILL EXECUTE" : "BLOCKED - PG17 NOT EXECUTED").toMatch(/^(READY - PG17 WILL EXECUTE|BLOCKED - PG17 NOT EXECUTED)$/u);
   });
+
+  it("keeps every PG17 fixture identity hexadecimal and cross-test unique", () => {
+    expect(pg17FixtureIdentities.every((identity) => /^[0-9A-F]{64}$/u.test(identity))).toBe(true);
+    expect(new Set(pg17FixtureIdentities).size).toBe(pg17FixtureIdentities.length);
+  });
 });
 
 maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", () => {
@@ -266,7 +310,7 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
     expect(created.persistence_status).toBe("CREATED");
     const reused = await persistProtocol();
     expect(reused).toEqual({ ...created, persistence_status: "REUSED_IDENTICAL" });
-    await expect(persistProtocol(protocolIdentities.replay.logicalKey, h("C"), protocolPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_PROTOCOL_CONFLICT");
+    await expect(persistProtocol(protocolIdentities.replay.logicalKey, testOnlyIdentityInputs.protocolReplayConflictHash, protocolPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_PROTOCOL_CONFLICT");
   });
 
   it("serializes concurrent identical and divergent protocol attempts", async () => {
@@ -338,7 +382,7 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
     try {
       await client.query("begin");
       await client.query("set local role anon");
-      await expect(client.query("insert into investing.research_experiment_comparison_protocols_scientific_identities (tenant_id,principal_id,tenant_membership_id,research_investigation_id,hash_hex,logical_comparison_key,canonical_payload) values ($1,$2,$3,$4,$5,$6,'{}'::jsonb)", [ids.tenant, ids.principal, ids.membership, ids.investigation, h("B"), h("6")])).rejects.toThrow();
+      await expect(client.query("insert into investing.research_experiment_comparison_protocols_scientific_identities (tenant_id,principal_id,tenant_membership_id,research_investigation_id,hash_hex,logical_comparison_key,canonical_payload) values ($1,$2,$3,$4,$5,$6,'{}'::jsonb)", [ids.tenant, ids.principal, ids.membership, ids.investigation, testOnlyIdentityInputs.unauthorizedInsertHash, testOnlyIdentityInputs.unauthorizedInsertLogicalKey])).rejects.toThrow();
       await client.query("rollback");
 
       await expect(asApp(
@@ -359,9 +403,9 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
       )).rejects.toThrow(/permission denied for table/iu);
 
       // The admin pool connection is the privileged PostgreSQL trigger-path caller.
-      await expect(client.query("update investing.research_experiment_comparison_protocols_scientific_identities set hash_hex=$2 where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id, h("PRIVILEGED_PROTOCOL_MUTATION")])).rejects.toThrow("append-only");
+      await expect(client.query("update investing.research_experiment_comparison_protocols_scientific_identities set hash_hex=$2 where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id, testOnlyIdentityInputs.privilegedProtocolMutationHash])).rejects.toThrow("append-only");
       await expect(client.query("delete from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id])).rejects.toThrow("append-only");
-      await expect(client.query("update investing.research_experiment_comparison_results_scientific_identities set hash_hex=$2 where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id, h("PRIVILEGED_RESULT_MUTATION")])).rejects.toThrow("append-only");
+      await expect(client.query("update investing.research_experiment_comparison_results_scientific_identities set hash_hex=$2 where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id, testOnlyIdentityInputs.privilegedResultMutationHash])).rejects.toThrow("append-only");
       await expect(client.query("delete from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id])).rejects.toThrow("append-only");
 
       const persisted = await client.query<{ protocol_count: string; protocol_hash: string | null; result_count: string; result_hash: string | null }>(`
