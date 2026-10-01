@@ -151,11 +151,22 @@ Protocol/result reuse is exact and deterministic:
 
 RL-7 does not create a product API, UI or general research orchestrator.
 
-A dedicated TypeScript product writer/service is not required by this closure:
-the candidate persistence boundary is the internal `investing_app` SQL contract.
-Headless cross-slice orchestration is explicitly owned by RL-10.
+The sixth correction introduces the internal `writeExperimentComparisonV1`
+adapter. It resolves server authority, obtains source evidence through the
+existing Research/Validation Passport readers, derives the comparison, recomputes
+both hashes, and invokes the two SQL functions transactionally. It accepts no
+authoritative prepared hash/JSONB or caller-defined persistence sink.
+Headless cross-slice orchestration remains owned by RL-10.
 
-This limitation must not be misrepresented as missing scientific persistence.
+The `investing_app` database credential still has direct EXECUTE capability on
+these SQL functions. The SQL layer enforces ownership, context, append-only
+identity, and replay/conflict rules; it does not independently reproduce the
+TypeScript scientific derivation. Possession of that credential therefore
+remains a trusted-server boundary and can bypass the TypeScript reader/writer.
+Do not expose it or treat direct SQL payloads as independently scientifically
+verified. `service_role` remains capability, never source authority. No grants,
+migrations, or Production state are changed by this correction. Real PG17
+verification of the concrete adapter remains a required acceptance gate.
 
 ## Verification Evidence
 

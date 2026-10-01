@@ -159,6 +159,25 @@ function metricRecord(metricId: string, fields: Record<string, CanonicalJsonValu
   };
 }
 
+/** Validate against the metadata emitted by the engine's own record constructor. */
+export function assertMetricResultRecordV2(input: unknown): void {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("METRIC_RECORD_INVALID");
+  const record = input as Record<string, unknown>;
+  if (!metricRegistryV2Requests.some((request) => request.metricId === record.metricId)) throw new Error("METRIC_RECORD_INVALID");
+  const metadata = metricRecord(String(record.metricId), {}) as Record<string, unknown>;
+  const field = record.status === "AVAILABLE" ? "value" : record.status === "UNAVAILABLE" ? "reason" : null;
+  if (field === null || Object.keys(record).sort().join() !== [...Object.keys(metadata), "status", field].sort().join()) throw new Error("METRIC_RECORD_INVALID");
+  for (const [key, value] of Object.entries(metadata)) if (record[key] !== value) throw new Error("METRIC_METADATA_INVALID");
+  if (field === "reason") {
+    const reasons: readonly MetricUnavailableReasonV2[] = ["INSUFFICIENT_OBSERVATIONS", "ZERO_DENOMINATOR", "UNRECOVERED_DRAWDOWN", "BENCHMARK_UNAVAILABLE", "NON_POSITIVE_NAV", "INVALID_CAGR_DOMAIN", "INSUFFICIENT_DOWNSIDE_OBSERVATIONS", "NO_DOWNSIDE_OBSERVATIONS"];
+    if (!reasons.includes(record.reason as MetricUnavailableReasonV2)) throw new Error("METRIC_REASON_INVALID");
+  } else {
+    const integer = ["TRADE_COUNT", "REBALANCE_COUNT", "MAX_DRAWDOWN_DURATION", "MAX_DRAWDOWN_RECOVERY"].includes(String(record.metricId));
+    const pattern = integer ? /^(0|[1-9][0-9]*)$/u : /^-?(0|[1-9][0-9]*)(\.[0-9]{0,17}[1-9])?$/u;
+    if (typeof record.value !== "string" || !pattern.test(record.value) || record.value === "-0") throw new Error("METRIC_VALUE_INVALID");
+  }
+}
+
 function sessionReturns(valuations: readonly ValuationRecordV1[]): ExactRationalV1[] {
   const returns: ExactRationalV1[] = [];
   for (let index = 1; index < valuations.length; index += 1) {

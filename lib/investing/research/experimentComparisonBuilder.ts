@@ -1,3 +1,6 @@
+import { isPersistenceComparisonEvidenceV1 } from "./experimentComparisonSourceReader";
+import { parseValuationArtifactV2, type ValuationArtifactRecordV2 } from "./valuationArtifactV2";
+import { assertMetricResultRecordV2 } from "./researchMetrics";
 import { canonicalDateV1, canonicalDecimalV1, canonicalIntegerV1, hashRefV1, i5ResearchInternalCanonicalJsonBytesV1, sha256HexV1, type CanonicalJsonValue, type HashRefV1 } from "./canonical";
 import { hashExperimentParametersV1, type ExperimentParametersCandidateV1 } from "./experimentParameters";
 import { canonicalExperimentComparisonProtocolV1, hashExperimentComparisonProtocolV1, robustnessComparisonPolicyV1, type DirectionalComparisonMetricIdV1, type ExperimentComparisonProtocolV1 } from "./experimentComparison";
@@ -36,9 +39,8 @@ export type VerifiedScientificInputFingerprintV1 = Readonly<{
 export type VerifiedFoldMetricEvidenceV1 = Readonly<{
   foldId: string;
   validationResult: HashRefV1;
-  inSample: ExactMetricObservationV1;
-  outOfSample: ExactMetricObservationV1;
-  subjectOos: ExactMetricObservationV1;
+  trainingMetricRecords: readonly MetricResultSetV2ArtifactRecordV1[];
+  evaluationMetricRecords: readonly MetricResultSetV2ArtifactRecordV1[];
 }>;
 
 export type VerifiedNeighborhoodMetricEvidenceV1 = Readonly<{
@@ -77,18 +79,11 @@ export type VerifiedMetricResultSetProofV1 = Readonly<{
 export type VerifiedCostEvidenceV1 = Readonly<{
   referenceResult: HashRefV1;
   subjectResult: HashRefV1;
-  referenceExecutionTraceBytes: Buffer;
-  subjectExecutionTraceBytes: Buffer;
-  referenceCostRecords: readonly EngineCostArtifactRecordV1[];
-  subjectCostRecords: readonly EngineCostArtifactRecordV1[];
+  referenceValuationSeriesBytes: Buffer;
+  subjectValuationSeriesBytes: Buffer;
+  referenceCostRecords: readonly ValuationArtifactRecordV2[];
+  subjectCostRecords: readonly ValuationArtifactRecordV2[];
 }> | null;
-
-export type EngineCostArtifactRecordV1 = Readonly<{
-  kind: "ENGINE_V2_COST_OBSERVATION";
-  sessionOrdinal: string;
-  explicitFee: string;
-  slippageCost: string;
-}>;
 
 export type VerifiedComparisonEvidenceV1 = Readonly<{
   protocol: ComparisonProtocolHashRefV1;
@@ -124,6 +119,7 @@ export type ExperimentComparisonPersistenceSinkV1 = Readonly<{
 }>;
 
 export function buildExperimentComparisonResultV1(input: VerifiedComparisonEvidenceV1): ExperimentComparisonResultV1 {
+  if (!isPersistenceComparisonEvidenceV1(input)) return failClosedResult(input.protocol, "CORRUPTED_EVIDENCE");
   const protocolFailure = verifyProtocolBinding(input);
   const protocol = canonicalExperimentComparisonProtocolV1(input.protocolPayload) as CanonicalProtocol;
   if (protocolFailure !== null) return failClosedResult(input.protocol, protocolFailure);
@@ -182,6 +178,7 @@ export function prepareExperimentComparisonPersistenceV1(input: VerifiedComparis
   const protocolHash = hashExperimentComparisonProtocolV1(input.protocolPayload);
   if (protocolHash !== input.protocol.hashHex) throw new Error("CORRUPTED_EVIDENCE");
   const result = buildExperimentComparisonResultV1(input);
+  if (result.failure !== null) throw new Error(result.failure);
   const resultPayload = canonicalExperimentComparisonResultV1(result);
   const resultHash = hashExperimentComparisonResultV1(result);
   const protocolPayloadBytes = i5ResearchInternalCanonicalJsonBytesV1(protocolPayload).toString("utf8");
@@ -304,47 +301,18 @@ function verifyMetricResultSetProof(proof: VerifiedMetricResultSetProofV1, expec
 function i5ResearchInternalSha256(bytes: Buffer): string { return sha256HexV1(bytes); }
 
 function assertMetricArtifactRecordV2(record: MetricResultSetV2ArtifactRecordV1): void {
-  if (record.metricVersion !== "METRIC_V2" || record.registryVersion !== "METRIC_REGISTRY_V20260927") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
-  if (record.annualizationBasis !== "TRADING_SESSIONS_PER_YEAR_252") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
-  if (typeof record.riskFreeSessionReturn !== "string" || typeof record.minimumAcceptableSessionReturn !== "string" || typeof record.arithmetic !== "string" || typeof record.rounding !== "string") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
-  if (record.status === "AVAILABLE") {
-    if (typeof record.value !== "string" || Object.hasOwn(record, "reason")) throw new Error("VALUE_WITHOUT_CANONICAL_DECIMAL");
-    decimalStringToRationalV1(record.value);
-    return;
-  }
-  if (record.status === "UNAVAILABLE") {
-    if (typeof record.reason !== "string" || record.reason.length === 0 || Object.hasOwn(record, "value")) throw new Error("MISSING_WITH_CANONICAL_DECIMAL");
-    return;
-  }
-  throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
+  assertMetricResultRecordV2(record);
 }
 
 function verifyCostArtifactEvidence(input: NonNullable<VerifiedCostEvidenceV1>, referenceProof: VerifiedMetricResultSetProofV1, subjectProof: VerifiedMetricResultSetProofV1): boolean {
   try {
-    const referenceBytes = canonicalJsonlArtifactBytesV1(input.referenceCostRecords as unknown as readonly CanonicalJsonValue[]);
-    const subjectBytes = canonicalJsonlArtifactBytesV1(input.subjectCostRecords as unknown as readonly CanonicalJsonValue[]);
-    if (!referenceBytes.equals(input.referenceExecutionTraceBytes) || !subjectBytes.equals(input.subjectExecutionTraceBytes)) return false;
-    if (!sameDescriptorBytes(referenceProof.resultPayload.executionTrace, referenceBytes, input.referenceCostRecords.length)) return false;
-    if (!sameDescriptorBytes(subjectProof.resultPayload.executionTrace, subjectBytes, input.subjectCostRecords.length)) return false;
-    for (const record of [...input.referenceCostRecords, ...input.subjectCostRecords]) assertEngineCostRecord(record);
-    return true;
+    const reference = parseValuationArtifactV2(input.referenceValuationSeriesBytes, referenceProof.resultPayload.valuationSeries);
+    const subject = parseValuationArtifactV2(input.subjectValuationSeriesBytes, subjectProof.resultPayload.valuationSeries);
+    return canonicalJsonlArtifactBytesV1(reference as unknown as readonly CanonicalJsonValue[]).equals(canonicalJsonlArtifactBytesV1(input.referenceCostRecords as unknown as readonly CanonicalJsonValue[])) &&
+      canonicalJsonlArtifactBytesV1(subject as unknown as readonly CanonicalJsonValue[]).equals(canonicalJsonlArtifactBytesV1(input.subjectCostRecords as unknown as readonly CanonicalJsonValue[]));
   } catch {
     return false;
   }
-}
-
-function sameDescriptorBytes(descriptor: ResultHashPayloadV1["executionTrace"], bytes: Buffer, recordCount: number): boolean {
-  return descriptor.artifactSchemaVersion === "RESEARCH_EXECUTION_TRACE_V2" &&
-    descriptor.contentSha256 === i5ResearchInternalSha256(bytes) &&
-    descriptor.contentByteLength === String(bytes.length) &&
-    descriptor.recordCount === String(recordCount);
-}
-
-function assertEngineCostRecord(record: EngineCostArtifactRecordV1): void {
-  if (record.kind !== "ENGINE_V2_COST_OBSERVATION") throw new Error("COST_RECORD_INVALID");
-  canonicalIntegerV1(record.sessionOrdinal);
-  decimalStringToRationalV1(record.explicitFee);
-  decimalStringToRationalV1(record.slippageCost);
 }
 
 function duplicateMetricRecords(records: readonly MetricResultSetV2ArtifactRecordV1[]): boolean {
@@ -358,6 +326,8 @@ function duplicateMetricRecords(records: readonly MetricResultSetV2ArtifactRecor
 }
 
 function sameMetricRecord(left: ExactMetricObservationV1, right: ExactMetricObservationV1 | undefined): boolean {
+  if (right === undefined) return left.state === "MISSING" && left.canonicalDecimal === null &&
+    left.metricVersion === "METRIC_V2" && left.registryVersion === "METRIC_REGISTRY_V20260927" && left.artifactSchemaVersion === "METRIC_RESULT_SET_V2";
   return right !== undefined &&
     left.metricId === right.metricId &&
     left.metricVersion === right.metricVersion &&
@@ -545,12 +515,15 @@ function deriveValidationEvidence(folds: readonly VerifiedFoldMetricEvidenceV1[]
   for (const fold of [...folds].sort((a, b) => byteCompare(a.foldId, b.foldId))) {
     if (seen.has(fold.foldId)) incomplete = true;
     seen.add(fold.foldId);
-    const outcome = compareExactMetricObservationV1(fold.inSample, fold.outOfSample);
-    if (fold.inSample.metricId !== primaryMetricId || outcome.state !== "AVAILABLE" || outcome.delta.orientedDeltaSign === null || outcome.delta.orientedDelta === null) incomplete = true;
+    const inSample = observationFromMetricRecord(fold.trainingMetricRecords.find((record) => record.metricId === primaryMetricId));
+    const outOfSample = observationFromMetricRecord(fold.evaluationMetricRecords.find((record) => record.metricId === primaryMetricId));
+    if (!inSample || !outOfSample) { incomplete = true; continue; }
+    const outcome = compareExactMetricObservationV1(inSample, outOfSample);
+    if (inSample.metricId !== primaryMetricId || outcome.state !== "AVAILABLE" || outcome.delta.orientedDeltaSign === null || outcome.delta.orientedDelta === null) incomplete = true;
     else {
       signs.push(outcome.delta.orientedDeltaSign);
-      if (fold.subjectOos.metricId !== primaryMetricId || fold.subjectOos.state !== "VALUE" || fold.subjectOos.canonicalDecimal === null) incomplete = true;
-      else outcomeSigns.push(compareRationalV1(decimalStringToRationalV1(fold.subjectOos.canonicalDecimal), { numerator: 0n, denominator: 1n }));
+      if (outOfSample.metricId !== primaryMetricId || outOfSample.state !== "VALUE" || outOfSample.canonicalDecimal === null) incomplete = true;
+      else outcomeSigns.push(compareRationalV1(decimalStringToRationalV1(outOfSample.canonicalDecimal), { numerator: 0n, denominator: 1n }));
       deltas.push(recordToRational(outcome.delta.orientedDelta));
     }
   }
@@ -615,10 +588,10 @@ function deriveConcentrationEvidence(eventMetricEvidence: VerifiedComparisonEvid
 function deriveCostEvidence(input: VerifiedCostEvidenceV1): { evidence: ExperimentComparisonResultV1["costEvidence"]; failure: ComparisonFailClosedErrorV1 | null } {
   if (input === null) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "MISSING_EXACT_COST_EVIDENCE" }), failure: null };
   try {
-    const explicitFeeTotalReference = finalMonotonic(input.referenceCostRecords.map((record) => record.explicitFee));
-    const explicitFeeTotalSubject = finalMonotonic(input.subjectCostRecords.map((record) => record.explicitFee));
-    const slippageCostTotalReference = finalMonotonic(input.referenceCostRecords.map((record) => record.slippageCost));
-    const slippageCostTotalSubject = finalMonotonic(input.subjectCostRecords.map((record) => record.slippageCost));
+    const explicitFeeTotalReference = finalMonotonic(input.referenceCostRecords.map((record) => record.cumulativeExplicitFees));
+    const explicitFeeTotalSubject = finalMonotonic(input.subjectCostRecords.map((record) => record.cumulativeExplicitFees));
+    const slippageCostTotalReference = finalMonotonic(input.referenceCostRecords.map((record) => record.cumulativeSlippageCost));
+    const slippageCostTotalSubject = finalMonotonic(input.subjectCostRecords.map((record) => record.cumulativeSlippageCost));
     const costTotalReference = addDecimal(explicitFeeTotalReference, slippageCostTotalReference);
     const costTotalSubject = addDecimal(explicitFeeTotalSubject, slippageCostTotalSubject);
     return { evidence: Object.freeze({ state: "AVAILABLE", explicitFeeTotalReference, explicitFeeTotalSubject, slippageCostTotalReference, slippageCostTotalSubject, costTotalReference, costTotalSubject, costDelta: subtractDecimal(costTotalSubject, costTotalReference) }), failure: null };
