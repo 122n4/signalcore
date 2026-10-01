@@ -5,9 +5,11 @@ import {
   sha256HexV1,
   type CanonicalJsonValue,
   type CanonicalSha256HexV1,
+  type HashRefV1,
   canonicalDateV1,
   canonicalDecimalV1,
   canonicalIntegerV1,
+  hashRefV1,
 } from "./canonical";
 import { addRationalV1, compareRationalV1, decimalStringToRationalV1, reduceRationalV1, subtractRationalV1, type ExactRationalV1 } from "./exactRational";
 import { metricDirectionV1 } from "./experimentComparison";
@@ -36,7 +38,8 @@ export type ScientificInputDeltaV1 = Readonly<{ field: string; referenceValue: s
 export type RationalRecordV1 = Readonly<{ numerator: string; denominator: string }>;
 export type ValidationEvidenceV1 = Readonly<{ completeFoldCount: string; degradedFoldCount: string; nonDegradedFoldCount: string; aggregateOosOrientedDeltaSign: "-1" | "0" | "1"; foldMin: RationalRecordV1 | null; foldMax: RationalRecordV1 | null; foldRange: RationalRecordV1 | null }>;
 export type CostEvidenceV1 = Readonly<{ state: "AVAILABLE"; explicitFeeTotalReference: string; explicitFeeTotalSubject: string; slippageCostTotalReference: string; slippageCostTotalSubject: string; costTotalReference: string; costTotalSubject: string; costDelta: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "MISSING_EXACT_COST_EVIDENCE" }>;
-export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[]; degradedMemberCount: string; improvedOrEqualMemberCount: string; neighborhoodMin: RationalRecordV1; neighborhoodMax: RationalRecordV1; neighborhoodSpread: RationalRecordV1 }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD"; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[] }>;
+export type NeighborhoodMemberEvidenceV1 = Readonly<{ experiment: HashRefV1; state: "AVAILABLE"; delta: RationalRecordV1; reason: null }> | Readonly<{ experiment: HashRefV1; state: "UNAVAILABLE"; delta: null; reason: "MISSING_METRIC" | "METRIC_UNAVAILABLE_ON_ONE_SIDE" }>;
+export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[]; neighborhoodMembers: readonly NeighborhoodMemberEvidenceV1[]; degradedMemberCount: string; improvedOrEqualMemberCount: string; neighborhoodMin: RationalRecordV1; neighborhoodMax: RationalRecordV1; neighborhoodSpread: RationalRecordV1 }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD"; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[]; neighborhoodMembers: readonly NeighborhoodMemberEvidenceV1[] }>;
 export type ConcentrationEvidenceV1 = Readonly<{ state: "AVAILABLE"; tradeCount: string; rebalanceCount: string; foldDirectionConcentration: boolean }> | Readonly<{ state: "UNAVAILABLE"; reason: "UNSUPPORTED_CONCENTRATION_EVIDENCE" }>;
 
 export type ExperimentComparisonResultV1 = Readonly<{
@@ -269,8 +272,9 @@ function canonicalCostEvidence(input: CostEvidenceV1): CanonicalJsonValue {
 }
 
 function canonicalNeighborhoodEvidence(input: NeighborhoodEvidenceV1): CanonicalJsonValue {
-  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "neighborhoodMemberCount", "availableMemberCount", "unavailableMemberCount", "unavailableReasons", "degradedMemberCount", "improvedOrEqualMemberCount", "neighborhoodMin", "neighborhoodMax", "neighborhoodSpread"]) : new Set(["state", "reason", "availableMemberCount", "unavailableMemberCount", "unavailableReasons"]), "NeighborhoodEvidence");
+  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "neighborhoodMemberCount", "availableMemberCount", "unavailableMemberCount", "unavailableReasons", "neighborhoodMembers", "degradedMemberCount", "improvedOrEqualMemberCount", "neighborhoodMin", "neighborhoodMax", "neighborhoodSpread"]) : new Set(["state", "reason", "availableMemberCount", "unavailableMemberCount", "unavailableReasons", "neighborhoodMembers"]), "NeighborhoodEvidence");
   const unavailableReasons = canonicalReasonList(input.unavailableReasons);
+  const neighborhoodMembers = canonicalNeighborhoodMembers(input.neighborhoodMembers);
   if (input.state === "AVAILABLE") {
     const neighborhoodMemberCount = canonicalNonNegativeInteger(input.neighborhoodMemberCount);
     const availableMemberCount = canonicalNonNegativeInteger(input.availableMemberCount);
@@ -279,14 +283,15 @@ function canonicalNeighborhoodEvidence(input: NeighborhoodEvidenceV1): Canonical
     const improvedOrEqualMemberCount = canonicalNonNegativeInteger(input.improvedOrEqualMemberCount);
     if (BigInt(availableMemberCount) + BigInt(unavailableMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     if (BigInt(unavailableMemberCount) !== 0n) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
+    if (BigInt(neighborhoodMemberCount) !== BigInt(neighborhoodMembers.length) || neighborhoodMembers.some((member) => (member as Record<string, unknown>).state !== "AVAILABLE")) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     if (BigInt(degradedMemberCount) + BigInt(improvedOrEqualMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     const neighborhoodMin = canonicalRationalRecord(input.neighborhoodMin, "NeighborhoodMin");
     const neighborhoodMax = canonicalRationalRecord(input.neighborhoodMax, "NeighborhoodMax");
     const neighborhoodSpread = canonicalRationalRecord(input.neighborhoodSpread, "NeighborhoodSpread");
     assertRangeMath(neighborhoodMin, neighborhoodMax, neighborhoodSpread, "NEIGHBORHOOD_EVIDENCE_RANGE_MISMATCH");
-    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, availableMemberCount, unavailableMemberCount, unavailableReasons, degradedMemberCount, improvedOrEqualMemberCount, neighborhoodMin, neighborhoodMax, neighborhoodSpread });
+    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, availableMemberCount, unavailableMemberCount, unavailableReasons, neighborhoodMembers, degradedMemberCount, improvedOrEqualMemberCount, neighborhoodMin, neighborhoodMax, neighborhoodSpread });
   }
-  if (input.state === "UNAVAILABLE" && input.reason === "INSUFFICIENT_PARAMETER_NEIGHBORHOOD") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason, availableMemberCount: canonicalNonNegativeInteger(input.availableMemberCount), unavailableMemberCount: canonicalNonNegativeInteger(input.unavailableMemberCount), unavailableReasons });
+  if (input.state === "UNAVAILABLE" && input.reason === "INSUFFICIENT_PARAMETER_NEIGHBORHOOD") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason, availableMemberCount: canonicalNonNegativeInteger(input.availableMemberCount), unavailableMemberCount: canonicalNonNegativeInteger(input.unavailableMemberCount), unavailableReasons, neighborhoodMembers });
   throw new Error("NEIGHBORHOOD_EVIDENCE_INVALID");
 }
 
@@ -297,6 +302,29 @@ function canonicalReasonList(input: readonly string[]): readonly string[] {
     return value;
   }).sort(byteCompare);
   return Object.freeze(copy);
+}
+
+function canonicalNeighborhoodMembers(input: readonly NeighborhoodMemberEvidenceV1[]): readonly CanonicalJsonValue[] {
+  if (!Array.isArray(input)) throw new Error("NEIGHBORHOOD_MEMBERS_INVALID");
+  const copy = input.map((member) => {
+    assertClosed(member, new Set(["experiment", "state", "delta", "reason"]), "NeighborhoodMemberEvidence");
+    const experiment = hashRefV1(member.experiment);
+    if (experiment.hashDomain !== "SYNTRAKE:EXPERIMENT:V1") throw new Error("NEIGHBORHOOD_MEMBER_EXPERIMENT_INVALID");
+    if (member.state === "AVAILABLE") {
+      if (member.reason !== null) throw new Error("NEIGHBORHOOD_MEMBER_REASON_INVALID");
+      return Object.freeze({ experiment, state: "AVAILABLE", delta: canonicalRationalRecord(member.delta, "NeighborhoodMemberDelta"), reason: null });
+    }
+    if (member.state === "UNAVAILABLE") {
+      if (member.delta !== null || !["MISSING_METRIC", "METRIC_UNAVAILABLE_ON_ONE_SIDE"].includes(member.reason)) throw new Error("NEIGHBORHOOD_MEMBER_REASON_INVALID");
+      return Object.freeze({ experiment, state: "UNAVAILABLE", delta: null, reason: member.reason });
+    }
+    throw new Error("NEIGHBORHOOD_MEMBERS_INVALID");
+  });
+  copy.sort((a, b) => byteCompare(String((a.experiment as HashRefV1).hashHex), String((b.experiment as HashRefV1).hashHex)));
+  for (let index = 1; index < copy.length; index += 1) {
+    if ((copy[index - 1]!.experiment as HashRefV1).hashHex === (copy[index]!.experiment as HashRefV1).hashHex) throw new Error("NEIGHBORHOOD_MEMBERS_DUPLICATE");
+  }
+  return Object.freeze(copy as CanonicalJsonValue[]);
 }
 
 function canonicalConcentrationEvidence(input: ConcentrationEvidenceV1): CanonicalJsonValue {

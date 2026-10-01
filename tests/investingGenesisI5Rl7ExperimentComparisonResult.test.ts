@@ -14,8 +14,25 @@ const protocol: ComparisonProtocolHashRefV1 = {
   hashHex: canonicalSha256HexV1("A".repeat(64)),
 };
 
+function experiment(marker: string) {
+  return {
+    hashAlgorithm: "SHA-256" as const,
+    hashDomain: "SYNTRAKE:EXPERIMENT:V1" as const,
+    hashVersion: "SYNTRAKE_SHA256_V1" as const,
+    hashHex: canonicalSha256HexV1(marker.repeat(64).slice(0, 64)),
+  };
+}
+
 function q(numerator: string, denominator = "1") {
   return { numerator, denominator };
+}
+
+function neighborhoodMembers() {
+  return [
+    { experiment: experiment("1"), state: "AVAILABLE" as const, delta: q("1", "20"), reason: null },
+    { experiment: experiment("2"), state: "AVAILABLE" as const, delta: q("0"), reason: null },
+    { experiment: experiment("3"), state: "AVAILABLE" as const, delta: q("1", "50"), reason: null },
+  ];
 }
 
 function valid(overrides: Partial<ExperimentComparisonResultV1> = {}): ExperimentComparisonResultV1 {
@@ -41,6 +58,7 @@ function valid(overrides: Partial<ExperimentComparisonResultV1> = {}): Experimen
       availableMemberCount: "3",
       unavailableMemberCount: "0",
       unavailableReasons: [],
+      neighborhoodMembers: neighborhoodMembers(),
       degradedMemberCount: "0",
       improvedOrEqualMemberCount: "3",
       neighborhoodMin: q("0"),
@@ -112,7 +130,7 @@ describe("I5 RL-7 comparison result payload", () => {
     expect(() => canonicalExperimentComparisonResultV1(valid({
       classification: "ROBUSTNESS_STABLE",
       validationEvidence: { ...valid().validationEvidence, completeFoldCount: "3", degradedFoldCount: "1", nonDegradedFoldCount: "2", aggregateOosOrientedDeltaSign: "-1" },
-      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], degradedMemberCount: "1", improvedOrEqualMemberCount: "2", neighborhoodMin: q("0"), neighborhoodMax: q("1", "20"), neighborhoodSpread: q("1", "20") },
+      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], neighborhoodMembers: neighborhoodMembers(), degradedMemberCount: "1", improvedOrEqualMemberCount: "2", neighborhoodMin: q("0"), neighborhoodMax: q("1", "20"), neighborhoodSpread: q("1", "20") },
     }))).toThrow("CLASSIFICATION_EVIDENCE_DRIFT");
   });
 
@@ -132,13 +150,13 @@ describe("I5 RL-7 comparison result payload", () => {
       validationEvidence: { ...valid().validationEvidence, completeFoldCount: "3", degradedFoldCount: "2", nonDegradedFoldCount: "2", aggregateOosOrientedDeltaSign: "1" },
     }))).toThrow("VALIDATION_EVIDENCE_COUNT_MISMATCH");
     expect(() => canonicalExperimentComparisonResultV1(valid({
-      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], degradedMemberCount: "2", improvedOrEqualMemberCount: "2", neighborhoodMin: q("0"), neighborhoodMax: q("1", "20"), neighborhoodSpread: q("1", "20") },
+      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], neighborhoodMembers: neighborhoodMembers(), degradedMemberCount: "2", improvedOrEqualMemberCount: "2", neighborhoodMin: q("0"), neighborhoodMax: q("1", "20"), neighborhoodSpread: q("1", "20") },
     }))).toThrow("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     expect(() => canonicalExperimentComparisonResultV1(valid({
       validationEvidence: { ...valid().validationEvidence, foldRange: q("1", "100") },
     }))).toThrow("VALIDATION_EVIDENCE_RANGE_MISMATCH");
     expect(() => canonicalExperimentComparisonResultV1(valid({
-      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], degradedMemberCount: "0", improvedOrEqualMemberCount: "3", neighborhoodMin: q("0"), neighborhoodMax: q("1", "20"), neighborhoodSpread: q("1", "100") },
+      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], neighborhoodMembers: neighborhoodMembers(), degradedMemberCount: "0", improvedOrEqualMemberCount: "3", neighborhoodMin: q("0"), neighborhoodMax: q("1", "20"), neighborhoodSpread: q("1", "100") },
     }))).toThrow("NEIGHBORHOOD_EVIDENCE_RANGE_MISMATCH");
     expect(() => canonicalExperimentComparisonResultV1(valid({
       costEvidence: { state: "AVAILABLE", explicitFeeTotalReference: "1", explicitFeeTotalSubject: "1", slippageCostTotalReference: "2", slippageCostTotalSubject: "2", costTotalReference: "4", costTotalSubject: "3", costDelta: "0" },

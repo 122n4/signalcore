@@ -9,14 +9,8 @@ import { canonicalJsonlArtifactBytesV1, hashResultV1, type ResultHashPayloadV1 }
 import { compareRationalV1, decimalStringToRationalV1, reduceRationalV1, subtractRationalV1, type ExactRationalV1 } from "./exactRational";
 
 export type VerifiedComparisonExperimentNodeV1 = Readonly<{
-  experiment: HashRefV1;
-  parentExperiment: HashRefV1 | null;
-  tenantAuthority: string;
-  investigationId: string;
-  researchIrFamily: string;
-  relation: "BASELINE" | "VARIANT";
-  acceptedPersistenceProof: Readonly<{
-    source: "SERVER_PERSISTENCE_PROJECTION_V1";
+  acceptedExperiment: Readonly<{
+    source: "ACCEPTED_EXPERIMENT_PERSISTENCE_V1";
     experiment: HashRefV1;
     parentExperiment: HashRefV1 | null;
     tenantAuthority: string;
@@ -53,20 +47,48 @@ export type VerifiedNeighborhoodMetricEvidenceV1 = Readonly<{
   unavailableReason?: "MISSING_METRIC" | "METRIC_UNAVAILABLE_ON_ONE_SIDE";
 }>;
 
+export type MetricResultSetV2ArtifactRecordV1 = Readonly<{
+  metricId: ExactMetricObservationV1["metricId"];
+  metricVersion: "METRIC_V2";
+  registryVersion: "METRIC_REGISTRY_V20260927";
+  annualizationBasis: "TRADING_SESSIONS_PER_YEAR_252";
+  riskFreeSessionReturn: string;
+  minimumAcceptableSessionReturn: string;
+  arithmetic: string;
+  rounding: string;
+  status: "AVAILABLE" | "UNAVAILABLE";
+  value?: string;
+  reason?: string;
+}>;
+
 export type VerifiedMetricResultSetProofV1 = Readonly<{
   result: HashRefV1;
   resultPayload: ResultHashPayloadV1;
-  metricRecords: readonly ExactMetricObservationV1[];
+  acceptedResult: Readonly<{
+    source: "ACCEPTED_RESULT_PERSISTENCE_V1";
+    result: HashRefV1;
+    experiment: HashRefV1;
+    runInput: HashRefV1;
+  }>;
+  metricArtifactBytes: Buffer;
+  metricRecords: readonly MetricResultSetV2ArtifactRecordV1[];
 }>;
 
 export type VerifiedCostEvidenceV1 = Readonly<{
   referenceResult: HashRefV1;
   subjectResult: HashRefV1;
-  explicitFeeReferenceSeries: readonly string[];
-  explicitFeeSubjectSeries: readonly string[];
-  slippageReferenceSeries: readonly string[];
-  slippageSubjectSeries: readonly string[];
+  referenceExecutionTraceBytes: Buffer;
+  subjectExecutionTraceBytes: Buffer;
+  referenceCostRecords: readonly EngineCostArtifactRecordV1[];
+  subjectCostRecords: readonly EngineCostArtifactRecordV1[];
 }> | null;
+
+export type EngineCostArtifactRecordV1 = Readonly<{
+  kind: "ENGINE_V2_COST_OBSERVATION";
+  sessionOrdinal: string;
+  explicitFee: string;
+  slippageCost: string;
+}>;
 
 export type VerifiedComparisonEvidenceV1 = Readonly<{
   protocol: ComparisonProtocolHashRefV1;
@@ -191,7 +213,7 @@ function failClosedResult(protocol: ComparisonProtocolHashRefV1, failure: Compar
     metricDeltas: [],
     validationEvidence: { completeFoldCount: "0", degradedFoldCount: "0", nonDegradedFoldCount: "0", aggregateOosOrientedDeltaSign: "0" as const, foldMin: null, foldMax: null, foldRange: null },
     costEvidence: { state: "UNAVAILABLE" as const, reason: "MISSING_EXACT_COST_EVIDENCE" as const },
-    neighborhoodEvidence: { state: "UNAVAILABLE" as const, reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD" as const, availableMemberCount: "0", unavailableMemberCount: "0", unavailableReasons: [] },
+    neighborhoodEvidence: { state: "UNAVAILABLE" as const, reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD" as const, availableMemberCount: "0", unavailableMemberCount: "0", unavailableReasons: [], neighborhoodMembers: [] },
     concentrationEvidence: { state: "UNAVAILABLE" as const, reason: "UNSUPPORTED_CONCENTRATION_EVIDENCE" as const },
     diagnostics: ["INSUFFICIENT_PARAMETER_NEIGHBORHOOD", "MISSING_EXACT_COST_EVIDENCE", "METRIC_UNAVAILABLE", "UNSUPPORTED_CONCENTRATION_EVIDENCE"] as const,
     classification: null,
@@ -222,8 +244,8 @@ function verifyProtocolBinding(input: VerifiedComparisonEvidenceV1): ComparisonF
   if (hashExperimentComparisonProtocolV1(input.protocolPayload) !== input.protocol.hashHex) return "CORRUPTED_EVIDENCE";
   const protocol = canonicalExperimentComparisonProtocolV1(input.protocolPayload) as CanonicalProtocol;
   if (!hasDomain(input.protocol, "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1")) return "CORRUPTED_EVIDENCE";
-  if (!sameRef(protocol.referenceExperiment, input.reference.experiment) || !sameRef(protocol.subjectExperiment, input.subject.experiment)) return "CORRUPTED_EVIDENCE";
-  if (!hasDomain(input.reference.experiment, "SYNTRAKE:EXPERIMENT:V1") || !hasDomain(input.subject.experiment, "SYNTRAKE:EXPERIMENT:V1")) return "CORRUPTED_EVIDENCE";
+  if (!sameRef(protocol.referenceExperiment, input.reference.acceptedExperiment.experiment) || !sameRef(protocol.subjectExperiment, input.subject.acceptedExperiment.experiment)) return "CORRUPTED_EVIDENCE";
+  if (!hasDomain(input.reference.acceptedExperiment.experiment, "SYNTRAKE:EXPERIMENT:V1") || !hasDomain(input.subject.acceptedExperiment.experiment, "SYNTRAKE:EXPERIMENT:V1")) return "CORRUPTED_EVIDENCE";
   if (!hasDomain(input.referenceScientificInputs.datasetSnapshot, "SYNTRAKE:DATASET_SNAPSHOT:V1")) return "CORRUPTED_EVIDENCE";
   if (!hasDomain(input.referenceScientificInputs.executionConfig, "SYNTRAKE:EXECUTION_CONFIG:V1")) return "CORRUPTED_EVIDENCE";
   if (!hasDomain(input.referenceScientificInputs.metricRequestSet, "SYNTRAKE:METRIC_REQUEST_SET:V1")) return "CORRUPTED_EVIDENCE";
@@ -239,18 +261,21 @@ function verifyProtocolBinding(input: VerifiedComparisonEvidenceV1): ComparisonF
   if (protocol.metricRegistryVersion !== "METRIC_REGISTRY_V20260927") return "INCOMPATIBLE_METRIC_VERSIONS";
   if (!verifyMetricResultSetProof(input.referenceResultProof, protocol.referenceResult)) return "CORRUPTED_EVIDENCE";
   if (!verifyMetricResultSetProof(input.subjectResultProof, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
+  if (!sameRef(input.referenceResultProof.acceptedResult.experiment, input.reference.acceptedExperiment.experiment)) return "CORRUPTED_EVIDENCE";
+  if (!sameRef(input.subjectResultProof.acceptedResult.experiment, input.subject.acceptedExperiment.experiment)) return "CORRUPTED_EVIDENCE";
   if (duplicateMetricRecords(input.referenceResultProof.metricRecords) || duplicateMetricRecords(input.subjectResultProof.metricRecords)) return "CORRUPTED_EVIDENCE";
   for (const fold of input.foldEvidence) if (!sameRef(fold.validationResult, protocol.subjectValidationResult)) return "CORRUPTED_EVIDENCE";
-  if (input.costEvidence !== null && (!sameRef(input.costEvidence.referenceResult, protocol.referenceResult) || !sameRef(input.costEvidence.subjectResult, protocol.subjectResult))) return "CORRUPTED_EVIDENCE";
+  if (input.costEvidence !== null && (!sameRef(input.costEvidence.referenceResult, protocol.referenceResult) || !sameRef(input.costEvidence.subjectResult, protocol.subjectResult) || !verifyCostArtifactEvidence(input.costEvidence, input.referenceResultProof, input.subjectResultProof))) return "CORRUPTED_EVIDENCE";
   if (!sameRef(input.eventMetricEvidence.result, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
   if (input.eventMetricEvidence.tradeCount.metricId !== "TRADE_COUNT" || input.eventMetricEvidence.rebalanceCount.metricId !== "REBALANCE_COUNT") return "CORRUPTED_EVIDENCE";
-  if (!sameMetricRecord(input.eventMetricEvidence.tradeCount, input.subjectResultProof.metricRecords.find((record) => record.metricId === "TRADE_COUNT"))) return "CORRUPTED_EVIDENCE";
-  if (!sameMetricRecord(input.eventMetricEvidence.rebalanceCount, input.subjectResultProof.metricRecords.find((record) => record.metricId === "REBALANCE_COUNT"))) return "CORRUPTED_EVIDENCE";
+  if (!sameMetricRecord(input.eventMetricEvidence.tradeCount, observationFromMetricRecord(input.subjectResultProof.metricRecords.find((record) => record.metricId === "TRADE_COUNT")))) return "CORRUPTED_EVIDENCE";
+  if (!sameMetricRecord(input.eventMetricEvidence.rebalanceCount, observationFromMetricRecord(input.subjectResultProof.metricRecords.find((record) => record.metricId === "REBALANCE_COUNT")))) return "CORRUPTED_EVIDENCE";
   const protocolNeighborhood = new Set(protocol.neighborhoodExperimentRefs.map((ref) => ref.hashHex));
   if (input.neighborhoodEvidence.length !== protocolNeighborhood.size) return "CORRUPTED_EVIDENCE";
   for (const member of input.neighborhoodEvidence) {
     if (!protocolNeighborhood.has(hashRefV1(member.experiment).hashHex)) return "CORRUPTED_EVIDENCE";
     if (!verifyMetricResultSetProof(member.resultProof, member.resultProof.result)) return "CORRUPTED_EVIDENCE";
+    if (!sameRef(member.resultProof.acceptedResult.experiment, member.experiment)) return "CORRUPTED_EVIDENCE";
     if (hashRefV1(member.experiment).hashHex !== protocol.subjectExperiment.hashHex && sameRef(member.resultProof.result, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
   }
   return null;
@@ -261,11 +286,15 @@ function verifyMetricResultSetProof(proof: VerifiedMetricResultSetProofV1, expec
     if (!sameRef(proof.result, expectedResult)) return false;
     if (hashResultV1(proof.resultPayload) !== hashRefV1(expectedResult).hashHex) return false;
     if (proof.resultPayload.metricResultSet.artifactSchemaVersion !== "METRIC_RESULT_SET_V2") return false;
-    const bytes = canonicalJsonlArtifactBytesV1(proof.metricRecords as unknown as readonly CanonicalJsonValue[]);
+  if (proof.acceptedResult.source !== "ACCEPTED_RESULT_PERSISTENCE_V1") return false;
+  if (!sameRef(proof.acceptedResult.result, expectedResult)) return false;
+  if (!sameRef(proof.acceptedResult.runInput, proof.resultPayload.runInput)) return false;
+  const bytes = canonicalJsonlArtifactBytesV1(proof.metricRecords as unknown as readonly CanonicalJsonValue[]);
+  if (!bytes.equals(proof.metricArtifactBytes)) return false;
     if (proof.resultPayload.metricResultSet.contentSha256 !== i5ResearchInternalSha256(bytes)) return false;
     if (proof.resultPayload.metricResultSet.contentByteLength !== String(bytes.length)) return false;
     if (proof.resultPayload.metricResultSet.recordCount !== String(proof.metricRecords.length)) return false;
-    for (const record of proof.metricRecords) assertMetricRecordV2(record);
+    for (const record of proof.metricRecords) assertMetricArtifactRecordV2(record);
     return true;
   } catch {
     return false;
@@ -274,16 +303,54 @@ function verifyMetricResultSetProof(proof: VerifiedMetricResultSetProofV1, expec
 
 function i5ResearchInternalSha256(bytes: Buffer): string { return sha256HexV1(bytes); }
 
-function assertMetricRecordV2(record: ExactMetricObservationV1): void {
-  if (record.metricVersion !== "METRIC_V2" || record.registryVersion !== "METRIC_REGISTRY_V20260927" || record.artifactSchemaVersion !== "METRIC_RESULT_SET_V2") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
-  if (record.state === "VALUE" && record.canonicalDecimal === null) throw new Error("VALUE_WITHOUT_CANONICAL_DECIMAL");
-  if (record.state === "MISSING" && record.canonicalDecimal !== null) throw new Error("MISSING_WITH_CANONICAL_DECIMAL");
+function assertMetricArtifactRecordV2(record: MetricResultSetV2ArtifactRecordV1): void {
+  if (record.metricVersion !== "METRIC_V2" || record.registryVersion !== "METRIC_REGISTRY_V20260927") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
+  if (record.annualizationBasis !== "TRADING_SESSIONS_PER_YEAR_252") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
+  if (typeof record.riskFreeSessionReturn !== "string" || typeof record.minimumAcceptableSessionReturn !== "string" || typeof record.arithmetic !== "string" || typeof record.rounding !== "string") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
+  if (record.status === "AVAILABLE") {
+    if (typeof record.value !== "string" || Object.hasOwn(record, "reason")) throw new Error("VALUE_WITHOUT_CANONICAL_DECIMAL");
+    decimalStringToRationalV1(record.value);
+    return;
+  }
+  if (record.status === "UNAVAILABLE") {
+    if (typeof record.reason !== "string" || record.reason.length === 0 || Object.hasOwn(record, "value")) throw new Error("MISSING_WITH_CANONICAL_DECIMAL");
+    return;
+  }
+  throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
 }
 
-function duplicateMetricRecords(records: readonly ExactMetricObservationV1[]): boolean {
+function verifyCostArtifactEvidence(input: NonNullable<VerifiedCostEvidenceV1>, referenceProof: VerifiedMetricResultSetProofV1, subjectProof: VerifiedMetricResultSetProofV1): boolean {
+  try {
+    const referenceBytes = canonicalJsonlArtifactBytesV1(input.referenceCostRecords as unknown as readonly CanonicalJsonValue[]);
+    const subjectBytes = canonicalJsonlArtifactBytesV1(input.subjectCostRecords as unknown as readonly CanonicalJsonValue[]);
+    if (!referenceBytes.equals(input.referenceExecutionTraceBytes) || !subjectBytes.equals(input.subjectExecutionTraceBytes)) return false;
+    if (!sameDescriptorBytes(referenceProof.resultPayload.executionTrace, referenceBytes, input.referenceCostRecords.length)) return false;
+    if (!sameDescriptorBytes(subjectProof.resultPayload.executionTrace, subjectBytes, input.subjectCostRecords.length)) return false;
+    for (const record of [...input.referenceCostRecords, ...input.subjectCostRecords]) assertEngineCostRecord(record);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sameDescriptorBytes(descriptor: ResultHashPayloadV1["executionTrace"], bytes: Buffer, recordCount: number): boolean {
+  return descriptor.artifactSchemaVersion === "RESEARCH_EXECUTION_TRACE_V2" &&
+    descriptor.contentSha256 === i5ResearchInternalSha256(bytes) &&
+    descriptor.contentByteLength === String(bytes.length) &&
+    descriptor.recordCount === String(recordCount);
+}
+
+function assertEngineCostRecord(record: EngineCostArtifactRecordV1): void {
+  if (record.kind !== "ENGINE_V2_COST_OBSERVATION") throw new Error("COST_RECORD_INVALID");
+  canonicalIntegerV1(record.sessionOrdinal);
+  decimalStringToRationalV1(record.explicitFee);
+  decimalStringToRationalV1(record.slippageCost);
+}
+
+function duplicateMetricRecords(records: readonly MetricResultSetV2ArtifactRecordV1[]): boolean {
   const seen = new Set<string>();
   for (const record of records) {
-    assertMetricRecordV2(record);
+    assertMetricArtifactRecordV2(record);
     if (seen.has(record.metricId)) return true;
     seen.add(record.metricId);
   }
@@ -300,25 +367,40 @@ function sameMetricRecord(left: ExactMetricObservationV1, right: ExactMetricObse
     left.canonicalDecimal === right.canonicalDecimal;
 }
 
+function observationFromMetricRecord(record: MetricResultSetV2ArtifactRecordV1 | undefined): ExactMetricObservationV1 | undefined {
+  if (record === undefined) return undefined;
+  assertMetricArtifactRecordV2(record);
+  return Object.freeze({
+    metricId: record.metricId,
+    metricVersion: "METRIC_V2",
+    registryVersion: "METRIC_REGISTRY_V20260927",
+    artifactSchemaVersion: "METRIC_RESULT_SET_V2",
+    state: record.status === "AVAILABLE" ? "VALUE" : "MISSING",
+    canonicalDecimal: record.status === "AVAILABLE" ? record.value! : null,
+  });
+}
+
 function deriveLineageFailure(reference: VerifiedComparisonExperimentNodeV1, subject: VerifiedComparisonExperimentNodeV1, lineageNodes: readonly VerifiedComparisonExperimentNodeV1[]): ComparisonFailClosedErrorV1 | null {
   for (const node of [reference, subject, ...lineageNodes]) if (!nodeMatchesAcceptedPersistence(node)) return "INCOMPARABLE_LINEAGE";
-  const ref = hashRefV1(reference.experiment);
-  const subj = hashRefV1(subject.experiment);
+  const referenceProof = reference.acceptedExperiment;
+  const subjectProof = subject.acceptedExperiment;
+  const ref = hashRefV1(referenceProof.experiment);
+  const subj = hashRefV1(subjectProof.experiment);
   if (ref.hashHex === subj.hashHex) return "INCOMPARABLE_LINEAGE";
-  if (reference.tenantAuthority !== subject.tenantAuthority || reference.investigationId !== subject.investigationId || reference.researchIrFamily !== subject.researchIrFamily) return "INCOMPARABLE_LINEAGE";
-  if (subject.relation !== "VARIANT") return "INCOMPARABLE_LINEAGE";
+  if (referenceProof.tenantAuthority !== subjectProof.tenantAuthority || referenceProof.investigationId !== subjectProof.investigationId || referenceProof.researchIrFamily !== subjectProof.researchIrFamily) return "INCOMPARABLE_LINEAGE";
+  if (subjectProof.relation !== "VARIANT") return "INCOMPARABLE_LINEAGE";
   if (lineageNodes.length < 2) return "INCOMPARABLE_LINEAGE";
-  const canonical = lineageNodes.map((node) => ({ ...node, experiment: hashRefV1(node.experiment), parentExperiment: node.parentExperiment === null ? null : hashRefV1(node.parentExperiment) }));
+  const canonical = lineageNodes.map((node) => ({ ...node, experiment: hashRefV1(node.acceptedExperiment.experiment), parentExperiment: node.acceptedExperiment.parentExperiment === null ? null : hashRefV1(node.acceptedExperiment.parentExperiment) }));
   if (canonical[0]!.experiment.hashHex !== subj.hashHex || canonical[canonical.length - 1]!.experiment.hashHex !== ref.hashHex) return "INCOMPARABLE_LINEAGE";
   if (new Set(canonical.map((node) => node.experiment.hashHex)).size !== canonical.length) return "INCOMPARABLE_LINEAGE";
   for (let index = 0; index < canonical.length; index += 1) {
     const node = canonical[index]!;
     if (node.ambiguousParentEvidence === true) return "INCOMPARABLE_LINEAGE";
-    if (node.tenantAuthority !== reference.tenantAuthority || node.investigationId !== reference.investigationId || node.researchIrFamily !== reference.researchIrFamily) return "INCOMPARABLE_LINEAGE";
+    if (node.acceptedExperiment.tenantAuthority !== referenceProof.tenantAuthority || node.acceptedExperiment.investigationId !== referenceProof.investigationId || node.acceptedExperiment.researchIrFamily !== referenceProof.researchIrFamily) return "INCOMPARABLE_LINEAGE";
     if (index < canonical.length - 1) {
       const parent = canonical[index + 1]!;
-      if (node.relation !== "VARIANT" || node.parentExperiment?.hashHex !== parent.experiment.hashHex) return "INCOMPARABLE_LINEAGE";
-    } else if (node.relation !== reference.relation || (node.relation === "BASELINE" && node.parentExperiment !== null)) {
+      if (node.acceptedExperiment.relation !== "VARIANT" || node.parentExperiment?.hashHex !== parent.experiment.hashHex) return "INCOMPARABLE_LINEAGE";
+    } else if (node.acceptedExperiment.relation !== referenceProof.relation || (node.acceptedExperiment.relation === "BASELINE" && node.parentExperiment !== null)) {
       return "INCOMPARABLE_LINEAGE";
     }
   }
@@ -326,13 +408,7 @@ function deriveLineageFailure(reference: VerifiedComparisonExperimentNodeV1, sub
 }
 
 function nodeMatchesAcceptedPersistence(node: VerifiedComparisonExperimentNodeV1): boolean {
-  const proof = node.acceptedPersistenceProof;
-  return sameRef(node.experiment, proof.experiment) &&
-    ((node.parentExperiment === null && proof.parentExperiment === null) || (node.parentExperiment !== null && proof.parentExperiment !== null && sameRef(node.parentExperiment, proof.parentExperiment))) &&
-    node.tenantAuthority === proof.tenantAuthority &&
-    node.investigationId === proof.investigationId &&
-    node.researchIrFamily === proof.researchIrFamily &&
-    node.relation === proof.relation;
+  return node.acceptedExperiment.source === "ACCEPTED_EXPERIMENT_PERSISTENCE_V1" && hasDomain(node.acceptedExperiment.experiment, "SYNTRAKE:EXPERIMENT:V1");
 }
 
 function deriveScientificInputDelta(input: VerifiedComparisonEvidenceV1, protocol: CanonicalProtocol, parameter: { referenceResolvedResearchIr: HashRefV1; subjectResolvedResearchIr: HashRefV1 }): ScientificInputDeltaV1[] {
@@ -444,8 +520,8 @@ function deriveMetricDeltas(input: readonly Readonly<{ reference: ExactMetricObs
 }
 
 function deriveProtocolMetricPairs(referenceProof: VerifiedMetricResultSetProofV1, subjectProof: VerifiedMetricResultSetProofV1, protocol: CanonicalProtocol): { pairs: readonly Readonly<{ reference: ExactMetricObservationV1; subject: ExactMetricObservationV1 }>[]; missingMetric: boolean } {
-  const referenceRecords = new Map(referenceProof.metricRecords.map((record) => [record.metricId, record]));
-  const subjectRecords = new Map(subjectProof.metricRecords.map((record) => [record.metricId, record]));
+  const referenceRecords = new Map(referenceProof.metricRecords.map((record) => [record.metricId, observationFromMetricRecord(record)]));
+  const subjectRecords = new Map(subjectProof.metricRecords.map((record) => [record.metricId, observationFromMetricRecord(record)]));
   const pairs: Readonly<{ reference: ExactMetricObservationV1; subject: ExactMetricObservationV1 }>[] = [];
   let missingMetric = false;
   for (const metricId of protocol.comparisonMetricIds) {
@@ -491,34 +567,42 @@ function deriveValidationEvidence(folds: readonly VerifiedFoldMetricEvidenceV1[]
 }
 
 function deriveNeighborhoodEvidence(members: readonly VerifiedNeighborhoodMetricEvidenceV1[], protocol: CanonicalProtocol, primary: Readonly<{ reference: ExactMetricObservationV1; subject: ExactMetricObservationV1 }> | undefined): { evidence: ExperimentComparisonResultV1["neighborhoodEvidence"]; unavailableCount: number } {
-  if (primary === undefined) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", availableMemberCount: "0", unavailableMemberCount: String(members.length), unavailableReasons: ["MISSING_METRIC"] }), unavailableCount: members.length };
+  if (primary === undefined) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", availableMemberCount: "0", unavailableMemberCount: String(members.length), unavailableReasons: ["MISSING_METRIC"], neighborhoodMembers: members.map((member) => Object.freeze({ experiment: member.experiment, state: "UNAVAILABLE" as const, delta: null, reason: "MISSING_METRIC" as const })) }), unavailableCount: members.length };
   const required = new Set(protocol.neighborhoodExperimentRefs.map((ref) => ref.hashHex));
   let unavailableCount = 0;
   const unavailableReasons: string[] = [];
   let degradedMemberCount = 0;
   let improvedOrEqualMemberCount = 0;
   const deltas: ExactRationalV1[] = [];
+  const memberEvidence: Array<ExperimentComparisonResultV1["neighborhoodEvidence"]["neighborhoodMembers"][number]> = [];
   for (const member of members) {
     if (!required.delete(hashRefV1(member.experiment).hashHex)) throw new Error("CORRUPTED_EVIDENCE");
-    const memberObservation = member.resultProof.metricRecords.find((record) => record.metricId === primary.reference.metricId) ?? null;
+    const memberObservation = observationFromMetricRecord(member.resultProof.metricRecords.find((record) => record.metricId === primary.reference.metricId)) ?? null;
     if (memberObservation === null) {
       unavailableCount += 1;
       unavailableReasons.push(member.unavailableReason ?? "MISSING_METRIC");
+      memberEvidence.push(Object.freeze({ experiment: member.experiment, state: "UNAVAILABLE", delta: null, reason: member.unavailableReason ?? "MISSING_METRIC" }));
       continue;
     }
     const outcome = compareExactMetricObservationV1(primary.reference, memberObservation);
     if (outcome.state !== "AVAILABLE" || outcome.delta.orientedDeltaSign === null || outcome.delta.orientedDelta === null) {
       unavailableCount += 1;
-      unavailableReasons.push(outcome.state === "UNAVAILABLE" ? outcome.reason : "METRIC_UNAVAILABLE_ON_ONE_SIDE");
-    } else if (outcome.delta.orientedDeltaSign < 0) degradedMemberCount += 1;
-    else improvedOrEqualMemberCount += 1;
-    if (outcome.state === "AVAILABLE" && outcome.delta.orientedDelta !== null) deltas.push(recordToRational(outcome.delta.orientedDelta));
+      const reason = outcome.state === "UNAVAILABLE" ? outcome.reason : "METRIC_UNAVAILABLE_ON_ONE_SIDE";
+      unavailableReasons.push(reason);
+      memberEvidence.push(Object.freeze({ experiment: member.experiment, state: "UNAVAILABLE", delta: null, reason }));
+    } else {
+      const delta = recordToRational(outcome.delta.orientedDelta);
+      if (outcome.delta.orientedDeltaSign < 0) degradedMemberCount += 1;
+      else improvedOrEqualMemberCount += 1;
+      deltas.push(delta);
+      memberEvidence.push(Object.freeze({ experiment: member.experiment, state: "AVAILABLE", delta: rationalRecord(delta), reason: null }));
+    }
   }
-  if (required.size > 0 || unavailableCount > 0 || members.length < robustnessComparisonPolicyV1.minimumNeighborhoodMembers) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", availableMemberCount: String(members.length - unavailableCount), unavailableMemberCount: String(unavailableCount + required.size), unavailableReasons }), unavailableCount };
+  if (required.size > 0 || unavailableCount > 0 || members.length < robustnessComparisonPolicyV1.minimumNeighborhoodMembers) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", availableMemberCount: String(members.length - unavailableCount), unavailableMemberCount: String(unavailableCount + required.size), unavailableReasons, neighborhoodMembers: memberEvidence }), unavailableCount };
   const sorted = [...deltas].sort(compareRationalV1);
   const min = sorted[0] ?? { numerator: 0n, denominator: 1n };
   const max = sorted[sorted.length - 1] ?? { numerator: 0n, denominator: 1n };
-  return { evidence: Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount: String(members.length), availableMemberCount: String(members.length), unavailableMemberCount: "0", unavailableReasons, degradedMemberCount: String(degradedMemberCount), improvedOrEqualMemberCount: String(improvedOrEqualMemberCount), neighborhoodMin: rationalRecord(min), neighborhoodMax: rationalRecord(max), neighborhoodSpread: rationalRecord(subtractRationalV1(max, min)) }), unavailableCount };
+  return { evidence: Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount: String(members.length), availableMemberCount: String(members.length), unavailableMemberCount: "0", unavailableReasons, neighborhoodMembers: memberEvidence, degradedMemberCount: String(degradedMemberCount), improvedOrEqualMemberCount: String(improvedOrEqualMemberCount), neighborhoodMin: rationalRecord(min), neighborhoodMax: rationalRecord(max), neighborhoodSpread: rationalRecord(subtractRationalV1(max, min)) }), unavailableCount };
 }
 
 function deriveConcentrationEvidence(eventMetricEvidence: VerifiedComparisonEvidenceV1["eventMetricEvidence"], foldSigns: readonly (-1 | 0 | 1)[]): ExperimentComparisonResultV1["concentrationEvidence"] {
@@ -531,10 +615,10 @@ function deriveConcentrationEvidence(eventMetricEvidence: VerifiedComparisonEvid
 function deriveCostEvidence(input: VerifiedCostEvidenceV1): { evidence: ExperimentComparisonResultV1["costEvidence"]; failure: ComparisonFailClosedErrorV1 | null } {
   if (input === null) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "MISSING_EXACT_COST_EVIDENCE" }), failure: null };
   try {
-    const explicitFeeTotalReference = finalMonotonic(input.explicitFeeReferenceSeries);
-    const explicitFeeTotalSubject = finalMonotonic(input.explicitFeeSubjectSeries);
-    const slippageCostTotalReference = finalMonotonic(input.slippageReferenceSeries);
-    const slippageCostTotalSubject = finalMonotonic(input.slippageSubjectSeries);
+    const explicitFeeTotalReference = finalMonotonic(input.referenceCostRecords.map((record) => record.explicitFee));
+    const explicitFeeTotalSubject = finalMonotonic(input.subjectCostRecords.map((record) => record.explicitFee));
+    const slippageCostTotalReference = finalMonotonic(input.referenceCostRecords.map((record) => record.slippageCost));
+    const slippageCostTotalSubject = finalMonotonic(input.subjectCostRecords.map((record) => record.slippageCost));
     const costTotalReference = addDecimal(explicitFeeTotalReference, slippageCostTotalReference);
     const costTotalSubject = addDecimal(explicitFeeTotalSubject, slippageCostTotalSubject);
     return { evidence: Object.freeze({ state: "AVAILABLE", explicitFeeTotalReference, explicitFeeTotalSubject, slippageCostTotalReference, slippageCostTotalSubject, costTotalReference, costTotalSubject, costDelta: subtractDecimal(costTotalSubject, costTotalReference) }), failure: null };

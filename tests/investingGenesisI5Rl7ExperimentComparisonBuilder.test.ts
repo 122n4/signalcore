@@ -31,17 +31,40 @@ const neighborB = ref("SYNTRAKE:EXPERIMENT:V1", "4");
 const referenceParameters = i5ExperimentParametersCandidateV1(i5ExperimentResolvedResearchIrV1("0.10", "20", "0.6", "0.4"));
 const subjectParameters = i5ExperimentParametersCandidateV1(i5ExperimentResolvedResearchIrV1("0.15", "10", "0.7", "0.3"));
 
-function node(input: Omit<VerifiedComparisonEvidenceV1["reference"], "acceptedPersistenceProof">): VerifiedComparisonEvidenceV1["reference"] {
-  return { ...input, acceptedPersistenceProof: { source: "SERVER_PERSISTENCE_PROJECTION_V1", ...input } };
+function node(input: VerifiedComparisonEvidenceV1["reference"]["acceptedExperiment"]): VerifiedComparisonEvidenceV1["reference"] {
+  return { acceptedExperiment: input };
 }
 
 function observation(metricId: "CAGR" | "MAX_DRAWDOWN" | "TRADE_COUNT" | "REBALANCE_COUNT", value: string) {
   return { metricId, metricVersion: "METRIC_V2" as const, registryVersion: "METRIC_REGISTRY_V20260927" as const, artifactSchemaVersion: "METRIC_RESULT_SET_V2" as const, state: "VALUE" as const, canonicalDecimal: value };
 }
 
-function resultProof(marker: string, records: readonly ReturnType<typeof observation>[]) {
+function metricRecord(metricId: "CAGR" | "MAX_DRAWDOWN" | "TRADE_COUNT" | "REBALANCE_COUNT", value: string) {
+  return {
+    metricId,
+    metricVersion: "METRIC_V2" as const,
+    registryVersion: "METRIC_REGISTRY_V20260927" as const,
+    annualizationBasis: "TRADING_SESSIONS_PER_YEAR_252" as const,
+    riskFreeSessionReturn: "0",
+    minimumAcceptableSessionReturn: "0",
+    arithmetic: "EXACT_RATIONAL_WITH_DETERMINISTIC_BIGINT_ROOT_POWER_V1",
+    rounding: "RESEARCH_RATIO_OUTPUT_V1_SCALE_18_ROUND_HALF_EVEN",
+    status: "AVAILABLE" as const,
+    value,
+  };
+}
+
+function costRecord(sessionOrdinal: string, explicitFee: string, slippageCost: string) {
+  return { kind: "ENGINE_V2_COST_OBSERVATION" as const, sessionOrdinal, explicitFee, slippageCost };
+}
+
+const referenceCostRecords = [costRecord("0", "0", "0"), costRecord("1", "1", "2")];
+const subjectCostRecords = [costRecord("0", "0", "0"), costRecord("1", "1", "2")];
+const neighborCostRecords = [costRecord("0", "0", "0")];
+
+function resultProof(marker: string, experiment: HashRefV1, records: readonly ReturnType<typeof metricRecord>[], costRecords: readonly ReturnType<typeof costRecord>[] = neighborCostRecords) {
   const metricBytes = canonicalJsonlArtifactBytesV1(records as any);
-  const emptyBytes = canonicalJsonlArtifactBytesV1([{ kind: "EMPTY", marker }] as any);
+  const costBytes = canonicalJsonlArtifactBytesV1(costRecords as any);
   const payload: ResultHashPayloadV1 = {
     schemaVersion: "RESULT_HASH_PAYLOAD_V1",
     runInput: ref("SYNTRAKE:RUN_INPUT:V1", marker),
@@ -53,28 +76,29 @@ function resultProof(marker: string, records: readonly ReturnType<typeof observa
     startingNav: "100000.000000000000000000000000",
     endingNav: "115000.000000000000000000000000",
     terminalCash: "0.000000000000000000000000",
-    executionTrace: artifactDescriptorV1("RESEARCH_EXECUTION_TRACE_V2", emptyBytes, 1),
-    valuationSeries: artifactDescriptorV1("RESEARCH_VALUATION_SERIES_V2", emptyBytes, 1),
+    executionTrace: artifactDescriptorV1("RESEARCH_EXECUTION_TRACE_V2", costBytes, costRecords.length),
+    valuationSeries: artifactDescriptorV1("RESEARCH_VALUATION_SERIES_V2", costBytes, costRecords.length),
     metricResultSet: artifactDescriptorV1("METRIC_RESULT_SET_V2", metricBytes, records.length),
     benchmark: null,
   };
-  return { result: ref("SYNTRAKE:RESULT:V1", hashResultV1(payload)), resultPayload: payload, metricRecords: records };
+  const result = ref("SYNTRAKE:RESULT:V1", hashResultV1(payload));
+  return { result, resultPayload: payload, acceptedResult: { source: "ACCEPTED_RESULT_PERSISTENCE_V1" as const, result, experiment, runInput: payload.runInput }, metricArtifactBytes: metricBytes, metricRecords: records, costArtifactBytes: costBytes, costRecords };
 }
 
-const referenceResultProof = resultProof("5", [
-  observation("CAGR", "0.1"),
-  observation("MAX_DRAWDOWN", "0.2"),
-  observation("TRADE_COUNT", "18"),
-  observation("REBALANCE_COUNT", "4"),
-]);
-const subjectResultProof = resultProof("6", [
-  observation("CAGR", "0.15"),
-  observation("MAX_DRAWDOWN", "0.1"),
-  observation("TRADE_COUNT", "24"),
-  observation("REBALANCE_COUNT", "6"),
-]);
-const neighborAResultProof = resultProof("D", [observation("CAGR", "0.12")]);
-const neighborBResultProof = resultProof("E", [observation("CAGR", "0.14")]);
+const referenceResultProof = resultProof("5", baseline, [
+  metricRecord("CAGR", "0.1"),
+  metricRecord("MAX_DRAWDOWN", "0.2"),
+  metricRecord("TRADE_COUNT", "18"),
+  metricRecord("REBALANCE_COUNT", "4"),
+], referenceCostRecords);
+const subjectResultProof = resultProof("6", variant, [
+  metricRecord("CAGR", "0.15"),
+  metricRecord("MAX_DRAWDOWN", "0.1"),
+  metricRecord("TRADE_COUNT", "24"),
+  metricRecord("REBALANCE_COUNT", "6"),
+], subjectCostRecords);
+const neighborAResultProof = resultProof("D", neighborA, [metricRecord("CAGR", "0.12")]);
+const neighborBResultProof = resultProof("E", neighborB, [metricRecord("CAGR", "0.14")]);
 
 function protocolPayload(overrides: Partial<ExperimentComparisonProtocolV1> = {}): ExperimentComparisonProtocolV1 {
   return {
@@ -102,11 +126,11 @@ function evidence(overrides: Partial<VerifiedComparisonEvidenceV1> = {}): Verifi
   return {
     protocol,
     protocolPayload: pp,
-    reference: node({ experiment: baseline, parentExperiment: null, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "BASELINE" }),
-    subject: node({ experiment: variant, parentExperiment: baseline, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "VARIANT" }),
+    reference: node({ source: "ACCEPTED_EXPERIMENT_PERSISTENCE_V1", experiment: baseline, parentExperiment: null, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "BASELINE" }),
+    subject: node({ source: "ACCEPTED_EXPERIMENT_PERSISTENCE_V1", experiment: variant, parentExperiment: baseline, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "VARIANT" }),
     lineageNodes: [
-      node({ experiment: variant, parentExperiment: baseline, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "VARIANT" }),
-      node({ experiment: baseline, parentExperiment: null, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "BASELINE" }),
+      node({ source: "ACCEPTED_EXPERIMENT_PERSISTENCE_V1", experiment: variant, parentExperiment: baseline, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "VARIANT" }),
+      node({ source: "ACCEPTED_EXPERIMENT_PERSISTENCE_V1", experiment: baseline, parentExperiment: null, tenantAuthority: "tenant-1", investigationId: "investigation-1", researchIrFamily: "family-1", relation: "BASELINE" }),
     ],
     referenceScientificInputs: {
       datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "9"),
@@ -144,7 +168,14 @@ function evidence(overrides: Partial<VerifiedComparisonEvidenceV1> = {}): Verifi
       { experiment: neighborA, resultProof: neighborAResultProof },
       { experiment: neighborB, resultProof: neighborBResultProof },
     ],
-    costEvidence: { referenceResult: pp.referenceResult, subjectResult: pp.subjectResult, explicitFeeReferenceSeries: ["0", "1"], explicitFeeSubjectSeries: ["0", "1"], slippageReferenceSeries: ["0", "2"], slippageSubjectSeries: ["0", "2"] },
+    costEvidence: {
+      referenceResult: pp.referenceResult,
+      subjectResult: pp.subjectResult,
+      referenceExecutionTraceBytes: referenceResultProof.costArtifactBytes,
+      subjectExecutionTraceBytes: subjectResultProof.costArtifactBytes,
+      referenceCostRecords: referenceResultProof.costRecords,
+      subjectCostRecords: subjectResultProof.costRecords,
+    },
     eventMetricEvidence: { result: pp.subjectResult, tradeCount: observation("TRADE_COUNT", "24"), rebalanceCount: observation("REBALANCE_COUNT", "6") },
     ...overrides,
   };
@@ -163,16 +194,16 @@ describe("I5 RL-7 comparison result builder", () => {
 
   it("rejects protocol hash, subject, primary metric and neighborhood mismatches", () => {
     expect(buildExperimentComparisonResultV1(evidence({ protocol: protocolRef(protocolPayload({ referenceResult: ref("SYNTRAKE:RESULT:V1", "F") })) }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
-    expect(buildExperimentComparisonResultV1(evidence({ subject: { ...evidence().subject, experiment: neighborA } }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
+    expect(buildExperimentComparisonResultV1(evidence({ subject: { acceptedExperiment: { ...evidence().subject.acceptedExperiment, experiment: neighborA } } }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
     expect(buildExperimentComparisonResultV1(evidence({ protocolPayload: protocolPayload({ primaryMetricId: "MAX_DRAWDOWN" }) }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
     expect(buildExperimentComparisonResultV1(evidence({ neighborhoodEvidence: evidence().neighborhoodEvidence.slice(1) }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
   });
 
   it("requires real ordered parent-edge lineage rather than arbitrary ancestry arrays", () => {
     expect(buildExperimentComparisonResultV1(evidence({ lineageNodes: [evidence().lineageNodes[1]!, evidence().lineageNodes[0]!] }))).toMatchObject({ failure: "INCOMPARABLE_LINEAGE", classification: null });
-    expect(buildExperimentComparisonResultV1(evidence({ lineageNodes: [{ ...evidence().lineageNodes[0]!, parentExperiment: neighborA }, evidence().lineageNodes[1]!] }))).toMatchObject({ failure: "INCOMPARABLE_LINEAGE", classification: null });
+    expect(buildExperimentComparisonResultV1(evidence({ lineageNodes: [{ acceptedExperiment: { ...evidence().lineageNodes[0]!.acceptedExperiment, parentExperiment: neighborA } }, evidence().lineageNodes[1]!] }))).toMatchObject({ failure: "INCOMPARABLE_LINEAGE", classification: null });
     expect(buildExperimentComparisonResultV1(evidence({ lineageNodes: [{ ...evidence().lineageNodes[0]!, ambiguousParentEvidence: true }, evidence().lineageNodes[1]!] }))).toMatchObject({ failure: "INCOMPARABLE_LINEAGE", classification: null });
-    expect(buildExperimentComparisonResultV1(evidence({ lineageNodes: [{ ...evidence().lineageNodes[0]!, acceptedPersistenceProof: { ...evidence().lineageNodes[0]!.acceptedPersistenceProof, parentExperiment: neighborA } }, evidence().lineageNodes[1]!] }))).toMatchObject({ failure: "INCOMPARABLE_LINEAGE", classification: null });
+    expect(buildExperimentComparisonResultV1(evidence({ lineageNodes: [{ acceptedExperiment: { ...evidence().lineageNodes[0]!.acceptedExperiment, parentExperiment: neighborA } }, evidence().lineageNodes[1]!] }))).toMatchObject({ failure: "INCOMPARABLE_LINEAGE", classification: null });
   });
 
   it("derives parameter deltas from ExperimentParameters/Research IR and suppresses canonical-equal formatting deltas", () => {
@@ -192,17 +223,17 @@ describe("I5 RL-7 comparison result builder", () => {
   it("derives folds, concentration, event counts, costs and neighborhood from evidence instead of caller conclusions", () => {
     expect(buildExperimentComparisonResultV1(evidence({ foldEvidence: [{ ...evidence().foldEvidence[0]!, inSample: observation("CAGR", "0.2"), outOfSample: observation("CAGR", "0.1") }, ...evidence().foldEvidence.slice(1)] }))).toMatchObject({ classification: "ROBUSTNESS_MIXED" });
     expect(buildExperimentComparisonResultV1(evidence({ foldEvidence: evidence().foldEvidence.map((fold) => ({ ...fold, outOfSample: observation("CAGR", "0.09") })) }))).toMatchObject({ classification: "ROBUSTNESS_MIXED" });
-    const lowEventProof = resultProof("6", [observation("CAGR", "0.15"), observation("MAX_DRAWDOWN", "0.1"), observation("TRADE_COUNT", "19"), observation("REBALANCE_COUNT", "4")]);
+    const lowEventProof = resultProof("6", variant, [metricRecord("CAGR", "0.15"), metricRecord("MAX_DRAWDOWN", "0.1"), metricRecord("TRADE_COUNT", "19"), metricRecord("REBALANCE_COUNT", "4")]);
     const lowEventProtocol = protocolPayload({ subjectResult: lowEventProof.result });
     expect(buildExperimentComparisonResultV1(evidence({
       protocol: protocolRef(lowEventProtocol),
       protocolPayload: lowEventProtocol,
       subjectResultProof: lowEventProof,
-      costEvidence: { ...evidence().costEvidence!, subjectResult: lowEventProof.result },
+      costEvidence: { ...evidence().costEvidence!, subjectResult: lowEventProof.result, subjectExecutionTraceBytes: lowEventProof.costArtifactBytes, subjectCostRecords: lowEventProof.costRecords },
       eventMetricEvidence: { result: lowEventProof.result, tradeCount: observation("TRADE_COUNT", "19"), rebalanceCount: observation("REBALANCE_COUNT", "4") },
     }))).toMatchObject({ classification: "ROBUSTNESS_MIXED" });
-    expect(buildExperimentComparisonResultV1(evidence({ costEvidence: { ...evidence().costEvidence!, explicitFeeReferenceSeries: ["1", "0"], explicitFeeSubjectSeries: ["0"], slippageReferenceSeries: ["0"], slippageSubjectSeries: ["0"] } }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
-    expect(buildExperimentComparisonResultV1(evidence({ neighborhoodEvidence: [{ ...evidence().neighborhoodEvidence[0]!, experiment: variant }, { ...evidence().neighborhoodEvidence[1]!, experiment: neighborA, resultProof: resultProof("F", []), unavailableReason: "MISSING_METRIC" }, { ...evidence().neighborhoodEvidence[2]!, experiment: neighborB }] }))).toMatchObject({ classification: "ROBUSTNESS_INSUFFICIENT_EVIDENCE" });
+    expect(buildExperimentComparisonResultV1(evidence({ costEvidence: { ...evidence().costEvidence!, referenceCostRecords: [costRecord("1", "1", "2"), costRecord("0", "0", "0")] } }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
+    expect(buildExperimentComparisonResultV1(evidence({ neighborhoodEvidence: [{ ...evidence().neighborhoodEvidence[0]!, experiment: variant }, { ...evidence().neighborhoodEvidence[1]!, experiment: neighborA, resultProof: resultProof("F", neighborA, []), unavailableReason: "MISSING_METRIC" }, { ...evidence().neighborhoodEvidence[2]!, experiment: neighborB }] }))).toMatchObject({ classification: "ROBUSTNESS_INSUFFICIENT_EVIDENCE" });
   });
 
   it("separates incomplete validation from corrupted evidence and preserves exact fold outcome concentration", () => {
@@ -239,7 +270,7 @@ describe("I5 RL-7 comparison result builder", () => {
       foldEvidence: [{ ...evidence().foldEvidence[0]!, validationResult: ref("SYNTRAKE:VALIDATION_RESULT:V1", "F") }, ...evidence().foldEvidence.slice(1)],
     }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
     expect(buildExperimentComparisonResultV1(evidence({
-      subjectResultProof: resultProof("6", [observation("CAGR", "0.15"), observation("CAGR", "0.2")]),
+      subjectResultProof: resultProof("6", variant, [metricRecord("CAGR", "0.15"), metricRecord("CAGR", "0.2")]),
     }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE", classification: null });
     expect(buildExperimentComparisonResultV1(evidence({
       eventMetricEvidence: { ...evidence().eventMetricEvidence, tradeCount: observation("CAGR", "24") },
@@ -250,13 +281,13 @@ describe("I5 RL-7 comparison result builder", () => {
   });
 
   it("treats missing configured metrics as missing evidence and recomputes persistence hashes", () => {
-    const missingSubjectProof = resultProof("6", [observation("CAGR", "0.15"), observation("TRADE_COUNT", "24"), observation("REBALANCE_COUNT", "6")]);
+    const missingSubjectProof = resultProof("6", variant, [metricRecord("CAGR", "0.15"), metricRecord("TRADE_COUNT", "24"), metricRecord("REBALANCE_COUNT", "6")]);
     const missingProtocol = protocolPayload({ subjectResult: missingSubjectProof.result });
     const missingTradeCount = buildExperimentComparisonResultV1(evidence({
       protocol: protocolRef(missingProtocol),
       protocolPayload: missingProtocol,
       subjectResultProof: missingSubjectProof,
-      costEvidence: { ...evidence().costEvidence!, subjectResult: missingSubjectProof.result },
+      costEvidence: { ...evidence().costEvidence!, subjectResult: missingSubjectProof.result, subjectExecutionTraceBytes: missingSubjectProof.costArtifactBytes, subjectCostRecords: missingSubjectProof.costRecords },
       eventMetricEvidence: { ...evidence().eventMetricEvidence, result: missingSubjectProof.result },
     }));
     expect(missingTradeCount.failure).toBeNull();
@@ -271,13 +302,13 @@ describe("I5 RL-7 comparison result builder", () => {
   });
 
   it("does not let missing metrics bypass provenance checks", () => {
-    const missingSubjectProof = resultProof("6", [observation("CAGR", "0.15"), observation("TRADE_COUNT", "24"), observation("REBALANCE_COUNT", "6")]);
+    const missingSubjectProof = resultProof("6", variant, [metricRecord("CAGR", "0.15"), metricRecord("TRADE_COUNT", "24"), metricRecord("REBALANCE_COUNT", "6")]);
     const missingProtocol = protocolPayload({ subjectResult: missingSubjectProof.result });
     const base = evidence({
       protocol: protocolRef(missingProtocol),
       protocolPayload: missingProtocol,
       subjectResultProof: missingSubjectProof,
-      costEvidence: { ...evidence().costEvidence!, subjectResult: missingSubjectProof.result },
+      costEvidence: { ...evidence().costEvidence!, subjectResult: missingSubjectProof.result, subjectExecutionTraceBytes: missingSubjectProof.costArtifactBytes, subjectCostRecords: missingSubjectProof.costRecords },
       eventMetricEvidence: { ...evidence().eventMetricEvidence, result: missingSubjectProof.result },
     });
     expect(buildExperimentComparisonResultV1({ ...base, costEvidence: { ...base.costEvidence!, subjectResult: ref("SYNTRAKE:RESULT:V1", "F") } })).toMatchObject({ failure: "CORRUPTED_EVIDENCE" });
@@ -291,7 +322,7 @@ describe("I5 RL-7 comparison result builder", () => {
       subjectResultProof: { ...subjectResultProof, resultPayload: referenceResultProof.resultPayload },
     }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE" });
     expect(buildExperimentComparisonResultV1(evidence({
-      subjectResultProof: { ...subjectResultProof, metricRecords: [observation("CAGR", "0.2"), ...subjectResultProof.metricRecords.slice(1)] },
+      subjectResultProof: { ...subjectResultProof, metricRecords: [metricRecord("CAGR", "0.2"), ...subjectResultProof.metricRecords.slice(1)] },
     }))).toMatchObject({ failure: "CORRUPTED_EVIDENCE" });
   });
 
