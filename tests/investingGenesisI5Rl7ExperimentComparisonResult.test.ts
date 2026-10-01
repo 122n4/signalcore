@@ -26,13 +26,22 @@ function valid(overrides: Partial<ExperimentComparisonResultV1> = {}): Experimen
       degradedFoldCount: "0",
       nonDegradedFoldCount: "3",
       aggregateOosOrientedDeltaSign: "1",
+      foldMin: "0",
+      foldMax: "0.03",
+      foldRange: "0.03",
     },
     costEvidence: { state: "UNAVAILABLE", reason: "MISSING_EXACT_COST_EVIDENCE" },
     neighborhoodEvidence: {
       state: "AVAILABLE",
       neighborhoodMemberCount: "3",
+      availableMemberCount: "3",
+      unavailableMemberCount: "0",
+      unavailableReasons: [],
       degradedMemberCount: "0",
       improvedOrEqualMemberCount: "3",
+      neighborhoodMin: "0",
+      neighborhoodMax: "0.05",
+      neighborhoodSpread: "0.05",
     },
     concentrationEvidence: {
       state: "AVAILABLE",
@@ -98,8 +107,8 @@ describe("I5 RL-7 comparison result payload", () => {
     }))).toThrow("DIAGNOSTICS_INVALID");
     expect(() => canonicalExperimentComparisonResultV1(valid({
       classification: "ROBUSTNESS_STABLE",
-      validationEvidence: { completeFoldCount: "3", degradedFoldCount: "1", nonDegradedFoldCount: "2", aggregateOosOrientedDeltaSign: "-1" },
-      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", degradedMemberCount: "1", improvedOrEqualMemberCount: "2" },
+      validationEvidence: { ...valid().validationEvidence, completeFoldCount: "3", degradedFoldCount: "1", nonDegradedFoldCount: "2", aggregateOosOrientedDeltaSign: "-1" },
+      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], degradedMemberCount: "1", improvedOrEqualMemberCount: "2", neighborhoodMin: "0", neighborhoodMax: "0.05", neighborhoodSpread: "0.05" },
     }))).toThrow("CLASSIFICATION_EVIDENCE_DRIFT");
   });
 
@@ -116,10 +125,10 @@ describe("I5 RL-7 comparison result payload", () => {
 
   it("rejects impossible evidence counters and malformed metric deltas", () => {
     expect(() => canonicalExperimentComparisonResultV1(valid({
-      validationEvidence: { completeFoldCount: "3", degradedFoldCount: "2", nonDegradedFoldCount: "2", aggregateOosOrientedDeltaSign: "1" },
+      validationEvidence: { ...valid().validationEvidence, completeFoldCount: "3", degradedFoldCount: "2", nonDegradedFoldCount: "2", aggregateOosOrientedDeltaSign: "1" },
     }))).toThrow("VALIDATION_EVIDENCE_COUNT_MISMATCH");
     expect(() => canonicalExperimentComparisonResultV1(valid({
-      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", degradedMemberCount: "2", improvedOrEqualMemberCount: "2" },
+      neighborhoodEvidence: { state: "AVAILABLE", neighborhoodMemberCount: "3", availableMemberCount: "3", unavailableMemberCount: "0", unavailableReasons: [], degradedMemberCount: "2", improvedOrEqualMemberCount: "2", neighborhoodMin: "0", neighborhoodMax: "0.05", neighborhoodSpread: "0.05" },
     }))).toThrow("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     expect(() => canonicalExperimentComparisonResultV1(valid({
       metricDeltas: [{

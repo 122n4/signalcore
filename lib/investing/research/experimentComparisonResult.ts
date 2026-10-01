@@ -33,9 +33,9 @@ export type ParameterDeltaV1 =
   | Readonly<{ kind: "REBALANCE_SCHEDULE_DELTA"; pipelineOperationIndex: string; operationType: "REBALANCE"; path: readonly ["schedule"]; referenceValue: string; subjectValue: string }>;
 
 export type ScientificInputDeltaV1 = Readonly<{ field: string; referenceValue: string; subjectValue: string }>;
-export type ValidationEvidenceV1 = Readonly<{ completeFoldCount: string; degradedFoldCount: string; nonDegradedFoldCount: string; aggregateOosOrientedDeltaSign: "-1" | "0" | "1" }>;
-export type CostEvidenceV1 = Readonly<{ state: "AVAILABLE"; explicitFeeTotalReference: string; explicitFeeTotalSubject: string; slippageCostTotalReference: string; slippageCostTotalSubject: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "MISSING_EXACT_COST_EVIDENCE" }>;
-export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; degradedMemberCount: string; improvedOrEqualMemberCount: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD" }>;
+export type ValidationEvidenceV1 = Readonly<{ completeFoldCount: string; degradedFoldCount: string; nonDegradedFoldCount: string; aggregateOosOrientedDeltaSign: "-1" | "0" | "1"; foldMin: string | null; foldMax: string | null; foldRange: string | null }>;
+export type CostEvidenceV1 = Readonly<{ state: "AVAILABLE"; explicitFeeTotalReference: string; explicitFeeTotalSubject: string; slippageCostTotalReference: string; slippageCostTotalSubject: string; costTotalReference: string; costTotalSubject: string; costDelta: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "MISSING_EXACT_COST_EVIDENCE" }>;
+export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[]; degradedMemberCount: string; improvedOrEqualMemberCount: string; neighborhoodMin: string; neighborhoodMax: string; neighborhoodSpread: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD"; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[] }>;
 export type ConcentrationEvidenceV1 = Readonly<{ state: "AVAILABLE"; tradeCount: string; rebalanceCount: string; foldDirectionConcentration: boolean }> | Readonly<{ state: "UNAVAILABLE"; reason: "UNSUPPORTED_CONCENTRATION_EVIDENCE" }>;
 
 export type ExperimentComparisonResultV1 = Readonly<{
@@ -221,39 +221,59 @@ function canonicalDiagnosticStrings(input: readonly RobustnessDiagnosticV1[]): r
 }
 
 function canonicalValidationEvidence(input: ValidationEvidenceV1): CanonicalJsonValue {
-  assertClosed(input, new Set(["completeFoldCount", "degradedFoldCount", "nonDegradedFoldCount", "aggregateOosOrientedDeltaSign"]), "ValidationEvidence");
+  assertClosed(input, new Set(["completeFoldCount", "degradedFoldCount", "nonDegradedFoldCount", "aggregateOosOrientedDeltaSign", "foldMin", "foldMax", "foldRange"]), "ValidationEvidence");
   const completeFoldCount = canonicalNonNegativeInteger(input.completeFoldCount);
   const degradedFoldCount = canonicalNonNegativeInteger(input.degradedFoldCount);
   const nonDegradedFoldCount = canonicalNonNegativeInteger(input.nonDegradedFoldCount);
   if (BigInt(degradedFoldCount) + BigInt(nonDegradedFoldCount) !== BigInt(completeFoldCount)) throw new Error("VALIDATION_EVIDENCE_COUNT_MISMATCH");
   if (!["-1", "0", "1"].includes(input.aggregateOosOrientedDeltaSign)) throw new Error("VALIDATION_EVIDENCE_SIGN_INVALID");
-  return Object.freeze({ completeFoldCount, degradedFoldCount, nonDegradedFoldCount, aggregateOosOrientedDeltaSign: input.aggregateOosOrientedDeltaSign });
+  const foldMin = input.foldMin === null ? null : canonicalDecimal(input.foldMin);
+  const foldMax = input.foldMax === null ? null : canonicalDecimal(input.foldMax);
+  const foldRange = input.foldRange === null ? null : canonicalDecimal(input.foldRange);
+  return Object.freeze({ completeFoldCount, degradedFoldCount, nonDegradedFoldCount, aggregateOosOrientedDeltaSign: input.aggregateOosOrientedDeltaSign, foldMin, foldMax, foldRange });
 }
 
 function canonicalCostEvidence(input: CostEvidenceV1): CanonicalJsonValue {
-  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "explicitFeeTotalReference", "explicitFeeTotalSubject", "slippageCostTotalReference", "slippageCostTotalSubject"]) : new Set(["state", "reason"]), "CostEvidence");
+  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "explicitFeeTotalReference", "explicitFeeTotalSubject", "slippageCostTotalReference", "slippageCostTotalSubject", "costTotalReference", "costTotalSubject", "costDelta"]) : new Set(["state", "reason"]), "CostEvidence");
   if (input.state === "AVAILABLE") return Object.freeze({
     state: "AVAILABLE",
     explicitFeeTotalReference: canonicalDecimal(input.explicitFeeTotalReference),
     explicitFeeTotalSubject: canonicalDecimal(input.explicitFeeTotalSubject),
     slippageCostTotalReference: canonicalDecimal(input.slippageCostTotalReference),
     slippageCostTotalSubject: canonicalDecimal(input.slippageCostTotalSubject),
+    costTotalReference: canonicalDecimal(input.costTotalReference),
+    costTotalSubject: canonicalDecimal(input.costTotalSubject),
+    costDelta: canonicalDecimal(input.costDelta),
   });
   if (input.state === "UNAVAILABLE" && input.reason === "MISSING_EXACT_COST_EVIDENCE") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason });
   throw new Error("COST_EVIDENCE_INVALID");
 }
 
 function canonicalNeighborhoodEvidence(input: NeighborhoodEvidenceV1): CanonicalJsonValue {
-  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "neighborhoodMemberCount", "degradedMemberCount", "improvedOrEqualMemberCount"]) : new Set(["state", "reason"]), "NeighborhoodEvidence");
+  assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "neighborhoodMemberCount", "availableMemberCount", "unavailableMemberCount", "unavailableReasons", "degradedMemberCount", "improvedOrEqualMemberCount", "neighborhoodMin", "neighborhoodMax", "neighborhoodSpread"]) : new Set(["state", "reason", "availableMemberCount", "unavailableMemberCount", "unavailableReasons"]), "NeighborhoodEvidence");
+  const unavailableReasons = canonicalReasonList(input.unavailableReasons);
   if (input.state === "AVAILABLE") {
     const neighborhoodMemberCount = canonicalNonNegativeInteger(input.neighborhoodMemberCount);
+    const availableMemberCount = canonicalNonNegativeInteger(input.availableMemberCount);
+    const unavailableMemberCount = canonicalNonNegativeInteger(input.unavailableMemberCount);
     const degradedMemberCount = canonicalNonNegativeInteger(input.degradedMemberCount);
     const improvedOrEqualMemberCount = canonicalNonNegativeInteger(input.improvedOrEqualMemberCount);
+    if (BigInt(availableMemberCount) + BigInt(unavailableMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
+    if (BigInt(unavailableMemberCount) !== 0n) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     if (BigInt(degradedMemberCount) + BigInt(improvedOrEqualMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
-    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, degradedMemberCount, improvedOrEqualMemberCount });
+    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, availableMemberCount, unavailableMemberCount, unavailableReasons, degradedMemberCount, improvedOrEqualMemberCount, neighborhoodMin: canonicalDecimal(input.neighborhoodMin), neighborhoodMax: canonicalDecimal(input.neighborhoodMax), neighborhoodSpread: canonicalDecimal(input.neighborhoodSpread) });
   }
-  if (input.state === "UNAVAILABLE" && input.reason === "INSUFFICIENT_PARAMETER_NEIGHBORHOOD") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason });
+  if (input.state === "UNAVAILABLE" && input.reason === "INSUFFICIENT_PARAMETER_NEIGHBORHOOD") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason, availableMemberCount: canonicalNonNegativeInteger(input.availableMemberCount), unavailableMemberCount: canonicalNonNegativeInteger(input.unavailableMemberCount), unavailableReasons });
   throw new Error("NEIGHBORHOOD_EVIDENCE_INVALID");
+}
+
+function canonicalReasonList(input: readonly string[]): readonly string[] {
+  if (!Array.isArray(input)) throw new Error("REASON_LIST_INVALID");
+  const copy = input.map((value) => {
+    if (!["MISSING_METRIC", "METRIC_UNAVAILABLE_ON_ONE_SIDE"].includes(value)) throw new Error("REASON_LIST_INVALID");
+    return value;
+  }).sort(byteCompare);
+  return Object.freeze(copy);
 }
 
 function canonicalConcentrationEvidence(input: ConcentrationEvidenceV1): CanonicalJsonValue {
