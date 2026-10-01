@@ -32,6 +32,7 @@ const migrations = [
   "supabase/migrations/20260926201750_investing_i5_rl5_engine_v2_admission.sql",
   "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql",
   "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql",
+  "supabase/migrations/20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql",
 ] as const;
 
 const ids = {
@@ -209,6 +210,33 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
           and privilege_type in ('INSERT','UPDATE','DELETE','TRUNCATE')
       `);
       expect(forbidden.rows[0]!.count).toBe("0");
+      const appMutation = await client.query<{ count: string }>(`
+        select count(*)::text as count from information_schema.role_table_grants
+        where table_schema='investing'
+          and table_name in (
+            'research_experiment_comparison_protocols_scientific_identities',
+            'research_experiment_comparison_results_scientific_identities'
+          )
+          and grantee = 'investing_app'
+          and privilege_type in ('UPDATE','DELETE','TRUNCATE')
+      `);
+      expect(appMutation.rows[0]!.count).toBe("0");
+      const functionSecurity = await client.query<{ proname: string; prosecdef: boolean; app_execute: boolean; service_execute: boolean }>(`
+        select p.proname, p.prosecdef,
+          has_function_privilege('investing_app', p.oid, 'EXECUTE') as app_execute,
+          has_function_privilege('service_role', p.oid, 'EXECUTE') as service_execute
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname='investing'
+          and p.proname in (
+            'persist_research_experiment_comparison_protocol_v1',
+            'finalize_research_experiment_comparison_result_v1'
+          )
+        order by p.proname
+      `);
+      expect(functionSecurity.rows).toEqual([
+        { proname: "finalize_research_experiment_comparison_result_v1", prosecdef: false, app_execute: true, service_execute: false },
+        { proname: "persist_research_experiment_comparison_protocol_v1", prosecdef: false, app_execute: true, service_execute: false },
+      ]);
     } finally {
       client.release();
     }
@@ -252,8 +280,31 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
     await expect(finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("8"), resultPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT");
   });
 
+  it("serializes concurrent identical and divergent result finalization", async () => {
+    const protocol = await persistProtocol(h("6"), h("A"), protocolPayload("H"));
+    const identical = await Promise.all([
+      finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("B"), resultPayload("I")),
+      finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("B"), resultPayload("I")),
+    ]);
+    expect(identical[0]!.research_experiment_comparison_result_identity_id).toBe(identical[1]!.research_experiment_comparison_result_identity_id);
+    const divergent = await Promise.allSettled([
+      finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("C"), resultPayload("J")),
+      finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("D"), resultPayload("K")),
+    ]);
+    expect(divergent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(divergent.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const client = await pool.connect();
+    try {
+      const count = await client.query<{ count: string }>("select count(*)::text as count from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id]);
+      expect(count.rows[0]!.count).toBe("1");
+    } finally {
+      client.release();
+    }
+  });
+
   it("denies cross-tenant reuse, unauthorized insert, update and delete while preserving rows", async () => {
     const protocol = await persistProtocol(h("5"), h("9"), protocolPayload("G"));
+    const result = await finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("A"), resultPayload("C"));
     await expect(asApp(
       { operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1", tenantId: ids.otherTenant, membershipId: ids.otherMembership },
       (client) => client.query("select * from investing.finalize_research_experiment_comparison_result_v1($1,$2,$3::jsonb)", [protocol.research_experiment_comparison_protocol_identity_id, h("A"), JSON.stringify(resultPayload("C"))]),
@@ -273,6 +324,14 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
       await expect(asApp(
         { operation: "RESEARCH_EXPERIMENT_COMPARISON_PROTOCOL_CREATE_V1" },
         (app) => app.query("delete from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id]),
+      )).rejects.toThrow("append-only");
+      await expect(asApp(
+        { operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1" },
+        (app) => app.query("update investing.research_experiment_comparison_results_scientific_identities set hash_hex=hash_hex where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id]),
+      )).rejects.toThrow("append-only");
+      await expect(asApp(
+        { operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1" },
+        (app) => app.query("delete from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id]),
       )).rejects.toThrow("append-only");
 
       const count = await client.query<{ count: string }>("select count(*)::text as count from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id]);
