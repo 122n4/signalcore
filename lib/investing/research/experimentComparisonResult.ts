@@ -138,22 +138,27 @@ function canonicalParameterDelta(input: ParameterDeltaV1): CanonicalJsonValue {
     case "COMPARE_LITERAL_VALUE_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "expressionPath", "literalType", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (!["FILTER", "ENTER", "EXIT"].includes(input.operationType) || !["DECIMAL", "INTEGER", "DATE"].includes(input.literalType)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), expressionPath: canonicalPath(input.expressionPath), referenceValue: canonicalLiteral(input.referenceValue, input.literalType), subjectValue: canonicalLiteral(input.subjectValue, input.literalType) });
+      return rejectCanonicalEqual(Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), expressionPath: canonicalPath(input.expressionPath), referenceValue: canonicalLiteral(input.referenceValue, input.literalType), subjectValue: canonicalLiteral(input.subjectValue, input.literalType) }));
     case "TAKE_COUNT_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "TAKE" || pathKey(input.path) !== "count") throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["count"]), referenceValue: canonicalTakeCount(input.referenceValue), subjectValue: canonicalTakeCount(input.subjectValue) });
+      return rejectCanonicalEqual(Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["count"]), referenceValue: canonicalTakeCount(input.referenceValue), subjectValue: canonicalTakeCount(input.subjectValue) }));
     case "FIXED_TARGET_WEIGHT_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "instrumentId", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "WEIGHT" || pathKey(input.path) !== `targets\u0000${input.instrumentId}\u0000weight` || !/^[A-Z0-9._:-]{1,96}$/u.test(input.instrumentId)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["targets", input.instrumentId, "weight"]), referenceValue: canonicalTargetWeight(input.referenceValue), subjectValue: canonicalTargetWeight(input.subjectValue) });
+      return rejectCanonicalEqual(Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["targets", input.instrumentId, "weight"]), referenceValue: canonicalTargetWeight(input.referenceValue), subjectValue: canonicalTargetWeight(input.subjectValue) }));
     case "REBALANCE_SCHEDULE_DELTA":
       assertClosed(input, new Set(["kind", "pipelineOperationIndex", "operationType", "path", "referenceValue", "subjectValue"]), "ParameterDelta");
       if (input.operationType !== "REBALANCE" || pathKey(input.path) !== "schedule" || !scheduleValues.has(input.referenceValue) || !scheduleValues.has(input.subjectValue)) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
-      return Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["schedule"]) });
+      return rejectCanonicalEqual(Object.freeze({ ...input, pipelineOperationIndex: canonicalOperationIndex(input.pipelineOperationIndex), path: Object.freeze(["schedule"]) }));
     default:
       throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
   }
+}
+
+function rejectCanonicalEqual<T extends CanonicalJsonValue & { readonly referenceValue: string; readonly subjectValue: string }>(input: T): T {
+  if (input.referenceValue === input.subjectValue) throw new Error("INCOMPARABLE_PARAMETER_STRUCTURE");
+  return input;
 }
 
 function canonicalOperationIndex(value: string): string {

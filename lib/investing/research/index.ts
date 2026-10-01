@@ -364,7 +364,6 @@ export {
 
 export {
   buildExperimentComparisonResultV1,
-  type ComparableParameterOperationV1,
   type VerifiedComparisonEvidenceV1,
   type VerifiedComparisonExperimentNodeV1,
   type VerifiedScientificInputFingerprintV1,
