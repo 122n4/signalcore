@@ -9,7 +9,7 @@ import {
   canonicalDecimalV1,
   canonicalIntegerV1,
 } from "./canonical";
-import { decimalStringToRationalV1, reduceRationalV1 } from "./exactRational";
+import { addRationalV1, compareRationalV1, decimalStringToRationalV1, reduceRationalV1, subtractRationalV1, type ExactRationalV1 } from "./exactRational";
 import { metricDirectionV1 } from "./experimentComparison";
 import { compareExactMetricObservationV1, type ExactMetricDeltaV1, type ExactMetricObservationV1 } from "./experimentComparisonEvidence";
 import {
@@ -33,9 +33,10 @@ export type ParameterDeltaV1 =
   | Readonly<{ kind: "REBALANCE_SCHEDULE_DELTA"; pipelineOperationIndex: string; operationType: "REBALANCE"; path: readonly ["schedule"]; referenceValue: string; subjectValue: string }>;
 
 export type ScientificInputDeltaV1 = Readonly<{ field: string; referenceValue: string; subjectValue: string }>;
-export type ValidationEvidenceV1 = Readonly<{ completeFoldCount: string; degradedFoldCount: string; nonDegradedFoldCount: string; aggregateOosOrientedDeltaSign: "-1" | "0" | "1"; foldMin: string | null; foldMax: string | null; foldRange: string | null }>;
+export type RationalRecordV1 = Readonly<{ numerator: string; denominator: string }>;
+export type ValidationEvidenceV1 = Readonly<{ completeFoldCount: string; degradedFoldCount: string; nonDegradedFoldCount: string; aggregateOosOrientedDeltaSign: "-1" | "0" | "1"; foldMin: RationalRecordV1 | null; foldMax: RationalRecordV1 | null; foldRange: RationalRecordV1 | null }>;
 export type CostEvidenceV1 = Readonly<{ state: "AVAILABLE"; explicitFeeTotalReference: string; explicitFeeTotalSubject: string; slippageCostTotalReference: string; slippageCostTotalSubject: string; costTotalReference: string; costTotalSubject: string; costDelta: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "MISSING_EXACT_COST_EVIDENCE" }>;
-export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[]; degradedMemberCount: string; improvedOrEqualMemberCount: string; neighborhoodMin: string; neighborhoodMax: string; neighborhoodSpread: string }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD"; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[] }>;
+export type NeighborhoodEvidenceV1 = Readonly<{ state: "AVAILABLE"; neighborhoodMemberCount: string; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[]; degradedMemberCount: string; improvedOrEqualMemberCount: string; neighborhoodMin: RationalRecordV1; neighborhoodMax: RationalRecordV1; neighborhoodSpread: RationalRecordV1 }> | Readonly<{ state: "UNAVAILABLE"; reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD"; availableMemberCount: string; unavailableMemberCount: string; unavailableReasons: readonly string[] }>;
 export type ConcentrationEvidenceV1 = Readonly<{ state: "AVAILABLE"; tradeCount: string; rebalanceCount: string; foldDirectionConcentration: boolean }> | Readonly<{ state: "UNAVAILABLE"; reason: "UNSUPPORTED_CONCENTRATION_EVIDENCE" }>;
 
 export type ExperimentComparisonResultV1 = Readonly<{
@@ -227,24 +228,42 @@ function canonicalValidationEvidence(input: ValidationEvidenceV1): CanonicalJson
   const nonDegradedFoldCount = canonicalNonNegativeInteger(input.nonDegradedFoldCount);
   if (BigInt(degradedFoldCount) + BigInt(nonDegradedFoldCount) !== BigInt(completeFoldCount)) throw new Error("VALIDATION_EVIDENCE_COUNT_MISMATCH");
   if (!["-1", "0", "1"].includes(input.aggregateOosOrientedDeltaSign)) throw new Error("VALIDATION_EVIDENCE_SIGN_INVALID");
-  const foldMin = input.foldMin === null ? null : canonicalDecimal(input.foldMin);
-  const foldMax = input.foldMax === null ? null : canonicalDecimal(input.foldMax);
-  const foldRange = input.foldRange === null ? null : canonicalDecimal(input.foldRange);
+  const foldMin = input.foldMin === null ? null : canonicalRationalRecord(input.foldMin, "ValidationFoldMin");
+  const foldMax = input.foldMax === null ? null : canonicalRationalRecord(input.foldMax, "ValidationFoldMax");
+  const foldRange = input.foldRange === null ? null : canonicalRationalRecord(input.foldRange, "ValidationFoldRange");
+  if (BigInt(completeFoldCount) === 0n) {
+    if (foldMin !== null || foldMax !== null || foldRange !== null) throw new Error("VALIDATION_EVIDENCE_RANGE_MISMATCH");
+  } else {
+    if (foldMin === null || foldMax === null || foldRange === null) throw new Error("VALIDATION_EVIDENCE_RANGE_MISMATCH");
+    assertRangeMath(foldMin, foldMax, foldRange, "VALIDATION_EVIDENCE_RANGE_MISMATCH");
+  }
   return Object.freeze({ completeFoldCount, degradedFoldCount, nonDegradedFoldCount, aggregateOosOrientedDeltaSign: input.aggregateOosOrientedDeltaSign, foldMin, foldMax, foldRange });
 }
 
 function canonicalCostEvidence(input: CostEvidenceV1): CanonicalJsonValue {
   assertClosed(input, input.state === "AVAILABLE" ? new Set(["state", "explicitFeeTotalReference", "explicitFeeTotalSubject", "slippageCostTotalReference", "slippageCostTotalSubject", "costTotalReference", "costTotalSubject", "costDelta"]) : new Set(["state", "reason"]), "CostEvidence");
-  if (input.state === "AVAILABLE") return Object.freeze({
+  if (input.state === "AVAILABLE") {
+    const explicitFeeTotalReference = canonicalDecimal(input.explicitFeeTotalReference);
+    const explicitFeeTotalSubject = canonicalDecimal(input.explicitFeeTotalSubject);
+    const slippageCostTotalReference = canonicalDecimal(input.slippageCostTotalReference);
+    const slippageCostTotalSubject = canonicalDecimal(input.slippageCostTotalSubject);
+    const costTotalReference = canonicalDecimal(input.costTotalReference);
+    const costTotalSubject = canonicalDecimal(input.costTotalSubject);
+    const costDelta = canonicalDecimal(input.costDelta);
+    assertDecimalSum(explicitFeeTotalReference, slippageCostTotalReference, costTotalReference, "COST_EVIDENCE_TOTAL_MISMATCH");
+    assertDecimalSum(explicitFeeTotalSubject, slippageCostTotalSubject, costTotalSubject, "COST_EVIDENCE_TOTAL_MISMATCH");
+    assertDecimalDifference(costTotalSubject, costTotalReference, costDelta, "COST_EVIDENCE_DELTA_MISMATCH");
+    return Object.freeze({
     state: "AVAILABLE",
-    explicitFeeTotalReference: canonicalDecimal(input.explicitFeeTotalReference),
-    explicitFeeTotalSubject: canonicalDecimal(input.explicitFeeTotalSubject),
-    slippageCostTotalReference: canonicalDecimal(input.slippageCostTotalReference),
-    slippageCostTotalSubject: canonicalDecimal(input.slippageCostTotalSubject),
-    costTotalReference: canonicalDecimal(input.costTotalReference),
-    costTotalSubject: canonicalDecimal(input.costTotalSubject),
-    costDelta: canonicalDecimal(input.costDelta),
+    explicitFeeTotalReference,
+    explicitFeeTotalSubject,
+    slippageCostTotalReference,
+    slippageCostTotalSubject,
+    costTotalReference,
+    costTotalSubject,
+    costDelta,
   });
+  }
   if (input.state === "UNAVAILABLE" && input.reason === "MISSING_EXACT_COST_EVIDENCE") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason });
   throw new Error("COST_EVIDENCE_INVALID");
 }
@@ -261,7 +280,11 @@ function canonicalNeighborhoodEvidence(input: NeighborhoodEvidenceV1): Canonical
     if (BigInt(availableMemberCount) + BigInt(unavailableMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     if (BigInt(unavailableMemberCount) !== 0n) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
     if (BigInt(degradedMemberCount) + BigInt(improvedOrEqualMemberCount) !== BigInt(neighborhoodMemberCount)) throw new Error("NEIGHBORHOOD_EVIDENCE_COUNT_MISMATCH");
-    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, availableMemberCount, unavailableMemberCount, unavailableReasons, degradedMemberCount, improvedOrEqualMemberCount, neighborhoodMin: canonicalDecimal(input.neighborhoodMin), neighborhoodMax: canonicalDecimal(input.neighborhoodMax), neighborhoodSpread: canonicalDecimal(input.neighborhoodSpread) });
+    const neighborhoodMin = canonicalRationalRecord(input.neighborhoodMin, "NeighborhoodMin");
+    const neighborhoodMax = canonicalRationalRecord(input.neighborhoodMax, "NeighborhoodMax");
+    const neighborhoodSpread = canonicalRationalRecord(input.neighborhoodSpread, "NeighborhoodSpread");
+    assertRangeMath(neighborhoodMin, neighborhoodMax, neighborhoodSpread, "NEIGHBORHOOD_EVIDENCE_RANGE_MISMATCH");
+    return Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount, availableMemberCount, unavailableMemberCount, unavailableReasons, degradedMemberCount, improvedOrEqualMemberCount, neighborhoodMin, neighborhoodMax, neighborhoodSpread });
   }
   if (input.state === "UNAVAILABLE" && input.reason === "INSUFFICIENT_PARAMETER_NEIGHBORHOOD") return Object.freeze({ state: "UNAVAILABLE", reason: input.reason, availableMemberCount: canonicalNonNegativeInteger(input.availableMemberCount), unavailableMemberCount: canonicalNonNegativeInteger(input.unavailableMemberCount), unavailableReasons });
   throw new Error("NEIGHBORHOOD_EVIDENCE_INVALID");
@@ -451,6 +474,31 @@ function canonicalRationalRecord(input: unknown, label: string): Readonly<{ nume
   const reduced = reduceRationalV1({ numerator: BigInt(record.numerator), denominator: BigInt(record.denominator) });
   if (reduced.numerator.toString() !== record.numerator || reduced.denominator.toString() !== record.denominator) throw new Error(label + "_NON_CANONICAL");
   return Object.freeze({ numerator: record.numerator, denominator: record.denominator });
+}
+
+function rationalFromRecord(input: Readonly<{ numerator: string; denominator: string }>): ExactRationalV1 {
+  return { numerator: BigInt(input.numerator), denominator: BigInt(input.denominator) };
+}
+
+function assertRangeMath(min: Readonly<{ numerator: string; denominator: string }>, max: Readonly<{ numerator: string; denominator: string }>, range: Readonly<{ numerator: string; denominator: string }>, error: string): void {
+  const minR = rationalFromRecord(min);
+  const maxR = rationalFromRecord(max);
+  const rangeR = rationalFromRecord(range);
+  if (compareRationalV1(minR, maxR) > 0) throw new Error(error);
+  const expected = subtractRationalV1(maxR, minR);
+  if (expected.numerator !== rangeR.numerator || expected.denominator !== rangeR.denominator) throw new Error(error);
+}
+
+function assertDecimalSum(left: string, right: string, actual: string, error: string): void {
+  const expected = addRationalV1(decimalStringToRationalV1(left), decimalStringToRationalV1(right));
+  const observed = decimalStringToRationalV1(actual);
+  if (compareRationalV1(expected, observed) !== 0) throw new Error(error);
+}
+
+function assertDecimalDifference(left: string, right: string, actual: string, error: string): void {
+  const expected = subtractRationalV1(decimalStringToRationalV1(left), decimalStringToRationalV1(right));
+  const observed = decimalStringToRationalV1(actual);
+  if (compareRationalV1(expected, observed) !== 0) throw new Error(error);
 }
 
 function metricObservation(metricId: ExactMetricDeltaV1["metricId"], canonicalDecimal: string): ExactMetricObservationV1 {

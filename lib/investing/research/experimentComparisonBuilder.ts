@@ -1,10 +1,12 @@
-import { canonicalDateV1, canonicalDecimalV1, canonicalIntegerV1, hashRefV1, i5ResearchInternalCanonicalJsonBytesV1, type CanonicalJsonValue, type HashRefV1 } from "./canonical";
+import { canonicalDateV1, canonicalDecimalV1, canonicalIntegerV1, hashRefV1, i5ResearchInternalCanonicalJsonBytesV1, sha256HexV1, type CanonicalJsonValue, type HashRefV1 } from "./canonical";
 import { hashExperimentParametersV1, type ExperimentParametersCandidateV1 } from "./experimentParameters";
 import { canonicalExperimentComparisonProtocolV1, hashExperimentComparisonProtocolV1, robustnessComparisonPolicyV1, type DirectionalComparisonMetricIdV1, type ExperimentComparisonProtocolV1 } from "./experimentComparison";
 import { classifyRobustnessV1, type ComparisonFailClosedErrorV1, type RobustnessDiagnosticV1 } from "./experimentComparisonClassification";
 import { compareExactMetricObservationV1, directionalMetricDeltaSignV1, type ExactMetricDeltaV1, type ExactMetricObservationV1 } from "./experimentComparisonEvidence";
 import { canonicalExperimentComparisonResultV1, hashExperimentComparisonResultV1, type ComparisonProtocolHashRefV1, type ExperimentComparisonResultV1, type ParameterDeltaV1, type ScientificInputDeltaV1 } from "./experimentComparisonResult";
 import { deriveFoldStabilityEvidenceV1 } from "./experimentComparisonStability";
+import { canonicalJsonlArtifactBytesV1, hashResultV1, type ResultHashPayloadV1 } from "./resultArtifacts";
+import { compareRationalV1, decimalStringToRationalV1, reduceRationalV1, subtractRationalV1, type ExactRationalV1 } from "./exactRational";
 
 export type VerifiedComparisonExperimentNodeV1 = Readonly<{
   experiment: HashRefV1;
@@ -14,6 +16,7 @@ export type VerifiedComparisonExperimentNodeV1 = Readonly<{
   researchIrFamily: string;
   relation: "BASELINE" | "VARIANT";
   acceptedPersistenceProof: Readonly<{
+    source: "SERVER_PERSISTENCE_PROJECTION_V1";
     experiment: HashRefV1;
     parentExperiment: HashRefV1 | null;
     tenantAuthority: string;
@@ -41,14 +44,19 @@ export type VerifiedFoldMetricEvidenceV1 = Readonly<{
   validationResult: HashRefV1;
   inSample: ExactMetricObservationV1;
   outOfSample: ExactMetricObservationV1;
-  subjectOosOrientedDeltaSign: -1 | 0 | 1;
+  subjectOos: ExactMetricObservationV1;
 }>;
 
 export type VerifiedNeighborhoodMetricEvidenceV1 = Readonly<{
   experiment: HashRefV1;
-  result: HashRefV1;
-  observation: ExactMetricObservationV1 | null;
+  resultProof: VerifiedMetricResultSetProofV1;
   unavailableReason?: "MISSING_METRIC" | "METRIC_UNAVAILABLE_ON_ONE_SIDE";
+}>;
+
+export type VerifiedMetricResultSetProofV1 = Readonly<{
+  result: HashRefV1;
+  resultPayload: ResultHashPayloadV1;
+  metricRecords: readonly ExactMetricObservationV1[];
 }>;
 
 export type VerifiedCostEvidenceV1 = Readonly<{
@@ -68,9 +76,10 @@ export type VerifiedComparisonEvidenceV1 = Readonly<{
   lineageNodes: readonly VerifiedComparisonExperimentNodeV1[];
   referenceScientificInputs: VerifiedScientificInputFingerprintV1;
   subjectScientificInputs: VerifiedScientificInputFingerprintV1;
+  referenceResultProof: VerifiedMetricResultSetProofV1;
+  subjectResultProof: VerifiedMetricResultSetProofV1;
   referenceExperimentParameters: ExperimentParametersCandidateV1;
   subjectExperimentParameters: ExperimentParametersCandidateV1;
-  metricObservations: readonly Readonly<{ referenceResult: HashRefV1; subjectResult: HashRefV1; reference: ExactMetricObservationV1; subject: ExactMetricObservationV1 }>[];
   foldEvidence: readonly VerifiedFoldMetricEvidenceV1[];
   neighborhoodEvidence: readonly VerifiedNeighborhoodMetricEvidenceV1[];
   costEvidence: VerifiedCostEvidenceV1;
@@ -88,6 +97,10 @@ export type PreparedExperimentComparisonPersistenceV1 = Readonly<{
   }>;
 }>;
 
+export type ExperimentComparisonPersistenceSinkV1 = Readonly<{
+  persistExperimentComparisonV1(input: PreparedExperimentComparisonPersistenceV1): Promise<void>;
+}>;
+
 export function buildExperimentComparisonResultV1(input: VerifiedComparisonEvidenceV1): ExperimentComparisonResultV1 {
   const protocolFailure = verifyProtocolBinding(input);
   const protocol = canonicalExperimentComparisonProtocolV1(input.protocolPayload) as CanonicalProtocol;
@@ -98,9 +111,10 @@ export function buildExperimentComparisonResultV1(input: VerifiedComparisonEvide
   const scientificInputDelta = deriveScientificInputDelta(input, protocol, parameter);
   const validationProtocolMismatch = scientificInputDelta.some((delta) => delta.field === "VALIDATION_PROTOCOL");
   const scientificMismatch = scientificInputDelta.some((delta) => materialScientificInputFields.has(delta.field));
-  const metricDeltas = deriveMetricDeltas(input.metricObservations, protocol);
-  const missingConfiguredMetric = protocol.comparisonMetricIds.some((metricId) => !input.metricObservations.some((pair) => pair.reference.metricId === metricId));
-  const primaryMetric = input.metricObservations.find((pair) => pair.reference.metricId === primaryMetricId);
+  const metricObservations = deriveProtocolMetricPairs(input.referenceResultProof, input.subjectResultProof, protocol);
+  const metricDeltas = deriveMetricDeltas(metricObservations.pairs, protocol);
+  const missingConfiguredMetric = metricObservations.missingMetric;
+  const primaryMetric = metricObservations.pairs.find((pair) => pair.reference.metricId === primaryMetricId);
   const primaryOutcome = primaryMetric === undefined ? null : compareExactMetricObservationV1(primaryMetric.reference, primaryMetric.subject);
   const aggregateOosOrientedDeltaSign = primaryOutcome === null ? null : directionalMetricDeltaSignV1(primaryOutcome, primaryMetricId);
   const metricUnavailable = primaryOutcome === null || aggregateOosOrientedDeltaSign === null || missingConfiguredMetric;
@@ -162,6 +176,12 @@ export function prepareExperimentComparisonPersistenceV1(input: VerifiedComparis
   });
 }
 
+export async function persistExperimentComparisonV1(input: VerifiedComparisonEvidenceV1, sink: ExperimentComparisonPersistenceSinkV1): Promise<PreparedExperimentComparisonPersistenceV1> {
+  const prepared = prepareExperimentComparisonPersistenceV1(input);
+  await sink.persistExperimentComparisonV1(prepared);
+  return prepared;
+}
+
 function failClosedResult(protocol: ComparisonProtocolHashRefV1, failure: ComparisonFailClosedErrorV1): ExperimentComparisonResultV1 {
   const result: ExperimentComparisonResultV1 = Object.freeze({
     schemaVersion: "EXPERIMENT_COMPARISON_RESULT_V1",
@@ -217,26 +237,67 @@ function verifyProtocolBinding(input: VerifiedComparisonEvidenceV1): ComparisonF
   if (hashExperimentParametersV1(input.referenceExperimentParameters) !== protocol.referenceExperimentParameters.hashHex) return "CORRUPTED_EVIDENCE";
   if (hashExperimentParametersV1(input.subjectExperimentParameters) !== protocol.subjectExperimentParameters.hashHex) return "CORRUPTED_EVIDENCE";
   if (protocol.metricRegistryVersion !== "METRIC_REGISTRY_V20260927") return "INCOMPATIBLE_METRIC_VERSIONS";
-  const metricIds = new Set<string>();
-  for (const pair of input.metricObservations) {
-    if (!sameRef(pair.referenceResult, protocol.referenceResult) || !sameRef(pair.subjectResult, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
-    if (!protocol.comparisonMetricIds.includes(pair.reference.metricId) || pair.reference.metricId !== pair.subject.metricId) return "CORRUPTED_EVIDENCE";
-    if (metricIds.has(pair.reference.metricId)) return "CORRUPTED_EVIDENCE";
-    metricIds.add(pair.reference.metricId);
-  }
-  for (const metricId of protocol.comparisonMetricIds) if (!metricIds.has(metricId)) return null;
-  if (!input.metricObservations.some((pair) => pair.reference.metricId === protocol.primaryMetricId)) return "CORRUPTED_EVIDENCE";
+  if (!verifyMetricResultSetProof(input.referenceResultProof, protocol.referenceResult)) return "CORRUPTED_EVIDENCE";
+  if (!verifyMetricResultSetProof(input.subjectResultProof, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
+  if (duplicateMetricRecords(input.referenceResultProof.metricRecords) || duplicateMetricRecords(input.subjectResultProof.metricRecords)) return "CORRUPTED_EVIDENCE";
   for (const fold of input.foldEvidence) if (!sameRef(fold.validationResult, protocol.subjectValidationResult)) return "CORRUPTED_EVIDENCE";
   if (input.costEvidence !== null && (!sameRef(input.costEvidence.referenceResult, protocol.referenceResult) || !sameRef(input.costEvidence.subjectResult, protocol.subjectResult))) return "CORRUPTED_EVIDENCE";
   if (!sameRef(input.eventMetricEvidence.result, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
   if (input.eventMetricEvidence.tradeCount.metricId !== "TRADE_COUNT" || input.eventMetricEvidence.rebalanceCount.metricId !== "REBALANCE_COUNT") return "CORRUPTED_EVIDENCE";
+  if (!sameMetricRecord(input.eventMetricEvidence.tradeCount, input.subjectResultProof.metricRecords.find((record) => record.metricId === "TRADE_COUNT"))) return "CORRUPTED_EVIDENCE";
+  if (!sameMetricRecord(input.eventMetricEvidence.rebalanceCount, input.subjectResultProof.metricRecords.find((record) => record.metricId === "REBALANCE_COUNT"))) return "CORRUPTED_EVIDENCE";
   const protocolNeighborhood = new Set(protocol.neighborhoodExperimentRefs.map((ref) => ref.hashHex));
   if (input.neighborhoodEvidence.length !== protocolNeighborhood.size) return "CORRUPTED_EVIDENCE";
   for (const member of input.neighborhoodEvidence) {
     if (!protocolNeighborhood.has(hashRefV1(member.experiment).hashHex)) return "CORRUPTED_EVIDENCE";
-    if (!sameRef(member.result, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
+    if (!verifyMetricResultSetProof(member.resultProof, member.resultProof.result)) return "CORRUPTED_EVIDENCE";
+    if (hashRefV1(member.experiment).hashHex !== protocol.subjectExperiment.hashHex && sameRef(member.resultProof.result, protocol.subjectResult)) return "CORRUPTED_EVIDENCE";
   }
   return null;
+}
+
+function verifyMetricResultSetProof(proof: VerifiedMetricResultSetProofV1, expectedResult: HashRefV1): boolean {
+  try {
+    if (!sameRef(proof.result, expectedResult)) return false;
+    if (hashResultV1(proof.resultPayload) !== hashRefV1(expectedResult).hashHex) return false;
+    if (proof.resultPayload.metricResultSet.artifactSchemaVersion !== "METRIC_RESULT_SET_V2") return false;
+    const bytes = canonicalJsonlArtifactBytesV1(proof.metricRecords as unknown as readonly CanonicalJsonValue[]);
+    if (proof.resultPayload.metricResultSet.contentSha256 !== i5ResearchInternalSha256(bytes)) return false;
+    if (proof.resultPayload.metricResultSet.contentByteLength !== String(bytes.length)) return false;
+    if (proof.resultPayload.metricResultSet.recordCount !== String(proof.metricRecords.length)) return false;
+    for (const record of proof.metricRecords) assertMetricRecordV2(record);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function i5ResearchInternalSha256(bytes: Buffer): string { return sha256HexV1(bytes); }
+
+function assertMetricRecordV2(record: ExactMetricObservationV1): void {
+  if (record.metricVersion !== "METRIC_V2" || record.registryVersion !== "METRIC_REGISTRY_V20260927" || record.artifactSchemaVersion !== "METRIC_RESULT_SET_V2") throw new Error("INCOMPATIBLE_METRIC_VERSIONS");
+  if (record.state === "VALUE" && record.canonicalDecimal === null) throw new Error("VALUE_WITHOUT_CANONICAL_DECIMAL");
+  if (record.state === "MISSING" && record.canonicalDecimal !== null) throw new Error("MISSING_WITH_CANONICAL_DECIMAL");
+}
+
+function duplicateMetricRecords(records: readonly ExactMetricObservationV1[]): boolean {
+  const seen = new Set<string>();
+  for (const record of records) {
+    assertMetricRecordV2(record);
+    if (seen.has(record.metricId)) return true;
+    seen.add(record.metricId);
+  }
+  return false;
+}
+
+function sameMetricRecord(left: ExactMetricObservationV1, right: ExactMetricObservationV1 | undefined): boolean {
+  return right !== undefined &&
+    left.metricId === right.metricId &&
+    left.metricVersion === right.metricVersion &&
+    left.registryVersion === right.registryVersion &&
+    left.artifactSchemaVersion === right.artifactSchemaVersion &&
+    left.state === right.state &&
+    left.canonicalDecimal === right.canonicalDecimal;
 }
 
 function deriveLineageFailure(reference: VerifiedComparisonExperimentNodeV1, subject: VerifiedComparisonExperimentNodeV1, lineageNodes: readonly VerifiedComparisonExperimentNodeV1[]): ComparisonFailClosedErrorV1 | null {
@@ -382,10 +443,27 @@ function deriveMetricDeltas(input: readonly Readonly<{ reference: ExactMetricObs
   return Object.freeze(deltas);
 }
 
+function deriveProtocolMetricPairs(referenceProof: VerifiedMetricResultSetProofV1, subjectProof: VerifiedMetricResultSetProofV1, protocol: CanonicalProtocol): { pairs: readonly Readonly<{ reference: ExactMetricObservationV1; subject: ExactMetricObservationV1 }>[]; missingMetric: boolean } {
+  const referenceRecords = new Map(referenceProof.metricRecords.map((record) => [record.metricId, record]));
+  const subjectRecords = new Map(subjectProof.metricRecords.map((record) => [record.metricId, record]));
+  const pairs: Readonly<{ reference: ExactMetricObservationV1; subject: ExactMetricObservationV1 }>[] = [];
+  let missingMetric = false;
+  for (const metricId of protocol.comparisonMetricIds) {
+    const reference = referenceRecords.get(metricId as ExactMetricObservationV1["metricId"]);
+    const subject = subjectRecords.get(metricId as ExactMetricObservationV1["metricId"]);
+    if (reference === undefined || subject === undefined) {
+      missingMetric = true;
+      continue;
+    }
+    pairs.push(Object.freeze({ reference, subject }));
+  }
+  return { pairs: Object.freeze(pairs), missingMetric };
+}
+
 function deriveValidationEvidence(folds: readonly VerifiedFoldMetricEvidenceV1[], primaryMetricId: DirectionalComparisonMetricIdV1, aggregateOosOrientedDeltaSign: -1 | 0 | 1): { evidence: ExperimentComparisonResultV1["validationEvidence"]; foldSigns: readonly (-1 | 0 | 1)[]; outcomeSigns: readonly (-1 | 0 | 1)[]; incomplete: boolean } {
   const signs: (-1 | 0 | 1)[] = [];
   const outcomeSigns: (-1 | 0 | 1)[] = [];
-  const deltas: string[] = [];
+  const deltas: ExactRationalV1[] = [];
   const seen = new Set<string>();
   let incomplete = false;
   for (const fold of [...folds].sort((a, b) => byteCompare(a.foldId, b.foldId))) {
@@ -395,16 +473,17 @@ function deriveValidationEvidence(folds: readonly VerifiedFoldMetricEvidenceV1[]
     if (fold.inSample.metricId !== primaryMetricId || outcome.state !== "AVAILABLE" || outcome.delta.orientedDeltaSign === null || outcome.delta.orientedDelta === null) incomplete = true;
     else {
       signs.push(outcome.delta.orientedDeltaSign);
-      outcomeSigns.push(fold.subjectOosOrientedDeltaSign);
-      deltas.push(rationalToDecimal(outcome.delta.orientedDelta));
+      if (fold.subjectOos.metricId !== primaryMetricId || fold.subjectOos.state !== "VALUE" || fold.subjectOos.canonicalDecimal === null) incomplete = true;
+      else outcomeSigns.push(compareRationalV1(decimalStringToRationalV1(fold.subjectOos.canonicalDecimal), { numerator: 0n, denominator: 1n }));
+      deltas.push(recordToRational(outcome.delta.orientedDelta));
     }
   }
   const degradedFoldCount = signs.filter((sign) => sign < 0).length;
-  const sorted = [...deltas].sort(decimalCompare);
+  const sorted = [...deltas].sort(compareRationalV1);
   const foldMin = sorted[0] ?? null;
   const foldMax = sorted[sorted.length - 1] ?? null;
   return {
-    evidence: Object.freeze({ completeFoldCount: String(signs.length), degradedFoldCount: String(degradedFoldCount), nonDegradedFoldCount: String(signs.length - degradedFoldCount), aggregateOosOrientedDeltaSign: String(aggregateOosOrientedDeltaSign) as "-1" | "0" | "1", foldMin, foldMax, foldRange: foldMin === null || foldMax === null ? null : subtractDecimal(foldMax, foldMin) }),
+    evidence: Object.freeze({ completeFoldCount: String(signs.length), degradedFoldCount: String(degradedFoldCount), nonDegradedFoldCount: String(signs.length - degradedFoldCount), aggregateOosOrientedDeltaSign: String(aggregateOosOrientedDeltaSign) as "-1" | "0" | "1", foldMin: foldMin === null ? null : rationalRecord(foldMin), foldMax: foldMax === null ? null : rationalRecord(foldMax), foldRange: foldMin === null || foldMax === null ? null : rationalRecord(subtractRationalV1(foldMax, foldMin)) }),
     foldSigns: Object.freeze(signs),
     outcomeSigns: Object.freeze(outcomeSigns),
     incomplete,
@@ -418,27 +497,28 @@ function deriveNeighborhoodEvidence(members: readonly VerifiedNeighborhoodMetric
   const unavailableReasons: string[] = [];
   let degradedMemberCount = 0;
   let improvedOrEqualMemberCount = 0;
-  const deltas: string[] = [];
+  const deltas: ExactRationalV1[] = [];
   for (const member of members) {
     if (!required.delete(hashRefV1(member.experiment).hashHex)) throw new Error("CORRUPTED_EVIDENCE");
-    if (member.observation === null) {
+    const memberObservation = member.resultProof.metricRecords.find((record) => record.metricId === primary.reference.metricId) ?? null;
+    if (memberObservation === null) {
       unavailableCount += 1;
       unavailableReasons.push(member.unavailableReason ?? "MISSING_METRIC");
       continue;
     }
-    const outcome = compareExactMetricObservationV1(primary.reference, member.observation);
+    const outcome = compareExactMetricObservationV1(primary.reference, memberObservation);
     if (outcome.state !== "AVAILABLE" || outcome.delta.orientedDeltaSign === null || outcome.delta.orientedDelta === null) {
       unavailableCount += 1;
       unavailableReasons.push(outcome.state === "UNAVAILABLE" ? outcome.reason : "METRIC_UNAVAILABLE_ON_ONE_SIDE");
     } else if (outcome.delta.orientedDeltaSign < 0) degradedMemberCount += 1;
     else improvedOrEqualMemberCount += 1;
-    if (outcome.state === "AVAILABLE" && outcome.delta.orientedDelta !== null) deltas.push(rationalToDecimal(outcome.delta.orientedDelta));
+    if (outcome.state === "AVAILABLE" && outcome.delta.orientedDelta !== null) deltas.push(recordToRational(outcome.delta.orientedDelta));
   }
   if (required.size > 0 || unavailableCount > 0 || members.length < robustnessComparisonPolicyV1.minimumNeighborhoodMembers) return { evidence: Object.freeze({ state: "UNAVAILABLE", reason: "INSUFFICIENT_PARAMETER_NEIGHBORHOOD", availableMemberCount: String(members.length - unavailableCount), unavailableMemberCount: String(unavailableCount + required.size), unavailableReasons }), unavailableCount };
-  const sorted = [...deltas].sort(decimalCompare);
-  const min = sorted[0] ?? "0";
-  const max = sorted[sorted.length - 1] ?? "0";
-  return { evidence: Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount: String(members.length), availableMemberCount: String(members.length), unavailableMemberCount: "0", unavailableReasons, degradedMemberCount: String(degradedMemberCount), improvedOrEqualMemberCount: String(improvedOrEqualMemberCount), neighborhoodMin: min, neighborhoodMax: max, neighborhoodSpread: subtractDecimal(max, min) }), unavailableCount };
+  const sorted = [...deltas].sort(compareRationalV1);
+  const min = sorted[0] ?? { numerator: 0n, denominator: 1n };
+  const max = sorted[sorted.length - 1] ?? { numerator: 0n, denominator: 1n };
+  return { evidence: Object.freeze({ state: "AVAILABLE", neighborhoodMemberCount: String(members.length), availableMemberCount: String(members.length), unavailableMemberCount: "0", unavailableReasons, degradedMemberCount: String(degradedMemberCount), improvedOrEqualMemberCount: String(improvedOrEqualMemberCount), neighborhoodMin: rationalRecord(min), neighborhoodMax: rationalRecord(max), neighborhoodSpread: rationalRecord(subtractRationalV1(max, min)) }), unavailableCount };
 }
 
 function deriveConcentrationEvidence(eventMetricEvidence: VerifiedComparisonEvidenceV1["eventMetricEvidence"], foldSigns: readonly (-1 | 0 | 1)[]): ExperimentComparisonResultV1["concentrationEvidence"] {
@@ -529,21 +609,13 @@ function finalMonotonic(values: readonly string[]): string {
   return previous;
 }
 
-function rationalToDecimal(value: Readonly<{ numerator: string; denominator: string }>): string {
-  const numerator = BigInt(value.numerator);
-  const denominator = BigInt(value.denominator);
-  const negative = numerator < 0n;
-  const abs = negative ? -numerator : numerator;
-  const whole = abs / denominator;
-  let remainder = abs % denominator;
-  if (remainder === 0n) return `${negative ? "-" : ""}${whole.toString()}`;
-  let fraction = "";
-  for (let index = 0; index < 24 && remainder !== 0n; index += 1) {
-    remainder *= 10n;
-    fraction += (remainder / denominator).toString();
-    remainder %= denominator;
-  }
-  return `${negative ? "-" : ""}${whole.toString()}.${fraction.replace(/0+$/u, "")}`;
+function recordToRational(value: Readonly<{ numerator: string; denominator: string }>): ExactRationalV1 {
+  return reduceRationalV1({ numerator: BigInt(value.numerator), denominator: BigInt(value.denominator) });
+}
+
+function rationalRecord(value: ExactRationalV1): Readonly<{ numerator: string; denominator: string }> {
+  const reduced = reduceRationalV1(value);
+  return Object.freeze({ numerator: reduced.numerator.toString(), denominator: reduced.denominator.toString() });
 }
 
 function addDecimal(left: string, right: string): string {

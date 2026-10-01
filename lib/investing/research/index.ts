@@ -364,10 +364,13 @@ export {
 
 export {
   buildExperimentComparisonResultV1,
+  persistExperimentComparisonV1,
   prepareExperimentComparisonPersistenceV1,
+  type ExperimentComparisonPersistenceSinkV1,
   type PreparedExperimentComparisonPersistenceV1,
   type VerifiedComparisonEvidenceV1,
   type VerifiedComparisonExperimentNodeV1,
+  type VerifiedMetricResultSetProofV1,
   type VerifiedScientificInputFingerprintV1,
 } from "./experimentComparisonBuilder";
 
