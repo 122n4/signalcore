@@ -469,7 +469,7 @@ I5 Research Execution Engine Design Freeze acceptance evidence:
 - Final independently audited technical candidate:
   `e3c302aff00a73fa121051abaf839ae1cb9a2383`.
 - CI:
-  `35464456177` â€” `SUCCESS`.
+  `35464456177` — `SUCCESS`.
 - Vercel:
   `SUCCESS`.
 - Independent auditor verdict:
@@ -772,7 +772,7 @@ I5 RL-3C Validation Aggregate Closure acceptance evidence:
 - Validation-specific `multiple_permissive_policies` findings:
   `0`.
 - Remaining aggregate Performance Advisor INFO:
-  `NON-BLOCKING` â€” protocol-authority FK has no dedicated redundant 8-column
+  `NON-BLOCKING` — protocol-authority FK has no dedicated redundant 8-column
   covering index; Passport and authority-tuple indexes may report unused until
   real workload uses them.
 - Permanent A-number:
@@ -1746,9 +1746,9 @@ Dataset & Run Scientific Closure acceptance evidence:
 - PR:
   `#74`.
 - CI:
-  `35453698054` â€” `SUCCESS`.
+  `35453698054` — `SUCCESS`.
 - PG17:
-  `35453698064` â€” `SUCCESS`.
+  `35453698064` — `SUCCESS`.
 - PostgreSQL:
   `17.11`.
 - Existing Experiment Scientific Closure PG17 rehearsal:
