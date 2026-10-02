@@ -60,7 +60,7 @@ claimed at the time. This contract records the final canonical acceptance sync a
 audit, merge to main, CI/PG17 success, Production migration application and
 post-apply audit. It is current acceptance authority for RL-7.
 
-## Recovery Candidate Scope
+## Current Accepted Scope
 
 RL-7 owns deterministic robustness and BASELINE/VARIANT experiment-comparison
 scientific evidence only.
@@ -85,7 +85,7 @@ Current accepted scientific domains:
 The protocol and result payloads are closed, deterministic and domain-separated.
 No undocumented composite score is scientific authority.
 
-`buildExperimentComparisonResultV1` is the recovery candidate's pure
+`buildExperimentComparisonResultV1` is the current accepted closure's pure
 authoritative derivation kernel. It consumes verified canonical evidence and
 derives lineage compatibility, parameter deltas, scientific-input deltas,
 exact metric deltas, validation/fold/neighborhood/cost/concentration evidence,
@@ -127,14 +127,13 @@ The accepted cumulative RL-7 Production migration set is:
 - `20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql`;
 - `20261002202439_investing_i5_rl7_preproduction_function_search_path.sql`.
 
-These migrations are intended to establish append-only protocol/result scientific identities,
+These migrations establish append-only protocol/result scientific identities,
 RLS + FORCE RLS, minimal table grants and internal persistence functions.
 `20261001090000` is the accepted Git correction to the RL-7 persistence
 functions: it removes redundant row-lock/UPDATE-privilege requirements while
 retaining advisory transaction locking, unique-constraint conflict protection,
 append-only behavior and `SECURITY INVOKER` semantics. It is part of the
-cumulative RL-7 migration set required before Production can be considered
-aligned.
+cumulative RL-7 migration set now applied and aligned in Production.
 `20261002202439` is a pre-production Security Advisor remediation. It fixes
 the deterministic function `search_path` for the append-only trigger function
 and both persistence functions by setting `search_path=pg_catalog`. It does not
@@ -178,9 +177,10 @@ identity, and replay/conflict rules; it does not independently reproduce the
 TypeScript scientific derivation. Possession of that credential therefore
 remains a trusted-server boundary and can bypass the TypeScript reader/writer.
 Do not expose it or treat direct SQL payloads as independently scientifically
-verified. `service_role` remains capability, never source authority. No grants,
-migrations, or Production state are changed by this correction. Real PG17
-verification of the concrete adapter remains a required acceptance gate.
+verified. `service_role` remains capability, never source authority. The sixth correction itself changed no grants, migrations or Production state.
+Subsequent accepted remediation and Production gates applied the audited
+four-migration set. Real PostgreSQL 17 verification of the concrete adapter
+passed and is recorded in the final acceptance evidence below.
 
 ## Verification Evidence
 

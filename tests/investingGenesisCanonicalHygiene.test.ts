@@ -137,6 +137,10 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED");
     expect(state).toContain("Research Lab is not yet backend-complete");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toContain("Ã¢â‚¬â€");
+    expect(state).not.toContain("Ã¢");
+    expect(state).not.toContain("Ãƒ");
+    expect(state).not.toContain("RL-7 post-apply audit:\\n");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
   });
 

@@ -1218,7 +1218,7 @@ I5 RL-7 recovery/acceptance evidence:
   `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
 - accepted cumulative migration set in Git and Production:
   `20260928080318 + 20260928090809 + 20261001090000 + 20261002202439`.
-- candidate migration set note:
+- accepted migration set note:
   `20261001090000` is the accepted Git correction to the RL-7 persistence
   functions. It removes redundant row-lock/UPDATE-privilege requirements while
   retaining advisory transaction locking, unique-constraint conflict
@@ -1261,7 +1261,7 @@ I5 RL-7 recovery/acceptance evidence:
 - permanent A-number:
   `NOT ASSIGNED`.
 
-Candidate RL-7 invariants:
+Accepted RL-7 invariants:
 
 - comparison truth is deterministic and evidence-backed;
 - exact parameter and scientific-input deltas remain distinct;
@@ -1288,7 +1288,10 @@ Production Supabase migration state:
   `20261002202439 investing_i5_rl7_preproduction_function_search_path`.
 - RL-7 migration ledger alignment:
   `PASS / EXACT FOUR-MIGRATION SET`.
-- RL-7 post-apply audit:\n  `PASS`.\n- Prior RL-3D post-apply migration anchor:\n  `20260930190148 investing_i5_rl3d_postapply_performance_remediation`.
+- RL-7 post-apply audit:
+  `PASS`.
+- Prior RL-3D post-apply migration anchor:
+  `20260930190148 investing_i5_rl3d_postapply_performance_remediation`.
 - RL-5 implementation accepted merge/main anchor:
   `76ca5d50e907cd07c7400f5fbba61e8dae1ad530`.
   This SHA is the immutable Git anchor where PR #98 placed the independently

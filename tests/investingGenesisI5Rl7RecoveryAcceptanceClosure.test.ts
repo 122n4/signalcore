@@ -43,7 +43,8 @@ describe("I5 RL-7 final canonical acceptance closure", () => {
       "ROBUSTNESS_INSUFFICIENT_EVIDENCE",
     ]) expect(contract).toContain(token);
 
-    expect(contract).toContain("`buildExperimentComparisonResultV1` is the recovery candidate's pure");
+    expect(contract).toContain("## Current Accepted Scope");
+    expect(contract).toContain("`buildExperimentComparisonResultV1` is the current accepted closure's pure");
     expect(contract).toContain("Caller-provided deltas, compatibility conclusions, PASS/FAIL");
 
     expect(canonical).toContain("\"SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1\": \"OWNER_PAYLOAD_EXACT\"");
@@ -67,12 +68,18 @@ describe("I5 RL-7 final canonical acceptance closure", () => {
     expect(contract).toContain("pre-production Security Advisor remediation");
     expect(contract).toContain("search_path=pg_catalog");
     expect(contract).toContain("does not\nchange persistence logic, authority semantics, grants, RLS, table structure or\npayload contracts");
-    expect(contract).toContain("cumulative RL-7 migration set required before Production can be");
-    expect(contract).toContain("aligned");
+    expect(contract).toContain("These migrations establish append-only protocol/result scientific identities");
+    expect(contract).toContain("cumulative RL-7 migration set now applied and aligned in Production");
+    expect(contract).toContain("Real PostgreSQL 17 verification of the concrete adapter");
+    expect(contract).toContain("passed and is recorded in the final acceptance evidence below");
     expect(contract).toContain("Supabase Production project: `qdnvbamoamtkujzwrxdb`");
     expect(contract).toContain("Security Advisor RL-7 findings: `ZERO`");
     expect(contract).toContain("Performance Advisor RL-7 findings: `4 unindexed_foreign_keys INFO / NON-BLOCKING`");
     expect(contract).not.toContain(["its", ["two", "migrations"].join(" "), "remain"].join(" "));
+    expect(contract).not.toContain("## Recovery Candidate Scope");
+    expect(contract).not.toContain("recovery candidate's pure");
+    expect(contract).not.toContain("remains a required acceptance gate");
+    expect(contract).not.toContain("required before Production can be considered aligned");
     expect(contract).toContain("REUSED_IDENTICAL");
     expect(contract).toContain("SECURITY INVOKER");
     expect(contract).toContain("RL-10");
@@ -92,6 +99,10 @@ describe("I5 RL-7 final canonical acceptance closure", () => {
     expect(state).toContain("I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
     expect(state).toContain("CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).not.toContain("Ã¢â‚¬â€");
+    expect(state).not.toContain("Ã¢");
+    expect(state).not.toContain("Ãƒ");
+    expect(state).not.toContain("RL-7 post-apply audit:\\n");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_RECOVERY_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("RL-7 Production migrations = APPLIED / POST-APPLY AUDITED");
     expect(state).toContain("20260928080318 + 20260928090809 + 20261001090000 + 20261002202439");
