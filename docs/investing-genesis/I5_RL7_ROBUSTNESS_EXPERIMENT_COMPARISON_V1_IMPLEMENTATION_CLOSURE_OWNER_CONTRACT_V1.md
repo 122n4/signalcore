@@ -1,9 +1,9 @@
 # I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure Owner Contract
 
-Status: RECOVERY CANDIDATE OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED
+Status: CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED
 
 Classification:
-`RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED / NOT_ACCEPTED_YET`
+`CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`
 
 Trust-recovery predecessor:
 `425c635ba822e8c9c6fe78f673b1889a827b92be`
@@ -33,13 +33,13 @@ Tree equality:
 `PASS`
 
 Runtime implementation:
-`PRESENT / RECOVERY CANDIDATE / PENDING INDEPENDENT ACCEPTANCE AUDIT`
+`PRESENT / CURRENT ACCEPTED`
 
 Production migration:
-`NOT APPLIED`
+`APPLIED / POST-APPLY AUDITED`
 
 Supabase Production:
-`UNCHANGED BY THIS CLOSURE`
+`RL-7 MIGRATIONS APPLIED / POST-APPLY AUDITED`
 
 Permanent A-number:
 `NOT ASSIGNED`
@@ -56,15 +56,16 @@ actual merged runtime, persistence and test evidence and establishes current
 authority without rewriting the historical design-slice facts.
 
 The historical design document remains evidence of what that design-only slice
-claimed at the time. This contract is a recovery candidate for independent
-acceptance audit and is not yet current acceptance authority.
+claimed at the time. This contract records the final canonical acceptance sync after independent
+audit, merge to main, CI/PG17 success, Production migration application and
+post-apply audit. It is current acceptance authority for RL-7.
 
 ## Recovery Candidate Scope
 
 RL-7 owns deterministic robustness and BASELINE/VARIANT experiment-comparison
 scientific evidence only.
 
-Recovery candidate runtime surfaces:
+Current accepted runtime surfaces:
 
 - `lib/investing/research/experimentComparison.ts`;
 - `lib/investing/research/experimentComparisonEvidence.ts`;
@@ -76,7 +77,7 @@ Recovery candidate runtime surfaces:
 - RL-7 exports from `lib/investing/research/index.ts`;
 - RL-7 scientific-domain admission in `lib/investing/research/canonical.ts`.
 
-Recovery candidate scientific domains:
+Current accepted scientific domains:
 
 - `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1 = OWNER_PAYLOAD_EXACT`;
 - `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
@@ -94,7 +95,7 @@ labels or classification claims are not scientific authority.
 
 ## Deterministic Robustness Semantics
 
-The recovery candidate `ROBUSTNESS_COMPARISON_POLICY_V20260927` freezes:
+The current accepted `ROBUSTNESS_COMPARISON_POLICY_V20260927` freezes:
 
 - exact parameter delta;
 - exact scientific-input delta;
@@ -106,7 +107,7 @@ The recovery candidate `ROBUSTNESS_COMPARISON_POLICY_V20260927` freezes:
 - event-count and fold-direction concentration diagnostics;
 - deterministic fail-closed classification.
 
-The candidate scientific classifications remain:
+The accepted scientific classifications remain:
 
 - `ROBUSTNESS_STABLE`;
 - `ROBUSTNESS_MIXED`;
@@ -119,7 +120,7 @@ and does not become a fabricated scientific result.
 
 ## Persistence Authority
 
-The candidate Git persistence set is:
+The accepted cumulative RL-7 Production migration set is:
 
 - `20260928080318_investing_i5_rl7_experiment_comparison_v1.sql`;
 - `20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql`;
@@ -140,7 +141,7 @@ and both persistence functions by setting `search_path=pg_catalog`. It does not
 change persistence logic, authority semantics, grants, RLS, table structure or
 payload contracts.
 
-The candidate internal functions are:
+The accepted internal functions are:
 
 - `investing.persist_research_experiment_comparison_protocol_v1(text,text,jsonb)`;
 - `investing.finalize_research_experiment_comparison_result_v1(uuid,text,jsonb)`.
@@ -151,7 +152,7 @@ inside the existing server-authorized Investing context.
 
 Tenant, principal, membership and Investigation authority are bound to the
 database context and preserved by composite constraints/RLS. A client-supplied
-protocol UUID is not authority and cannot cross the candidate authority tuple.
+protocol UUID is not authority and cannot cross the accepted authority tuple.
 
 Protocol/result reuse is exact and deterministic:
 
@@ -190,38 +191,44 @@ Historical implementation verification on exact final candidate
 - dedicated Investing Supabase Reconciliation PG17: `#145 / SUCCESS`;
 - implementation candidate/merge tree equality: `PASS`.
 
-Current trust-recovery baseline verification:
+Current trust-recovery and final acceptance verification:
 
-- main predecessor: `425c635ba822e8c9c6fe78f673b1889a827b92be`;
-- post-RL-3D main CI: `#1411 / SUCCESS`;
-- Production migration ledger: `101 versions`;
-- latest Production migration:
-  `20260930190148 investing_i5_rl3d_postapply_performance_remediation`;
-- RL-7 migrations present in Git: `YES`;
-- RL-7 migrations present in Production ledger: `NO`.
+- trust-recovery predecessor: `425c635ba822e8c9c6fe78f673b1889a827b92be`;
+- final canonical predecessor/main anchor: `b19fb3a0093a584df69c42f030dd2ab3e14b7b0a`;
+- audited technical candidate: `d989865cbb13039eaeb9a780394ff1551f8e5624`;
+- pre-production predecessor: `9209d2f1100f94b3fd05888bf7c68442c35dde45`;
+- merge-ref evidence: `d989865cbb13039eaeb9a780394ff1551f8e5624` was proved into `9209d2f1100f94b3fd05888bf7c68442c35dde45`;
+- CI: `#1444 / SUCCESS`;
+- PostgreSQL 17 gate: `#157 / SUCCESS`;
+- RL-7 SQL and concrete writer commit/replay/rollback: `PASS`;
+- Vercel Production SHA: `b19fb3a0093a584df69c42f030dd2ab3e14b7b0a / READY`;
+- Supabase Production project: `qdnvbamoamtkujzwrxdb`;
+- RL-7 migrations present in Git: `YES / FOUR`;
+- RL-7 migrations present in Production ledger: `YES / FOUR`;
+- Production migration application: `APPLIED / EXACT FOUR-MIGRATION SET`;
+- post-apply audit: `PASS`;
+- Security Advisor RL-7 findings: `ZERO`;
+- Performance Advisor RL-7 findings: `4 unindexed_foreign_keys INFO / NON-BLOCKING`;
+- RL-7 protocol rows: `0`;
+- RL-7 result rows: `0`;
+- scientific/financial row mutation: `NO`.
 
-Recovery implementation status:
-`PENDING INDEPENDENT ACCEPTANCE AUDIT / PRODUCTION GATE STILL REQUIRED`
+Acceptance implementation status:
+`CURRENT_ACCEPTED / PRODUCTION GATE PASSED / POST-APPLY AUDITED`
 
 Fresh exact-candidate real PG17 execution:
-`PENDING EXTERNAL PG17 GATE`
-
-Skipped local PG17 tests without `PG17_RECONCILIATION_URL` are not real PG17
-evidence and must not be reported as a fresh exact-candidate PG17 PASS.
+`PASS / POSTGRESQL 17`
 
 ## Production Boundary
 
-This closure performs no Supabase mutation and no financial/scientific row
-mutation.
+The final Production gate applied exactly the accepted four-migration RL-7 set
+to Supabase project `qdnvbamoamtkujzwrxdb` and passed the post-apply audit.
+The application was DDL/RLS/function-only for RL-7. It created no RL-7 protocol
+or result rows and mutated no scientific or financial rows.
 
-RL-7 is a Git recovery candidate, but its cumulative migration set, including
-the pre-production function `search_path` remediation, remains `NOT APPLIED` to
-Supabase Production. Production application is a separate gate requiring exact
-migration scope, rehearsal, migration-ledger verification and post-apply audit.
+Production alignment is now:
 
-Until that gate passes:
-
-`RL-7 RECOVERY CANDIDATE != RL-7 CURRENT_ACCEPTED != RL-7 PRODUCTION APPLIED`
+`RL-7 CURRENT_ACCEPTED = RL-7 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`
 
 ## Downstream Boundary
 
