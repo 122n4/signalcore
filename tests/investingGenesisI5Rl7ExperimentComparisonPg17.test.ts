@@ -77,6 +77,7 @@ const migrations = [
   "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql",
   "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql",
   "supabase/migrations/20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql",
+  "supabase/migrations/20261002202439_investing_i5_rl7_preproduction_function_search_path.sql",
 ] as const;
 
 const ids = {
@@ -635,21 +636,72 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
           and privilege_type in ('UPDATE','DELETE','TRUNCATE')
       `);
       expect(appMutation.rows[0]!.count).toBe("0");
-      const functionSecurity = await client.query<{ proname: string; prosecdef: boolean; app_execute: boolean; service_execute: boolean }>(`
-        select p.proname, p.prosecdef,
+      const functionSecurity = await client.query<{
+        proname: string;
+        prosecdef: boolean;
+        proconfig: string[] | null;
+        app_execute: boolean;
+        public_execute: boolean;
+        anon_execute: boolean;
+        authenticated_execute: boolean;
+        service_execute: boolean;
+        has_advisory_lock: boolean;
+        has_for_update: boolean;
+      }>(`
+        select p.proname, p.prosecdef, p.proconfig,
           has_function_privilege('investing_app', p.oid, 'EXECUTE') as app_execute,
-          has_function_privilege('service_role', p.oid, 'EXECUTE') as service_execute
+          has_function_privilege('public', p.oid, 'EXECUTE') as public_execute,
+          has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
+          has_function_privilege('authenticated', p.oid, 'EXECUTE') as authenticated_execute,
+          has_function_privilege('service_role', p.oid, 'EXECUTE') as service_execute,
+          lower(pg_get_functiondef(p.oid)) like '%pg_advisory_xact_lock%' as has_advisory_lock,
+          lower(pg_get_functiondef(p.oid)) like '%for update%' as has_for_update
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
         where n.nspname='investing'
           and p.proname in (
+            'reject_research_experiment_comparison_update_delete',
             'persist_research_experiment_comparison_protocol_v1',
             'finalize_research_experiment_comparison_result_v1'
           )
         order by p.proname
       `);
       expect(functionSecurity.rows).toEqual([
-        { proname: "finalize_research_experiment_comparison_result_v1", prosecdef: false, app_execute: true, service_execute: false },
-        { proname: "persist_research_experiment_comparison_protocol_v1", prosecdef: false, app_execute: true, service_execute: false },
+        {
+          proname: "finalize_research_experiment_comparison_result_v1",
+          prosecdef: false,
+          proconfig: ["search_path=pg_catalog"],
+          app_execute: true,
+          public_execute: false,
+          anon_execute: false,
+          authenticated_execute: false,
+          service_execute: false,
+          has_advisory_lock: true,
+          has_for_update: false,
+        },
+        {
+          proname: "persist_research_experiment_comparison_protocol_v1",
+          prosecdef: false,
+          proconfig: ["search_path=pg_catalog"],
+          app_execute: true,
+          public_execute: false,
+          anon_execute: false,
+          authenticated_execute: false,
+          service_execute: false,
+          has_advisory_lock: true,
+          has_for_update: false,
+        },
+        {
+          proname: "reject_research_experiment_comparison_update_delete",
+          prosecdef: false,
+          proconfig: ["search_path=pg_catalog"],
+          app_execute: false,
+          public_execute: false,
+          anon_execute: false,
+          authenticated_execute: false,
+          service_execute: false,
+          has_advisory_lock: false,
+          has_for_update: false,
+        },
       ]);
     } finally {
       client.release();
