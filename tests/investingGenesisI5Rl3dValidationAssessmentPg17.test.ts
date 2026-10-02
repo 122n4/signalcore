@@ -35,6 +35,7 @@ const migrations = [
   "supabase/migrations/20260929193000_investing_i5_rl3d_validation_assessment_v1.sql",
   "supabase/migrations/20260930175542_investing_i5_rl3d_preproduction_policy_consolidation.sql",
   "supabase/migrations/20260930190148_investing_i5_rl3d_postapply_performance_remediation.sql",
+  "supabase/migrations/20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql",
 ] as const;
 
 const ids = {

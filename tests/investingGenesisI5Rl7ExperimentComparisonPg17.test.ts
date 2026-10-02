@@ -32,6 +32,7 @@ const migrations = [
   "supabase/migrations/20260926201750_investing_i5_rl5_engine_v2_admission.sql",
   "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql",
   "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql",
+  "supabase/migrations/20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql",
 ] as const;
 
 const ids = {
@@ -43,9 +44,67 @@ const ids = {
   otherMembership: "33333333-0000-4000-8000-000000000702",
 } as const;
 
-const h = (value: string) => value.repeat(64).slice(0, 64).toUpperCase();
+const h = (value: string) => {
+  const normalized = value.toUpperCase();
+  if (!/^[0-9A-F]+$/u.test(normalized)) {
+    throw new Error(`Invalid PG17 RL-7 fixture identity seed: ${value}`);
+  }
+  return normalized.repeat(64).slice(0, 64);
+};
 const protocolPayload = (marker: string) => ({ schemaVersion: "EXPERIMENT_COMPARISON_PROTOCOL_V1", marker });
 const resultPayload = (marker: string) => ({ schemaVersion: "EXPERIMENT_COMPARISON_RESULT_V1", marker });
+
+const protocolIdentities = {
+  replay: { logicalKey: h("1"), hashHex: h("A") },
+  concurrentIdentical: { logicalKey: h("2"), hashHex: h("D") },
+  concurrentDivergent: { logicalKey: h("3"), firstHashHex: h("E"), secondHashHex: h("F") },
+  resultReplay: { logicalKey: h("4"), hashHex: h("7") },
+  resultConcurrentIdentical: { logicalKey: h("61"), hashHex: h("62") },
+  resultConcurrentDivergent: { logicalKey: h("63"), hashHex: h("64") },
+  appendOnly: { logicalKey: h("5"), hashHex: h("9") },
+} as const;
+
+const resultHashes = {
+  replay: h("B"),
+  replayConflict: h("8"),
+  concurrentIdentical: h("65"),
+  concurrentDivergentFirst: h("66"),
+  concurrentDivergentSecond: h("67"),
+  appendOnly: h("6B"),
+} as const;
+
+const testOnlyIdentityInputs = {
+  protocolReplayConflictHash: h("C"),
+  unauthorizedInsertHash: h("6C"),
+  unauthorizedInsertLogicalKey: h("6E"),
+  privilegedProtocolMutationHash: h("68"),
+  privilegedResultMutationHash: h("69"),
+} as const;
+
+const pg17FixtureIdentities = [
+  protocolIdentities.replay.logicalKey,
+  protocolIdentities.replay.hashHex,
+  protocolIdentities.concurrentIdentical.logicalKey,
+  protocolIdentities.concurrentIdentical.hashHex,
+  protocolIdentities.concurrentDivergent.logicalKey,
+  protocolIdentities.concurrentDivergent.firstHashHex,
+  protocolIdentities.concurrentDivergent.secondHashHex,
+  protocolIdentities.resultReplay.logicalKey,
+  protocolIdentities.resultReplay.hashHex,
+  protocolIdentities.resultConcurrentIdentical.logicalKey,
+  protocolIdentities.resultConcurrentIdentical.hashHex,
+  protocolIdentities.resultConcurrentDivergent.logicalKey,
+  protocolIdentities.resultConcurrentDivergent.hashHex,
+  protocolIdentities.appendOnly.logicalKey,
+  protocolIdentities.appendOnly.hashHex,
+  resultHashes.replay,
+  resultHashes.replayConflict,
+  resultHashes.concurrentIdentical,
+  resultHashes.concurrentDivergentFirst,
+  resultHashes.concurrentDivergentSecond,
+  resultHashes.appendOnly,
+  ...Object.values(testOnlyIdentityInputs),
+] as const;
 
 let pool: Pool;
 
@@ -142,7 +201,7 @@ async function asApp<T>(
   }
 }
 
-async function persistProtocol(logicalKey = h("1"), hashHex = h("A"), payload = protocolPayload("A")) {
+async function persistProtocol(logicalKey = protocolIdentities.replay.logicalKey, hashHex = protocolIdentities.replay.hashHex, payload = protocolPayload("A")) {
   return asApp({ operation: "RESEARCH_EXPERIMENT_COMPARISON_PROTOCOL_CREATE_V1" }, async (client) => {
     const result = await client.query<{ research_experiment_comparison_protocol_identity_id: string; persistence_status: string }>(
       "select * from investing.persist_research_experiment_comparison_protocol_v1($1,$2,$3::jsonb)",
@@ -152,7 +211,7 @@ async function persistProtocol(logicalKey = h("1"), hashHex = h("A"), payload = 
   });
 }
 
-async function finalizeResult(protocolId: string, hashHex = h("B"), payload = resultPayload("A")) {
+async function finalizeResult(protocolId: string, hashHex = resultHashes.replay, payload = resultPayload("A")) {
   return asApp({ operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1" }, async (client) => {
     const result = await client.query<{ research_experiment_comparison_result_identity_id: string; persistence_status: string }>(
       "select * from investing.finalize_research_experiment_comparison_result_v1($1,$2,$3::jsonb)",
@@ -165,6 +224,11 @@ async function finalizeResult(protocolId: string, hashHex = h("B"), payload = re
 describe("I5 RL-7 Experiment Comparison PG17 readiness", () => {
   it("records BLOCKED when PG17_RECONCILIATION_URL is absent", () => {
     expect(connectionString ? "READY - PG17 WILL EXECUTE" : "BLOCKED - PG17 NOT EXECUTED").toMatch(/^(READY - PG17 WILL EXECUTE|BLOCKED - PG17 NOT EXECUTED)$/u);
+  });
+
+  it("keeps every PG17 fixture identity hexadecimal and cross-test unique", () => {
+    expect(pg17FixtureIdentities.every((identity) => /^[0-9A-F]{64}$/u.test(identity))).toBe(true);
+    expect(new Set(pg17FixtureIdentities).size).toBe(pg17FixtureIdentities.length);
   });
 });
 
@@ -209,6 +273,33 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
           and privilege_type in ('INSERT','UPDATE','DELETE','TRUNCATE')
       `);
       expect(forbidden.rows[0]!.count).toBe("0");
+      const appMutation = await client.query<{ count: string }>(`
+        select count(*)::text as count from information_schema.role_table_grants
+        where table_schema='investing'
+          and table_name in (
+            'research_experiment_comparison_protocols_scientific_identities',
+            'research_experiment_comparison_results_scientific_identities'
+          )
+          and grantee = 'investing_app'
+          and privilege_type in ('UPDATE','DELETE','TRUNCATE')
+      `);
+      expect(appMutation.rows[0]!.count).toBe("0");
+      const functionSecurity = await client.query<{ proname: string; prosecdef: boolean; app_execute: boolean; service_execute: boolean }>(`
+        select p.proname, p.prosecdef,
+          has_function_privilege('investing_app', p.oid, 'EXECUTE') as app_execute,
+          has_function_privilege('service_role', p.oid, 'EXECUTE') as service_execute
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname='investing'
+          and p.proname in (
+            'persist_research_experiment_comparison_protocol_v1',
+            'finalize_research_experiment_comparison_result_v1'
+          )
+        order by p.proname
+      `);
+      expect(functionSecurity.rows).toEqual([
+        { proname: "finalize_research_experiment_comparison_result_v1", prosecdef: false, app_execute: true, service_execute: false },
+        { proname: "persist_research_experiment_comparison_protocol_v1", prosecdef: false, app_execute: true, service_execute: false },
+      ]);
     } finally {
       client.release();
     }
@@ -219,24 +310,26 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
     expect(created.persistence_status).toBe("CREATED");
     const reused = await persistProtocol();
     expect(reused).toEqual({ ...created, persistence_status: "REUSED_IDENTICAL" });
-    await expect(persistProtocol(h("1"), h("C"), protocolPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_PROTOCOL_CONFLICT");
+    await expect(persistProtocol(protocolIdentities.replay.logicalKey, testOnlyIdentityInputs.protocolReplayConflictHash, protocolPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_PROTOCOL_CONFLICT");
   });
 
   it("serializes concurrent identical and divergent protocol attempts", async () => {
     const [a, b] = await Promise.all([
-      persistProtocol(h("2"), h("D"), protocolPayload("C")),
-      persistProtocol(h("2"), h("D"), protocolPayload("C")),
+      persistProtocol(protocolIdentities.concurrentIdentical.logicalKey, protocolIdentities.concurrentIdentical.hashHex, protocolPayload("C")),
+      persistProtocol(protocolIdentities.concurrentIdentical.logicalKey, protocolIdentities.concurrentIdentical.hashHex, protocolPayload("C")),
     ]);
     expect(a.research_experiment_comparison_protocol_identity_id).toBe(b.research_experiment_comparison_protocol_identity_id);
     const divergent = await Promise.allSettled([
-      persistProtocol(h("3"), h("E"), protocolPayload("D")),
-      persistProtocol(h("3"), h("F"), protocolPayload("E")),
+      persistProtocol(protocolIdentities.concurrentDivergent.logicalKey, protocolIdentities.concurrentDivergent.firstHashHex, protocolPayload("D")),
+      persistProtocol(protocolIdentities.concurrentDivergent.logicalKey, protocolIdentities.concurrentDivergent.secondHashHex, protocolPayload("E")),
     ]);
     expect(divergent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(divergent.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const rejected = divergent.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejected?.reason).toMatchObject({ message: expect.stringContaining("RL7_EXPERIMENT_COMPARISON_PROTOCOL_CONFLICT") });
     const client = await pool.connect();
     try {
-      const count = await client.query<{ count: string }>("select count(*)::text as count from investing.research_experiment_comparison_protocols_scientific_identities where logical_comparison_key=$1", [h("3")]);
+      const count = await client.query<{ count: string }>("select count(*)::text as count from investing.research_experiment_comparison_protocols_scientific_identities where logical_comparison_key=$1", [protocolIdentities.concurrentDivergent.logicalKey]);
       expect(count.rows[0]!.count).toBe("1");
     } finally {
       client.release();
@@ -244,39 +337,85 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
   });
 
   it("finalizes result once, reuses identical result and conflicts on divergent result", async () => {
-    const protocol = await persistProtocol(h("4"), h("7"), protocolPayload("F"));
+    const protocol = await persistProtocol(protocolIdentities.resultReplay.logicalKey, protocolIdentities.resultReplay.hashHex, protocolPayload("F"));
     const created = await finalizeResult(protocol.research_experiment_comparison_protocol_identity_id);
     expect(created.persistence_status).toBe("CREATED");
     const reused = await finalizeResult(protocol.research_experiment_comparison_protocol_identity_id);
     expect(reused).toEqual({ ...created, persistence_status: "REUSED_IDENTICAL" });
-    await expect(finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, h("8"), resultPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT");
+    await expect(finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, resultHashes.replayConflict, resultPayload("B"))).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT");
+  });
+
+  it("serializes concurrent identical and divergent result finalization", async () => {
+    const identicalProtocol = await persistProtocol(protocolIdentities.resultConcurrentIdentical.logicalKey, protocolIdentities.resultConcurrentIdentical.hashHex, protocolPayload("RESULT_CONCURRENT_IDENTICAL_PROTOCOL"));
+    const identical = await Promise.all([
+      finalizeResult(identicalProtocol.research_experiment_comparison_protocol_identity_id, resultHashes.concurrentIdentical, resultPayload("RESULT_CONCURRENT_IDENTICAL")),
+      finalizeResult(identicalProtocol.research_experiment_comparison_protocol_identity_id, resultHashes.concurrentIdentical, resultPayload("RESULT_CONCURRENT_IDENTICAL")),
+    ]);
+    expect(identical[0]!.research_experiment_comparison_result_identity_id).toBe(identical[1]!.research_experiment_comparison_result_identity_id);
+    const divergentProtocol = await persistProtocol(protocolIdentities.resultConcurrentDivergent.logicalKey, protocolIdentities.resultConcurrentDivergent.hashHex, protocolPayload("RESULT_CONCURRENT_DIVERGENT_PROTOCOL"));
+    const divergent = await Promise.allSettled([
+      finalizeResult(divergentProtocol.research_experiment_comparison_protocol_identity_id, resultHashes.concurrentDivergentFirst, resultPayload("RESULT_CONCURRENT_DIVERGENT_A")),
+      finalizeResult(divergentProtocol.research_experiment_comparison_protocol_identity_id, resultHashes.concurrentDivergentSecond, resultPayload("RESULT_CONCURRENT_DIVERGENT_B")),
+    ]);
+    expect(divergent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(divergent.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const rejected = divergent.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejected?.reason).toMatchObject({ message: expect.stringContaining("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT") });
+    const client = await pool.connect();
+    try {
+      const count = await client.query<{ count: string }>("select count(*)::text as count from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [divergentProtocol.research_experiment_comparison_protocol_identity_id]);
+      expect(count.rows[0]!.count).toBe("1");
+    } finally {
+      client.release();
+    }
   });
 
   it("denies cross-tenant reuse, unauthorized insert, update and delete while preserving rows", async () => {
-    const protocol = await persistProtocol(h("5"), h("9"), protocolPayload("G"));
+    const protocol = await persistProtocol(protocolIdentities.appendOnly.logicalKey, protocolIdentities.appendOnly.hashHex, protocolPayload("G"));
+    const result = await finalizeResult(protocol.research_experiment_comparison_protocol_identity_id, resultHashes.appendOnly, resultPayload("C"));
     await expect(asApp(
       { operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1", tenantId: ids.otherTenant, membershipId: ids.otherMembership },
-      (client) => client.query("select * from investing.finalize_research_experiment_comparison_result_v1($1,$2,$3::jsonb)", [protocol.research_experiment_comparison_protocol_identity_id, h("A"), JSON.stringify(resultPayload("C"))]),
+      (client) => client.query("select * from investing.finalize_research_experiment_comparison_result_v1($1,$2,$3::jsonb)", [protocol.research_experiment_comparison_protocol_identity_id, resultHashes.appendOnly, JSON.stringify(resultPayload("C"))]),
     )).rejects.toThrow("RL7_EXPERIMENT_COMPARISON_PROTOCOL_NOT_FOUND");
 
     const client = await pool.connect();
     try {
       await client.query("begin");
       await client.query("set local role anon");
-      await expect(client.query("insert into investing.research_experiment_comparison_protocols_scientific_identities (tenant_id,principal_id,tenant_membership_id,research_investigation_id,hash_hex,logical_comparison_key,canonical_payload) values ($1,$2,$3,$4,$5,$6,'{}'::jsonb)", [ids.tenant, ids.principal, ids.membership, ids.investigation, h("B"), h("6")])).rejects.toThrow();
+      await expect(client.query("insert into investing.research_experiment_comparison_protocols_scientific_identities (tenant_id,principal_id,tenant_membership_id,research_investigation_id,hash_hex,logical_comparison_key,canonical_payload) values ($1,$2,$3,$4,$5,$6,'{}'::jsonb)", [ids.tenant, ids.principal, ids.membership, ids.investigation, testOnlyIdentityInputs.unauthorizedInsertHash, testOnlyIdentityInputs.unauthorizedInsertLogicalKey])).rejects.toThrow();
       await client.query("rollback");
 
       await expect(asApp(
         { operation: "RESEARCH_EXPERIMENT_COMPARISON_PROTOCOL_CREATE_V1" },
         (app) => app.query("update investing.research_experiment_comparison_protocols_scientific_identities set hash_hex=hash_hex where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id]),
-      )).rejects.toThrow("append-only");
+      )).rejects.toThrow(/permission denied for table/iu);
       await expect(asApp(
         { operation: "RESEARCH_EXPERIMENT_COMPARISON_PROTOCOL_CREATE_V1" },
         (app) => app.query("delete from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id]),
-      )).rejects.toThrow("append-only");
+      )).rejects.toThrow(/permission denied for table/iu);
+      await expect(asApp(
+        { operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1" },
+        (app) => app.query("update investing.research_experiment_comparison_results_scientific_identities set hash_hex=hash_hex where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id]),
+      )).rejects.toThrow(/permission denied for table/iu);
+      await expect(asApp(
+        { operation: "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1" },
+        (app) => app.query("delete from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id]),
+      )).rejects.toThrow(/permission denied for table/iu);
 
-      const count = await client.query<{ count: string }>("select count(*)::text as count from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id]);
-      expect(count.rows[0]!.count).toBe("1");
+      // The admin pool connection is the privileged PostgreSQL trigger-path caller.
+      await expect(client.query("update investing.research_experiment_comparison_protocols_scientific_identities set hash_hex=$2 where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id, testOnlyIdentityInputs.privilegedProtocolMutationHash])).rejects.toThrow("append-only");
+      await expect(client.query("delete from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1", [protocol.research_experiment_comparison_protocol_identity_id])).rejects.toThrow("append-only");
+      await expect(client.query("update investing.research_experiment_comparison_results_scientific_identities set hash_hex=$2 where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id, testOnlyIdentityInputs.privilegedResultMutationHash])).rejects.toThrow("append-only");
+      await expect(client.query("delete from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$1", [result.research_experiment_comparison_result_identity_id])).rejects.toThrow("append-only");
+
+      const persisted = await client.query<{ protocol_count: string; protocol_hash: string | null; result_count: string; result_hash: string | null }>(`
+        select
+          (select count(*)::text from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1) as protocol_count,
+          (select hash_hex from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1) as protocol_hash,
+          (select count(*)::text from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$2) as result_count,
+          (select hash_hex from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$2) as result_hash
+      `, [protocol.research_experiment_comparison_protocol_identity_id, result.research_experiment_comparison_result_identity_id]);
+      expect(persisted.rows[0]).toEqual({ protocol_count: "1", protocol_hash: protocolIdentities.appendOnly.hashHex, result_count: "1", result_hash: resultHashes.appendOnly });
     } finally {
       client.release();
     }

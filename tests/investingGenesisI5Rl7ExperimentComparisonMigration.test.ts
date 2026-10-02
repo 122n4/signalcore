@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 const repoRoot = path.resolve(__dirname, "..");
 const migrationPath = path.join(repoRoot, "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql");
 const closureMigrationPath = path.join(repoRoot, "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql");
+const rowLockCorrectionMigrationPath = path.join(repoRoot, "supabase/migrations/20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql");
 const sql = fs.readFileSync(migrationPath, "utf8");
 const closureSql = fs.readFileSync(closureMigrationPath, "utf8");
+const rowLockCorrectionSql = fs.readFileSync(rowLockCorrectionMigrationPath, "utf8");
 
 describe("I5 RL-7 experiment comparison persistence migration", () => {
   it("creates append-only protocol and result scientific identity tables", () => {
@@ -73,5 +75,18 @@ describe("I5 RL-7 experiment comparison persistence migration", () => {
     expect(closureSql).toContain("grant execute on function investing.finalize_research_experiment_comparison_result_v1(uuid, text, jsonb)");
     expect(closureSql).toContain("revoke all on function investing.persist_research_experiment_comparison_protocol_v1(text, text, jsonb)");
     expect(closureSql).toContain("revoke all on function investing.finalize_research_experiment_comparison_result_v1(uuid, text, jsonb)");
+  });
+
+  it("removes only redundant row locks while retaining advisory serialization and no mutation grant", () => {
+    expect(rowLockCorrectionSql).toContain("create or replace function investing.persist_research_experiment_comparison_protocol_v1");
+    expect(rowLockCorrectionSql).toContain("create or replace function investing.finalize_research_experiment_comparison_result_v1");
+    expect(rowLockCorrectionSql.match(/perform pg_advisory_xact_lock/gu)).toHaveLength(2);
+    const functionBodies = [...rowLockCorrectionSql.matchAll(/create or replace function[\s\S]*?as \$\$([\s\S]*?)\$\$;/gu)].map((match) => match[1]!.toLowerCase());
+    expect(functionBodies).toHaveLength(2);
+    expect(functionBodies.every((body) => !body.includes("for update"))).toBe(true);
+    expect(rowLockCorrectionSql).toContain("security invoker");
+    expect(rowLockCorrectionSql).toContain("p.prosecdef");
+    expect(rowLockCorrectionSql).toContain("privilege_type in ('UPDATE','DELETE')");
+    expect(rowLockCorrectionSql).toContain("RL-7 row-lock correction postcondition violation");
   });
 });

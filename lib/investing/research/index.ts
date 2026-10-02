@@ -363,6 +363,18 @@ export {
 } from "./experimentComparisonEvidence";
 
 export {
+  buildExperimentComparisonResultV1,
+  persistExperimentComparisonV1,
+  prepareExperimentComparisonPersistenceV1,
+  type ExperimentComparisonPersistenceSinkV1,
+  type PreparedExperimentComparisonPersistenceV1,
+  type VerifiedComparisonEvidenceV1,
+  type VerifiedComparisonExperimentNodeV1,
+  type VerifiedMetricResultSetProofV1,
+  type VerifiedScientificInputFingerprintV1,
+} from "./experimentComparisonBuilder";
+
+export {
   canonicalExperimentComparisonResultBytesV1,
   canonicalExperimentComparisonResultV1,
   hashExperimentComparisonResultV1,
