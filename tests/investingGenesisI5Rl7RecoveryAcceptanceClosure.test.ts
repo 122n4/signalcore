@@ -58,6 +58,13 @@ describe("I5 RL-7 recovery acceptance closure", () => {
 
     expect(contract).toContain("Production migration:\n`NOT APPLIED`");
     expect(contract).toContain("Supabase Production:\n`UNCHANGED BY THIS CLOSURE`");
+    expect(contract).toContain("20260928080318_investing_i5_rl7_experiment_comparison_v1.sql");
+    expect(contract).toContain("20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql");
+    expect(contract).toContain("20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql");
+    expect(contract).toContain("removes redundant row-lock/UPDATE-privilege requirements");
+    expect(contract).toContain("cumulative RL-7 migration set required before Production can be");
+    expect(contract).toContain("aligned");
+    expect(contract).not.toContain(["its", ["two", "migrations"].join(" "), "remain"].join(" "));
     expect(contract).toContain("REUSED_IDENTICAL");
     expect(contract).toContain("SECURITY INVOKER");
     expect(contract).toContain("RL-10");
@@ -79,7 +86,8 @@ describe("I5 RL-7 recovery acceptance closure", () => {
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_RECOVERY_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("RL-7 Production migrations = NOT APPLIED / SEPARATE PRODUCTION GATE REQUIRED");
-    expect(state).toContain("20260928080318 + 20260928090809");
+    expect(state).toContain("20260928080318 + 20260928090809 + 20261001090000");
+    expect(state).toContain("RL-7 Git migration correction = 20261001090000 removes redundant row-lock/UPDATE-privilege requirements");
     expect(state).toContain("101 versions");
     expect(state).toContain("20260930190148 investing_i5_rl3d_postapply_performance_remediation");
   });
