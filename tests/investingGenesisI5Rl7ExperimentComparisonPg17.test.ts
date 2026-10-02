@@ -1,7 +1,40 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+import { buildGoldenFixture } from "./support/investingEngineV2GoldenFixture";
+import { executeHistoricalBacktestV2 } from "../lib/investing/research/historicalExecutionEngineV2";
+import { hashRefV1, hashRunInputV1, type HashRefV1 } from "../lib/investing/research/canonical";
+import { hashResultV1 } from "../lib/investing/research/resultArtifacts";
+import { metricRegistryV2Requests } from "../lib/investing/research/researchMetrics";
+import { hashMetricRequestSetV1 } from "../lib/investing/research/executionMaterials";
+import { hashExperimentParametersV1 } from "../lib/investing/research/experimentParameters";
+import { hashValidationRunInputV1, hashValidationChildResultV1 } from "../lib/investing/research/validationExecution";
+import { hashValidationResultV1 } from "../lib/investing/research/validationAggregate";
+import { hashExperimentComparisonProtocolV1 } from "../lib/investing/research/experimentComparison";
+import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
+import { i5ExperimentParametersCandidateV1, i5ExperimentResolvedResearchIrV1 } from "./support/investingI5ExperimentScientificFixtures";
+
+const writerState = vi.hoisted(() => ({
+  passport: null as any,
+  context: null as any,
+  artifacts: new Map<string, Buffer>(),
+  validationBytes: new Map<string, Buffer>(),
+  passportReads: 0,
+}));
+
+vi.mock("server-only", () => ({}));
+vi.mock("../lib/investing/research/researchPassportReader", () => ({
+  readResearchPassportV1: async () => {
+    writerState.passportReads += 1;
+    return { ok: true, passport: writerState.passport };
+  },
+}));
+vi.mock("../lib/investing/authority/context", () => ({
+  isAuthorizedResearchPassportReadContext: (value: unknown) => value === writerState.context,
+  resolveAuthorizedResearchPassportReadContext: async () => ({ ok: true, context: writerState.context }),
+}));
 
 const repoRoot = path.resolve(__dirname, "..");
 const connectionString = process.env.PG17_RECONCILIATION_URL ?? "";
@@ -105,6 +138,237 @@ const pg17FixtureIdentities = [
   resultHashes.appendOnly,
   ...Object.values(testOnlyIdentityInputs),
 ] as const;
+
+
+function writerRef(domain: HashRefV1["hashDomain"], hash: string): HashRefV1 {
+  return hashRefV1({
+    hashAlgorithm: "SHA-256",
+    hashDomain: domain,
+    hashVersion: "SYNTRAKE_SHA256_V1",
+    hashHex: hash.length === 64 ? hash : hash.repeat(64),
+  });
+}
+
+function writerEngineFixture() {
+  const fixture = buildGoldenFixture();
+  const metricRequestSet = {
+    ...fixture.metricRequestSet,
+    metricRegistryVersion: "METRIC_REGISTRY_V20260927",
+    requests: metricRegistryV2Requests,
+  };
+  const runInput = {
+    ...fixture.runInput,
+    metricRegistryVersion: metricRequestSet.metricRegistryVersion,
+    metricRequestSet: writerRef("SYNTRAKE:METRIC_REQUEST_SET:V1", hashMetricRequestSetV1(metricRequestSet)),
+  };
+  const result = executeHistoricalBacktestV2({
+    ...fixture,
+    metricRequestSet,
+    runInput,
+    runInputHash: writerRef("SYNTRAKE:RUN_INPUT:V1", hashRunInputV1(runInput)),
+  });
+  if (result.ok === false) throw new Error(JSON.stringify(result));
+  return { result, runInput };
+}
+
+function concreteWriterFixture() {
+  const { result: actual, runInput } = writerEngineFixture();
+  writerState.artifacts.clear();
+  writerState.validationBytes.clear();
+  writerState.passportReads = 0;
+  writerState.context = {
+    actorKind: "USER_PRINCIPAL",
+    actorId: "pg17-rl7",
+    tenantId: ids.tenant,
+    principalId: ids.principal,
+    tenantMembershipId: ids.membership,
+    researchInvestigationId: ids.investigation,
+    operationScope: "TENANT_SCOPE",
+    sourceContext: "PURE_RESEARCH",
+    correlationId: "pg17-rl7-concrete-writer",
+    operation: "RESEARCH_PASSPORT_READ_V1",
+    capability: "RESEARCH_READ",
+  };
+
+  const parameters = [
+    i5ExperimentParametersCandidateV1(i5ExperimentResolvedResearchIrV1("0.10", "20", "0.6", "0.4")),
+    i5ExperimentParametersCandidateV1(i5ExperimentResolvedResearchIrV1("0.15", "10", "0.7", "0.3")),
+  ];
+  const experiments = parameters.map((param, index) => ({
+    researchExperimentId: `writer-experiment-${index}`,
+    experiment: writerRef("SYNTRAKE:EXPERIMENT:V1", String(index + 1)),
+    parentExperimentId: index === 0 ? null : "writer-experiment-0",
+    relation: index === 0 ? "BASELINE" : "VARIANT",
+    researchSpecRevisionId: "writer-spec",
+    researchIr: param.resolvedResearchIr.ref,
+    experimentParameters: writerRef("SYNTRAKE:EXPERIMENT_PARAMETERS:V1", hashExperimentParametersV1(param)),
+  }));
+  const inputs = experiments.map((experiment, index) => {
+    const payload = { ...runInput, experiment: experiment.experiment, researchIr: experiment.researchIr };
+    return {
+      runInputIdentityId: `writer-input-${index}`,
+      researchExperimentId: experiment.researchExperimentId,
+      experimentHashHex: experiment.experiment.hashHex,
+      runInput: writerRef("SYNTRAKE:RUN_INPUT:V1", hashRunInputV1(payload)),
+      canonicalPayload: payload,
+    };
+  });
+  const results = inputs.map((input, index) => {
+    const payload = { ...actual.resultPayload, runInput: input.runInput };
+    const descriptors = [
+      ["METRIC_RESULT_SET", payload.metricResultSet, actual.artifacts.metricResultSetBytes],
+      ["VALUATION_SERIES", payload.valuationSeries, actual.artifacts.valuationSeriesBytes],
+    ] as const;
+    return {
+      resultIdentityId: `writer-result-${index}`,
+      runInputIdentityId: input.runInputIdentityId,
+      result: writerRef("SYNTRAKE:RESULT:V1", hashResultV1(payload)),
+      canonicalPayload: payload,
+      artifacts: descriptors.map(([kind, descriptor, bytes]) => {
+        const artifactId = `writer-${index}-${kind}`;
+        writerState.artifacts.set(artifactId, bytes);
+        return { artifactId, artifactKind: kind, ...descriptor };
+      }),
+    };
+  });
+
+  const episodes = experiments.map((experiment, index) => {
+    const validationProtocol = writerRef("SYNTRAKE:VALIDATION_PROTOCOL:V1", "A");
+    const phase = (phaseName: "TRAINING" | "EVALUATION") => {
+      const run = {
+        schemaVersion: "VALIDATION_RUN_INPUT_HASH_PAYLOAD_V1" as const,
+        validationProtocol,
+        subjectExperiment: experiment.experiment,
+        subjectResearchIr: experiment.researchIr,
+        phaseResearchIr: experiment.researchIr,
+        sourceDatasetSnapshot: runInput.datasetSnapshot,
+        phaseDatasetSnapshot: runInput.datasetSnapshot,
+        foldOrdinal: "0",
+        phase: phaseName,
+        phaseWindow: actual.resultPayload.testPeriod,
+        engineId: runInput.engineId,
+        engineVersion: runInput.engineVersion,
+        metricRegistryVersion: runInput.metricRegistryVersion,
+        metricRequestSet: runInput.metricRequestSet,
+        executionConfig: runInput.executionConfig,
+      };
+      const inputRef = writerRef("SYNTRAKE:VALIDATION_RUN_INPUT:V1", hashValidationRunInputV1(run));
+      const { runInput: ignored, ...body } = actual.resultPayload;
+      void ignored;
+      const child = {
+        ...body,
+        schemaVersion: "VALIDATION_CHILD_RESULT_HASH_PAYLOAD_V1" as const,
+        validationRunInput: inputRef,
+      };
+      const identityId = `writer-child-${index}-${phaseName}`;
+      writerState.validationBytes.set(identityId, actual.artifacts.metricResultSetBytes);
+      return {
+        phase: phaseName,
+        runInput: { validationRunInput: inputRef, canonicalPayload: run },
+        childResult: {
+          researchValidationChildResultIdentityId: identityId,
+          researchValidationExecutionRunId: identityId,
+          validationChildResult: writerRef("SYNTRAKE:VALIDATION_CHILD_RESULT:V1", hashValidationChildResultV1(child)),
+          canonicalPayload: child,
+        },
+        runs: [{ researchValidationExecutionRunId: identityId, terminalState: "SUCCEEDED" }],
+      };
+    };
+    const training = phase("TRAINING");
+    const evaluation = phase("EVALUATION");
+    const aggregate = {
+      schemaVersion: "VALIDATION_RESULT_HASH_PAYLOAD_V1" as const,
+      methodology: "VALIDATION_AGGREGATION_METHODOLOGY_V1" as const,
+      validationProtocol,
+      subjectExperiment: experiment.experiment,
+      validationMode: "IS_OOS_SPLIT" as const,
+      folds: [{
+        ordinal: "0",
+        trainingRunInput: training.runInput.validationRunInput,
+        evaluationRunInput: evaluation.runInput.validationRunInput,
+        trainingChildResult: training.childResult.validationChildResult,
+        evaluationChildResult: evaluation.childResult.validationChildResult,
+      }],
+    };
+    return {
+      validationProtocol,
+      subjectExperiment: experiment.experiment,
+      state: "AGGREGATE_AVAILABLE",
+      folds: [{ ordinal: "0", training, evaluation }],
+      aggregate: {
+        validationResult: writerRef("SYNTRAKE:VALIDATION_RESULT:V1", hashValidationResultV1(aggregate)),
+        canonicalPayload: aggregate,
+      },
+    };
+  });
+
+  writerState.passport = {
+    investigation: { ...writerState.context },
+    experiments,
+    runInputs: inputs,
+    results,
+    executionRuns: results.map((row) => ({
+      runInputIdentityId: row.runInputIdentityId,
+      resultIdentityId: row.resultIdentityId,
+      terminalState: "SUCCEEDED",
+      failureReasonCode: null,
+    })),
+    validation: { availability: "AVAILABLE_RL3", episodes },
+  };
+
+  const protocol = {
+    schemaVersion: "EXPERIMENT_COMPARISON_PROTOCOL_V1" as const,
+    policyId: "ROBUSTNESS_COMPARISON_POLICY_V20260927" as const,
+    referenceExperiment: experiments[0]!.experiment,
+    subjectExperiment: experiments[1]!.experiment,
+    referenceExperimentParameters: experiments[0]!.experimentParameters,
+    subjectExperimentParameters: experiments[1]!.experimentParameters,
+    referenceResult: results[0]!.result,
+    subjectResult: results[1]!.result,
+    referenceValidationResult: episodes[0]!.aggregate.validationResult,
+    subjectValidationResult: episodes[1]!.aggregate.validationResult,
+    metricRegistryVersion: "METRIC_REGISTRY_V20260927" as const,
+    primaryMetricId: "CAGR" as const,
+    comparisonMetricIds: ["CAGR", "TRADE_COUNT", "REBALANCE_COUNT"] as const,
+    neighborhoodExperimentRefs: [experiments[1]!.experiment],
+  };
+  const sources = {
+    protocol,
+    referenceParameters: parameters[0]!,
+    subjectParameters: parameters[1]!,
+    neighborhoodResults: [{ experiment: experiments[1]!.experiment, result: results[1]!.result }],
+  };
+  return { sources };
+}
+
+function concreteWriterDatabase() {
+  return {
+    connect: async () => {
+      const client = await pool.connect();
+      await client.query("set role investing_app");
+      let released = false;
+      return {
+        query: async (sql: string, values: readonly unknown[] = []) => {
+          if (sql.startsWith("select content from investing.research_result_artifacts")) {
+            const bytes = writerState.artifacts.get(String(values[0]));
+            return { rows: bytes ? [{ content: bytes }] : [] };
+          }
+          if (sql.startsWith("select a.content_bytes from investing.research_validation_result_artifacts")) {
+            const bytes = writerState.validationBytes.get(String(values[0]));
+            return { rows: bytes ? [{ content_bytes: bytes }] : [] };
+          }
+          return client.query(sql, values as any[]);
+        },
+        release: async () => {
+          if (released) return;
+          released = true;
+          await client.query("reset role").catch(() => undefined);
+          client.release();
+        },
+      };
+    },
+  } as any;
+}
 
 let pool: Pool;
 
@@ -420,4 +684,62 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
       client.release();
     }
   });
+  it("runs the concrete writeExperimentComparisonV1 adapter end-to-end through real PostgreSQL 17 persistence", async () => {
+    const fixture = concreteWriterFixture();
+    const database = concreteWriterDatabase();
+    const first = await writeExperimentComparisonV1(
+      {
+        researchInvestigationId: ids.investigation,
+        correlationId: "pg17-rl7-concrete-writer",
+        sources: fixture.sources,
+      },
+      database,
+    );
+
+    expect(first.protocolHash).toBe(hashExperimentComparisonProtocolV1(fixture.sources.protocol));
+    expect(first.protocolHash).toMatch(/^[0-9A-F]{64}$/u);
+    expect(first.resultHash).toMatch(/^[0-9A-F]{64}$/u);
+    expect(first.protocolIdentityId).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(first.resultIdentityId).toMatch(/^[0-9a-f-]{36}$/u);
+
+    const second = await writeExperimentComparisonV1(
+      {
+        researchInvestigationId: ids.investigation,
+        correlationId: "pg17-rl7-concrete-writer-replay",
+        sources: fixture.sources,
+      },
+      database,
+    );
+
+    expect(second.protocolIdentityId).toBe(first.protocolIdentityId);
+    expect(second.resultIdentityId).toBe(first.resultIdentityId);
+    expect(second.protocolHash).toBe(first.protocolHash);
+    expect(second.resultHash).toBe(first.resultHash);
+    expect(writerState.passportReads).toBeGreaterThanOrEqual(2);
+
+    const client = await pool.connect();
+    try {
+      const persisted = await client.query<{
+        protocol_count: string;
+        result_count: string;
+        protocol_hash: string | null;
+        result_hash: string | null;
+      }>(`
+        select
+          (select count(*)::text from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1) as protocol_count,
+          (select count(*)::text from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$2) as result_count,
+          (select hash_hex from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1) as protocol_hash,
+          (select hash_hex from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$2) as result_hash
+      `, [first.protocolIdentityId, first.resultIdentityId]);
+      expect(persisted.rows[0]).toEqual({
+        protocol_count: "1",
+        result_count: "1",
+        protocol_hash: first.protocolHash,
+        result_hash: first.resultHash,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
 });
