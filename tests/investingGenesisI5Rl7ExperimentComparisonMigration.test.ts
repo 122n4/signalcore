@@ -6,9 +6,11 @@ const repoRoot = path.resolve(__dirname, "..");
 const migrationPath = path.join(repoRoot, "supabase/migrations/20260928080318_investing_i5_rl7_experiment_comparison_v1.sql");
 const closureMigrationPath = path.join(repoRoot, "supabase/migrations/20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql");
 const rowLockCorrectionMigrationPath = path.join(repoRoot, "supabase/migrations/20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql");
+const searchPathRemediationMigrationPath = path.join(repoRoot, "supabase/migrations/20261002202439_investing_i5_rl7_preproduction_function_search_path.sql");
 const sql = fs.readFileSync(migrationPath, "utf8");
 const closureSql = fs.readFileSync(closureMigrationPath, "utf8");
 const rowLockCorrectionSql = fs.readFileSync(rowLockCorrectionMigrationPath, "utf8");
+const searchPathRemediationSql = fs.readFileSync(searchPathRemediationMigrationPath, "utf8");
 
 describe("I5 RL-7 experiment comparison persistence migration", () => {
   it("creates append-only protocol and result scientific identity tables", () => {
@@ -88,5 +90,24 @@ describe("I5 RL-7 experiment comparison persistence migration", () => {
     expect(rowLockCorrectionSql).toContain("p.prosecdef");
     expect(rowLockCorrectionSql).toContain("privilege_type in ('UPDATE','DELETE')");
     expect(rowLockCorrectionSql).toContain("RL-7 row-lock correction postcondition violation");
+  });
+
+  it("adds a forward-only pre-production search_path remediation without changing logic or grants", () => {
+    expect(searchPathRemediationSql).toContain("if current_user <> 'postgres'");
+    expect(searchPathRemediationSql).toContain("set local role investing_owner");
+    expect(searchPathRemediationSql).toContain("alter function investing.reject_research_experiment_comparison_update_delete()");
+    expect(searchPathRemediationSql).toContain("alter function investing.persist_research_experiment_comparison_protocol_v1(text, text, jsonb)");
+    expect(searchPathRemediationSql).toContain("alter function investing.finalize_research_experiment_comparison_result_v1(uuid, text, jsonb)");
+    expect(searchPathRemediationSql.match(/set search_path = pg_catalog/gu)).toHaveLength(3);
+    expect(searchPathRemediationSql).toContain("p.proconfig is distinct from array['search_path=pg_catalog']");
+    expect(searchPathRemediationSql).toContain("p.prosecdef");
+    expect(searchPathRemediationSql).toContain("pg_advisory_xact_lock");
+    expect(searchPathRemediationSql).toContain("like '%for update%'");
+    expect(searchPathRemediationSql).toContain("has_function_privilege('investing_app', p.oid, 'EXECUTE')");
+    expect(searchPathRemediationSql).toContain("has_function_privilege('public', p.oid, 'EXECUTE')");
+    expect(searchPathRemediationSql).not.toContain("grant execute");
+    expect(searchPathRemediationSql).not.toContain("security definer");
+    expect(searchPathRemediationSql).not.toContain("create policy");
+    expect(searchPathRemediationSql).not.toContain("alter table");
   });
 });

@@ -61,7 +61,11 @@ describe("I5 RL-7 recovery acceptance closure", () => {
     expect(contract).toContain("20260928080318_investing_i5_rl7_experiment_comparison_v1.sql");
     expect(contract).toContain("20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql");
     expect(contract).toContain("20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql");
+    expect(contract).toContain("20261002202439_investing_i5_rl7_preproduction_function_search_path.sql");
     expect(contract).toContain("removes redundant row-lock/UPDATE-privilege requirements");
+    expect(contract).toContain("pre-production Security Advisor remediation");
+    expect(contract).toContain("search_path=pg_catalog");
+    expect(contract).toContain("does not\nchange persistence logic, authority semantics, grants, RLS, table structure or\npayload contracts");
     expect(contract).toContain("cumulative RL-7 migration set required before Production can be");
     expect(contract).toContain("aligned");
     expect(contract).not.toContain(["its", ["two", "migrations"].join(" "), "remain"].join(" "));
@@ -86,8 +90,9 @@ describe("I5 RL-7 recovery acceptance closure", () => {
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-7_RECOVERY_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).toContain("RL-7 Production migrations = NOT APPLIED / SEPARATE PRODUCTION GATE REQUIRED");
-    expect(state).toContain("20260928080318 + 20260928090809 + 20261001090000");
+    expect(state).toContain("20260928080318 + 20260928090809 + 20261001090000 + 20261002202439");
     expect(state).toContain("RL-7 Git migration correction = 20261001090000 removes redundant row-lock/UPDATE-privilege requirements");
+    expect(state).toContain("RL-7 pre-production security remediation = 20261002202439 fixes function search_path=pg_catalog");
     expect(state).toContain("101 versions");
     expect(state).toContain("20260930190148 investing_i5_rl3d_postapply_performance_remediation");
   });

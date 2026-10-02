@@ -1208,7 +1208,7 @@ I5 RL-7 recovery/acceptance evidence:
   `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1 = OWNER_PAYLOAD_EXACT`;
   `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1 = OWNER_PAYLOAD_EXACT`.
 - candidate migration set in Git:
-  `20260928080318 + 20260928090809 + 20261001090000`.
+  `20260928080318 + 20260928090809 + 20261001090000 + 20261002202439`.
 - candidate migration set note:
   `20261001090000` is the accepted Git correction to the RL-7 persistence
   functions. It removes redundant row-lock/UPDATE-privilege requirements while
@@ -1216,6 +1216,11 @@ I5 RL-7 recovery/acceptance evidence:
   protection, append-only behavior and `SECURITY INVOKER` semantics. It is part
   of the cumulative RL-7 migration set required before Production can be
   considered aligned.
+- pre-production security remediation:
+  `20261002202439` fixes deterministic function `search_path=pg_catalog` for
+  the RL-7 append-only trigger function and both persistence functions. It does
+  not change persistence logic, authority semantics, grants, RLS, table
+  structure or payload contracts.
 - Production migration set:
   `NOT APPLIED`.
 - Supabase Production mutation by this closure:
@@ -1336,8 +1341,9 @@ Current production closure is:
 - `RL-3D Git/Production alignment = PASS`.
 - `RL-3D Production scientific/financial row mutation = NONE`.
 - `RL-7 = RECOVERY_CANDIDATE / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED / NOT_ACCEPTED_YET`.
-- `RL-7 Git migrations = 20260928080318 + 20260928090809 + 20261001090000`.
+- `RL-7 Git migrations = 20260928080318 + 20260928090809 + 20261001090000 + 20261002202439`.
 - `RL-7 Git migration correction = 20261001090000 removes redundant row-lock/UPDATE-privilege requirements from the persistence functions while retaining advisory locking, unique-constraint conflict protection, append-only behavior and SECURITY INVOKER semantics`.
+- `RL-7 pre-production security remediation = 20261002202439 fixes function search_path=pg_catalog for the RL-7 append-only trigger and persistence functions without changing persistence logic, authority semantics, grants, RLS, tables or payload contracts`.
 - `RL-7 Production migrations = NOT APPLIED / SEPARATE PRODUCTION GATE REQUIRED`.
 - `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 - `RL-5 Production migration = APPLIED`.

@@ -123,7 +123,8 @@ The candidate Git persistence set is:
 
 - `20260928080318_investing_i5_rl7_experiment_comparison_v1.sql`;
 - `20260928090809_investing_i5_rl7_experiment_comparison_persistence_closure.sql`;
-- `20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql`.
+- `20261001090000_investing_i5_rl7_remove_redundant_row_locks.sql`;
+- `20261002202439_investing_i5_rl7_preproduction_function_search_path.sql`.
 
 These migrations are intended to establish append-only protocol/result scientific identities,
 RLS + FORCE RLS, minimal table grants and internal persistence functions.
@@ -133,6 +134,11 @@ retaining advisory transaction locking, unique-constraint conflict protection,
 append-only behavior and `SECURITY INVOKER` semantics. It is part of the
 cumulative RL-7 migration set required before Production can be considered
 aligned.
+`20261002202439` is a pre-production Security Advisor remediation. It fixes
+the deterministic function `search_path` for the append-only trigger function
+and both persistence functions by setting `search_path=pg_catalog`. It does not
+change persistence logic, authority semantics, grants, RLS, table structure or
+payload contracts.
 
 The candidate internal functions are:
 
@@ -208,10 +214,10 @@ evidence and must not be reported as a fresh exact-candidate PG17 PASS.
 This closure performs no Supabase mutation and no financial/scientific row
 mutation.
 
-RL-7 is a Git recovery candidate, but its cumulative migration set remains
-`NOT APPLIED` to Supabase Production. Production application is a separate gate
-requiring exact migration scope, rehearsal, migration-ledger verification and
-post-apply audit.
+RL-7 is a Git recovery candidate, but its cumulative migration set, including
+the pre-production function `search_path` remediation, remains `NOT APPLIED` to
+Supabase Production. Production application is a separate gate requiring exact
+migration scope, rehearsal, migration-ledger verification and post-apply audit.
 
 Until that gate passes:
 
