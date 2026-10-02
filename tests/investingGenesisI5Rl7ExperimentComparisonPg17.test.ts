@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "..");
 const connectionString = process.env.PG17_RECONCILIATION_URL ?? "";
@@ -420,4 +420,63 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
       client.release();
     }
   });
+
+  it("runs the concrete writeExperimentComparisonV1 adapter end-to-end through real PostgreSQL 17 persistence", async () => {
+    const fixture = concreteWriterFixture();
+    const database = concreteWriterDatabase();
+    const first = await writeExperimentComparisonV1(
+      {
+        researchInvestigationId: ids.investigation,
+        correlationId: "pg17-rl7-concrete-writer",
+        sources: fixture.sources,
+      },
+      database,
+    );
+
+    expect(first.protocolHash).toBe(hashExperimentComparisonProtocolV1(fixture.sources.protocol));
+    expect(first.protocolHash).toMatch(/^[0-9A-F]{64}$/u);
+    expect(first.resultHash).toMatch(/^[0-9A-F]{64}$/u);
+    expect(first.protocolIdentityId).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(first.resultIdentityId).toMatch(/^[0-9a-f-]{36}$/u);
+
+    const second = await writeExperimentComparisonV1(
+      {
+        researchInvestigationId: ids.investigation,
+        correlationId: "pg17-rl7-concrete-writer-replay",
+        sources: fixture.sources,
+      },
+      database,
+    );
+
+    expect(second.protocolIdentityId).toBe(first.protocolIdentityId);
+    expect(second.resultIdentityId).toBe(first.resultIdentityId);
+    expect(second.protocolHash).toBe(first.protocolHash);
+    expect(second.resultHash).toBe(first.resultHash);
+    expect(writerState.passportReads).toBeGreaterThanOrEqual(2);
+
+    const client = await pool.connect();
+    try {
+      const persisted = await client.query<{
+        protocol_count: string;
+        result_count: string;
+        protocol_hash: string | null;
+        result_hash: string | null;
+      }>(\`
+        select
+          (select count(*)::text from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1) as protocol_count,
+          (select count(*)::text from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$2) as result_count,
+          (select hash_hex from investing.research_experiment_comparison_protocols_scientific_identities where research_experiment_comparison_protocol_identity_id=$1) as protocol_hash,
+          (select hash_hex from investing.research_experiment_comparison_results_scientific_identities where research_experiment_comparison_result_identity_id=$2) as result_hash
+      \`, [first.protocolIdentityId, first.resultIdentityId]);
+      expect(persisted.rows[0]).toEqual({
+        protocol_count: "1",
+        result_count: "1",
+        protocol_hash: first.protocolHash,
+        result_hash: first.resultHash,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
 });
