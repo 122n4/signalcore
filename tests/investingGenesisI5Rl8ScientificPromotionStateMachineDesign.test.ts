@@ -662,15 +662,25 @@ VALIDATION_FAILED -> REJECTED
     expect(snapshotFields).not.toContain("metricResultSet");
     const assessment = compact(section("Transition-Specific Evidence Snapshot"));
     for (const rule of [
-      "Resolving `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` means validating its complete canonical payload, including `consumedEvidence`, `criterionOutcomes` and `outcome`",
+      "consumedEvidence: exact canonical accepted RL-3D ConsumedEvidenceV1 array",
+      "consumedEvidence: ConsumedEvidenceV1[]",
       "RL-8 MUST NOT validate only the top-level HashRefs while ignoring `consumedEvidence`",
+      "RL-8 must not reconstruct a reduced Assessment Result from `ConsumedEvidenceRefV1` identities alone",
       "Assessment Result HashRef cryptographically commits to the exact evidence used to obtain PASS, FAIL or INSUFFICIENT_EVIDENCE",
       "Metric Result Set V2 identity is consumed transitively through the accepted RL-3D Validation Assessment Result canonical `consumedEvidence`",
+      "`ConsumedEvidenceV1` is the actual scientific evidence serialized inside the accepted Validation Assessment Result",
+      "`ConsumedEvidenceRefV1` is the deterministic derived identity/reference form used by RL-3D where required",
+      "They are NOT interchangeable",
+      "This identity is DERIVED from the accepted MetricResultSetEvidenceV2 inside Assessment Result `consumedEvidence` and is NOT a replacement for the full `consumedEvidence` payload",
       "RL-8 does not reserialize or invent a competing metric identity",
       "required Metric Result Set evidence cannot be reconstructed exactly from the accepted Assessment Result, RL-8 fails closed",
     ]) expect(assessment).toContain(rule);
+    expect(assessment).not.toContain("ConsumedEvidenceRefV1 array");
     for (const descriptorField of [
-      "kind: METRIC_RESULT_SET_DESCRIPTOR",
+      "kind = METRIC_RESULT_SET_DESCRIPTOR_V2",
+      "descriptor: MetricResultSetEvidenceV2",
+      "ConsumedEvidenceRefV1 = {",
+      "kind = METRIC_RESULT_SET_DESCRIPTOR",
       "artifactSchemaVersion: METRIC_RESULT_SET_V2",
       "contentSha256",
       "contentByteLength",
@@ -681,6 +691,8 @@ VALIDATION_FAILED -> REJECTED
     expect(gates).toContain("`GATE_METRIC_RESULT_SET_V2` remains an RL-8 gate");
     expect(gates).toContain("`consumedEvidence` must contain the exact accepted Metric Result Set descriptor evidence");
     expect(gates).toContain("metricRegistryVersion = METRIC_REGISTRY_V20260927");
+    expect(gates).toContain("`kind = METRIC_RESULT_SET_DESCRIPTOR_V2`");
+    expect(gates).toContain("`descriptor.artifactSchemaVersion = METRIC_RESULT_SET_V2`");
   });
 
   it("binds the complete exact evidence selectors for all eleven gates into the protocol", () => {

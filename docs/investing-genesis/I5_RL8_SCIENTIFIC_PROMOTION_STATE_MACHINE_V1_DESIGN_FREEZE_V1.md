@@ -121,7 +121,7 @@ validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1>
 subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>
 subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
 metricRegistryVersion: METRIC_REGISTRY_V20260927
-consumedEvidence: byte-sorted complete accepted RL-3D ConsumedEvidenceRefV1 array
+consumedEvidence: exact canonical accepted RL-3D ConsumedEvidenceV1 array
 criterionOutcomes: accepted RL-3D criterion outcome array
 outcome: PASS | FAIL | INSUFFICIENT_EVIDENCE
 ```
@@ -138,11 +138,25 @@ corrupt, incompatible or unauthorized Assessment authority fails closed with no
 authoritative RL-8 transition.
 
 Resolving `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` means validating its
-complete canonical payload, including `consumedEvidence`, `criterionOutcomes`
-and `outcome`. RL-8 MUST NOT validate only the top-level HashRefs while
-ignoring `consumedEvidence`. The Assessment Result HashRef cryptographically
-commits to the exact evidence used to obtain PASS, FAIL or
-INSUFFICIENT_EVIDENCE, and that exact canonical payload is scientific authority.
+complete canonical payload exactly as accepted by RL-3D:
+
+```text
+assessmentProtocol
+validationProtocol
+validationResult
+subjectExperiment
+subjectResearchIr
+metricRegistryVersion
+consumedEvidence: ConsumedEvidenceV1[]
+criterionOutcomes
+outcome
+```
+
+RL-8 MUST NOT validate only the top-level HashRefs while ignoring
+`consumedEvidence`. The Assessment Result HashRef cryptographically commits to
+the exact evidence used to obtain PASS, FAIL or INSUFFICIENT_EVIDENCE, and that
+exact canonical payload is scientific authority. RL-8 must not reconstruct a
+reduced Assessment Result from `ConsumedEvidenceRefV1` identities alone.
 
 The accepted Assessment Result must exactly bind:
 
@@ -162,14 +176,26 @@ closed with no authoritative RL-8 transition.
 Metric Result Set V2 identity is consumed transitively through the accepted
 RL-3D Validation Assessment Result canonical `consumedEvidence`; it is not an
 RL-8 HashRef domain. `METRIC_RESULT_SET_V2` is an artifact-schema evidence
-class, NOT a canonical HashRef domain. Its exact descriptor identities are
-contained inside accepted RL-3D Assessment Result `consumedEvidence`.
-Each consumed Metric Result Set descriptor MUST be represented as accepted
-RL-3D `ConsumedEvidenceRefV1`:
+class, NOT a canonical HashRef domain. `ConsumedEvidenceV1` is the actual
+scientific evidence serialized inside the accepted Validation Assessment Result.
+`ConsumedEvidenceRefV1` is the deterministic derived identity/reference form
+used by RL-3D where required. They are NOT interchangeable.
+
+For Metric Result Set evidence, RL-3D `consumedEvidence` contains:
 
 ```text
 {
-  kind: METRIC_RESULT_SET_DESCRIPTOR,
+  kind = METRIC_RESULT_SET_DESCRIPTOR_V2,
+  descriptor: MetricResultSetEvidenceV2
+}
+```
+
+The descriptor/evidence object is the accepted RL-3D structure. The
+deterministic identity of one consumed Metric Result Set is derived as:
+
+```text
+ConsumedEvidenceRefV1 = {
+  kind = METRIC_RESULT_SET_DESCRIPTOR,
   artifactSchemaVersion: METRIC_RESULT_SET_V2,
   contentSha256,
   contentByteLength,
@@ -177,6 +203,10 @@ RL-3D `ConsumedEvidenceRefV1`:
   ownerResult: HashRefV1
 }
 ```
+
+This identity is DERIVED from the accepted MetricResultSetEvidenceV2 inside
+Assessment Result `consumedEvidence` and is NOT a replacement for the full
+`consumedEvidence` payload.
 
 RL-8 does not reserialize or invent a competing metric identity. If the
 required Metric Result Set evidence cannot be reconstructed exactly from the
@@ -418,11 +448,12 @@ accepted RL-3D Assessment Result canonical payload. The Assessment Result must
 prove `metricRegistryVersion = METRIC_REGISTRY_V20260927`, and its
 `consumedEvidence` must contain the exact accepted Metric Result Set descriptor
 evidence required by the accepted Assessment Protocol. Every consumed Metric
-Result Set descriptor must use `artifactSchemaVersion = METRIC_RESULT_SET_V2`
-with exact `artifactSchemaVersion`, `contentSha256`, `contentByteLength`,
-`recordCount` and `ownerResult`. Missing metric descriptor evidence, unknown
-metric version or incompatible artifact schema fails closed and cannot become
-zero or PASS.
+Result Set entry required by the accepted Assessment Protocol must use
+`kind = METRIC_RESULT_SET_DESCRIPTOR_V2`, and
+`descriptor.artifactSchemaVersion = METRIC_RESULT_SET_V2`. The accepted
+descriptor/content evidence must remain exactly consistent with RL-3D. Missing
+metric descriptor evidence, unknown metric version or incompatible artifact
+schema fails closed and cannot become zero or PASS.
 
 ## RL-7 Consumption Semantics
 
