@@ -56,7 +56,6 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "PROMOTION_ELIGIBLE",
       "REJECTED",
       "SUPERSEDED",
-      "INVALIDATED",
       "DRAFT_RESEARCH -> EXECUTED",
       "EXECUTED -> VALIDATION_PASSED",
       "VALIDATION_PASSED -> PROMOTION_ELIGIBLE",
@@ -75,10 +74,10 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
   it("proves no state labelled terminal has an outgoing admitted transition", () => {
     const contract = read(contractPath);
     const outgoingStates = new Set(transitionGraph(contract).map((transition) => transition.from));
-    for (const state of ["PROMOTION_ELIGIBLE", "REJECTED", "INVALIDATED"]) {
+    for (const state of ["PROMOTION_ELIGIBLE", "REJECTED"]) {
       expect(outgoingStates.has(state)).toBe(true);
     }
-    expect(contract).toContain("`PROMOTION_ELIGIBLE`, `REJECTED` and `INVALIDATED` are non-terminal");
+    expect(contract).toContain("`PROMOTION_ELIGIBLE` and `REJECTED` are non-terminal");
     expect(outgoingStates.has("SUPERSEDED")).toBe(false);
     expect(contract).toContain("V1 has no truly terminal state token in the state vocabulary");
     expect(contract).toContain("SUPERSEDED` has no outgoing transition in the V1 graph");
@@ -350,7 +349,7 @@ describe("RL-8 recovery structural invariants", () => {
       ["INSUFFICIENT_EVIDENCE", "R", "R", ...Array(6).fill("O")],
       ["VALIDATION_FAILED", ...Array(8).fill("R")],
       ["VALIDATION_PASSED", ...Array(8).fill("R")],
-      ...["PROMOTION_ELIGIBLE", "REJECTED", "INVALIDATED", "SUPERSEDED"]
+      ...["PROMOTION_ELIGIBLE", "REJECTED", "SUPERSEDED"]
         .map((state) => [state, ...Array(8).fill("COPY")]),
     ]);
     expect(normalized).toContain("Stage A binds the new accepted evidenceSnapshot for the same stable subject");
@@ -358,7 +357,7 @@ describe("RL-8 recovery structural invariants", () => {
     expect(normalized).toContain("Those fields belong to accepted RL-7 comparison evidence, not SCIENTIFIC_PROMOTION_SUBJECT_V1");
   });
 
-  it("freezes all and only the 27 admitted graph edges", () => {
+  it("freezes all and only the 19 admitted graph edges", () => {
     const expected = [
       "DRAFT_RESEARCH -> EXECUTED",
       "EXECUTED -> INSUFFICIENT_EVIDENCE",
@@ -373,20 +372,12 @@ describe("RL-8 recovery structural invariants", () => {
       "REJECTED -> INSUFFICIENT_EVIDENCE",
       "REJECTED -> VALIDATION_FAILED",
       "REJECTED -> VALIDATION_PASSED",
-      "INVALIDATED -> INSUFFICIENT_EVIDENCE",
-      "INVALIDATED -> VALIDATION_FAILED",
-      "INVALIDATED -> VALIDATION_PASSED",
       "VALIDATION_FAILED -> REJECTED",
       "VALIDATION_PASSED -> PROMOTION_ELIGIBLE",
       "EXECUTED -> SUPERSEDED",
       "INSUFFICIENT_EVIDENCE -> SUPERSEDED",
       "PROMOTION_ELIGIBLE -> SUPERSEDED",
       "REJECTED -> SUPERSEDED",
-      "INVALIDATED -> SUPERSEDED",
-      "EXECUTED -> INVALIDATED",
-      "INSUFFICIENT_EVIDENCE -> INVALIDATED",
-      "PROMOTION_ELIGIBLE -> INVALIDATED",
-      "REJECTED -> INVALIDATED",
     ];
     expect(transitionGraph(contract).map(({ from, to }) => `${from} -> ${to}`)).toEqual(expected);
     expect(contract).not.toContain("VALIDATION_PASSED -> REJECTED");
@@ -424,7 +415,7 @@ resultingState = EXECUTED`);
     expect(insufficientRule).toContain("ROBUSTNESS_MIXED");
     expect(insufficientRule).toContain("ROBUSTNESS_INSUFFICIENT_EVIDENCE");
     expect(block("Decision Precedence").split("\n")).toEqual([
-      "EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED", "INVALIDATED",
+      "EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED",
     ]);
     expect(compact(decision)).toContain("same protocol and same evidence snapshot");
     expect(compact(decision)).toContain("Copy its gateOutcomes exactly");
@@ -456,9 +447,7 @@ predecessorState = DRAFT_RESEARCH
 resultingState = EXECUTED
 gateOutcomes = []
 transitionReasons = []
-lifecycleEvidence = []
 supersedes = null
-invalidates = null
 rejectedTransition = null
 supersededByChain = null`);
     expect(normalized).toContain("All six later evidence fields MUST be null, even when those artifacts already exist");
@@ -488,12 +477,11 @@ supersededByChain = null`);
     const rows = lifecycle.split("\n").filter((line) => /^\| [A-Z_]+ \|/.test(line))
       .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
     expect(rows).toEqual([
-      ["ROOT", "null", "null", "null", "null", "null", "ROOT_EXACT", "[]", "[]", "[]"],
-      ["STAGE_A", "P", "null", "null", "null", "null", "NEW_ACCEPTED", "COMPLETE_GATES", "EVALUATION_REASONS", "[]"],
-      ["PROMOTION_ELIGIBLE", "P", "null", "null", "null", "null", "COPY", "COPY", "[]", "[]"],
-      ["REJECTED", "P", "null", "null", "P", "null", "COPY", "COPY", "COPY", "[]"],
-      ["INVALIDATED", "P", "null", "P", "null", "null", "COPY", "COPY", "INVALIDATION_REASONS", "REQUIRED_NONEMPTY"],
-      ["SUPERSEDED", "P", "P", "null", "null", "REQUIRED_CHAIN", "COPY", "COPY", "[SUPERSEDED_EVIDENCE]", "[]"],
+      ["ROOT", "null", "null", "null", "null", "ROOT_EXACT", "[]", "[]"],
+      ["STAGE_A", "P", "null", "null", "null", "NEW_ACCEPTED", "COMPLETE_GATES", "EVALUATION_REASONS"],
+      ["PROMOTION_ELIGIBLE", "P", "null", "null", "null", "COPY", "COPY", "[]"],
+      ["REJECTED", "P", "null", "P", "null", "COPY", "COPY", "COPY"],
+      ["SUPERSEDED", "P", "P", "null", "REQUIRED_CHAIN", "COPY", "COPY", "[SUPERSEDED_EVIDENCE]"],
     ]);
     for (const rule of [
       "P = exact non-null predecessorTransition HashRef in the same chain",
@@ -530,7 +518,7 @@ VALIDATION_FAILED -> REJECTED
       expect(graph.filter((edge) => edge.from === from)).toEqual([{ from, to }]);
     }
     expect(graph.filter((edge) => edge.to === "SUPERSEDED").map((edge) => edge.from))
-      .toEqual(["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED", "INVALIDATED"]);
+      .toEqual(["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"]);
     expect(graph.filter((edge) => edge.from === "SUPERSEDED")).toEqual([]);
   });
 
@@ -543,75 +531,67 @@ VALIDATION_FAILED -> REJECTED
     return JSON.parse(match[1]) as unknown[];
   }
 
-  it("admits exactly the four stable invalidation sources and excludes every other state", () => {
+  it("freezes the exact eight states and removes post-hoc invalidation authority", () => {
+    expect(block("State Vocabulary").split("\n")).toEqual([
+      "DRAFT_RESEARCH", "EXECUTED", "INSUFFICIENT_EVIDENCE", "VALIDATION_FAILED",
+      "VALIDATION_PASSED", "PROMOTION_ELIGIBLE", "REJECTED", "SUPERSEDED",
+    ]);
+    for (const removed of ["INVALIDATED", "invalidates", "lifecycleEvidence", "invalidationEvidenceDomains", "invalidationCauseReasons"])
+      expect(contract).not.toContain(removed);
     const graph = transitionGraph(contract);
-    expect(graph).toHaveLength(27);
-    expect(graph.filter(({ to }) => to === "INVALIDATED").map(({ from }) => from))
-      .toEqual(["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"]);
-    for (const from of ["DRAFT_RESEARCH", "INVALIDATED", "SUPERSEDED", "VALIDATION_PASSED", "VALIDATION_FAILED"]) {
-      expect(graph).not.toContainEqual({ from, to: "INVALIDATED" });
-    }
+    expect(graph).toHaveLength(19);
+    const sources = ["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"];
+    expect(block("Decision Precedence").split("\n")).toEqual(sources);
+    for (const outcome of ["INSUFFICIENT_EVIDENCE", "VALIDATION_FAILED", "VALIDATION_PASSED"])
+      expect(graph.filter(({ to }) => to === outcome).map(({ from }) => from)).toEqual(sources);
+    expect(graph.filter(({ to }) => to === "SUPERSEDED").map(({ from }) => from)).toEqual(sources);
     expect(compact(section("Transition Graph"))).toContain("All other transitions are forbidden and fail closed with `FORBIDDEN_TRANSITION`");
   });
 
-  it("binds the exact closed invalidation domains and causes into protocol identity", () => {
-    expect(protocolArray("invalidationEvidenceDomains")).toEqual([
-      "METRIC_RESULT_SET_V2",
-      "SYNTRAKE:EVIDENCE_OBJECT:V1",
-      "SYNTRAKE:EXPERIMENT:V1",
-      "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1",
-      "SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1",
-      "SYNTRAKE:EXPERIMENT_PARAMETERS:V1",
-      "SYNTRAKE:RESEARCH_IR:V1",
-      "SYNTRAKE:RESULT:V1",
-      "SYNTRAKE:RUN_INPUT:V1",
-      "SYNTRAKE:VALIDATION_PROTOCOL:V1",
-      "SYNTRAKE:VALIDATION_RESULT:V1",
-    ]);
-    const causes = protocolArray("invalidationCauseReasons");
-    expect(causes).toEqual([
-      "CORRUPTED_EVIDENCE",
-      "INCOMPATIBLE_ARTIFACT_SCHEMA",
-      "INCOMPATIBLE_ENGINE_VERSION",
-      "INCOMPATIBLE_METRIC_REGISTRY",
-      "INCOMPATIBLE_PROTOCOL_VERSION",
-      "INCOMPATIBLE_SCHEMA_VERSION",
-      "UNAUTHORIZED_EVIDENCE",
-      "WRONG_LINEAGE",
-    ]);
-    const reasons = section("Gate Outcomes And Reasons").match(/The closed reason\/error vocabulary is exactly:\n\n```text\n([\s\S]*?)\n```/)?.[1].split("\n");
-    for (const cause of causes) expect(reasons).toContain(cause);
-    expect(causes).not.toContain("AUTHORITY_FAILURE");
-    expect(causes).not.toContain("INVALIDATED_EVIDENCE");
+  it("fails closed on history integrity errors without manufacturing scientific state", () => {
+    const rules = compact(section("Integrity And Reconstruction Failures"));
+    for (const rule of [
+      "RL-8 V1 does not own a generic post-hoc integrity-finding authority",
+      "Corrupt, unauthorized, malformed or incompatible accepted-history reads remain FAIL-CLOSED",
+      "They do not automatically create a scientific transition or a lifecycle state",
+      "No replacement proof object or third scientific domain is introduced",
+      "CORRUPTED_EVIDENCE, UNAUTHORIZED_EVIDENCE, AUTHORITY_FAILURE, WRONG_LINEAGE and INCOMPATIBLE_* codes remain evaluation/read errors",
+      "NO authoritative transition is produced",
+      "MUST produce no active/current scientific projection and an explicit corruption/fail-closed error",
+      "Availability is unavailable due to corruption",
+      "No timestamp fallback. No nearest-valid transition selection. No caller preference. No mutation of history.",
+      "This error cannot be converted into an authoritative lifecycle transition",
+    ]) expect(rules).toContain(rule);
+    const reasons = section("Gate Outcomes And Reasons");
+    for (const reason of ["CORRUPTED_EVIDENCE", "UNAUTHORIZED_EVIDENCE", "AUTHORITY_FAILURE", "WRONG_LINEAGE", "INCOMPATIBLE_SCHEMA_VERSION", "INCOMPATIBLE_PROTOCOL_VERSION"])
+      expect(reasons).toContain(reason);
   });
 
-  it("requires immutable accepted proof and a specific cause without rewriting history", () => {
-    const proof = compact(section("Immutable Invalidation Proof"));
-    expect(block("Transition Artifact Payload")).toContain(
-      "lifecycleEvidence: byte-sorted unique array of admitted HashRef envelopes",
-    );
-    for (const rule of [
-      "lifecycleEvidence is part of the transition canonical preimage",
-      "It creates no third RL-8 scientific domain",
-      "it is REQUIRED_NONEMPTY only for INVALIDATED",
-      "immutable accepted scientific evidence proving the later invalidation",
-      "Unknown domain, empty/missing lifecycleEvidence, unaccepted, unresolvable, wrong-tenant, wrong-Investigation or wrong-lineage invalidation evidence fails closed: NO authoritative INVALIDATED transition is produced",
-      "must satisfy exact tenant/Investigation/subject lineage authority",
-      "A nonempty array alone does not establish proof",
-      "INVALIDATED_EVIDENCE alone is forbidden",
-      "AUTHORITY_FAILURE remains fail-closed and does NOT itself create an INVALIDATED transition",
-      "MUST NOT modify or rewrite the invalidated historical transition",
-    ]) expect(proof).toContain(rule);
-    expect(block("Immutable Invalidation Proof")).toBe(`predecessorTransition = P
-predecessorState = P.resultingState
-evidenceSnapshot = exact COPY of P
-gateOutcomes = exact COPY of P
-invalidates = P
-supersedes = null
-rejectedTransition = null
-supersededByChain = null
-lifecycleEvidence = REQUIRED_NONEMPTY
-transitionReasons = byte-sorted unique [INVALIDATED_EVIDENCE + >=1 exact invalidation cause]`);
+  it("binds literal closed decision precedence tokens to exact ordered semantics", () => {
+    const tokens = [
+      "FAIL_CLOSED_INTEGRITY_AUTHORITY_LINEAGE", "FORBIDDEN_TRANSITION",
+      "INSUFFICIENT_EVIDENCE_OUTCOME", "VALIDATION_FAILED_OUTCOME", "VALIDATION_PASSED_OUTCOME",
+    ];
+    expect(protocolArray("decisionPrecedence")).toEqual(tokens);
+    expect(block("Scientific Promotion Protocol Payload")).not.toContain("exact ordered V1 decision table token list");
+    const table = section("Decision Precedence").match(/The V1 decision table is evaluated in this exact order:\n\n```text\n([\s\S]*?)\n```/)?.[1] ?? "";
+    expect([...table.matchAll(/^([1-5])\. ([A-Z_]+)$/gm)].map((match) => match[2])).toEqual(tokens);
+    const rules = table.trim().split(/\n\n/);
+    expect(rules).toHaveLength(5);
+    const outcomes = [
+      "-> fail closed; no authoritative promotion state is produced",
+      "-> fail closed with FORBIDDEN_TRANSITION",
+      "-> INSUFFICIENT_EVIDENCE", "-> VALIDATION_FAILED", "-> VALIDATION_PASSED",
+    ];
+    rules.forEach((rule, i) => {
+      expect(rule).toContain(`${i + 1}. ${tokens[i]}`);
+      expect(rule).toContain(outcomes[i]);
+    });
+    expect(rules[0]).toContain("corrupted evidence, authority failure");
+    expect(rules[2]).toContain("missing required evidence");
+    expect(rules[3]).toContain("ROBUSTNESS_DEGRADED or ROBUSTNESS_UNSTABLE");
+    expect(rules[4]).toContain("ROBUSTNESS_STABLE, and every required gate is PASS");
+    expect(compact(section("Decision Precedence"))).toContain("The first applicable rule wins");
   });
 
   it("binds the complete exact evidence selectors for all ten gates into the protocol", () => {
@@ -643,10 +623,6 @@ transitionReasons = byte-sorted unique [INVALIDATED_EVIDENCE + >=1 exact invalid
     const gateIds = mapping.map(({ gateId }) => gateId);
     expect(gateIds).toEqual(byteSort(block("Promotion Eligibility Gates").split("\n")));
     for (const { selectors } of mapping) expect(selectors).toEqual(byteSort([...new Set(selectors)]));
-    for (const name of ["invalidationEvidenceDomains", "invalidationCauseReasons"]) {
-      const values = protocolArray(name) as string[];
-      expect(values).toEqual(byteSort([...new Set(values)]));
-    }
     const rules = compact(section("Deterministic Gate Evidence Mapping"));
     for (const rule of [
       "part of the protocol canonical preimage",
@@ -655,7 +631,6 @@ transitionReasons = byte-sorted unique [INVALIDATED_EVIDENCE + >=1 exact invalid
       "No extra evidence HashRef may be attached; no non-null mapped HashRef may be omitted",
       "Same canonical subject + snapshot + protocol MUST produce identical gate evidence arrays",
       "Different gate evidence arrays for those same inputs are malformed and fail closed",
-      "lifecycleEvidence is never a gate evidence input",
       "Root gates remain []; Stage B and lifecycle copy predecessor gates exactly",
     ]) expect(rules).toContain(rule);
     expect(block("Transition Artifact Payload")).toContain("determined exactly by protocol.gateEvidenceMapping");
