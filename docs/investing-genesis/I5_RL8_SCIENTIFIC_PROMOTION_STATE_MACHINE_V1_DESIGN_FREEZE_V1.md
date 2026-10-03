@@ -89,6 +89,8 @@ evidenceSnapshot = {
   evidenceObject: HashRef<SYNTRAKE:EVIDENCE_OBJECT:V1> | null,
   validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1> | null,
   validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1> | null,
+  validationAssessmentProtocol: HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1> | null,
+  validationAssessmentResult: HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1> | null,
   metricResultSet: HashRef<METRIC_RESULT_SET_V2> | null,
   robustnessComparisonProtocol: HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1> | null,
   robustnessComparisonResult: HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1> | null
@@ -103,40 +105,104 @@ All non-null references must resolve to accepted artifacts with exact domains,
 canonical bytes and compatible subject/result lineage in the authority scope.
 A validationResult requires its exact validationProtocol; a comparison result
 requires its exact robustnessComparisonProtocol. Protocols may exist without
-results. The accepted RL-7 comparison protocol/result lineage consumed by RL-8
+results. RL-8 also consumes the unique authoritative accepted RL-3D Validation
+Assessment authority:
+
+```text
+SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1
+SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1
+```
+
+The accepted Validation Assessment Result binds exactly:
+
+```text
+assessmentProtocol: HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1>
+validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1>
+validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1>
+subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>
+subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
+metricRegistryVersion: METRIC_REGISTRY_V20260927
+outcome: PASS | FAIL | INSUFFICIENT_EVIDENCE
+```
+
+RL-8 MUST consume only the unique authoritative accepted Validation Assessment
+Result for the exact Validation lineage and its unique authoritative Assessment
+Protocol. It MUST NOT infer scientific PASS/FAIL directly from
+`SYNTRAKE:VALIDATION_RESULT:V1`. The raw validationProtocol and validationResult
+HashRefs remain exact scientific lineage consumed and cross-checked through the
+Assessment Result, but their raw structural state does not directly decide
+scientific PASS/FAIL. Never choose Assessment authority by latest, timestamp,
+favorable outcome, caller preference or insertion order. Missing, ambiguous,
+corrupt, incompatible or unauthorized Assessment authority fails closed with no
+authoritative RL-8 transition.
+
+The accepted Assessment Result must exactly bind:
+
+```text
+assessmentResult.assessmentProtocol == evidenceSnapshot.validationAssessmentProtocol
+assessmentResult.validationProtocol == evidenceSnapshot.validationProtocol
+assessmentResult.validationResult == evidenceSnapshot.validationResult
+assessmentResult.subjectExperiment == subject.subjectExperiment
+assessmentResult.subjectResearchIr == subject.subjectResearchIr
+assessmentResult.metricRegistryVersion == METRIC_REGISTRY_V20260927
+```
+
+Its Assessment Protocol must be the unique authoritative accepted protocol for
+the exact logical assessment protocol key frozen by RL-3D. Any mismatch fails
+closed with no authoritative RL-8 transition.
+
+The accepted RL-7 comparison protocol/result lineage consumed by RL-8
 must bind its subjectResult and subjectValidationResult to the exact result and
 validationResult HashRefs in this transition evidenceSnapshot. Those fields
 belong to accepted RL-7 comparison evidence, not SCIENTIFIC_PROMOTION_SUBJECT_V1.
 Unavailable artifacts are null, not invented HashRefs; known corrupt or
 unauthorized evidence fails closed rather than being laundered into absence.
 
+The exact snapshot contains these 10 mandatory keys:
+
+```text
+runInput
+result
+evidenceObject
+validationProtocol
+validationResult
+validationAssessmentProtocol
+validationAssessmentResult
+metricResultSet
+robustnessComparisonProtocol
+robustnessComparisonResult
+```
+
 Exact presence rules by resulting state (R = required non-null; N = null;
 O = accepted HashRef or explicit null; COPY = exact predecessor snapshot):
 
-| resultingState | runInput | result | evidenceObject | validationProtocol | validationResult | metricResultSet | robustnessComparisonProtocol | robustnessComparisonResult |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DRAFT_RESEARCH | N | N | N | N | N | N | N | N |
-| EXECUTED | R | R | N | N | N | N | N | N |
-| INSUFFICIENT_EVIDENCE | R | R | O | O | O | O | O | O |
-| VALIDATION_FAILED | R | R | R | R | R | R | R | R |
-| VALIDATION_PASSED | R | R | R | R | R | R | R | R |
-| PROMOTION_ELIGIBLE | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
-| REJECTED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
-| SUPERSEDED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| resultingState | runInput | result | evidenceObject | validationProtocol | validationResult | validationAssessmentProtocol | validationAssessmentResult | metricResultSet | robustnessComparisonProtocol | robustnessComparisonResult |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DRAFT_RESEARCH | N | N | N | N | N | N | N | N | N | N |
+| EXECUTED | R | R | N | N | N | N | N | N | N | N |
+| INSUFFICIENT_EVIDENCE | R | R | O | R | R | R | R | O | O | O |
+| VALIDATION_FAILED | R | R | R | R | R | R | R | R | R | R |
+| VALIDATION_PASSED | R | R | R | R | R | R | R | R | R | R |
+| PROMOTION_ELIGIBLE | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| REJECTED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| SUPERSEDED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
 
 DRAFT_RESEARCH is only an upstream observation; it is never a resulting RL-8
 transition. Its row describes absence before execution, not a persisted root.
 EXECUTED binds only accepted runInput/result lineage and the stable scientific
-subject under the exact protocol. All six later evidence fields MUST be null,
+subject under the exact protocol. All eight later evidence fields MUST be null,
 even when those artifacts already exist. Creating the same root before or after
 validation, metrics or RL-7 evidence exists MUST produce identical canonical
 bytes and scientific identity. Future evidence cannot change root identity.
 Stage A binds the new accepted evidenceSnapshot for the same stable subject.
 A compatible accepted execution rerun may supply new runInput/result HashRefs;
 all snapshot lineage must resolve consistently. It never rewrites the root. INSUFFICIENT_EVIDENCE can have all references
-present when accepted evidence is incomplete or RL-7 is MIXED/INSUFFICIENT.
-Missing required evaluation evidence takes precedence over failure, hence both
-VALIDATION_FAILED and VALIDATION_PASSED require the full snapshot.
+present when accepted non-assessment evidence is incomplete or RL-7 is
+MIXED/INSUFFICIENT. Missing or ambiguous Validation Assessment authority is not
+ordinary scientific insufficiency; accepted RL-3D authority requires fail closed
+before any RL-8 transition. Missing required non-assessment evaluation evidence
+takes precedence over failure, hence both VALIDATION_FAILED and
+VALIDATION_PASSED require the full snapshot.
 Lifecycle COPY preserves historical evidence; it does not recertify that
 evidence. Integrity failures during historical reads fail closed without a
 scientific transition. Supersession replacement evidence belongs to the referenced
@@ -183,19 +249,12 @@ active/current projection = deterministic read model reconstructed from history
 truly terminal state = state with no admitted outgoing transition
 ```
 
-V1 has no truly terminal state token in the state vocabulary. The design freeze
-therefore uses the explicit terminal marker:
-
-```text
-NO_TERMINAL_STATE_IN_V1
-```
-
-A state MUST NOT be described as terminal if an admitted outgoing transition
-exists. `PROMOTION_ELIGIBLE` and `REJECTED` are non-terminal
+`SUPERSEDED` is the only terminal promotion-chain state in V1. It has zero
+admitted outgoing V1 transitions. This does not prevent a future protocol
+version from introducing different semantics. Future V2 does not mutate V1
+history. A state MUST NOT be described as terminal if an admitted outgoing
+transition exists. `PROMOTION_ELIGIBLE` and `REJECTED` are non-terminal
 historical states because the V1 graph admits outgoing transitions from them.
-`SUPERSEDED` has no outgoing transition in the V1 graph and is an inactive
-lifecycle endpoint for one chain, but it is not called a terminal state token
-because a later V2 graph may define a successor without mutating V1 history.
 
 One promotion chain key is deterministically knowable before the first
 transition is created and is identified by:
@@ -302,6 +361,7 @@ GATE_SUBJECT_IDENTITY
 GATE_ACCEPTED_EXECUTION_RESULT
 GATE_EVIDENCE_OBJECT_BINDING
 GATE_VALIDATION_RESULT
+GATE_VALIDATION_ASSESSMENT
 GATE_METRIC_RESULT_SET_V2
 GATE_RL7_ROBUSTNESS_COMPARISON
 GATE_LINEAGE_INTEGRITY
@@ -314,10 +374,13 @@ RL-7 evidence is mandatory in V1 for successful Stage A evaluation, not root cre
 `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1` HashRef for the same tenant,
 Investigation and subject Experiment.
 
-Accepted Validation Result evidence is mandatory for successful Stage A evaluation. A failed validation gate
-produces `VALIDATION_FAILED`; missing, incomplete or unavailable validation
-produces `INSUFFICIENT_EVIDENCE`; corrupt or incompatible validation fails
-closed.
+Accepted Validation Result evidence is mandatory as raw lineage/binding for
+successful Stage A evaluation. `GATE_VALIDATION_RESULT` proves exact accepted
+raw Validation lineage/binding. It does not independently produce scientific
+PASS/FAIL authority. `GATE_VALIDATION_ASSESSMENT` carries the accepted RL-3D
+scientific assessment authority. Missing, ambiguous, corrupt, incompatible or
+unauthorized Assessment authority fails closed with no authoritative RL-8
+transition.
 
 The Metric Result Set must be `METRIC_RESULT_SET_V2` under
 `METRIC_REGISTRY_V20260927`. Missing metric evidence, unknown metric version or
@@ -360,6 +423,9 @@ MISSING_SUBJECT
 MISSING_RESULT
 MISSING_EVIDENCE_OBJECT
 MISSING_VALIDATION_RESULT
+MISSING_VALIDATION_ASSESSMENT_AUTHORITY
+AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY
+INCOMPATIBLE_VALIDATION_ASSESSMENT
 MISSING_METRIC_RESULT_SET
 MISSING_RL7_COMPARISON
 INCOMPLETE_VALIDATION
@@ -392,6 +458,11 @@ UNKNOWN_RL7_CLASSIFICATION
 No free-form string carries scientific authority. Human-readable text may be
 attached as non-authoritative explanatory metadata only if the authoritative
 closed code is present.
+`MISSING_VALIDATION_ASSESSMENT_AUTHORITY`,
+`AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY` and
+`INCOMPATIBLE_VALIDATION_ASSESSMENT` are fail-closed error codes. They MUST NOT
+be converted into INSUFFICIENT_EVIDENCE, VALIDATION_FAILED or
+PROMOTION_ELIGIBLE. No authoritative transition is emitted.
 
 ## Gate Outcome Completeness
 
@@ -458,25 +529,29 @@ The V1 decision table is evaluated in this exact order:
    -> fail closed with FORBIDDEN_TRANSITION
 
 3. INSUFFICIENT_EVIDENCE_OUTCOME
-   missing required evidence, unavailable required predecessor evidence,
-   incomplete validation, ROBUSTNESS_MIXED,
+   missing required non-assessment evidence, unavailable required predecessor
+   evidence, incomplete validation, Validation Assessment INSUFFICIENT_EVIDENCE,
+   ROBUSTNESS_MIXED,
    ROBUSTNESS_INSUFFICIENT_EVIDENCE or superseded evidence
    -> INSUFFICIENT_EVIDENCE
 
 4. VALIDATION_FAILED_OUTCOME
-   accepted Validation Result explicitly fails or RL-7 classification is
-   ROBUSTNESS_DEGRADED or ROBUSTNESS_UNSTABLE
+   Validation Assessment FAIL or RL-7 classification is ROBUSTNESS_DEGRADED
+   or ROBUSTNESS_UNSTABLE
    -> VALIDATION_FAILED
 
 5. VALIDATION_PASSED_OUTCOME
-   accepted Validation Result passes and RL-7 classification is
-   ROBUSTNESS_STABLE, and every required gate is PASS
+   Validation Assessment PASS, RL-7 classification is ROBUSTNESS_STABLE,
+   and every required RL-8 gate is PASS
    -> VALIDATION_PASSED
 ```
 
 Integrity, authority and lineage incompatibility dominate eligibility. Then
 insufficient evidence (including RL-7 MIXED/INSUFFICIENT even if validation
-failed). Then explicit failed scientific gates. Only after every
+assessment failed). Missing accepted Assessment authority, ambiguous Assessment
+authority or corrupt/incompatible/unauthorized Assessment authority fails
+closed with no authoritative RL-8 transition. Then explicit failed scientific
+gates. Only after every
 required gate returns `PASS` may `PROMOTION_ELIGIBLE` exist.
 
 ### Stage B - Promotion Eligibility Materialization
@@ -595,6 +670,7 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
   requiredEvidenceClasses: [
     "EXECUTION_RESULT",
     "EVIDENCE_OBJECT",
+    "VALIDATION_ASSESSMENT_RESULT",
     "VALIDATION_RESULT",
     "METRIC_RESULT_SET_V2",
     "RL7_EXPERIMENT_COMPARISON_RESULT"
@@ -602,10 +678,72 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
   compatibleMetricRegistryVersion: "METRIC_REGISTRY_V20260927",
   requiredRl7PolicyId: "ROBUSTNESS_COMPARISON_POLICY_V20260927",
   rl7Required: true,
-  stateVocabulary: byte-sorted array of closed V1 states,
-  gateVocabulary: byte-sorted array of closed V1 gate ids,
-  gateStatusVocabulary: byte-sorted array of closed V1 gate statuses,
-  reasonVocabulary: byte-sorted array of closed V1 reason/error codes,
+  stateVocabulary: [
+    "DRAFT_RESEARCH",
+    "EXECUTED",
+    "INSUFFICIENT_EVIDENCE",
+    "PROMOTION_ELIGIBLE",
+    "REJECTED",
+    "SUPERSEDED",
+    "VALIDATION_FAILED",
+    "VALIDATION_PASSED"
+  ],
+  gateVocabulary: [
+    "GATE_ACCEPTED_EXECUTION_RESULT",
+    "GATE_AUTHORITY_AND_TENANCY",
+    "GATE_EVIDENCE_COMPLETENESS",
+    "GATE_EVIDENCE_OBJECT_BINDING",
+    "GATE_LINEAGE_INTEGRITY",
+    "GATE_METRIC_RESULT_SET_V2",
+    "GATE_PROTOCOL_COMPATIBILITY",
+    "GATE_RL7_ROBUSTNESS_COMPARISON",
+    "GATE_SUBJECT_IDENTITY",
+    "GATE_VALIDATION_ASSESSMENT",
+    "GATE_VALIDATION_RESULT"
+  ],
+  gateStatusVocabulary: [
+    "FAIL",
+    "INCOMPATIBLE_EVIDENCE",
+    "INSUFFICIENT_EVIDENCE",
+    "PASS",
+    "UNAVAILABLE"
+  ],
+  reasonVocabulary: [
+    "AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY",
+    "AUTHORITY_FAILURE",
+    "CORRUPTED_EVIDENCE",
+    "DIVERGENT_EXISTING_IDENTITY",
+    "FAILED_ROBUSTNESS_GATE",
+    "FAILED_VALIDATION",
+    "FORBIDDEN_TRANSITION",
+    "INCOMPATIBLE_ARTIFACT_SCHEMA",
+    "INCOMPATIBLE_ENGINE_VERSION",
+    "INCOMPATIBLE_METRIC_REGISTRY",
+    "INCOMPATIBLE_PROTOCOL_VERSION",
+    "INCOMPATIBLE_SCHEMA_VERSION",
+    "INCOMPATIBLE_VALIDATION_ASSESSMENT",
+    "INCOMPLETE_VALIDATION",
+    "INSUFFICIENT_RL7_EVIDENCE",
+    "MALFORMED_HASHREF",
+    "MALFORMED_PROTOCOL",
+    "MALFORMED_TRANSITION",
+    "MISSING_EVIDENCE_OBJECT",
+    "MISSING_METRIC_RESULT_SET",
+    "MISSING_RESULT",
+    "MISSING_RL7_COMPARISON",
+    "MISSING_SUBJECT",
+    "MISSING_VALIDATION_ASSESSMENT_AUTHORITY",
+    "MISSING_VALIDATION_RESULT",
+    "SUPERSEDED_EVIDENCE",
+    "UNAUTHORIZED_EVIDENCE",
+    "UNKNOWN_GATE",
+    "UNKNOWN_RL7_CLASSIFICATION",
+    "UNKNOWN_STATE",
+    "WRONG_HASHREF_DOMAIN",
+    "WRONG_INVESTIGATION",
+    "WRONG_LINEAGE",
+    "WRONG_TENANT"
+  ],
   gateEvidenceMapping: [
     {
       "gateId": "GATE_ACCEPTED_EXECUTION_RESULT",
@@ -627,6 +765,8 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
         "evidenceSnapshot.robustnessComparisonProtocol",
         "evidenceSnapshot.robustnessComparisonResult",
         "evidenceSnapshot.runInput",
+        "evidenceSnapshot.validationAssessmentProtocol",
+        "evidenceSnapshot.validationAssessmentResult",
         "evidenceSnapshot.validationProtocol",
         "evidenceSnapshot.validationResult"
       ]
@@ -646,6 +786,8 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
         "evidenceSnapshot.robustnessComparisonProtocol",
         "evidenceSnapshot.robustnessComparisonResult",
         "evidenceSnapshot.runInput",
+        "evidenceSnapshot.validationAssessmentProtocol",
+        "evidenceSnapshot.validationAssessmentResult",
         "evidenceSnapshot.validationProtocol",
         "evidenceSnapshot.validationResult",
         "subject.subjectExperiment",
@@ -665,6 +807,8 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
         "evidenceSnapshot.metricResultSet",
         "evidenceSnapshot.result",
         "evidenceSnapshot.robustnessComparisonProtocol",
+        "evidenceSnapshot.validationAssessmentProtocol",
+        "evidenceSnapshot.validationAssessmentResult",
         "evidenceSnapshot.validationProtocol",
         "transition.protocol"
       ]
@@ -685,6 +829,13 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
       ]
     },
     {
+      "gateId": "GATE_VALIDATION_ASSESSMENT",
+      "selectors": [
+        "evidenceSnapshot.validationAssessmentProtocol",
+        "evidenceSnapshot.validationAssessmentResult"
+      ]
+    },
+    {
       "gateId": "GATE_VALIDATION_RESULT",
       "selectors": [
         "evidenceSnapshot.validationProtocol",
@@ -699,7 +850,27 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
     "VALIDATION_FAILED_OUTCOME",
     "VALIDATION_PASSED_OUTCOME"
   ],
-  transitionGraph: byte-sorted array of { from, to } pairs
+  transitionGraph: [
+    { "from": "DRAFT_RESEARCH", "to": "EXECUTED" },
+    { "from": "EXECUTED", "to": "INSUFFICIENT_EVIDENCE" },
+    { "from": "EXECUTED", "to": "VALIDATION_FAILED" },
+    { "from": "EXECUTED", "to": "VALIDATION_PASSED" },
+    { "from": "INSUFFICIENT_EVIDENCE", "to": "INSUFFICIENT_EVIDENCE" },
+    { "from": "INSUFFICIENT_EVIDENCE", "to": "VALIDATION_FAILED" },
+    { "from": "INSUFFICIENT_EVIDENCE", "to": "VALIDATION_PASSED" },
+    { "from": "PROMOTION_ELIGIBLE", "to": "INSUFFICIENT_EVIDENCE" },
+    { "from": "PROMOTION_ELIGIBLE", "to": "VALIDATION_FAILED" },
+    { "from": "PROMOTION_ELIGIBLE", "to": "VALIDATION_PASSED" },
+    { "from": "REJECTED", "to": "INSUFFICIENT_EVIDENCE" },
+    { "from": "REJECTED", "to": "VALIDATION_FAILED" },
+    { "from": "REJECTED", "to": "VALIDATION_PASSED" },
+    { "from": "VALIDATION_FAILED", "to": "REJECTED" },
+    { "from": "VALIDATION_PASSED", "to": "PROMOTION_ELIGIBLE" },
+    { "from": "EXECUTED", "to": "SUPERSEDED" },
+    { "from": "INSUFFICIENT_EVIDENCE", "to": "SUPERSEDED" },
+    { "from": "PROMOTION_ELIGIBLE", "to": "SUPERSEDED" },
+    { "from": "REJECTED", "to": "SUPERSEDED" }
+  ]
 }
 ```
 
@@ -804,7 +975,7 @@ arbitrarily populated. All non-root predecessorState values equal P.resultingSta
 | REJECTED | P | null | P | null | COPY | COPY | COPY |
 | SUPERSEDED | P | P | null | REQUIRED_CHAIN | COPY | COPY | [SUPERSEDED_EVIDENCE] |
 
-ROOT_EXACT is the EXECUTED presence row: runInput/result required, six remaining
+ROOT_EXACT is the EXECUTED presence row: runInput/result required, eight remaining
 snapshot fields null. NEW_ACCEPTED follows the resulting Stage A state's presence
 row and exact authority/lineage rules. COMPLETE_GATES and EVALUATION_REASONS are
 the Gate Outcome Completeness rules. REJECTED copies the failed predecessor's

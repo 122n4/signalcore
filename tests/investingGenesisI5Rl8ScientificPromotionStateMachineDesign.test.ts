@@ -62,13 +62,14 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "PROMOTION_ELIGIBLE -> SUPERSEDED",
       "All other transitions are forbidden",
       "Regression is not mutation",
-      "NO_TERMINAL_STATE_IN_V1",
+      "`SUPERSEDED` is the only terminal promotion-chain state in V1",
       "A state MUST NOT be described as terminal",
       "admitted outgoing transition",
       "Historical `PROMOTION_ELIGIBLE` remains",
       "immutable evidence even when it is no longer the active/current projection",
     ]) expect(contract).toContain(token);
     expect(contract).not.toContain("Terminal states in V1 are");
+    expect(contract).not.toContain("NO_TERMINAL_STATE_IN_V1");
   });
 
   it("proves no state labelled terminal has an outgoing admitted transition", () => {
@@ -79,8 +80,8 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
     }
     expect(contract).toContain("`PROMOTION_ELIGIBLE` and `REJECTED` are non-terminal");
     expect(outgoingStates.has("SUPERSEDED")).toBe(false);
-    expect(contract).toContain("V1 has no truly terminal state token in the state vocabulary");
-    expect(contract).toContain("SUPERSEDED` has no outgoing transition in the V1 graph");
+    expect(contract).toContain("`SUPERSEDED` is the only terminal promotion-chain state in V1");
+    expect(compact(contract)).toContain("It has zero admitted outgoing V1 transitions");
   });
 
   it("freezes promotion-eligible gates and RL-7 consumption semantics", () => {
@@ -91,8 +92,13 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "GATE_ACCEPTED_EXECUTION_RESULT",
       "GATE_EVIDENCE_OBJECT_BINDING",
       "GATE_VALIDATION_RESULT",
+      "GATE_VALIDATION_ASSESSMENT",
       "GATE_METRIC_RESULT_SET_V2",
       "GATE_RL7_ROBUSTNESS_COMPARISON",
+      "SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1",
+      "SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1",
+      "RL-8 MUST consume only the unique authoritative accepted Validation Assessment",
+      "MUST NOT infer scientific PASS/FAIL directly from",
       "RL-7 evidence is mandatory in V1",
       "ROBUSTNESS_STABLE -> permits further promotion evaluation",
       "ROBUSTNESS_MIXED -> INSUFFICIENT_EVIDENCE",
@@ -111,14 +117,18 @@ describe("I5 RL-8 Scientific Promotion State Machine V1 design freeze", () => {
       "INCOMPATIBLE_EVIDENCE",
       "UNAVAILABLE",
       "MISSING_RL7_COMPARISON",
+      "MISSING_VALIDATION_ASSESSMENT_AUTHORITY",
+      "AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY",
+      "INCOMPATIBLE_VALIDATION_ASSESSMENT",
       "INCOMPATIBLE_METRIC_REGISTRY",
       "WRONG_HASHREF_DOMAIN",
       "DIVERGENT_EXISTING_IDENTITY",
       "No free-form string carries scientific authority",
       "The V1 decision table is evaluated in this exact order",
       "Integrity, authority and lineage incompatibility dominate eligibility",
-      "every required gate is PASS",
+      "every required RL-8 gate is PASS",
       "`PROMOTION_ELIGIBLE` exist",
+      "No authoritative transition is emitted",
     ]) expect(contract).toContain(token);
   });
 
@@ -331,11 +341,13 @@ describe("RL-8 recovery structural invariants", () => {
       ["evidenceObject", "SYNTRAKE:EVIDENCE_OBJECT:V1"],
       ["validationProtocol", "SYNTRAKE:VALIDATION_PROTOCOL:V1"],
       ["validationResult", "SYNTRAKE:VALIDATION_RESULT:V1"],
+      ["validationAssessmentProtocol", "SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1"],
+      ["validationAssessmentResult", "SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1"],
       ["metricResultSet", "METRIC_RESULT_SET_V2"],
       ["robustnessComparisonProtocol", "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1"],
       ["robustnessComparisonResult", "SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1"],
     ]);
-    expect(snapshot.trim().split("\n")).toHaveLength(10);
+    expect(fields).toHaveLength(10);
     expect(block("Transition Artifact Payload")).toContain(
       "evidenceSnapshot: exact nested evidenceSnapshot structure defined above");
     expect(normalized).toContain("Every key is required; absence is explicit null");
@@ -344,14 +356,17 @@ describe("RL-8 recovery structural invariants", () => {
       .filter((line) => /^\| [A-Z_]+ \|/.test(line))
       .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
     expect(rows).toEqual([
-      ["DRAFT_RESEARCH", ...Array(8).fill("N")],
-      ["EXECUTED", "R", "R", ...Array(6).fill("N")],
-      ["INSUFFICIENT_EVIDENCE", "R", "R", ...Array(6).fill("O")],
-      ["VALIDATION_FAILED", ...Array(8).fill("R")],
-      ["VALIDATION_PASSED", ...Array(8).fill("R")],
+      ["DRAFT_RESEARCH", ...Array(10).fill("N")],
+      ["EXECUTED", "R", "R", ...Array(8).fill("N")],
+      ["INSUFFICIENT_EVIDENCE", "R", "R", "O", "R", "R", "R", "R", "O", "O", "O"],
+      ["VALIDATION_FAILED", ...Array(10).fill("R")],
+      ["VALIDATION_PASSED", ...Array(10).fill("R")],
       ...["PROMOTION_ELIGIBLE", "REJECTED", "SUPERSEDED"]
-        .map((state) => [state, ...Array(8).fill("COPY")]),
+        .map((state) => [state, ...Array(10).fill("COPY")]),
     ]);
+    expect(normalized).toContain("The exact snapshot contains these 10 mandatory keys");
+    expect(normalized).toContain("Missing or ambiguous Validation Assessment authority is not ordinary scientific insufficiency");
+    expect(normalized).toContain("accepted RL-3D authority requires fail closed before any RL-8 transition");
     expect(normalized).toContain("Stage A binds the new accepted evidenceSnapshot for the same stable subject");
     expect(normalized).toContain("The accepted RL-7 comparison protocol/result lineage consumed by RL-8 must bind its subjectResult and subjectValidationResult to the exact result and validationResult HashRefs in this transition evidenceSnapshot");
     expect(normalized).toContain("Those fields belong to accepted RL-7 comparison evidence, not SCIENTIFIC_PROMOTION_SUBJECT_V1");
@@ -450,7 +465,7 @@ transitionReasons = []
 supersedes = null
 rejectedTransition = null
 supersededByChain = null`);
-    expect(normalized).toContain("All six later evidence fields MUST be null, even when those artifacts already exist");
+    expect(normalized).toContain("All eight later evidence fields MUST be null, even when those artifacts already exist");
     expect(normalized).toContain("Creating the same root before or after validation, metrics or RL-7 evidence exists MUST produce identical canonical bytes and scientific identity");
   });
 
@@ -588,19 +603,63 @@ VALIDATION_FAILED -> REJECTED
       expect(rule).toContain(outcomes[i]);
     });
     expect(rules[0]).toContain("corrupted evidence, authority failure");
-    expect(rules[2]).toContain("missing required evidence");
-    expect(rules[3]).toContain("ROBUSTNESS_DEGRADED or ROBUSTNESS_UNSTABLE");
-    expect(rules[4]).toContain("ROBUSTNESS_STABLE, and every required gate is PASS");
+    expect(rules[2]).toContain("missing required non-assessment evidence");
+    expect(rules[2]).toContain("Validation Assessment INSUFFICIENT_EVIDENCE");
+    expect(compact(rules[3])).toContain("ROBUSTNESS_DEGRADED or ROBUSTNESS_UNSTABLE");
+    expect(rules[3]).toContain("Validation Assessment FAIL");
+    expect(rules[4]).toContain("Validation Assessment PASS");
+    expect(rules[4]).toContain("ROBUSTNESS_STABLE");
+    expect(rules[4]).toContain("every required RL-8 gate is PASS");
     expect(compact(section("Decision Precedence"))).toContain("The first applicable rule wins");
+    expect(table).not.toContain("accepted Validation Result explicitly fails");
+    expect(table).not.toContain("accepted Validation Result passes");
   });
 
-  it("binds the complete exact evidence selectors for all ten gates into the protocol", () => {
+  it("materializes literal canonical protocol arrays without placeholders", () => {
+    const payload = block("Scientific Promotion Protocol Payload");
+    for (const placeholder of [
+      "stateVocabulary: byte-sorted array",
+      "gateVocabulary: byte-sorted array",
+      "gateStatusVocabulary: byte-sorted array",
+      "reasonVocabulary: byte-sorted array",
+      "transitionGraph: byte-sorted array",
+    ]) expect(payload).not.toContain(placeholder);
+    expect(protocolArray("stateVocabulary")).toEqual([
+      "DRAFT_RESEARCH", "EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE",
+      "REJECTED", "SUPERSEDED", "VALIDATION_FAILED", "VALIDATION_PASSED",
+    ]);
+    expect(protocolArray("gateVocabulary")).toEqual([
+      "GATE_ACCEPTED_EXECUTION_RESULT",
+      "GATE_AUTHORITY_AND_TENANCY",
+      "GATE_EVIDENCE_COMPLETENESS",
+      "GATE_EVIDENCE_OBJECT_BINDING",
+      "GATE_LINEAGE_INTEGRITY",
+      "GATE_METRIC_RESULT_SET_V2",
+      "GATE_PROTOCOL_COMPATIBILITY",
+      "GATE_RL7_ROBUSTNESS_COMPARISON",
+      "GATE_SUBJECT_IDENTITY",
+      "GATE_VALIDATION_ASSESSMENT",
+      "GATE_VALIDATION_RESULT",
+    ]);
+    expect(protocolArray("gateStatusVocabulary")).toEqual([
+      "FAIL", "INCOMPATIBLE_EVIDENCE", "INSUFFICIENT_EVIDENCE", "PASS", "UNAVAILABLE",
+    ]);
+    expect(protocolArray("reasonVocabulary")).toContain("MISSING_VALIDATION_ASSESSMENT_AUTHORITY");
+    expect(protocolArray("reasonVocabulary")).toContain("AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY");
+    expect(protocolArray("reasonVocabulary")).toContain("INCOMPATIBLE_VALIDATION_ASSESSMENT");
+    expect(protocolArray("transitionGraph")).toEqual(transitionGraph(contract));
+    expect(protocolArray("requiredEvidenceClasses")).toContain("VALIDATION_ASSESSMENT_RESULT");
+  });
+
+  it("binds the complete exact evidence selectors for all eleven gates into the protocol", () => {
     const mapping = protocolArray("gateEvidenceMapping") as Array<{ gateId: string; selectors: string[] }>;
     const subject = ["subject.subjectExperiment", "subject.subjectExperimentParameters", "subject.subjectResearchIr"];
     const snapshot = [
       "evidenceSnapshot.evidenceObject", "evidenceSnapshot.metricResultSet", "evidenceSnapshot.result",
       "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.robustnessComparisonResult",
-      "evidenceSnapshot.runInput", "evidenceSnapshot.validationProtocol", "evidenceSnapshot.validationResult",
+      "evidenceSnapshot.runInput", "evidenceSnapshot.validationAssessmentProtocol",
+      "evidenceSnapshot.validationAssessmentResult", "evidenceSnapshot.validationProtocol",
+      "evidenceSnapshot.validationResult",
     ];
     expect(mapping).toEqual([
       { gateId: "GATE_ACCEPTED_EXECUTION_RESULT", selectors: ["evidenceSnapshot.result", "evidenceSnapshot.runInput"] },
@@ -611,12 +670,16 @@ VALIDATION_FAILED -> REJECTED
       { gateId: "GATE_METRIC_RESULT_SET_V2", selectors: ["evidenceSnapshot.metricResultSet"] },
       { gateId: "GATE_PROTOCOL_COMPATIBILITY", selectors: [
         "evidenceSnapshot.metricResultSet", "evidenceSnapshot.result",
-        "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.validationProtocol", "transition.protocol",
+        "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.validationAssessmentProtocol",
+        "evidenceSnapshot.validationAssessmentResult", "evidenceSnapshot.validationProtocol", "transition.protocol",
       ] },
       { gateId: "GATE_RL7_ROBUSTNESS_COMPARISON", selectors: [
         "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.robustnessComparisonResult",
       ] },
       { gateId: "GATE_SUBJECT_IDENTITY", selectors: subject },
+      { gateId: "GATE_VALIDATION_ASSESSMENT", selectors: [
+        "evidenceSnapshot.validationAssessmentProtocol", "evidenceSnapshot.validationAssessmentResult",
+      ] },
       { gateId: "GATE_VALIDATION_RESULT", selectors: ["evidenceSnapshot.validationProtocol", "evidenceSnapshot.validationResult"] },
     ]);
     const byteSort = (values: string[]) => [...values].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
