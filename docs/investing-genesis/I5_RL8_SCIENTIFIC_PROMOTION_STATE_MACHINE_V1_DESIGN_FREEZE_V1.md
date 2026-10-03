@@ -273,7 +273,10 @@ INSUFFICIENT_EVIDENCE -> SUPERSEDED
 PROMOTION_ELIGIBLE -> SUPERSEDED
 REJECTED -> SUPERSEDED
 INVALIDATED -> SUPERSEDED
+EXECUTED -> INVALIDATED
+INSUFFICIENT_EVIDENCE -> INVALIDATED
 PROMOTION_ELIGIBLE -> INVALIDATED
+REJECTED -> INVALIDATED
 ```
 
 All other transitions are forbidden and fail closed with
@@ -541,6 +544,84 @@ idempotency keys, UI wording and row IDs are excluded from scientific identity
 unless explicitly listed as server-derived authority scope outside the
 canonical scientific preimage.
 
+## Immutable Invalidation Proof
+
+INVALIDATED is admitted only from EXECUTED, INSUFFICIENT_EVIDENCE,
+PROMOTION_ELIGIBLE or REJECTED. INVALIDATED has no self-invalidation edge;
+SUPERSEDED has no outgoing edge. VALIDATION_PASSED and VALIDATION_FAILED are
+atomic intermediate states, never externally active leaves; later invalidation
+attaches to their PROMOTION_ELIGIBLE or REJECTED closure leaf.
+
+lifecycleEvidence is part of the transition canonical preimage. It creates no
+third RL-8 scientific domain. It is [] for ROOT, STAGE_A, PROMOTION_ELIGIBLE,
+REJECTED and SUPERSEDED; it is REQUIRED_NONEMPTY only for INVALIDATED.
+Every entry MUST be immutable accepted scientific evidence proving the later
+invalidation, not merely an arbitrary reference to the affected artifact.
+The exact closed protocol.invalidationEvidenceDomains array below admits only
+the eleven already accepted non-RL8 scientific domains used by the stable subject
+or evidenceSnapshot. No other domain is admitted.
+
+Unknown domain, empty/missing lifecycleEvidence, unaccepted, unresolvable,
+wrong-tenant, wrong-Investigation or wrong-lineage invalidation evidence fails
+closed: NO authoritative INVALIDATED transition is produced. The proof itself
+must satisfy exact tenant/Investigation/subject lineage authority, accepted
+canonical bytes and HashRef integrity. It must deterministically substantiate
+each asserted cause against P; caller choice or free-form text is not proof.
+A nonempty array alone does not establish proof. If accepted evidence cannot
+prove a cause, no authoritative INVALIDATED transition is produced.
+
+The exact closed protocol.invalidationCauseReasons array below is a subset of
+the existing reason vocabulary. INVALIDATION_REASONS is the byte-sorted unique
+array containing INVALIDATED_EVIDENCE plus at least one cause from that array,
+and no other codes. INVALIDATED_EVIDENCE alone is forbidden. AUTHORITY_FAILURE
+remains fail-closed and does NOT itself create an INVALIDATED transition.
+Causes describe a proven defect in historical evidence, not permission to consume
+corrupt or unauthorized lifecycleEvidence. The proof and marker's own authority
+and lineage checks must pass before any transition can be admitted.
+
+```text
+predecessorTransition = P
+predecessorState = P.resultingState
+evidenceSnapshot = exact COPY of P
+gateOutcomes = exact COPY of P
+invalidates = P
+supersedes = null
+rejectedTransition = null
+supersededByChain = null
+lifecycleEvidence = REQUIRED_NONEMPTY
+transitionReasons = byte-sorted unique [INVALIDATED_EVIDENCE + >=1 exact invalidation cause]
+```
+
+This records a later scientific lifecycle fact and MUST NOT modify or rewrite
+the invalidated historical transition. Historical snapshot and gates are copied;
+new immutable proof resides exclusively in lifecycleEvidence.
+
+## Deterministic Gate Evidence Mapping
+
+The exact gateEvidenceMapping array in SCIENTIFIC_PROMOTION_PROTOCOL_V1 below
+is part of the protocol canonical preimage, not external prose or configuration.
+It contains exactly one entry per gateVocabulary member, byte-sorted by gateId.
+Each entry has exactly gateId and selectors; selectors are an exact closed,
+byte-sorted unique array of field-path tokens. Unknown, duplicate, missing or
+additional entries, keys or selectors are forbidden. There are no wildcard,
+mutable, default or latest selectors. transition.protocol selects the RL-8
+protocol HashRef; subject.* and evidenceSnapshot.* select the exact named fields.
+
+For each Stage A gate, resolve exactly its listed selectors, discard explicit
+null values only, deduplicate equal canonical HashRef envelopes, then sort the
+remaining envelopes by their exact canonical bytes using unsigned byte order.
+Do not use locale/string-label sorting. Missing fields or malformed references
+fail closed. Empty selector lists yield []. No extra evidence HashRef may be
+attached; no non-null mapped HashRef may be omitted. lifecycleEvidence is never
+a gate evidence input. Authority/tenancy is server-derived scope and its gate
+evidence is []; an authority failure emits NO transition.
+
+Same canonical subject + snapshot + protocol MUST produce identical gate
+evidence arrays. Status/reason selection cannot change the mapping. Different
+gate evidence arrays for those same inputs are malformed and fail closed.
+Root gates remain []; Stage B and lifecycle copy predecessor gates exactly,
+without re-evaluation or adding lifecycleEvidence to historical gates.
+
 ## Scientific Promotion Protocol Payload
 
 The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly:
@@ -563,6 +644,115 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
   gateVocabulary: byte-sorted array of closed V1 gate ids,
   gateStatusVocabulary: byte-sorted array of closed V1 gate statuses,
   reasonVocabulary: byte-sorted array of closed V1 reason/error codes,
+  invalidationEvidenceDomains: [
+    "METRIC_RESULT_SET_V2",
+    "SYNTRAKE:EVIDENCE_OBJECT:V1",
+    "SYNTRAKE:EXPERIMENT:V1",
+    "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1",
+    "SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1",
+    "SYNTRAKE:EXPERIMENT_PARAMETERS:V1",
+    "SYNTRAKE:RESEARCH_IR:V1",
+    "SYNTRAKE:RESULT:V1",
+    "SYNTRAKE:RUN_INPUT:V1",
+    "SYNTRAKE:VALIDATION_PROTOCOL:V1",
+    "SYNTRAKE:VALIDATION_RESULT:V1"
+  ],
+  invalidationCauseReasons: [
+    "CORRUPTED_EVIDENCE",
+    "INCOMPATIBLE_ARTIFACT_SCHEMA",
+    "INCOMPATIBLE_ENGINE_VERSION",
+    "INCOMPATIBLE_METRIC_REGISTRY",
+    "INCOMPATIBLE_PROTOCOL_VERSION",
+    "INCOMPATIBLE_SCHEMA_VERSION",
+    "UNAUTHORIZED_EVIDENCE",
+    "WRONG_LINEAGE"
+  ],
+  gateEvidenceMapping: [
+    {
+      "gateId": "GATE_ACCEPTED_EXECUTION_RESULT",
+      "selectors": [
+        "evidenceSnapshot.result",
+        "evidenceSnapshot.runInput"
+      ]
+    },
+    {
+      "gateId": "GATE_AUTHORITY_AND_TENANCY",
+      "selectors": []
+    },
+    {
+      "gateId": "GATE_EVIDENCE_COMPLETENESS",
+      "selectors": [
+        "evidenceSnapshot.evidenceObject",
+        "evidenceSnapshot.metricResultSet",
+        "evidenceSnapshot.result",
+        "evidenceSnapshot.robustnessComparisonProtocol",
+        "evidenceSnapshot.robustnessComparisonResult",
+        "evidenceSnapshot.runInput",
+        "evidenceSnapshot.validationProtocol",
+        "evidenceSnapshot.validationResult"
+      ]
+    },
+    {
+      "gateId": "GATE_EVIDENCE_OBJECT_BINDING",
+      "selectors": [
+        "evidenceSnapshot.evidenceObject"
+      ]
+    },
+    {
+      "gateId": "GATE_LINEAGE_INTEGRITY",
+      "selectors": [
+        "evidenceSnapshot.evidenceObject",
+        "evidenceSnapshot.metricResultSet",
+        "evidenceSnapshot.result",
+        "evidenceSnapshot.robustnessComparisonProtocol",
+        "evidenceSnapshot.robustnessComparisonResult",
+        "evidenceSnapshot.runInput",
+        "evidenceSnapshot.validationProtocol",
+        "evidenceSnapshot.validationResult",
+        "subject.subjectExperiment",
+        "subject.subjectExperimentParameters",
+        "subject.subjectResearchIr"
+      ]
+    },
+    {
+      "gateId": "GATE_METRIC_RESULT_SET_V2",
+      "selectors": [
+        "evidenceSnapshot.metricResultSet"
+      ]
+    },
+    {
+      "gateId": "GATE_PROTOCOL_COMPATIBILITY",
+      "selectors": [
+        "evidenceSnapshot.metricResultSet",
+        "evidenceSnapshot.result",
+        "evidenceSnapshot.robustnessComparisonProtocol",
+        "evidenceSnapshot.validationProtocol",
+        "transition.protocol"
+      ]
+    },
+    {
+      "gateId": "GATE_RL7_ROBUSTNESS_COMPARISON",
+      "selectors": [
+        "evidenceSnapshot.robustnessComparisonProtocol",
+        "evidenceSnapshot.robustnessComparisonResult"
+      ]
+    },
+    {
+      "gateId": "GATE_SUBJECT_IDENTITY",
+      "selectors": [
+        "subject.subjectExperiment",
+        "subject.subjectExperimentParameters",
+        "subject.subjectResearchIr"
+      ]
+    },
+    {
+      "gateId": "GATE_VALIDATION_RESULT",
+      "selectors": [
+        "evidenceSnapshot.validationProtocol",
+        "evidenceSnapshot.validationResult"
+      ]
+    }
+  ],
   decisionPrecedence: exact ordered V1 decision table token list,
   transitionGraph: byte-sorted array of { from, to } pairs
 }
@@ -585,11 +775,12 @@ exactly:
   evidenceSnapshot: exact nested evidenceSnapshot structure defined above,
   predecessorState: closed V1 state,
   resultingState: closed V1 state,
+  lifecycleEvidence: byte-sorted unique array of admitted HashRef envelopes,
   gateOutcomes: byte-sorted array of {
     gateId: closed V1 gate id,
     status: closed V1 gate status,
     reasons: byte-sorted unique array of closed V1 reason/error codes,
-    evidence: byte-sorted array of admitted HashRef envelopes
+    evidence: byte-sorted unique array of HashRef envelopes determined exactly by protocol.gateEvidenceMapping
   },
   transitionReasons: byte-sorted unique array of closed V1 reason/error codes,
   supersedes: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1> | null,
@@ -615,6 +806,7 @@ predecessorState = DRAFT_RESEARCH
 resultingState = EXECUTED
 gateOutcomes = []
 transitionReasons = []
+lifecycleEvidence = []
 supersedes = null
 invalidates = null
 rejectedTransition = null
@@ -663,22 +855,23 @@ supersededByChain object binding the different successor protocol and its unique
 accepted root. Every row is mandatory; no optional lifecycle reference may be
 arbitrarily populated. All non-root predecessorState values equal P.resultingState.
 
-| kind | predecessorTransition | supersedes | invalidates | rejectedTransition | supersededByChain | evidenceSnapshot | gateOutcomes | transitionReasons |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ROOT | null | null | null | null | null | ROOT_EXACT | [] | [] |
-| STAGE_A | P | null | null | null | null | NEW_ACCEPTED | COMPLETE_GATES | EVALUATION_REASONS |
-| PROMOTION_ELIGIBLE | P | null | null | null | null | COPY | COPY | [] |
-| REJECTED | P | null | null | P | null | COPY | COPY | COPY |
-| INVALIDATED | P | null | P | null | null | COPY | COPY | [INVALIDATED_EVIDENCE] |
-| SUPERSEDED | P | P | null | null | REQUIRED_CHAIN | COPY | COPY | [SUPERSEDED_EVIDENCE] |
+| kind | predecessorTransition | supersedes | invalidates | rejectedTransition | supersededByChain | evidenceSnapshot | gateOutcomes | transitionReasons | lifecycleEvidence |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ROOT | null | null | null | null | null | ROOT_EXACT | [] | [] | [] |
+| STAGE_A | P | null | null | null | null | NEW_ACCEPTED | COMPLETE_GATES | EVALUATION_REASONS | [] |
+| PROMOTION_ELIGIBLE | P | null | null | null | null | COPY | COPY | [] | [] |
+| REJECTED | P | null | null | P | null | COPY | COPY | COPY | [] |
+| INVALIDATED | P | null | P | null | null | COPY | COPY | INVALIDATION_REASONS | REQUIRED_NONEMPTY |
+| SUPERSEDED | P | P | null | null | REQUIRED_CHAIN | COPY | COPY | [SUPERSEDED_EVIDENCE] | [] |
 
 ROOT_EXACT is the EXECUTED presence row: runInput/result required, six remaining
 snapshot fields null. NEW_ACCEPTED follows the resulting Stage A state's presence
 row and exact authority/lineage rules. COMPLETE_GATES and EVALUATION_REASONS are
 the Gate Outcome Completeness rules. REJECTED copies the failed predecessor's
-transitionReasons as well as its snapshot and gateOutcomes. INVALIDATED and
-SUPERSEDED use the exact lifecycle reason arrays shown; copied gates describe
-historical evaluation and do not claim a new PASS.
+transitionReasons as well as its snapshot and gateOutcomes. INVALIDATION_REASONS
+is the exact marker-plus-cause rule in Immutable Invalidation Proof. SUPERSEDED
+uses the exact reason array shown. Copied gates describe historical evaluation
+and do not claim a new PASS.
 
 SUPERSEDED V1 = cross-protocol chain replacement only. Its non-null
 supersededByChain MUST point to the exact unique root of the different successor
@@ -686,6 +879,7 @@ protocol chain, with the same tenant, Investigation and stable subject.
 SUPERSEDED remains the old-chain V1 endpoint. No same-protocol replacement,
 null successor-chain link, arbitrary ancestor reference or outgoing SUPERSEDED
 edge is admitted. A missing or incompatible lifecycle link fails closed.
+
 
 ## Persistence Contract
 
