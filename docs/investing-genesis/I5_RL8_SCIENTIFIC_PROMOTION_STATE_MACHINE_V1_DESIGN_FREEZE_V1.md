@@ -6,7 +6,21 @@ Classification:
 `CANDIDATE / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_DESIGN_FREEZE / UNNUMBERED`
 
 Canonical predecessor:
-`05b4192557e8e2c22f63769774a1ca2985199e62`
+`0981a2a7a346051d9ccec55609c37df3885dbe56`
+
+Historical lineage only (not acceptance authority):
+
+- PR #106; historical design merge `b3f48e3f55a1f0c41004c60a3119fbd2cb7f84f0`.
+- Historical design predecessor `05b4192557e8e2c22f63769774a1ca2985199e62`.
+- Historical candidate HEAD `31bb982b17a999fe67613c7a9251218f697e9150`.
+- PR #106 merge is not RL-8 acceptance. This recovery is CANDIDATE / NOT ACCEPTED.
+
+Current accepted predecessor authority:
+`RL-7 = CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`
+
+Research Lab frontier:
+`I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+Canonical current state is unchanged by this local candidate.
 
 RL-8 acceptance:
 `NOT ACCEPTED`
@@ -53,27 +67,73 @@ The V1 promotion subject is one exact scientific research candidate:
 
 ```text
 SCIENTIFIC_PROMOTION_SUBJECT_V1 = {
-  tenantAuthority: server-derived tenant authority, not client supplied,
-  investigationId: server-derived canonical Investigation UUID,
   subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>,
   subjectExperimentParameters: HashRef<SYNTRAKE:EXPERIMENT_PARAMETERS:V1>,
-  subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>,
-  subjectRunInput: HashRef<SYNTRAKE:RUN_INPUT:V1>,
-  subjectResult: HashRef<SYNTRAKE:RESULT:V1>,
-  subjectEvidenceObject: HashRef<SYNTRAKE:EVIDENCE_OBJECT:V1>,
-  subjectValidationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1>,
-  subjectValidationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1>,
-  subjectMetricResultSet: HashRef<METRIC_RESULT_SET_V2>,
-  robustnessComparisonProtocol:
-    HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1>,
-  robustnessComparisonResult:
-    HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1>
+  subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
 }
 ```
 
-This is the smallest stable scientific subject that binds Investigation
-lineage, Experiment identity, accepted execution/result identity, validation
-evidence, metric evidence and RL-7 robustness/comparison evidence.
+These three exact HashRefs are the stable scientific identity across the chain.
+Tenant authority and Investigation UUID are server-derived authority scope,
+not scientific replacement identity. No execution, validation, metric or RL-7
+artifact is required merely to identify a DRAFT_RESEARCH subject.
+
+## Transition-Specific Evidence Snapshot
+
+The exact nested structure inside SCIENTIFIC_PROMOTION_TRANSITION_V1 is:
+
+```text
+evidenceSnapshot = {
+  runInput: HashRef<SYNTRAKE:RUN_INPUT:V1> | null,
+  result: HashRef<SYNTRAKE:RESULT:V1> | null,
+  evidenceObject: HashRef<SYNTRAKE:EVIDENCE_OBJECT:V1> | null,
+  validationProtocol: HashRef<SYNTRAKE:VALIDATION_PROTOCOL:V1> | null,
+  validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1> | null,
+  metricResultSet: HashRef<METRIC_RESULT_SET_V2> | null,
+  robustnessComparisonProtocol: HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1> | null,
+  robustnessComparisonResult: HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1> | null
+}
+```
+
+Every key is required; absence is explicit null, never omitted/undefined.
+This transition-specific accepted evidence snapshot is part of the transition
+canonical preimage, not a third scientific HashRef domain or subject identity.
+Missing evidence NEVER becomes zero/PASS/fabricated identity.
+All non-null references must resolve to accepted artifacts with exact domains,
+canonical bytes and compatible subject/result lineage in the authority scope.
+A validationResult requires its exact validationProtocol; a comparison result
+requires its exact robustnessComparisonProtocol. Protocols may exist without
+results. RL-7 subjectResult and subjectValidationResult must match this snapshot.
+Unavailable artifacts are null, not invented HashRefs; known corrupt or
+unauthorized evidence fails closed rather than being laundered into absence.
+
+Exact presence rules by resulting state (R = required non-null; N = null;
+O = accepted HashRef or explicit null; COPY = exact predecessor snapshot):
+
+| resultingState | runInput | result | evidenceObject | validationProtocol | validationResult | metricResultSet | robustnessComparisonProtocol | robustnessComparisonResult |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DRAFT_RESEARCH | N | N | N | N | N | N | N | N |
+| EXECUTED | R | R | O | O | O | O | O | O |
+| INSUFFICIENT_EVIDENCE | R | R | O | O | O | O | O | O |
+| VALIDATION_FAILED | R | R | R | R | R | R | R | R |
+| VALIDATION_PASSED | R | R | R | R | R | R | R | R |
+| PROMOTION_ELIGIBLE | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| REJECTED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| INVALIDATED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| SUPERSEDED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+
+DRAFT_RESEARCH is only an upstream observation; it is never a resulting RL-8
+transition. Its row describes absence before execution, not a persisted root.
+EXECUTED proves accepted runInput/result lineage without requiring later evidence.
+Stage A retains the root's exact runInput/result, and may bind newly accepted
+validation/metric/RL-7 evidence. INSUFFICIENT_EVIDENCE can have all references
+present when accepted evidence is incomplete or RL-7 is MIXED/INSUFFICIENT.
+Missing required evaluation evidence takes precedence over failure, hence both
+VALIDATION_FAILED and VALIDATION_PASSED require the full snapshot.
+Lifecycle COPY preserves historical evidence even when subsequently invalidated;
+it does not recertify that evidence. Invalidation reasons describe the later
+integrity discovery. Supersession replacement evidence belongs to the referenced
+successor chain; it does not overwrite the old snapshot.
 
 Operational UUIDs identify persisted rows and authority scope only. They are
 not scientific identity and must not appear as replacement truth for HashRefs.
@@ -100,8 +160,9 @@ INVALIDATED
 They may be projected from accepted upstream research history but are not by
 themselves promotion success.
 
-`INSUFFICIENT_EVIDENCE`, `VALIDATION_FAILED`, `VALIDATION_PASSED` and
-`PROMOTION_ELIGIBLE` are deterministic RL-8 evaluation outcome states.
+`INSUFFICIENT_EVIDENCE`, `VALIDATION_FAILED` and `VALIDATION_PASSED` are
+deterministic Stage A evaluation outcome states. `PROMOTION_ELIGIBLE` is the
+separate deterministic Stage B materialization state.
 
 `REJECTED`, `SUPERSEDED` and `INVALIDATED` are append-only governance states.
 They do not delete, mutate or rewrite earlier scientific truth.
@@ -144,7 +205,7 @@ protocol HashRef
 
 The root transition HashRef is not part of the pre-root promotion chain key. It
 is the immutable first accepted transition anchoring history for that already
-determined chain key and has `predecessorState = null`. One chain key can have
+determined chain key and has `predecessorState = DRAFT_RESEARCH`. One chain key can have
 exactly one authoritative root transition. Concurrent identical root creation
 reuses the same root transition identity. Concurrent or divergent root creation
 for the same chain key fails closed with `DIVERGENT_EXISTING_IDENTITY`.
@@ -166,7 +227,8 @@ successor root transition HashRef
 ```
 
 The referenced successor root transition MUST actually be a root transition
-with `predecessorState = null` and `predecessorTransition = null`. The
+with `predecessorState = DRAFT_RESEARCH`, `resultingState = EXECUTED` and
+`predecessorTransition = null`. The
 successor chain MUST be in the same tenant authority, same Investigation and
 same scientific subject lineage, but MUST have a different protocol HashRef
 when supersession is caused by methodology/protocol change. Dangling successor
@@ -189,7 +251,6 @@ INSUFFICIENT_EVIDENCE -> VALIDATION_FAILED
 INSUFFICIENT_EVIDENCE -> VALIDATION_PASSED
 VALIDATION_FAILED -> REJECTED
 VALIDATION_PASSED -> PROMOTION_ELIGIBLE
-VALIDATION_PASSED -> REJECTED
 PROMOTION_ELIGIBLE -> SUPERSEDED
 PROMOTION_ELIGIBLE -> INVALIDATED
 REJECTED -> SUPERSEDED
@@ -213,7 +274,10 @@ immutable evidence even when it is no longer the active/current projection.
 
 The only admitted V1 protocol token is:
 
-`SCIENTIFIC_PROMOTION_PROTOCOL_V20260928`
+`SCIENTIFIC_PROMOTION_PROTOCOL_V20261002`
+
+The earlier dated candidate rules were never accepted runtime authority; no
+migration or runtime depends on that historical token.
 
 `PROMOTION_ELIGIBLE` is reachable only when every required gate below returns
 `PASS`:
@@ -231,12 +295,12 @@ GATE_PROTOCOL_COMPATIBILITY
 GATE_EVIDENCE_COMPLETENESS
 ```
 
-RL-7 evidence is mandatory in V1. The required RL-7 result must be an accepted
+RL-7 evidence is mandatory in V1 for successful Stage A evaluation, not root creation. The required RL-7 result must be an accepted
 `SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1` HashRef produced under an accepted
 `SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1` HashRef for the same tenant,
 Investigation and subject Experiment.
 
-Accepted Validation Result evidence is mandatory. A failed validation gate
+Accepted Validation Result evidence is mandatory for successful Stage A evaluation. A failed validation gate
 produces `VALIDATION_FAILED`; missing, incomplete or unavailable validation
 produces `INSUFFICIENT_EVIDENCE`; corrupt or incompatible validation fails
 closed.
@@ -318,10 +382,13 @@ closed code is present.
 
 ## Decision Precedence
 
+Stage A applies only from EXECUTED or INSUFFICIENT_EVIDENCE and derives exactly
+one of INSUFFICIENT_EVIDENCE, VALIDATION_FAILED or VALIDATION_PASSED.
 The V1 decision table is evaluated in this exact order:
 
 ```text
 1. malformed protocol, malformed transition, unknown state, unknown gate,
+   unknown RL-7 classification or null classification with fail-closed failure,
    wrong HashRef domain, corrupted evidence, authority failure, wrong tenant,
    wrong Investigation, wrong lineage, incompatible schema/protocol/engine/
    metric/artifact version, unauthorized evidence, divergent existing identity
@@ -331,8 +398,8 @@ The V1 decision table is evaluated in this exact order:
    -> fail closed with FORBIDDEN_TRANSITION
 
 3. missing required evidence, unavailable required predecessor evidence,
-   incomplete validation, insufficient RL-7 evidence, superseded evidence or
-   invalidated evidence
+   incomplete validation, ROBUSTNESS_MIXED,
+   ROBUSTNESS_INSUFFICIENT_EVIDENCE, superseded evidence or invalidated evidence
    -> INSUFFICIENT_EVIDENCE
 
 4. accepted Validation Result explicitly fails or RL-7 classification is
@@ -340,22 +407,30 @@ The V1 decision table is evaluated in this exact order:
    -> VALIDATION_FAILED
 
 5. accepted Validation Result passes and RL-7 classification is
-   ROBUSTNESS_MIXED
-   -> INSUFFICIENT_EVIDENCE
-
-6. accepted Validation Result passes and RL-7 classification is
    ROBUSTNESS_STABLE, and every required gate is PASS
-   -> PROMOTION_ELIGIBLE
+   -> VALIDATION_PASSED
 ```
 
 Integrity, authority and lineage incompatibility dominate eligibility. Then
-insufficient evidence. Then explicit failed scientific gates. Only after every
+insufficient evidence (including RL-7 MIXED/INSUFFICIENT even if validation
+failed). Then explicit failed scientific gates. Only after every
 required gate returns `PASS` may `PROMOTION_ELIGIBLE` exist.
+
+### Stage B - Promotion Eligibility Materialization
+
+Only VALIDATION_PASSED -> PROMOTION_ELIGIBLE is admitted in Stage B.
+The exact predecessor must prove every required V1 promotion gate PASS under
+the same protocol and same evidence snapshot. Copy its gateOutcomes exactly;
+transitionReasons is empty and supersedes, invalidates, rejectedTransition and
+supersededByChain are null. No re-evaluation, new evidence or caller decision
+may intervene. Non-root predecessorState always equals the exact predecessor's
+resultingState. The two stages remain two distinct immutable scientific
+transition artifacts even if later persisted atomically in one DB transaction.
 
 ## Canonical Identity Domains
 
 RL-8 freezes exactly two future canonical domains. They are DESIGN_FROZEN /
-NOT RUNTIME_ADMITTED in this slice:
+NOT_RUNTIME_ADMITTED in this slice:
 
 ```text
 SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1
@@ -387,7 +462,7 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
 ```text
 {
   schemaVersion: "SCIENTIFIC_PROMOTION_PROTOCOL_V1",
-  protocolId: "SCIENTIFIC_PROMOTION_PROTOCOL_V20260928",
+  protocolId: "SCIENTIFIC_PROMOTION_PROTOCOL_V20261002",
   requiredEvidenceClasses: [
     "EXECUTION_RESULT",
     "EVIDENCE_OBJECT",
@@ -421,7 +496,8 @@ exactly:
   schemaVersion: "SCIENTIFIC_PROMOTION_TRANSITION_V1",
   protocol: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1>,
   subject: SCIENTIFIC_PROMOTION_SUBJECT_V1,
-  predecessorState: closed V1 state | null,
+  evidenceSnapshot: exact nested evidenceSnapshot structure defined above,
+  predecessorState: closed V1 state,
   resultingState: closed V1 state,
   gateOutcomes: byte-sorted array of {
     gateId: closed V1 gate id,
@@ -445,9 +521,20 @@ exactly:
 }
 ```
 
-No extra keys. `predecessorState = null` is admitted only for the first
-transition of one promotion chain and then requires
-`predecessorTransition = null`. Every non-root transition requires exactly one
+No extra keys. The root is exactly:
+
+```text
+predecessorTransition = null
+predecessorState = DRAFT_RESEARCH
+resultingState = EXECUTED
+```
+
+Only accepted upstream execution/result evidence can create this root.
+Rootness never depends on wall-clock order or row insertion order.
+Identical canonical root retry returns REUSED_IDENTICAL; a divergent second
+root returns DIVERGENT_EXISTING_IDENTITY. predecessorState is never nullable.
+DRAFT_RESEARCH as predecessor and null predecessorTransition occur together
+only at this root. Every non-root transition requires exactly one
 `predecessorTransition` in the same chain. `resultingState = PROMOTION_ELIGIBLE`
 requires every required gate outcome to be `PASS`. `supersedes`, `invalidates`
 and `rejectedTransition` may reference only immutable prior RL-8 transition
@@ -461,8 +548,8 @@ only the two already frozen RL-8 domains:
 `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` and
 `SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1`.
 
-The successor root transition MUST have `predecessorState = null` and
-`predecessorTransition = null`. It MUST share tenant authority, Investigation
+The successor root transition MUST have `predecessorState = DRAFT_RESEARCH`,
+`resultingState = EXECUTED` and `predecessorTransition = null`. It MUST share tenant authority, Investigation
 UUID and scientific subject lineage with the old chain. Its protocol HashRef
 MUST differ from the old chain's protocol HashRef when the supersession reason
 is methodology/protocol change. It MUST NOT be the same transition as the
@@ -494,8 +581,7 @@ This design slice writes no SQL. The later implementation must provide:
 - logical root uniqueness by tenant authority, Investigation, exact scientific
   subject identity and protocol HashRef;
 - logical non-root uniqueness by tenant authority, Investigation, exact
-  scientific subject identity, protocol HashRef, predecessor transition HashRef
-  and resulting state;
+  scientific subject identity, protocol HashRef and predecessor transition HashRef;
 - exact reuse for the same successor payload and fail-closed conflict for any
   second divergent authoritative successor to the same predecessor;
 - server-derived tenant authority;
@@ -513,6 +599,14 @@ This design slice writes no SQL. The later implementation must provide:
   `DIVERGENT_EXISTING_IDENTITY`;
 - no dangling successor-chain references, no self-reference, no
   self-supersession and no supersession cycles.
+
+Successor uniqueness excludes resultingState. For one exact chain and exact
+non-root predecessorTransition there is at most ONE authoritative successor,
+regardless of resulting state. Identical canonical payload retry returns
+REUSED_IDENTICAL. Any second different payload/state/reason/evidence snapshot
+for that predecessor returns DIVERGENT_EXISTING_IDENTITY. These root and
+successor invariants MUST later be enforceable at PostgreSQL level, not merely
+in TypeScript; concurrent writers cannot admit two winners.
 
 An optional current-state projection may exist only as a non-authoritative read
 model. If projection and immutable transition history disagree, history wins
@@ -602,7 +696,11 @@ transition in the old chain whose `supersededByChain` points to the exact
 successor protocol and successor root transition. It does not silently rewrite
 an old `PROMOTION_ELIGIBLE` result.
 
-`REJECTED` records owner/scientific governance rejection of a transition chain.
+`REJECTED` is deterministic scientific lifecycle closure for failed scientific
+validation only: VALIDATION_FAILED -> REJECTED. It copies the failed
+predecessor snapshot and gate outcomes; rejectedTransition identifies that exact
+predecessor. A user, adviser or downstream product choosing not to use an
+eligible result is outside RL-8 and must not alter scientific truth.
 `SUPERSEDED` records replacement by newer accepted evidence or methodology.
 `INVALIDATED` records later discovery that accepted evidence was corrupt,
 unauthorized or incompatible. All three states remain append-only and
@@ -628,6 +726,7 @@ ownership. `service_role` is capability, not authorization.
 
 Cross-tenant, cross-account, wrong-Investigation, wrong-domain HashRef and
 unauthorized evidence are rejected before promotion eligibility is evaluated.
+Client IDs never prove tenant/Investigation authority.
 RL-8 does not invent a second tenant model.
 
 ## Explicit Non-Authority
@@ -651,6 +750,16 @@ RL-8 MUST NOT authorize:
 - Capital Kernel approval;
 - Decision Firewall bypass;
 - UI product claims.
+
+```text
+PROMOTION_ELIGIBLE != investment recommendation
+PROMOTION_ELIGIBLE != suitability
+PROMOTION_ELIGIBLE != APPLY NEW CAPITAL
+PROMOTION_ELIGIBLE != Paper authorization
+PROMOTION_ELIGIBLE != Live authorization
+PROMOTION_ELIGIBLE != broker instruction
+PROMOTION_ELIGIBLE != Capital Kernel authority
+```
 
 Any downstream consumer must treat `PROMOTION_ELIGIBLE` only as scientific
 evidence.
