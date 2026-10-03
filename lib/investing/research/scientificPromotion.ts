@@ -108,6 +108,8 @@ export type ScientificPromotionTransitionV1 = Readonly<{
 export type ScientificPromotionStageADecisionV1 =
   | Readonly<{ kind: "AUTHORITATIVE_TRANSITION"; resultingState: "INSUFFICIENT_EVIDENCE" | "VALIDATION_FAILED" | "VALIDATION_PASSED"; reasons: readonly ScientificPromotionReasonV1[] }>
   | Readonly<{ kind: "FAIL_CLOSED"; reason: ScientificPromotionReasonV1 }>;
+export type ScientificPromotionStageASourceStateV1 = "EXECUTED" | "INSUFFICIENT_EVIDENCE" | "PROMOTION_ELIGIBLE" | "REJECTED";
+export type ScientificPromotionStageAResultStateV1 = "INSUFFICIENT_EVIDENCE" | "VALIDATION_FAILED" | "VALIDATION_PASSED";
 
 export const scientificPromotionStateVocabularyV1 = Object.freeze([
   "DRAFT_RESEARCH", "EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE",
@@ -136,6 +138,15 @@ export const scientificPromotionDecisionPrecedenceV1 = Object.freeze([
   "FAIL_CLOSED_INTEGRITY_AUTHORITY_LINEAGE", "FORBIDDEN_TRANSITION", "INSUFFICIENT_EVIDENCE_OUTCOME",
   "VALIDATION_FAILED_OUTCOME", "VALIDATION_PASSED_OUTCOME",
 ] as const);
+export const scientificPromotionFailClosedReasonVocabularyV1 = Object.freeze([
+  "AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY", "AUTHORITY_FAILURE", "CORRUPTED_EVIDENCE",
+  "DIVERGENT_EXISTING_IDENTITY", "INCOMPATIBLE_ARTIFACT_SCHEMA", "INCOMPATIBLE_ENGINE_VERSION",
+  "INCOMPATIBLE_METRIC_REGISTRY", "INCOMPATIBLE_PROTOCOL_VERSION", "INCOMPATIBLE_SCHEMA_VERSION",
+  "INCOMPATIBLE_VALIDATION_ASSESSMENT", "MALFORMED_HASHREF", "MALFORMED_PROTOCOL",
+  "MALFORMED_TRANSITION", "MISSING_VALIDATION_ASSESSMENT_AUTHORITY", "UNAUTHORIZED_EVIDENCE",
+  "UNKNOWN_GATE", "UNKNOWN_RL7_CLASSIFICATION", "UNKNOWN_STATE", "WRONG_HASHREF_DOMAIN",
+  "WRONG_INVESTIGATION", "WRONG_LINEAGE", "WRONG_TENANT",
+] as const satisfies readonly ScientificPromotionReasonV1[]);
 export const scientificPromotionTransitionGraphV1 = Object.freeze([
   { from: "DRAFT_RESEARCH", to: "EXECUTED" },
   { from: "EXECUTED", to: "INSUFFICIENT_EVIDENCE" },
@@ -179,10 +190,13 @@ export const scientificPromotionGateEvidenceMappingV1 = Object.freeze([
 ] as const);
 
 const edgeSet = new Set(scientificPromotionTransitionGraphV1.map((edge) => `${edge.from}->${edge.to}`));
+const stageASourceStateSet = new Set<string>(["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"]);
+const stageAResultStateSet = new Set<string>(["INSUFFICIENT_EVIDENCE", "VALIDATION_FAILED", "VALIDATION_PASSED"]);
 const stateSet = new Set<string>(scientificPromotionStateVocabularyV1);
 const gateSet = new Set<string>(scientificPromotionGateVocabularyV1);
 const statusSet = new Set<string>(scientificPromotionGateStatusVocabularyV1);
 const reasonSet = new Set<string>(scientificPromotionReasonVocabularyV1);
+const failClosedReasonSet = new Set<string>(scientificPromotionFailClosedReasonVocabularyV1);
 const subjectKeys = new Set(["subjectExperiment", "subjectExperimentParameters", "subjectResearchIr"]);
 const snapshotKeys = new Set(["runInput", "result", "evidenceObject", "validationProtocol", "validationResult", "validationAssessmentProtocol", "validationAssessmentResult", "robustnessComparisonProtocol", "robustnessComparisonResult"]);
 const transitionKeys = new Set(["schemaVersion", "protocol", "subject", "predecessorTransition", "predecessorState", "resultingState", "evidenceSnapshot", "gateOutcomes", "transitionReasons", "supersedes", "rejectedTransition", "supersededByChain"]);
@@ -213,14 +227,20 @@ export function hashScientificPromotionProtocolV1(): ScientificPromotionHashRefV
 }
 
 export function canonicalScientificPromotionTransitionV1(input: ScientificPromotionTransitionV1): CanonicalJsonValue {
+  return canonicalScientificPromotionTransitionForProtocolV1(input, hashScientificPromotionProtocolV1(), true);
+}
+function canonicalScientificPromotionTransitionForProtocolV1(input: ScientificPromotionTransitionV1, expectedProtocol: ScientificPromotionHashRefV1<typeof scientificPromotionProtocolDomainV1>, requireCurrentProtocol: boolean): CanonicalJsonValue {
   assertClosed(input, transitionKeys, "ScientificPromotionTransition");
   if (input.schemaVersion !== "SCIENTIFIC_PROMOTION_TRANSITION_V1") throw new Error("MALFORMED_TRANSITION");
   const protocol = canonicalLocalRef(input.protocol, scientificPromotionProtocolDomainV1);
-  if (!sameRef(protocol, hashScientificPromotionProtocolV1())) throw new Error("INCOMPATIBLE_PROTOCOL_VERSION");
+  if (requireCurrentProtocol && !sameRef(protocol, hashScientificPromotionProtocolV1())) throw new Error("INCOMPATIBLE_PROTOCOL_VERSION");
+  if (!sameRef(protocol, expectedProtocol)) throw new Error("INCOMPATIBLE_PROTOCOL_VERSION");
   const subject = canonicalScientificPromotionSubjectV1(input.subject);
   const predecessorTransition = input.predecessorTransition === null ? null : canonicalLocalRef(input.predecessorTransition, scientificPromotionTransitionDomainV1);
   const predecessorState = state(input.predecessorState);
   const resultingState = state(input.resultingState);
+  const isRootTuple = predecessorTransition === null && predecessorState === "DRAFT_RESEARCH" && resultingState === "EXECUTED";
+  if ((predecessorTransition === null || predecessorState === "DRAFT_RESEARCH" || resultingState === "EXECUTED") && !isRootTuple) throw new Error("MALFORMED_TRANSITION");
   if (!edgeSet.has(`${predecessorState}->${resultingState}`)) throw new Error("FORBIDDEN_TRANSITION");
   const evidenceSnapshot = canonicalScientificPromotionEvidenceSnapshotV1(input.evidenceSnapshot);
   assertSnapshot(resultingState, evidenceSnapshot);
@@ -235,6 +255,9 @@ export function canonicalScientificPromotionTransitionV1(input: ScientificPromot
 export function canonicalScientificPromotionTransitionBytesV1(input: ScientificPromotionTransitionV1): Buffer { return i5ResearchInternalCanonicalJsonBytesV1(canonicalScientificPromotionTransitionV1(input)); }
 export function hashScientificPromotionTransitionV1(input: ScientificPromotionTransitionV1): ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> {
   return localHashRefV1(scientificPromotionTransitionDomainV1, sha256HexV1(preimage(scientificPromotionTransitionDomainV1, canonicalScientificPromotionTransitionV1(input))));
+}
+function hashCanonicalScientificPromotionTransitionV1(payload: CanonicalJsonValue): ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> {
+  return localHashRefV1(scientificPromotionTransitionDomainV1, sha256HexV1(preimage(scientificPromotionTransitionDomainV1, payload)));
 }
 
 export function canonicalScientificPromotionSubjectV1(input: ScientificPromotionSubjectV1): ScientificPromotionSubjectV1 {
@@ -307,15 +330,28 @@ export function mapRl7RobustnessClassificationForPromotionV1(input: Readonly<{ c
   return "FAIL_CLOSED";
 }
 
-export function evaluateScientificPromotionStageAV1(input: Readonly<{ predecessorState: ScientificPromotionStateV1; requestedState: ScientificPromotionStateV1; gateOutcomes: readonly ScientificPromotionGateOutcomeV1[]; assessmentOutcome: ValidationAssessmentResultV1["outcome"]; rl7Outcome: "PERMIT_FURTHER_EVALUATION" | "INSUFFICIENT_EVIDENCE" | "VALIDATION_FAILED" | "FAIL_CLOSED"; failClosed: boolean }>): ScientificPromotionStageADecisionV1 {
-  assertClosed(input, new Set(["predecessorState", "requestedState", "gateOutcomes", "assessmentOutcome", "rl7Outcome", "failClosed"]), "ScientificPromotionStageADecisionInput");
-  if (input.failClosed || input.rl7Outcome === "FAIL_CLOSED") return { kind: "FAIL_CLOSED", reason: "CORRUPTED_EVIDENCE" };
-  if (!edgeSet.has(`${input.predecessorState}->${input.requestedState}`)) return { kind: "FAIL_CLOSED", reason: "FORBIDDEN_TRANSITION" };
+export function evaluateScientificPromotionStageAV1(input: Readonly<{ predecessorState: ScientificPromotionStateV1; requestedState: ScientificPromotionStateV1; gateOutcomes: readonly ScientificPromotionGateOutcomeV1[]; assessmentOutcome: ValidationAssessmentResultV1["outcome"]; rl7Outcome: "PERMIT_FURTHER_EVALUATION" | "INSUFFICIENT_EVIDENCE" | "VALIDATION_FAILED" | "FAIL_CLOSED"; failClosedReason: ScientificPromotionReasonV1 | null }>): ScientificPromotionStageADecisionV1 {
+  assertClosed(input, new Set(["predecessorState", "requestedState", "gateOutcomes", "assessmentOutcome", "rl7Outcome", "failClosedReason"]), "ScientificPromotionStageADecisionInput");
+  if (!stageASourceStateSet.has(input.predecessorState) || !stageAResultStateSet.has(input.requestedState)) return { kind: "FAIL_CLOSED", reason: "FORBIDDEN_TRANSITION" };
+  if (input.failClosedReason !== null) {
+    const reason = reasons([input.failClosedReason])[0]!;
+    if (!failClosedReasonSet.has(reason)) return { kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" };
+    return { kind: "FAIL_CLOSED", reason };
+  }
+  if (input.rl7Outcome === "FAIL_CLOSED") return { kind: "FAIL_CLOSED", reason: "UNKNOWN_RL7_CLASSIFICATION" };
   const gates = canonicalGateOutcomes(input.gateOutcomes, null);
+  const failClosedGateReason = gates.flatMap((gate) => [...gate.reasons]).find((reason) => failClosedReasonSet.has(reason));
+  if (failClosedGateReason !== undefined) return { kind: "FAIL_CLOSED", reason: failClosedGateReason };
+  if (gates.some((gate) => gate.status === "INCOMPATIBLE_EVIDENCE")) return { kind: "FAIL_CLOSED", reason: "INCOMPATIBLE_VALIDATION_ASSESSMENT" };
   const union = gateReasonUnion(gates);
-  if (input.assessmentOutcome === "INSUFFICIENT_EVIDENCE" || input.rl7Outcome === "INSUFFICIENT_EVIDENCE" || gates.some((gate) => gate.status === "INSUFFICIENT_EVIDENCE" || gate.status === "UNAVAILABLE")) return { kind: "AUTHORITATIVE_TRANSITION", resultingState: "INSUFFICIENT_EVIDENCE", reasons: union };
-  if (input.assessmentOutcome === "FAIL" || input.rl7Outcome === "VALIDATION_FAILED" || gates.some((gate) => gate.status === "FAIL" || gate.status === "INCOMPATIBLE_EVIDENCE")) return { kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_FAILED", reasons: union };
-  if (input.assessmentOutcome === "PASS" && input.rl7Outcome === "PERMIT_FURTHER_EVALUATION" && gates.every((gate) => gate.status === "PASS")) return { kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_PASSED", reasons: [] };
+  let derivedState: ScientificPromotionStageAResultStateV1 | null = null;
+  let derivedReasons: readonly ScientificPromotionReasonV1[] = union;
+  if (input.assessmentOutcome === "INSUFFICIENT_EVIDENCE" || input.rl7Outcome === "INSUFFICIENT_EVIDENCE" || gates.some((gate) => gate.status === "INSUFFICIENT_EVIDENCE" || gate.status === "UNAVAILABLE")) derivedState = "INSUFFICIENT_EVIDENCE";
+  else if (input.assessmentOutcome === "FAIL" || input.rl7Outcome === "VALIDATION_FAILED" || gates.some((gate) => gate.status === "FAIL")) derivedState = "VALIDATION_FAILED";
+  else if (input.assessmentOutcome === "PASS" && input.rl7Outcome === "PERMIT_FURTHER_EVALUATION" && gates.every((gate) => gate.status === "PASS")) { derivedState = "VALIDATION_PASSED"; derivedReasons = []; }
+  if (derivedState !== null && input.requestedState !== derivedState) return { kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" };
+  if (derivedState !== null && !edgeSet.has(`${input.predecessorState}->${derivedState}`)) return { kind: "FAIL_CLOSED", reason: "FORBIDDEN_TRANSITION" };
+  if (derivedState !== null) return { kind: "AUTHORITATIVE_TRANSITION", resultingState: derivedState, reasons: derivedReasons };
   return { kind: "FAIL_CLOSED", reason: "UNKNOWN_RL7_CLASSIFICATION" };
 }
 
@@ -338,15 +374,23 @@ export function assertScientificPromotionPredecessorRelationV1(input: Readonly<{
     copy(transition.evidenceSnapshot, predecessor.evidenceSnapshot); copy(transition.gateOutcomes, predecessor.gateOutcomes);
     if (!sameCanonical(transition.transitionReasons, ["SUPERSEDED_EVIDENCE"]) || !sameRef(transition.supersedes, predecessorRef) || transition.rejectedTransition !== null || transition.supersededByChain === null) throw new Error("MALFORMED_TRANSITION");
     if (sameRef(transition.supersededByChain.successorProtocol, predecessor.protocol)) throw new Error("INCOMPATIBLE_PROTOCOL_VERSION");
-    if (input.successorRoot !== undefined) assertScientificPromotionSuccessorRootV1({ oldChain: predecessor, successorRoot: input.successorRoot, successorProtocol: transition.supersededByChain.successorProtocol });
+    if (input.successorRoot !== undefined) assertScientificPromotionSuccessorRootV1({ oldChain: predecessor, supersededTransition: transition, successorRoot: input.successorRoot, successorProtocol: transition.supersededByChain.successorProtocol, successorRootTransition: transition.supersededByChain.successorRootTransition });
   }
 }
 
-export function assertScientificPromotionSuccessorRootV1(input: Readonly<{ oldChain: ScientificPromotionTransitionV1; successorRoot: ScientificPromotionTransitionV1; successorProtocol: ScientificPromotionHashRefV1<typeof scientificPromotionProtocolDomainV1> }>): void {
-  assertClosed(input, new Set(["oldChain", "successorRoot", "successorProtocol"]), "ScientificPromotionSuccessorRoot");
-  const root = canonicalScientificPromotionTransitionV1(input.successorRoot) as unknown as ScientificPromotionTransitionV1;
+export function assertScientificPromotionSuccessorRootV1(input: Readonly<{ oldChain: ScientificPromotionTransitionV1; supersededTransition: ScientificPromotionTransitionV1; successorRoot: ScientificPromotionTransitionV1; successorProtocol: ScientificPromotionHashRefV1<typeof scientificPromotionProtocolDomainV1>; successorRootTransition: ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> }>): void {
+  assertClosed(input, new Set(["oldChain", "supersededTransition", "successorRoot", "successorProtocol", "successorRootTransition"]), "ScientificPromotionSuccessorRoot");
+  const successorProtocol = canonicalLocalRef(input.successorProtocol, scientificPromotionProtocolDomainV1);
+  const rootPayload = canonicalScientificPromotionTransitionForProtocolV1(input.successorRoot, successorProtocol, false);
+  const root = rootPayload as unknown as ScientificPromotionTransitionV1;
   if (root.predecessorTransition !== null || root.predecessorState !== "DRAFT_RESEARCH" || root.resultingState !== "EXECUTED") throw new Error("WRONG_LINEAGE");
-  if (!sameCanonical(root.subject, input.oldChain.subject) || !sameRef(root.protocol, input.successorProtocol)) throw new Error("WRONG_LINEAGE");
+  if (!sameCanonical(root.subject, input.oldChain.subject) || !sameRef(root.protocol, successorProtocol)) throw new Error("WRONG_LINEAGE");
+  const successorRootTransition = canonicalLocalRef(input.successorRootTransition, scientificPromotionTransitionDomainV1);
+  const actualRootRef = hashCanonicalScientificPromotionTransitionV1(rootPayload);
+  if (!sameRef(actualRootRef, successorRootTransition)) throw new Error("WRONG_LINEAGE");
+  const oldRef = hashScientificPromotionTransitionV1(input.oldChain);
+  const supersededRef = hashScientificPromotionTransitionV1(input.supersededTransition);
+  if (sameRef(successorRootTransition, oldRef) || sameRef(successorRootTransition, supersededRef)) throw new Error("MALFORMED_TRANSITION");
 }
 
 function preimage(domain: ScientificPromotionLocalHashDomainV1, payload: CanonicalJsonValue): Buffer { return Buffer.concat([Buffer.from(`${domain}\n`, "utf8"), i5ResearchInternalCanonicalJsonBytesV1(payload)]); }
@@ -399,12 +443,13 @@ function assertSnapshot(stateValue: ScientificPromotionStateV1, snapshot: Scient
     for (const [key, value] of Object.entries(snapshot)) if (key !== "runInput" && key !== "result" && value !== null) throw new Error("ROOT_LATER_EVIDENCE_MUST_BE_NULL");
   } else if (stateValue === "INSUFFICIENT_EVIDENCE") {
     req(snapshot.runInput, "MISSING_RESULT"); req(snapshot.result, "MISSING_RESULT"); req(snapshot.validationProtocol, "MISSING_VALIDATION_RESULT"); req(snapshot.validationResult, "MISSING_VALIDATION_RESULT"); req(snapshot.validationAssessmentProtocol, "MISSING_VALIDATION_ASSESSMENT_AUTHORITY"); req(snapshot.validationAssessmentResult, "MISSING_VALIDATION_ASSESSMENT_AUTHORITY");
-  } else if (stateValue === "VALIDATION_FAILED" || stateValue === "VALIDATION_PASSED") {
+  } else if (stateValue === "VALIDATION_FAILED" || stateValue === "VALIDATION_PASSED" || stateValue === "PROMOTION_ELIGIBLE" || stateValue === "REJECTED") {
     for (const value of Object.values(snapshot)) req(value, "MISSING_RESULT");
   }
 }
 function assertLifecycleShape(input: Readonly<{ predecessorTransition: ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> | null; predecessorState: ScientificPromotionStateV1; resultingState: ScientificPromotionStateV1; evidenceSnapshot: ScientificPromotionEvidenceSnapshotV1; gateOutcomes: readonly ScientificPromotionGateOutcomeV1[]; transitionReasons: readonly ScientificPromotionReasonV1[]; supersedes: ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> | null; rejectedTransition: ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> | null; supersededByChain: ScientificPromotionSupersededByChainV1 | null }>): void {
   const isRoot = input.predecessorTransition === null && input.predecessorState === "DRAFT_RESEARCH" && input.resultingState === "EXECUTED";
+  if ((input.predecessorTransition === null || input.predecessorState === "DRAFT_RESEARCH" || input.resultingState === "EXECUTED") && !isRoot) throw new Error("MALFORMED_TRANSITION");
   if (isRoot) {
     if (input.gateOutcomes.length !== 0 || input.transitionReasons.length !== 0 || input.supersedes !== null || input.rejectedTransition !== null || input.supersededByChain !== null) throw new Error("MALFORMED_TRANSITION");
     return;
@@ -414,6 +459,12 @@ function assertLifecycleShape(input: Readonly<{ predecessorTransition: Scientifi
     const union = gateReasonUnion(input.gateOutcomes);
     if (input.resultingState === "VALIDATION_PASSED") { if (input.gateOutcomes.some((gate) => gate.status !== "PASS") || input.transitionReasons.length !== 0) throw new Error("MALFORMED_TRANSITION"); }
     else if (!sameCanonical(input.transitionReasons, union)) throw new Error("MALFORMED_TRANSITION");
+  }
+  if (input.resultingState === "PROMOTION_ELIGIBLE") {
+    if (input.gateOutcomes.length !== scientificPromotionGateVocabularyV1.length || input.gateOutcomes.some((gate) => gate.status !== "PASS" || gate.reasons.length !== 0) || input.transitionReasons.length !== 0 || input.supersedes !== null || input.rejectedTransition !== null || input.supersededByChain !== null) throw new Error("MALFORMED_TRANSITION");
+  }
+  if (input.resultingState === "REJECTED") {
+    if (input.gateOutcomes.length !== scientificPromotionGateVocabularyV1.length || input.rejectedTransition === null || input.supersedes !== null || input.supersededByChain !== null) throw new Error("MALFORMED_TRANSITION");
   }
   if (input.resultingState === "REJECTED" && input.rejectedTransition === null) throw new Error("MALFORMED_TRANSITION");
   if (input.resultingState !== "REJECTED" && input.rejectedTransition !== null) throw new Error("MALFORMED_TRANSITION");

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   artifactDescriptorV1,
@@ -34,6 +35,7 @@ import {
   assertScientificPromotionRl7CompatibilityV1,
   mapRl7RobustnessClassificationForPromotionV1,
   scientificPromotionDecisionPrecedenceV1,
+  scientificPromotionFailClosedReasonVocabularyV1,
   scientificPromotionGateEvidenceMappingV1,
   scientificPromotionGateVocabularyV1,
   scientificPromotionProtocolDomainV1,
@@ -53,6 +55,7 @@ import {
 import {
   canonicalSha256HexV1,
   hashRefV1,
+  i5ResearchInternalCanonicalJsonBytesV1,
   type CanonicalJsonValue,
   type HashDomainV1,
   type HashRefV1,
@@ -306,7 +309,7 @@ function rootTransition(overrides: Partial<ScientificPromotionTransitionV1> = {}
   };
 }
 
-function gateOutcomes(status: "PASS" | "FAIL" | "INSUFFICIENT_EVIDENCE" = "PASS", reason: ScientificPromotionReasonV1 = "FAILED_VALIDATION"): ScientificPromotionGateOutcomeV1[] {
+function gateOutcomes(status: ScientificPromotionGateOutcomeV1["status"] = "PASS", reason: ScientificPromotionReasonV1 = "FAILED_VALIDATION"): ScientificPromotionGateOutcomeV1[] {
   const evidenceSnapshot = snapshot();
   return scientificPromotionGateVocabularyV1.map((gateId, index) => {
     const failing = index === 0 && status !== "PASS";
@@ -331,6 +334,65 @@ function stageTransition(resultingState: ScientificPromotionStateV1, overrides: 
     transitionReasons: resultingState === "VALIDATION_PASSED" ? [] : Array.from(new Set(gates.flatMap((gate) => gate.reasons))).sort(),
     ...overrides,
   };
+}
+
+function canonicalBytesSha256Hex(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex").toUpperCase();
+}
+
+function transitionHashFromCanonicalPayload(payload: CanonicalJsonValue): ScientificPromotionHashRefV1<typeof scientificPromotionTransitionDomainV1> {
+  const bytes = i5ResearchInternalCanonicalJsonBytesV1(payload);
+  return {
+    hashAlgorithm: "SHA-256",
+    hashDomain: scientificPromotionTransitionDomainV1,
+    hashVersion: "SYNTRAKE_SHA256_V1",
+    hashHex: canonicalSha256HexV1(createHash("sha256").update(Buffer.concat([Buffer.from(`${scientificPromotionTransitionDomainV1}\n`, "utf8"), bytes])).digest("hex").toUpperCase()),
+  };
+}
+
+function futureRootPayload(successorProtocol: ScientificPromotionHashRefV1<typeof scientificPromotionProtocolDomainV1>, successorSubject: ScientificPromotionSubjectV1 = subject): CanonicalJsonValue {
+  return {
+    evidenceSnapshot: rootTransition().evidenceSnapshot as unknown as CanonicalJsonValue,
+    gateOutcomes: [],
+    predecessorState: "DRAFT_RESEARCH",
+    predecessorTransition: null,
+    protocol: successorProtocol as unknown as CanonicalJsonValue,
+    rejectedTransition: null,
+    resultingState: "EXECUTED",
+    schemaVersion: "SCIENTIFIC_PROMOTION_TRANSITION_V1",
+    subject: successorSubject as unknown as CanonicalJsonValue,
+    supersededByChain: null,
+    supersedes: null,
+    transitionReasons: [],
+  };
+}
+
+function futureRootTransition(successorProtocol: ScientificPromotionHashRefV1<typeof scientificPromotionProtocolDomainV1>, successorSubject: ScientificPromotionSubjectV1 = subject, overrides: Partial<ScientificPromotionTransitionV1> = {}): ScientificPromotionTransitionV1 {
+  return {
+    ...rootTransition(),
+    protocol: successorProtocol,
+    subject: successorSubject,
+    ...overrides,
+  };
+}
+
+function supersededFixture(overrides: Partial<ScientificPromotionTransitionV1> = {}) {
+  const predecessor = stageTransition("VALIDATION_PASSED");
+  const promotionEligible: ScientificPromotionTransitionV1 = { ...predecessor, predecessorTransition: hashScientificPromotionTransitionV1(predecessor), predecessorState: "VALIDATION_PASSED", resultingState: "PROMOTION_ELIGIBLE" };
+  const successorProtocol = localRef(scientificPromotionProtocolDomainV1, "6");
+  const successorRoot = futureRootTransition(successorProtocol);
+  const successorRootTransition = transitionHashFromCanonicalPayload(futureRootPayload(successorProtocol));
+  const transition: ScientificPromotionTransitionV1 = {
+    ...promotionEligible,
+    predecessorTransition: hashScientificPromotionTransitionV1(promotionEligible),
+    predecessorState: "PROMOTION_ELIGIBLE",
+    resultingState: "SUPERSEDED",
+    transitionReasons: ["SUPERSEDED_EVIDENCE"],
+    supersedes: hashScientificPromotionTransitionV1(promotionEligible),
+    supersededByChain: { successorProtocol, successorRootTransition },
+    ...overrides,
+  };
+  return { predecessor: promotionEligible, transition, successorProtocol, successorRoot, successorRootTransition };
 }
 
 describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () => {
@@ -388,8 +450,10 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
     expect(protocolPayload).toMatchObject({ protocolId: scientificPromotionProtocolTokenV1, rl7Required: true });
     expect(protocolPayload).not.toHaveProperty("protocolToken");
     expect(canonicalScientificPromotionProtocolBytesV1().toString("utf8")).toBe("{\"compatibleMetricRegistryVersion\":\"METRIC_REGISTRY_V20260927\",\"decisionPrecedence\":[\"FAIL_CLOSED_INTEGRITY_AUTHORITY_LINEAGE\",\"FORBIDDEN_TRANSITION\",\"INSUFFICIENT_EVIDENCE_OUTCOME\",\"VALIDATION_FAILED_OUTCOME\",\"VALIDATION_PASSED_OUTCOME\"],\"gateEvidenceMapping\":[{\"gateId\":\"GATE_ACCEPTED_EXECUTION_RESULT\",\"selectors\":[\"evidenceSnapshot.result\",\"evidenceSnapshot.runInput\"]},{\"gateId\":\"GATE_AUTHORITY_AND_TENANCY\",\"selectors\":[]},{\"gateId\":\"GATE_EVIDENCE_COMPLETENESS\",\"selectors\":[\"evidenceSnapshot.evidenceObject\",\"evidenceSnapshot.result\",\"evidenceSnapshot.robustnessComparisonProtocol\",\"evidenceSnapshot.robustnessComparisonResult\",\"evidenceSnapshot.runInput\",\"evidenceSnapshot.validationAssessmentProtocol\",\"evidenceSnapshot.validationAssessmentResult\",\"evidenceSnapshot.validationProtocol\",\"evidenceSnapshot.validationResult\"]},{\"gateId\":\"GATE_EVIDENCE_OBJECT_BINDING\",\"selectors\":[\"evidenceSnapshot.evidenceObject\"]},{\"gateId\":\"GATE_LINEAGE_INTEGRITY\",\"selectors\":[\"evidenceSnapshot.evidenceObject\",\"evidenceSnapshot.result\",\"evidenceSnapshot.robustnessComparisonProtocol\",\"evidenceSnapshot.robustnessComparisonResult\",\"evidenceSnapshot.runInput\",\"evidenceSnapshot.validationAssessmentProtocol\",\"evidenceSnapshot.validationAssessmentResult\",\"evidenceSnapshot.validationProtocol\",\"evidenceSnapshot.validationResult\",\"subject.subjectExperiment\",\"subject.subjectExperimentParameters\",\"subject.subjectResearchIr\"]},{\"gateId\":\"GATE_METRIC_RESULT_SET_V2\",\"selectors\":[\"evidenceSnapshot.validationAssessmentResult\"]},{\"gateId\":\"GATE_PROTOCOL_COMPATIBILITY\",\"selectors\":[\"evidenceSnapshot.result\",\"evidenceSnapshot.robustnessComparisonProtocol\",\"evidenceSnapshot.validationAssessmentProtocol\",\"evidenceSnapshot.validationAssessmentResult\",\"evidenceSnapshot.validationProtocol\",\"transition.protocol\"]},{\"gateId\":\"GATE_RL7_ROBUSTNESS_COMPARISON\",\"selectors\":[\"evidenceSnapshot.robustnessComparisonProtocol\",\"evidenceSnapshot.robustnessComparisonResult\"]},{\"gateId\":\"GATE_SUBJECT_IDENTITY\",\"selectors\":[\"subject.subjectExperiment\",\"subject.subjectExperimentParameters\",\"subject.subjectResearchIr\"]},{\"gateId\":\"GATE_VALIDATION_ASSESSMENT\",\"selectors\":[\"evidenceSnapshot.validationAssessmentProtocol\",\"evidenceSnapshot.validationAssessmentResult\"]},{\"gateId\":\"GATE_VALIDATION_RESULT\",\"selectors\":[\"evidenceSnapshot.validationProtocol\",\"evidenceSnapshot.validationResult\"]}],\"gateStatusVocabulary\":[\"FAIL\",\"INCOMPATIBLE_EVIDENCE\",\"INSUFFICIENT_EVIDENCE\",\"PASS\",\"UNAVAILABLE\"],\"gateVocabulary\":[\"GATE_ACCEPTED_EXECUTION_RESULT\",\"GATE_AUTHORITY_AND_TENANCY\",\"GATE_EVIDENCE_COMPLETENESS\",\"GATE_EVIDENCE_OBJECT_BINDING\",\"GATE_LINEAGE_INTEGRITY\",\"GATE_METRIC_RESULT_SET_V2\",\"GATE_PROTOCOL_COMPATIBILITY\",\"GATE_RL7_ROBUSTNESS_COMPARISON\",\"GATE_SUBJECT_IDENTITY\",\"GATE_VALIDATION_ASSESSMENT\",\"GATE_VALIDATION_RESULT\"],\"protocolId\":\"SCIENTIFIC_PROMOTION_PROTOCOL_V20261002\",\"reasonVocabulary\":[\"AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY\",\"AUTHORITY_FAILURE\",\"CORRUPTED_EVIDENCE\",\"DIVERGENT_EXISTING_IDENTITY\",\"FAILED_ROBUSTNESS_GATE\",\"FAILED_VALIDATION\",\"FORBIDDEN_TRANSITION\",\"INCOMPATIBLE_ARTIFACT_SCHEMA\",\"INCOMPATIBLE_ENGINE_VERSION\",\"INCOMPATIBLE_METRIC_REGISTRY\",\"INCOMPATIBLE_PROTOCOL_VERSION\",\"INCOMPATIBLE_SCHEMA_VERSION\",\"INCOMPATIBLE_VALIDATION_ASSESSMENT\",\"INCOMPLETE_VALIDATION\",\"INSUFFICIENT_RL7_EVIDENCE\",\"MALFORMED_HASHREF\",\"MALFORMED_PROTOCOL\",\"MALFORMED_TRANSITION\",\"MISSING_EVIDENCE_OBJECT\",\"MISSING_METRIC_RESULT_SET\",\"MISSING_RESULT\",\"MISSING_RL7_COMPARISON\",\"MISSING_SUBJECT\",\"MISSING_VALIDATION_ASSESSMENT_AUTHORITY\",\"MISSING_VALIDATION_RESULT\",\"SUPERSEDED_EVIDENCE\",\"UNAUTHORIZED_EVIDENCE\",\"UNKNOWN_GATE\",\"UNKNOWN_RL7_CLASSIFICATION\",\"UNKNOWN_STATE\",\"WRONG_HASHREF_DOMAIN\",\"WRONG_INVESTIGATION\",\"WRONG_LINEAGE\",\"WRONG_TENANT\"],\"requiredEvidenceClasses\":[\"EXECUTION_RESULT\",\"EVIDENCE_OBJECT\",\"VALIDATION_ASSESSMENT_RESULT\",\"VALIDATION_RESULT\",\"METRIC_RESULT_SET_V2\",\"RL7_EXPERIMENT_COMPARISON_RESULT\"],\"requiredRl7PolicyId\":\"ROBUSTNESS_COMPARISON_POLICY_V20260927\",\"rl7Required\":true,\"schemaVersion\":\"SCIENTIFIC_PROMOTION_PROTOCOL_V1\",\"stateVocabulary\":[\"DRAFT_RESEARCH\",\"EXECUTED\",\"INSUFFICIENT_EVIDENCE\",\"PROMOTION_ELIGIBLE\",\"REJECTED\",\"SUPERSEDED\",\"VALIDATION_FAILED\",\"VALIDATION_PASSED\"],\"transitionGraph\":[{\"from\":\"DRAFT_RESEARCH\",\"to\":\"EXECUTED\"},{\"from\":\"EXECUTED\",\"to\":\"INSUFFICIENT_EVIDENCE\"},{\"from\":\"EXECUTED\",\"to\":\"VALIDATION_FAILED\"},{\"from\":\"EXECUTED\",\"to\":\"VALIDATION_PASSED\"},{\"from\":\"INSUFFICIENT_EVIDENCE\",\"to\":\"INSUFFICIENT_EVIDENCE\"},{\"from\":\"INSUFFICIENT_EVIDENCE\",\"to\":\"VALIDATION_FAILED\"},{\"from\":\"INSUFFICIENT_EVIDENCE\",\"to\":\"VALIDATION_PASSED\"},{\"from\":\"PROMOTION_ELIGIBLE\",\"to\":\"INSUFFICIENT_EVIDENCE\"},{\"from\":\"PROMOTION_ELIGIBLE\",\"to\":\"VALIDATION_FAILED\"},{\"from\":\"PROMOTION_ELIGIBLE\",\"to\":\"VALIDATION_PASSED\"},{\"from\":\"REJECTED\",\"to\":\"INSUFFICIENT_EVIDENCE\"},{\"from\":\"REJECTED\",\"to\":\"VALIDATION_FAILED\"},{\"from\":\"REJECTED\",\"to\":\"VALIDATION_PASSED\"},{\"from\":\"VALIDATION_FAILED\",\"to\":\"REJECTED\"},{\"from\":\"VALIDATION_PASSED\",\"to\":\"PROMOTION_ELIGIBLE\"},{\"from\":\"EXECUTED\",\"to\":\"SUPERSEDED\"},{\"from\":\"INSUFFICIENT_EVIDENCE\",\"to\":\"SUPERSEDED\"},{\"from\":\"PROMOTION_ELIGIBLE\",\"to\":\"SUPERSEDED\"},{\"from\":\"REJECTED\",\"to\":\"SUPERSEDED\"}]}");
+    expect(canonicalBytesSha256Hex(canonicalScientificPromotionProtocolBytesV1())).toBe("A3DBB4046CD52A02E90EE175298A7799BAB791B8532FBF84A1A58C11D3B1F012");
     expect(hashScientificPromotionProtocolV1().hashHex).toBe("122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C");
     expect(canonicalScientificPromotionTransitionBytesV1(rootTransition()).toString("utf8")).toBe("{\"evidenceSnapshot\":{\"evidenceObject\":null,\"result\":{\"hashAlgorithm\":\"SHA-256\",\"hashDomain\":\"SYNTRAKE:RESULT:V1\",\"hashHex\":\"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF\",\"hashVersion\":\"SYNTRAKE_SHA256_V1\"},\"robustnessComparisonProtocol\":null,\"robustnessComparisonResult\":null,\"runInput\":{\"hashAlgorithm\":\"SHA-256\",\"hashDomain\":\"SYNTRAKE:RUN_INPUT:V1\",\"hashHex\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"hashVersion\":\"SYNTRAKE_SHA256_V1\"},\"validationAssessmentProtocol\":null,\"validationAssessmentResult\":null,\"validationProtocol\":null,\"validationResult\":null},\"gateOutcomes\":[],\"predecessorState\":\"DRAFT_RESEARCH\",\"predecessorTransition\":null,\"protocol\":{\"hashAlgorithm\":\"SHA-256\",\"hashDomain\":\"SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1\",\"hashHex\":\"122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C\",\"hashVersion\":\"SYNTRAKE_SHA256_V1\"},\"rejectedTransition\":null,\"resultingState\":\"EXECUTED\",\"schemaVersion\":\"SCIENTIFIC_PROMOTION_TRANSITION_V1\",\"subject\":{\"subjectExperiment\":{\"hashAlgorithm\":\"SHA-256\",\"hashDomain\":\"SYNTRAKE:EXPERIMENT:V1\",\"hashHex\":\"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB\",\"hashVersion\":\"SYNTRAKE_SHA256_V1\"},\"subjectExperimentParameters\":{\"hashAlgorithm\":\"SHA-256\",\"hashDomain\":\"SYNTRAKE:EXPERIMENT_PARAMETERS:V1\",\"hashHex\":\"DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD\",\"hashVersion\":\"SYNTRAKE_SHA256_V1\"},\"subjectResearchIr\":{\"hashAlgorithm\":\"SHA-256\",\"hashDomain\":\"SYNTRAKE:RESEARCH_IR:V1\",\"hashHex\":\"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC\",\"hashVersion\":\"SYNTRAKE_SHA256_V1\"}},\"supersededByChain\":null,\"supersedes\":null,\"transitionReasons\":[]}");
+    expect(canonicalBytesSha256Hex(canonicalScientificPromotionTransitionBytesV1(rootTransition()))).toBe("3546B2ADD88325F789DD3F4B25817AA6CF3E6D9812711E26852B432AA659F7A1");
     expect(hashScientificPromotionTransitionV1(rootTransition()).hashHex).toBe("3E910D12366ED5B0CE8C93686FC18F98A0D07E550D96BF61237BA73ECE23901F");
     expect(scientificPromotionGateEvidenceMappingV1).toContainEqual({ gateId: "GATE_METRIC_RESULT_SET_V2", selectors: ["evidenceSnapshot.validationAssessmentResult"] });
     expect(JSON.stringify(protocolPayload)).not.toContain("HashRef<METRIC_RESULT_SET_V2>");
@@ -418,6 +482,111 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
     const tampered = gateOutcomes();
     tampered[0] = { ...tampered[0]!, evidence: [ref("SYNTRAKE:RESULT:V1", "9")] };
     expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: tampered }))).toThrow("MALFORMED_TRANSITION");
+  });
+
+  it("fails closed before deriving scientific states for authority, integrity and incompatible evidence", () => {
+    expect(scientificPromotionFailClosedReasonVocabularyV1).toContain("AUTHORITY_FAILURE");
+    expect(evaluateScientificPromotionStageAV1({
+      predecessorState: "EXECUTED",
+      requestedState: "INSUFFICIENT_EVIDENCE",
+      gateOutcomes: gateOutcomes("UNAVAILABLE", "AUTHORITY_FAILURE"),
+      assessmentOutcome: "PASS",
+      rl7Outcome: "PERMIT_FURTHER_EVALUATION",
+      failClosedReason: null,
+    })).toEqual({ kind: "FAIL_CLOSED", reason: "AUTHORITY_FAILURE" });
+    expect(evaluateScientificPromotionStageAV1({
+      predecessorState: "EXECUTED",
+      requestedState: "VALIDATION_FAILED",
+      gateOutcomes: gateOutcomes("FAIL", "WRONG_LINEAGE"),
+      assessmentOutcome: "PASS",
+      rl7Outcome: "PERMIT_FURTHER_EVALUATION",
+      failClosedReason: null,
+    })).toEqual({ kind: "FAIL_CLOSED", reason: "WRONG_LINEAGE" });
+    expect(evaluateScientificPromotionStageAV1({
+      predecessorState: "EXECUTED",
+      requestedState: "VALIDATION_FAILED",
+      gateOutcomes: gateOutcomes("INCOMPATIBLE_EVIDENCE", "FAILED_VALIDATION"),
+      assessmentOutcome: "PASS",
+      rl7Outcome: "PERMIT_FURTHER_EVALUATION",
+      failClosedReason: null,
+    })).toEqual({ kind: "FAIL_CLOSED", reason: "INCOMPATIBLE_VALIDATION_ASSESSMENT" });
+    expect(evaluateScientificPromotionStageAV1({
+      predecessorState: "EXECUTED",
+      requestedState: "INSUFFICIENT_EVIDENCE",
+      gateOutcomes: gateOutcomes(),
+      assessmentOutcome: "PASS",
+      rl7Outcome: "PERMIT_FURTHER_EVALUATION",
+      failClosedReason: "MISSING_VALIDATION_ASSESSMENT_AUTHORITY",
+    })).toEqual({ kind: "FAIL_CLOSED", reason: "MISSING_VALIDATION_ASSESSMENT_AUTHORITY" });
+  });
+
+  it("enforces exact Stage A sources, results, requested-state match and precedence", () => {
+    for (const source of ["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"] as const) {
+      expect(evaluateScientificPromotionStageAV1({ predecessorState: source, requestedState: "VALIDATION_PASSED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toMatchObject({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_PASSED" });
+    }
+    for (const source of ["DRAFT_RESEARCH", "VALIDATION_FAILED", "VALIDATION_PASSED", "SUPERSEDED"] as const) {
+      expect(evaluateScientificPromotionStageAV1({ predecessorState: source, requestedState: "VALIDATION_PASSED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toEqual({ kind: "FAIL_CLOSED", reason: "FORBIDDEN_TRANSITION" });
+    }
+    for (const requestedState of ["DRAFT_RESEARCH", "EXECUTED", "PROMOTION_ELIGIBLE", "REJECTED", "SUPERSEDED"] as const) {
+      expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState, gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toEqual({ kind: "FAIL_CLOSED", reason: "FORBIDDEN_TRANSITION" });
+    }
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "VALIDATION_FAILED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toEqual({ kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" });
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "INSUFFICIENT_EVIDENCE", gateOutcomes: gateOutcomes("FAIL"), assessmentOutcome: "INSUFFICIENT_EVIDENCE", rl7Outcome: "VALIDATION_FAILED", failClosedReason: null })).toMatchObject({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "INSUFFICIENT_EVIDENCE" });
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "INSUFFICIENT_EVIDENCE", gateOutcomes: gateOutcomes("FAIL"), assessmentOutcome: "FAIL", rl7Outcome: "INSUFFICIENT_EVIDENCE", failClosedReason: null })).toMatchObject({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "INSUFFICIENT_EVIDENCE" });
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "VALIDATION_FAILED", gateOutcomes: gateOutcomes(), assessmentOutcome: "FAIL", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toMatchObject({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_FAILED" });
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "VALIDATION_FAILED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "VALIDATION_FAILED", failClosedReason: null })).toMatchObject({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_FAILED" });
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "VALIDATION_PASSED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toEqual({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_PASSED", reasons: [] });
+  });
+
+  it("rejects non-exact root shapes and intrinsic Stage B violations", () => {
+    expect(() => canonicalScientificPromotionTransitionBytesV1(rootTransition({ predecessorTransition: localRef(scientificPromotionTransitionDomainV1, "8") }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1(rootTransition({ predecessorTransition: null, predecessorState: "EXECUTED" }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("EXECUTED", { predecessorState: "EXECUTED" }))).toThrow("MALFORMED_TRANSITION");
+    const passed = stageTransition("VALIDATION_PASSED");
+    const promotionEligible: ScientificPromotionTransitionV1 = { ...passed, predecessorTransition: hashScientificPromotionTransitionV1(passed), predecessorState: "VALIDATION_PASSED", resultingState: "PROMOTION_ELIGIBLE" };
+    canonicalScientificPromotionTransitionBytesV1(promotionEligible);
+    expect(() => canonicalScientificPromotionTransitionBytesV1({ ...promotionEligible, evidenceSnapshot: snapshot({ validationResult: null }) })).toThrow("MISSING_RESULT");
+    expect(() => canonicalScientificPromotionTransitionBytesV1({ ...promotionEligible, gateOutcomes: gateOutcomes("FAIL") })).toThrow("MALFORMED_TRANSITION");
+    const failed = stageTransition("VALIDATION_FAILED");
+    const rejected: ScientificPromotionTransitionV1 = { ...failed, predecessorTransition: hashScientificPromotionTransitionV1(failed), predecessorState: "VALIDATION_FAILED", resultingState: "REJECTED", rejectedTransition: hashScientificPromotionTransitionV1(failed) };
+    canonicalScientificPromotionTransitionBytesV1(rejected);
+    expect(() => canonicalScientificPromotionTransitionBytesV1({ ...rejected, rejectedTransition: null })).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1({ ...rejected, evidenceSnapshot: snapshot({ validationResult: null }) })).toThrow("MISSING_RESULT");
+  });
+
+  it("validates cross-protocol successor roots and binds successorRootTransition to the actual root payload", () => {
+    const fixture = supersededFixture();
+    assertScientificPromotionPredecessorRelationV1({ predecessor: fixture.predecessor, transition: fixture.transition, successorRoot: fixture.successorRoot });
+    expect(() => assertScientificPromotionPredecessorRelationV1({
+      predecessor: fixture.predecessor,
+      transition: { ...fixture.transition, supersededByChain: { ...fixture.transition.supersededByChain!, successorProtocol: hashScientificPromotionProtocolV1() } },
+      successorRoot: futureRootTransition(hashScientificPromotionProtocolV1()),
+    })).toThrow("INCOMPATIBLE_PROTOCOL_VERSION");
+    expect(() => assertScientificPromotionPredecessorRelationV1({
+      predecessor: fixture.predecessor,
+      transition: { ...fixture.transition, supersededByChain: { ...fixture.transition.supersededByChain!, successorRootTransition: localRef(scientificPromotionTransitionDomainV1, "9") } },
+      successorRoot: fixture.successorRoot,
+    })).toThrow("WRONG_LINEAGE");
+    expect(() => assertScientificPromotionPredecessorRelationV1({
+      predecessor: fixture.predecessor,
+      transition: fixture.transition,
+      successorRoot: futureRootTransition(fixture.successorProtocol, subject, { predecessorTransition: localRef(scientificPromotionTransitionDomainV1, "8") }),
+    })).toThrow("MALFORMED_TRANSITION");
+    expect(() => assertScientificPromotionPredecessorRelationV1({
+      predecessor: fixture.predecessor,
+      transition: fixture.transition,
+      successorRoot: futureRootTransition(fixture.successorProtocol, { ...subject, subjectResearchIr: ref("SYNTRAKE:RESEARCH_IR:V1", "9") }),
+    })).toThrow("WRONG_LINEAGE");
+    expect(() => assertScientificPromotionPredecessorRelationV1({
+      predecessor: fixture.predecessor,
+      transition: { ...fixture.transition, supersededByChain: { ...fixture.transition.supersededByChain!, successorRootTransition: hashScientificPromotionTransitionV1(fixture.transition) } },
+      successorRoot: fixture.successorRoot,
+    })).toThrow("WRONG_LINEAGE");
+    expect(() => assertScientificPromotionPredecessorRelationV1({
+      predecessor: fixture.predecessor,
+      transition: { ...fixture.transition, supersededByChain: { ...fixture.transition.supersededByChain!, successorRootTransition: hashScientificPromotionTransitionV1(fixture.predecessor) } },
+      successorRoot: fixture.successorRoot,
+    })).toThrow("WRONG_LINEAGE");
   });
 
   it("binds RL-3D Assessment Protocol and Result payload hashes before accepting consumed evidence", () => {
@@ -449,7 +618,7 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
 
   it("keeps Stage A separate from Stage B and enforces lifecycle copy semantics", () => {
     const passed = stageTransition("VALIDATION_PASSED");
-    const stageA = evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "VALIDATION_PASSED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosed: false });
+    const stageA = evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "VALIDATION_PASSED", gateOutcomes: gateOutcomes(), assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null });
     expect(stageA).toEqual({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "VALIDATION_PASSED", reasons: [] });
     expect(passed.resultingState).toBe("VALIDATION_PASSED");
     const promotionEligible: ScientificPromotionTransitionV1 = { ...passed, predecessorTransition: hashScientificPromotionTransitionV1(passed), predecessorState: "VALIDATION_PASSED", resultingState: "PROMOTION_ELIGIBLE" };
