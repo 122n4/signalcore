@@ -91,7 +91,6 @@ evidenceSnapshot = {
   validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1> | null,
   validationAssessmentProtocol: HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1> | null,
   validationAssessmentResult: HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1> | null,
-  metricResultSet: HashRef<METRIC_RESULT_SET_V2> | null,
   robustnessComparisonProtocol: HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1> | null,
   robustnessComparisonResult: HashRef<SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1> | null
 }
@@ -122,6 +121,8 @@ validationResult: HashRef<SYNTRAKE:VALIDATION_RESULT:V1>
 subjectExperiment: HashRef<SYNTRAKE:EXPERIMENT:V1>
 subjectResearchIr: HashRef<SYNTRAKE:RESEARCH_IR:V1>
 metricRegistryVersion: METRIC_REGISTRY_V20260927
+consumedEvidence: byte-sorted complete accepted RL-3D ConsumedEvidenceRefV1 array
+criterionOutcomes: accepted RL-3D criterion outcome array
 outcome: PASS | FAIL | INSUFFICIENT_EVIDENCE
 ```
 
@@ -135,6 +136,13 @@ scientific PASS/FAIL. Never choose Assessment authority by latest, timestamp,
 favorable outcome, caller preference or insertion order. Missing, ambiguous,
 corrupt, incompatible or unauthorized Assessment authority fails closed with no
 authoritative RL-8 transition.
+
+Resolving `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` means validating its
+complete canonical payload, including `consumedEvidence`, `criterionOutcomes`
+and `outcome`. RL-8 MUST NOT validate only the top-level HashRefs while
+ignoring `consumedEvidence`. The Assessment Result HashRef cryptographically
+commits to the exact evidence used to obtain PASS, FAIL or
+INSUFFICIENT_EVIDENCE, and that exact canonical payload is scientific authority.
 
 The accepted Assessment Result must exactly bind:
 
@@ -151,6 +159,29 @@ Its Assessment Protocol must be the unique authoritative accepted protocol for
 the exact logical assessment protocol key frozen by RL-3D. Any mismatch fails
 closed with no authoritative RL-8 transition.
 
+Metric Result Set V2 identity is consumed transitively through the accepted
+RL-3D Validation Assessment Result canonical `consumedEvidence`; it is not an
+RL-8 HashRef domain. `METRIC_RESULT_SET_V2` is an artifact-schema evidence
+class, NOT a canonical HashRef domain. Its exact descriptor identities are
+contained inside accepted RL-3D Assessment Result `consumedEvidence`.
+Each consumed Metric Result Set descriptor MUST be represented as accepted
+RL-3D `ConsumedEvidenceRefV1`:
+
+```text
+{
+  kind: METRIC_RESULT_SET_DESCRIPTOR,
+  artifactSchemaVersion: METRIC_RESULT_SET_V2,
+  contentSha256,
+  contentByteLength,
+  recordCount,
+  ownerResult: HashRefV1
+}
+```
+
+RL-8 does not reserialize or invent a competing metric identity. If the
+required Metric Result Set evidence cannot be reconstructed exactly from the
+accepted Assessment Result, RL-8 fails closed with no authoritative transition.
+
 The accepted RL-7 comparison protocol/result lineage consumed by RL-8
 must bind its subjectResult and subjectValidationResult to the exact result and
 validationResult HashRefs in this transition evidenceSnapshot. Those fields
@@ -158,7 +189,7 @@ belong to accepted RL-7 comparison evidence, not SCIENTIFIC_PROMOTION_SUBJECT_V1
 Unavailable artifacts are null, not invented HashRefs; known corrupt or
 unauthorized evidence fails closed rather than being laundered into absence.
 
-The exact snapshot contains these 10 mandatory keys:
+The exact snapshot contains these 9 mandatory keys:
 
 ```text
 runInput
@@ -168,7 +199,6 @@ validationProtocol
 validationResult
 validationAssessmentProtocol
 validationAssessmentResult
-metricResultSet
 robustnessComparisonProtocol
 robustnessComparisonResult
 ```
@@ -176,21 +206,21 @@ robustnessComparisonResult
 Exact presence rules by resulting state (R = required non-null; N = null;
 O = accepted HashRef or explicit null; COPY = exact predecessor snapshot):
 
-| resultingState | runInput | result | evidenceObject | validationProtocol | validationResult | validationAssessmentProtocol | validationAssessmentResult | metricResultSet | robustnessComparisonProtocol | robustnessComparisonResult |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| DRAFT_RESEARCH | N | N | N | N | N | N | N | N | N | N |
-| EXECUTED | R | R | N | N | N | N | N | N | N | N |
-| INSUFFICIENT_EVIDENCE | R | R | O | R | R | R | R | O | O | O |
-| VALIDATION_FAILED | R | R | R | R | R | R | R | R | R | R |
-| VALIDATION_PASSED | R | R | R | R | R | R | R | R | R | R |
-| PROMOTION_ELIGIBLE | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
-| REJECTED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
-| SUPERSEDED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| resultingState | runInput | result | evidenceObject | validationProtocol | validationResult | validationAssessmentProtocol | validationAssessmentResult | robustnessComparisonProtocol | robustnessComparisonResult |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| DRAFT_RESEARCH | N | N | N | N | N | N | N | N | N |
+| EXECUTED | R | R | N | N | N | N | N | N | N |
+| INSUFFICIENT_EVIDENCE | R | R | O | R | R | R | R | O | O |
+| VALIDATION_FAILED | R | R | R | R | R | R | R | R | R |
+| VALIDATION_PASSED | R | R | R | R | R | R | R | R | R |
+| PROMOTION_ELIGIBLE | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| REJECTED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
+| SUPERSEDED | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY | COPY |
 
 DRAFT_RESEARCH is only an upstream observation; it is never a resulting RL-8
 transition. Its row describes absence before execution, not a persisted root.
 EXECUTED binds only accepted runInput/result lineage and the stable scientific
-subject under the exact protocol. All eight later evidence fields MUST be null,
+subject under the exact protocol. All seven later evidence fields MUST be null,
 even when those artifacts already exist. Creating the same root before or after
 validation, metrics or RL-7 evidence exists MUST produce identical canonical
 bytes and scientific identity. Future evidence cannot change root identity.
@@ -382,9 +412,17 @@ scientific assessment authority. Missing, ambiguous, corrupt, incompatible or
 unauthorized Assessment authority fails closed with no authoritative RL-8
 transition.
 
-The Metric Result Set must be `METRIC_RESULT_SET_V2` under
-`METRIC_REGISTRY_V20260927`. Missing metric evidence, unknown metric version or
-incompatible artifact schema cannot become zero or PASS.
+`GATE_METRIC_RESULT_SET_V2` remains an RL-8 gate, but its authority is derived
+by resolving `evidenceSnapshot.validationAssessmentResult` and validating the
+accepted RL-3D Assessment Result canonical payload. The Assessment Result must
+prove `metricRegistryVersion = METRIC_REGISTRY_V20260927`, and its
+`consumedEvidence` must contain the exact accepted Metric Result Set descriptor
+evidence required by the accepted Assessment Protocol. Every consumed Metric
+Result Set descriptor must use `artifactSchemaVersion = METRIC_RESULT_SET_V2`
+with exact `artifactSchemaVersion`, `contentSha256`, `contentByteLength`,
+`recordCount` and `ownerResult`. Missing metric descriptor evidence, unknown
+metric version or incompatible artifact schema fails closed and cannot become
+zero or PASS.
 
 ## RL-7 Consumption Semantics
 
@@ -760,7 +798,6 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
       "gateId": "GATE_EVIDENCE_COMPLETENESS",
       "selectors": [
         "evidenceSnapshot.evidenceObject",
-        "evidenceSnapshot.metricResultSet",
         "evidenceSnapshot.result",
         "evidenceSnapshot.robustnessComparisonProtocol",
         "evidenceSnapshot.robustnessComparisonResult",
@@ -781,7 +818,6 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
       "gateId": "GATE_LINEAGE_INTEGRITY",
       "selectors": [
         "evidenceSnapshot.evidenceObject",
-        "evidenceSnapshot.metricResultSet",
         "evidenceSnapshot.result",
         "evidenceSnapshot.robustnessComparisonProtocol",
         "evidenceSnapshot.robustnessComparisonResult",
@@ -798,13 +834,12 @@ The canonical payload for `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1` is exactly
     {
       "gateId": "GATE_METRIC_RESULT_SET_V2",
       "selectors": [
-        "evidenceSnapshot.metricResultSet"
+        "evidenceSnapshot.validationAssessmentResult"
       ]
     },
     {
       "gateId": "GATE_PROTOCOL_COMPATIBILITY",
       "selectors": [
-        "evidenceSnapshot.metricResultSet",
         "evidenceSnapshot.result",
         "evidenceSnapshot.robustnessComparisonProtocol",
         "evidenceSnapshot.validationAssessmentProtocol",
@@ -975,7 +1010,7 @@ arbitrarily populated. All non-root predecessorState values equal P.resultingSta
 | REJECTED | P | null | P | null | COPY | COPY | COPY |
 | SUPERSEDED | P | P | null | REQUIRED_CHAIN | COPY | COPY | [SUPERSEDED_EVIDENCE] |
 
-ROOT_EXACT is the EXECUTED presence row: runInput/result required, eight remaining
+ROOT_EXACT is the EXECUTED presence row: runInput/result required, seven remaining
 snapshot fields null. NEW_ACCEPTED follows the resulting Stage A state's presence
 row and exact authority/lineage rules. COMPLETE_GATES and EVALUATION_REASONS are
 the Gate Outcome Completeness rules. REJECTED copies the failed predecessor's

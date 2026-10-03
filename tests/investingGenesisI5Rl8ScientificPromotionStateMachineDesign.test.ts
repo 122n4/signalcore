@@ -343,11 +343,11 @@ describe("RL-8 recovery structural invariants", () => {
       ["validationResult", "SYNTRAKE:VALIDATION_RESULT:V1"],
       ["validationAssessmentProtocol", "SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1"],
       ["validationAssessmentResult", "SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1"],
-      ["metricResultSet", "METRIC_RESULT_SET_V2"],
       ["robustnessComparisonProtocol", "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1"],
       ["robustnessComparisonResult", "SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1"],
     ]);
-    expect(fields).toHaveLength(10);
+    expect(fields).toHaveLength(9);
+    expect(contract.match(/HashRef<METRIC_RESULT_SET_V2>/g) ?? []).toHaveLength(0);
     expect(block("Transition Artifact Payload")).toContain(
       "evidenceSnapshot: exact nested evidenceSnapshot structure defined above");
     expect(normalized).toContain("Every key is required; absence is explicit null");
@@ -356,17 +356,18 @@ describe("RL-8 recovery structural invariants", () => {
       .filter((line) => /^\| [A-Z_]+ \|/.test(line))
       .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
     expect(rows).toEqual([
-      ["DRAFT_RESEARCH", ...Array(10).fill("N")],
-      ["EXECUTED", "R", "R", ...Array(8).fill("N")],
-      ["INSUFFICIENT_EVIDENCE", "R", "R", "O", "R", "R", "R", "R", "O", "O", "O"],
-      ["VALIDATION_FAILED", ...Array(10).fill("R")],
-      ["VALIDATION_PASSED", ...Array(10).fill("R")],
+      ["DRAFT_RESEARCH", ...Array(9).fill("N")],
+      ["EXECUTED", "R", "R", ...Array(7).fill("N")],
+      ["INSUFFICIENT_EVIDENCE", "R", "R", "O", "R", "R", "R", "R", "O", "O"],
+      ["VALIDATION_FAILED", ...Array(9).fill("R")],
+      ["VALIDATION_PASSED", ...Array(9).fill("R")],
       ...["PROMOTION_ELIGIBLE", "REJECTED", "SUPERSEDED"]
-        .map((state) => [state, ...Array(10).fill("COPY")]),
+        .map((state) => [state, ...Array(9).fill("COPY")]),
     ]);
-    expect(normalized).toContain("The exact snapshot contains these 10 mandatory keys");
+    expect(normalized).toContain("The exact snapshot contains these 9 mandatory keys");
     expect(normalized).toContain("Missing or ambiguous Validation Assessment authority is not ordinary scientific insufficiency");
     expect(normalized).toContain("accepted RL-3D authority requires fail closed before any RL-8 transition");
+    expect(normalized).toContain("Metric Result Set V2 identity is consumed transitively through the accepted RL-3D Validation Assessment Result canonical `consumedEvidence`");
     expect(normalized).toContain("Stage A binds the new accepted evidenceSnapshot for the same stable subject");
     expect(normalized).toContain("The accepted RL-7 comparison protocol/result lineage consumed by RL-8 must bind its subjectResult and subjectValidationResult to the exact result and validationResult HashRefs in this transition evidenceSnapshot");
     expect(normalized).toContain("Those fields belong to accepted RL-7 comparison evidence, not SCIENTIFIC_PROMOTION_SUBJECT_V1");
@@ -465,7 +466,7 @@ transitionReasons = []
 supersedes = null
 rejectedTransition = null
 supersededByChain = null`);
-    expect(normalized).toContain("All eight later evidence fields MUST be null, even when those artifacts already exist");
+    expect(normalized).toContain("All seven later evidence fields MUST be null, even when those artifacts already exist");
     expect(normalized).toContain("Creating the same root before or after validation, metrics or RL-7 evidence exists MUST produce identical canonical bytes and scientific identity");
   });
 
@@ -649,13 +650,44 @@ VALIDATION_FAILED -> REJECTED
     expect(protocolArray("reasonVocabulary")).toContain("INCOMPATIBLE_VALIDATION_ASSESSMENT");
     expect(protocolArray("transitionGraph")).toEqual(transitionGraph(contract));
     expect(protocolArray("requiredEvidenceClasses")).toContain("VALIDATION_ASSESSMENT_RESULT");
+    expect(protocolArray("requiredEvidenceClasses")).toContain("METRIC_RESULT_SET_V2");
+    expect(normalized).toContain("METRIC_RESULT_SET_V2` is an artifact-schema evidence class, NOT a canonical HashRef domain");
+  });
+
+  it("derives Metric Result Set V2 evidence only through Assessment consumedEvidence", () => {
+    const canonicalDomains = read("docs/investing-genesis/I5A_CANONICAL_HASH_DOMAINS_V1.md");
+    expect(canonicalDomains).not.toContain("METRIC_RESULT_SET_V2");
+    expect(contract).not.toContain("HashRef<METRIC_RESULT_SET_V2>");
+    const snapshotFields = block("Transition-Specific Evidence Snapshot");
+    expect(snapshotFields).not.toContain("metricResultSet");
+    const assessment = compact(section("Transition-Specific Evidence Snapshot"));
+    for (const rule of [
+      "Resolving `SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1` means validating its complete canonical payload, including `consumedEvidence`, `criterionOutcomes` and `outcome`",
+      "RL-8 MUST NOT validate only the top-level HashRefs while ignoring `consumedEvidence`",
+      "Assessment Result HashRef cryptographically commits to the exact evidence used to obtain PASS, FAIL or INSUFFICIENT_EVIDENCE",
+      "Metric Result Set V2 identity is consumed transitively through the accepted RL-3D Validation Assessment Result canonical `consumedEvidence`",
+      "RL-8 does not reserialize or invent a competing metric identity",
+      "required Metric Result Set evidence cannot be reconstructed exactly from the accepted Assessment Result, RL-8 fails closed",
+    ]) expect(assessment).toContain(rule);
+    for (const descriptorField of [
+      "kind: METRIC_RESULT_SET_DESCRIPTOR",
+      "artifactSchemaVersion: METRIC_RESULT_SET_V2",
+      "contentSha256",
+      "contentByteLength",
+      "recordCount",
+      "ownerResult: HashRefV1",
+    ]) expect(section("Transition-Specific Evidence Snapshot")).toContain(descriptorField);
+    const gates = compact(section("Promotion Eligibility Gates"));
+    expect(gates).toContain("`GATE_METRIC_RESULT_SET_V2` remains an RL-8 gate");
+    expect(gates).toContain("`consumedEvidence` must contain the exact accepted Metric Result Set descriptor evidence");
+    expect(gates).toContain("metricRegistryVersion = METRIC_REGISTRY_V20260927");
   });
 
   it("binds the complete exact evidence selectors for all eleven gates into the protocol", () => {
     const mapping = protocolArray("gateEvidenceMapping") as Array<{ gateId: string; selectors: string[] }>;
     const subject = ["subject.subjectExperiment", "subject.subjectExperimentParameters", "subject.subjectResearchIr"];
     const snapshot = [
-      "evidenceSnapshot.evidenceObject", "evidenceSnapshot.metricResultSet", "evidenceSnapshot.result",
+      "evidenceSnapshot.evidenceObject", "evidenceSnapshot.result",
       "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.robustnessComparisonResult",
       "evidenceSnapshot.runInput", "evidenceSnapshot.validationAssessmentProtocol",
       "evidenceSnapshot.validationAssessmentResult", "evidenceSnapshot.validationProtocol",
@@ -667,10 +699,9 @@ VALIDATION_FAILED -> REJECTED
       { gateId: "GATE_EVIDENCE_COMPLETENESS", selectors: snapshot },
       { gateId: "GATE_EVIDENCE_OBJECT_BINDING", selectors: ["evidenceSnapshot.evidenceObject"] },
       { gateId: "GATE_LINEAGE_INTEGRITY", selectors: [...snapshot, ...subject] },
-      { gateId: "GATE_METRIC_RESULT_SET_V2", selectors: ["evidenceSnapshot.metricResultSet"] },
+      { gateId: "GATE_METRIC_RESULT_SET_V2", selectors: ["evidenceSnapshot.validationAssessmentResult"] },
       { gateId: "GATE_PROTOCOL_COMPATIBILITY", selectors: [
-        "evidenceSnapshot.metricResultSet", "evidenceSnapshot.result",
-        "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.validationAssessmentProtocol",
+        "evidenceSnapshot.result", "evidenceSnapshot.robustnessComparisonProtocol", "evidenceSnapshot.validationAssessmentProtocol",
         "evidenceSnapshot.validationAssessmentResult", "evidenceSnapshot.validationProtocol", "transition.protocol",
       ] },
       { gateId: "GATE_RL7_ROBUSTNESS_COMPARISON", selectors: [
@@ -685,6 +716,7 @@ VALIDATION_FAILED -> REJECTED
     const byteSort = (values: string[]) => [...values].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
     const gateIds = mapping.map(({ gateId }) => gateId);
     expect(gateIds).toEqual(byteSort(block("Promotion Eligibility Gates").split("\n")));
+    expect(JSON.stringify(mapping)).not.toContain("evidenceSnapshot.metricResultSet");
     for (const { selectors } of mapping) expect(selectors).toEqual(byteSort([...new Set(selectors)]));
     const rules = compact(section("Deterministic Gate Evidence Mapping"));
     for (const rule of [
