@@ -211,17 +211,54 @@ Persistence MUST NOT accept nine arbitrary HashRef strings. Each evidence class 
 
 | Evidence key | Upstream table | Required compatibility key / FK tuple | Key status |
 | --- | --- | --- | --- |
-| runInput | `investing.run_inputs_scientific_identities` | `(run_input_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_COMPATIBILITY_INDEX_REQUIRED` |
-| result | `investing.research_results_scientific_identities` | `(result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` and same `run_input_identity_id` as the transition runInput FK proves Investigation transitively | `RL8C1_COMPATIBILITY_INDEX_REQUIRED` |
-| evidenceObject | `investing.research_evidence_objects_scientific_identities` | `(evidence_object_identity_id, run_input_identity_id, result_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_COMPATIBILITY_INDEX_REQUIRED` |
-| validationProtocol | `investing.research_validation_protocols_scientific_identities` | `(validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `EXISTING_OR_RL8C1_VERIFY_REQUIRED` |
-| validationResult | `investing.research_validation_results_scientific_identities` | `(validation_result_identity_id, validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `EXISTING_OR_RL8C1_VERIFY_REQUIRED` |
-| validationAssessmentProtocol | `investing.research_validation_assessment_protocols_scientific_identities` | `(research_validation_assessment_protocol_identity_id, research_investigation_id, validation_protocol_identity_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `EXISTING_OR_RL8C1_VERIFY_REQUIRED` |
-| validationAssessmentResult | `investing.research_validation_assessment_results_scientific_identities` | `(research_validation_assessment_result_identity_id, research_validation_assessment_protocol_identity_id, validation_result_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_COMPATIBILITY_INDEX_REQUIRED` |
-| robustnessComparisonProtocol | `investing.research_experiment_comparison_protocols_scientific_identities` | `(research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `EXISTING_OR_RL8C1_VERIFY_REQUIRED` |
-| robustnessComparisonResult | `investing.research_experiment_comparison_results_scientific_identities` | `(research_experiment_comparison_result_identity_id, research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_COMPATIBILITY_INDEX_REQUIRED` |
+| runInput | `investing.run_inputs_scientific_identities` | `(run_input_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: run_inputs_rl8c_authority_hash_key (run_input_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| result | `investing.research_results_scientific_identities` | `(result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` and same `run_input_identity_id` as the transition runInput FK proves Investigation transitively | `RL8C1_ADD: research_results_rl8c_run_input_hash_key (result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| evidenceObject | `investing.research_evidence_objects_scientific_identities` | `(evidence_identity_id, run_input_identity_id, result_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: research_evidence_objects_rl8c_authority_hash_key (evidence_identity_id, run_input_identity_id, result_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| validationProtocol | `investing.research_validation_protocols_scientific_identities` | `(research_validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: research_validation_protocols_rl8c_authority_hash_key (research_validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| validationResult | `investing.research_validation_results_scientific_identities` | `(research_validation_result_identity_id, research_validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: research_validation_results_rl8c_authority_hash_key (research_validation_result_identity_id, research_validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| validationAssessmentProtocol | `investing.research_validation_assessment_protocols_scientific_identities` | `(research_validation_assessment_protocol_identity_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `EXISTING_EXACT_KEY: research_validation_assessment_protocols_authority_key` |
+| validationAssessmentResult | `investing.research_validation_assessment_results_scientific_identities` | `(research_validation_assessment_result_identity_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: research_validation_assessment_results_rl8c_authority_hash_key (research_validation_assessment_result_identity_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| robustnessComparisonProtocol | `investing.research_experiment_comparison_protocols_scientific_identities` | `(research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: research_experiment_comparison_protocols_rl8c_authority_hash_key (research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
+| robustnessComparisonResult | `investing.research_experiment_comparison_results_scientific_identities` | `(research_experiment_comparison_result_identity_id, research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` | `RL8C1_ADD: research_experiment_comparison_results_rl8c_authority_hash_key (research_experiment_comparison_result_identity_id, research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)` |
 
 The Result FK proves Investigation transitively through the same `run_input_identity_id` already bound to `investing.run_inputs_scientific_identities`. The Evidence Object FK proves Investigation transitively through the same `run_input_identity_id` and `result_identity_id`. All other rows prove Investigation directly through their compatibility key.
+
+
+Exact compatibility key plan is frozen:
+
+```text
+RL8C1_ADD: research_investigations_rl8c_authority_tuple_key (research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context)
+RL8C1_ADD: research_experiments_rl8c_subject_authority_hash_key (research_experiment_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, experiment_hash_hex, experiment_parameters_hash_hex, research_ir_hash_hex)
+RL8C1_ADD: run_inputs_rl8c_authority_hash_key (run_input_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+RL8C1_ADD: research_results_rl8c_run_input_hash_key (result_identity_id, run_input_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+RL8C1_ADD: research_evidence_objects_rl8c_authority_hash_key (evidence_identity_id, run_input_identity_id, result_identity_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+RL8C1_ADD: research_validation_protocols_rl8c_authority_hash_key (research_validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+RL8C1_ADD: research_validation_results_rl8c_authority_hash_key (research_validation_result_identity_id, research_validation_protocol_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+EXISTING_EXACT_KEY: research_validation_assessment_protocols_authority_key (research_validation_assessment_protocol_identity_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context)
+RL8C1_ADD: research_validation_assessment_results_rl8c_authority_hash_key (research_validation_assessment_result_identity_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, research_investigation_id, research_experiment_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+RL8C1_ADD: research_experiment_comparison_protocols_rl8c_authority_hash_key (research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+RL8C1_ADD: research_experiment_comparison_results_rl8c_authority_hash_key (research_experiment_comparison_result_identity_id, research_experiment_comparison_protocol_identity_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, hash_hex)
+```
+
+Server-side upstream resolution is frozen. Writers parse the canonical payload HashRefs and resolve operational rows server-side using server-derived tenant, server-derived Investigation, stable subject, canonical payload HashRef, and required parent lineage. They MUST NOT accept caller-selected upstream operational IDs for scientific evidence. Each lookup requires exactly one row. Zero matching authoritative rows fail closed with the appropriate frozen integrity/authority error. More than one matching authoritative row returns `DIVERGENT_EXISTING_IDENTITY`. No `LIMIT 1`, no `ORDER BY created_at`, no `MAX(...)`, no `latest`, and no ambiguous row choice.
+
+Exact lookup identities:
+
+```text
+runInput: tenant_id, research_investigation_id, research_experiment_id, SHA-256, SYNTRAKE:RUN_INPUT:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.runInput.hashHex
+result: tenant_id, resolved run_input_identity_id, SHA-256, SYNTRAKE:RESULT:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.result.hashHex
+evidenceObject: tenant_id, resolved run_input_identity_id, resolved result_identity_id, SHA-256, SYNTRAKE:EVIDENCE_OBJECT:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.evidenceObject.hashHex
+validationProtocol: tenant_id, research_investigation_id, research_experiment_id, SHA-256, SYNTRAKE:VALIDATION_PROTOCOL:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.validationProtocol.hashHex
+validationResult: tenant_id, resolved validation_protocol_identity_id, research_investigation_id, research_experiment_id, SHA-256, SYNTRAKE:VALIDATION_RESULT:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.validationResult.hashHex
+validationAssessmentProtocol: tenant_id, resolved validation_protocol_identity_id, research_investigation_id, research_experiment_id, SHA-256, SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.validationAssessmentProtocol.hashHex
+validationAssessmentResult: tenant_id, resolved validation_assessment_protocol_identity_id, resolved validation_result_identity_id, research_investigation_id, research_experiment_id, SHA-256, SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.validationAssessmentResult.hashHex
+robustnessComparisonProtocol: tenant_id, research_investigation_id, SHA-256, SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.robustnessComparisonProtocol.hashHex
+robustnessComparisonResult: tenant_id, resolved research_experiment_comparison_protocol_identity_id, research_investigation_id, SHA-256, SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1, SYNTRAKE_SHA256_V1, evidenceSnapshot.robustnessComparisonResult.hashHex
+```
+
+Root writer resolution sequence is exact: read and validate current authorized context; verify canonical payload is exact ROOT; resolve subject Experiment from Investigation, subject Experiment hash, subject Experiment Parameters hash, and subject Research IR hash; resolve Run Input from exact root snapshot HashRef under same Experiment/Investigation/authority; resolve Result from exact root snapshot Result HashRef and exact Run Input; resolve exact V1 protocol row; then acquire root-chain lock and evaluate reuse/divergence; then persist. No arbitrary operational UUID input.
+
+Evaluation plan writer resolution is exact: `p_predecessor_transition_identity_id` is a selector, never authority; the function resolves predecessor under server-derived tenant, principal, membership and Investigation; proves predecessor HashRef equals `stageA.canonical_payload.predecessorTransition`; then resolves all nine upstream evidence classes from the Stage-A canonical snapshot. No upstream UUIDs are supplied by caller.
 
 ROOT (`EXECUTED`) admits only `runInput` and `result`; the seven later evidence operational references and canonical HashRefs MUST be null. Stage B/lifecycle (`PROMOTION_ELIGIBLE`, `REJECTED`, `SUPERSEDED`) MUST copy predecessor evidence operational references and canonical evidenceSnapshot exactly.
 
@@ -269,6 +306,44 @@ where predecessor_transition_identity_id is not null;
 
 Identical retry returns `REUSED_IDENTICAL`; divergent root or successor returns `DIVERGENT_EXISTING_IDENTITY`.
 
+
+## 8A. Lifecycle transition compatibility keys and FKs
+
+RL-8C1 MUST create this lifecycle composite compatibility key:
+
+```text
+RL8C1_ADD: research_scientific_promotion_transitions_rl8c_lifecycle_key (research_scientific_promotion_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, transition_hash_hex)
+```
+
+Predecessor composite FK:
+
+```text
+(predecessor_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_transition_hash_hex)
+references research_scientific_promotion_transitions_rl8c_lifecycle_key
+```
+
+Rejected composite FK:
+
+```text
+(rejected_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, rejected_transition_hash_hex)
+references research_scientific_promotion_transitions_rl8c_lifecycle_key
+```
+
+Supersedes composite FK:
+
+```text
+(supersedes_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, supersedes_transition_hash_hex)
+references research_scientific_promotion_transitions_rl8c_lifecycle_key
+```
+
+Successor-root cross-protocol FK uses a separate key:
+
+```text
+RL8C1_ADD: research_scientific_promotion_transitions_rl8c_successor_root_key (research_scientific_promotion_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, transition_hash_hex, predecessor_transition_identity_id, predecessor_state, resulting_state)
+```
+
+The successor-root FK binds same tenant, same Investigation, same stable subject, successor protocol identity/hash, and successor root identity/hash. It requires `predecessor_transition_identity_id is null`, `predecessor_state = DRAFT_RESEARCH`, and `resulting_state = EXECUTED`. Protocol is intentionally different there. Row UUID alone is never sufficient.
+
 ## 9. Writer role and table privilege model
 
 Live role truth:
@@ -299,11 +374,39 @@ RL-8 identity table grants:
 ```text
 investing_app: SELECT only
 investing_app: NO INSERT, NO UPDATE, NO DELETE, NO TRUNCATE, NO REFERENCES, NO TRIGGER
-investing_rl8_writer: minimum SELECT/INSERT required for RL-8 protocol and transition persistence
+investing_rl8_writer: SELECT, INSERT on exactly the two RL-8 identity relations
 investing_rl8_writer: NO UPDATE, NO DELETE, NO TRUNCATE
 ```
 
-Upstream relations grant no mutation authority to `investing_rl8_writer`. If SELECT is required for lifecycle, supersession or reconstruction checks, grant only exact SELECT on required upstream columns and exact RLS policies to `investing_rl8_writer`. No broad schema grants. No ownership transfer to `investing_rl8_writer`.
+Upstream relations grant no mutation authority to `investing_rl8_writer`. `investing_rl8_writer` receives SELECT only on exactly these upstream provenance relations: `investing.research_investigations`, `investing.research_experiments`, `investing.run_inputs_scientific_identities`, `investing.research_results_scientific_identities`, `investing.research_evidence_objects_scientific_identities`, `investing.research_validation_protocols_scientific_identities`, `investing.research_validation_results_scientific_identities`, `investing.research_validation_assessment_protocols_scientific_identities`, `investing.research_validation_assessment_results_scientific_identities`, `investing.research_experiment_comparison_protocols_scientific_identities`, and `investing.research_experiment_comparison_results_scientific_identities`. No broad schema grants. No ownership transfer to `investing_rl8_writer`.
+
+
+Exact writer role schema privileges:
+
+```text
+GRANT USAGE ON SCHEMA investing TO investing_rl8_writer;
+GRANT USAGE ON SCHEMA extensions TO investing_rl8_writer;
+```
+
+Exact table privileges:
+
+```text
+GRANT SELECT, INSERT ON investing.research_scientific_promotion_protocols_scientific_identities TO investing_rl8_writer;
+GRANT SELECT, INSERT ON investing.research_scientific_promotion_transitions_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_investigations TO investing_rl8_writer;
+GRANT SELECT ON investing.research_experiments TO investing_rl8_writer;
+GRANT SELECT ON investing.run_inputs_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_results_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_evidence_objects_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_validation_protocols_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_validation_results_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_validation_assessment_protocols_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_validation_assessment_results_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_experiment_comparison_protocols_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.research_experiment_comparison_results_scientific_identities TO investing_rl8_writer;
+```
+
+No UPDATE, DELETE, TRUNCATE, REFERENCES or TRIGGER privilege is granted to `investing_rl8_writer`. PostgreSQL 17 pgcrypto `extensions.digest(...)` is executable through schema-qualified function lookup after `USAGE ON SCHEMA extensions`; no broad extension schema grants are allowed.
 
 ## 10. Narrow SECURITY DEFINER writer allowlist
 
@@ -348,7 +451,46 @@ RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1
 RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1
 ```
 
-Required request settings are `syntrake.investing.operation`, `syntrake.investing.capability`, `syntrake.investing.tenant_id`, `syntrake.investing.principal_id`, `syntrake.investing.tenant_membership_id`, and `syntrake.investing.research_investigation_id`. Every policy for `investing_rl8_writer` MUST verify operation, capability `RESEARCH_MUTATE`, tenant, principal, membership, Investigation, `TENANT_SCOPE`, and `PURE_RESEARCH` as appropriate. Protocol persistence is global scientific identity but still requires a valid authorized research context before creation/reuse. No `auth.uid()` shortcut. No authenticated-role-only authorization.
+Required request settings are `syntrake.investing.operation`, `syntrake.investing.capability`, `syntrake.investing.tenant_id`, `syntrake.investing.principal_id`, `syntrake.investing.tenant_membership_id`, and `syntrake.investing.research_investigation_id`. Every policy for `investing_rl8_writer` MUST verify operation, capability `RESEARCH_MUTATE`, tenant, principal, membership, Investigation, `TENANT_SCOPE`, and `PURE_RESEARCH` for the exact relation policy. Protocol persistence is global scientific identity but still requires a valid authorized research context before creation/reuse. No `auth.uid()` shortcut. No authenticated-role-only authorization.
+
+
+Exact RLS policy contract:
+
+```text
+research_scientific_promotion_protocols_rl8c_writer_select
+research_scientific_promotion_protocols_rl8c_writer_insert
+research_scientific_promotion_transitions_rl8c_writer_select
+research_scientific_promotion_transitions_rl8c_writer_insert
+research_investigations_rl8c_writer_select
+research_experiments_rl8c_writer_select
+run_inputs_rl8c_writer_select
+research_results_rl8c_writer_select
+research_evidence_objects_rl8c_writer_select
+research_validation_protocols_rl8c_writer_select
+research_validation_results_rl8c_writer_select
+research_validation_assessment_protocols_rl8c_writer_select
+research_validation_assessment_results_rl8c_writer_select
+research_experiment_comparison_protocols_rl8c_writer_select
+research_experiment_comparison_results_rl8c_writer_select
+```
+
+Transition INSERT predicate must enforce exact equality:
+
+```text
+operation = current_setting('syntrake.investing.operation', true)
+capability = 'RESEARCH_MUTATE'
+capability = current_setting('syntrake.investing.capability', true)
+tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+principal_id::text = current_setting('syntrake.investing.principal_id', true)
+tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
+operation_scope = 'TENANT_SCOPE'
+source_context = 'PURE_RESEARCH'
+```
+
+Protocol INSERT policy uses `operation = 'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1'`, `capability = 'RESEARCH_MUTATE'`, `operation_scope = 'TENANT_SCOPE'`, `source_context = 'PURE_RESEARCH'`, and requires active canonical membership and Investigation authority from the current settings. Upstream SELECT policies for `investing_rl8_writer` use the same tenant, principal, membership, Investigation, scope and source context equality when those columns exist; result/evidence-object relations without direct Investigation use their parent run-input/result FK path.
+
+No UPDATE policy exists. No DELETE policy exists.
 
 ## 13. Authority FKs and append-only checks
 
@@ -356,7 +498,56 @@ Protocol table has no authority FK because protocol scientific identity is globa
 
 Scientific protocol and transition rows are immutable. `UPDATE authority = none`; `DELETE authority = none`. Both tables MUST have BEFORE UPDATE OR DELETE trigger `investing.reject_research_scientific_promotion_update_delete_v1()`.
 
-Structural checks must prove canonical payload agrees with columns: `canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_TRANSITION_V1'`, protocol HashRef domain/version/hash equals protocol columns, subject Experiment HashRef equals columns, predecessorState equals `predecessor_state`, resultingState equals `resulting_state`, lifecycle references match lifecycle columns, evidenceSnapshot HashRefs/nulls match the nine operational FK/hash columns, transition HashRef domain/version equals `SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1` and `SYNTRAKE_SHA256_V1`, and protocol id equals `SCIENTIFIC_PROMOTION_PROTOCOL_V20261002`.
+Structural checks must prove canonical payload agrees with columns: `canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_TRANSITION_V1'`, transition.protocol envelope equals `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`, and `research_scientific_promotion_protocol_identity_id` resolves to the protocol row whose exact fields are `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`, subject Experiment HashRef equals columns, predecessorState equals `predecessor_state`, resultingState equals `resulting_state`, lifecycle references match lifecycle columns, evidenceSnapshot HashRefs/nulls match the nine operational FK/hash columns, transition HashRef domain/version equals `SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1` and `SYNTRAKE_SHA256_V1`, and protocol id equals `SCIENTIFIC_PROMOTION_PROTOCOL_V20261002`.
+
+
+## 13A. Snapshot HashRef envelopes and transition structural validation
+
+Every non-null canonical evidenceSnapshot entry must use `hashAlgorithm = SHA-256`, `hashVersion = SYNTRAKE_SHA256_V1`, uppercase 64-hex `hashHex`, and the exact domain:
+
+```text
+runInput = SYNTRAKE:RUN_INPUT:V1
+result = SYNTRAKE:RESULT:V1
+evidenceObject = SYNTRAKE:EVIDENCE_OBJECT:V1
+validationProtocol = SYNTRAKE:VALIDATION_PROTOCOL:V1
+validationResult = SYNTRAKE:VALIDATION_RESULT:V1
+validationAssessmentProtocol = SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1
+validationAssessmentResult = SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1
+robustnessComparisonProtocol = SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1
+robustnessComparisonResult = SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1
+```
+
+Root structural validation: `DRAFT_RESEARCH -> EXECUTED`, `predecessorTransition = null`, exact root snapshot, `gateOutcomes = []`, `transitionReasons = []`, and all lifecycle links null.
+
+Stage A structural validation: source is exactly one of `EXECUTED`, `INSUFFICIENT_EVIDENCE`, `PROMOTION_ELIGIBLE`, `REJECTED`; result is exactly one of `INSUFFICIENT_EVIDENCE`, `VALIDATION_FAILED`, `VALIDATION_PASSED`; exact snapshot presence row for resulting state; exactly 11 gate IDs each once; no lifecycle links. Forbidden state edges fail. This is structural integrity, not a reimplementation of RL-8B decision math.
+
+Stage A gate structural shape requires exactly these 11 gate IDs, each exactly once:
+
+```text
+GATE_ACCEPTED_EXECUTION_RESULT
+GATE_AUTHORITY_AND_TENANCY
+GATE_EVIDENCE_COMPLETENESS
+GATE_EVIDENCE_OBJECT_BINDING
+GATE_LINEAGE_INTEGRITY
+GATE_METRIC_RESULT_SET_V2
+GATE_PROTOCOL_COMPATIBILITY
+GATE_RL7_ROBUSTNESS_COMPARISON
+GATE_SUBJECT_IDENTITY
+GATE_VALIDATION_ASSESSMENT
+GATE_VALIDATION_RESULT
+```
+
+Each gate status must be one of exactly:
+
+```text
+FAIL
+INCOMPATIBLE_EVIDENCE
+INSUFFICIENT_EVIDENCE
+PASS
+UNAVAILABLE
+```
+
+Malformed, unknown, missing or duplicate gates must not persist.
 
 ## 14. Database canonical JSON and hash verification
 
@@ -365,13 +556,22 @@ The database writer must not accept a caller-provided RL-8 scientific hash blind
 Accepted RL-8 scientific payload values contain only `null`, `boolean`, `string`, `array`, and `object`. Canonical JSON numbers are forbidden. The SQL canonicalizer mirrors accepted `syntrakeCanonicalJsonV1` rules:
 
 ```text
-object keys sorted deterministically
+object keys sorted lexicographically by Unicode code points
+comparator compares scalar code points left-to-right; first non-equal code point decides; if one string is a prefix of the other, shorter string first
 no whitespace
 arrays preserve order
-strings JSON-escaped deterministically
-numbers rejected
+strings JSON-escaped exactly: quote -> \", backslash -> \\, BACKSPACE -> \b, TAB -> \t, LF -> \n, FORM FEED -> \f, CR -> \r, other U+0000..U+001F -> lowercase \u00xx
+all other valid Unicode scalars emitted directly as UTF-8
+invalid Unicode scalar sequences rejected
+slash is not escaped
+non-ASCII characters are not arbitrarily ASCII-escaped
+object separators are exactly comma and colon
+booleans are exactly lowercase true/false
+null is exactly null
+numbers rejected recursively
 undefined impossible
-UTF-8
+ordering is Unicode-code-point order, not locale-dependent collation
+PostgreSQL 17 parity tests include non-ASCII keys/values and control-character escaping
 ```
 
 Hash computation is exact:
@@ -397,7 +597,7 @@ FAIL closure = 76D3E5A550D8B5766B8F77F8FB0A3E22024FEFA1C504ED64E3AAB69E5C512E04
 INSUFFICIENT Stage-A = D6135FFEAA229F0B870375333D602AE05974DE9AD424587CBBEFB82F9F8EF738
 ```
 
-A mismatch blocks RL-8C. RL-8C must not introduce a second canonicalization standard. Hash format is exact: `SHA-256`, `SYNTRAKE_SHA256_V1`, `64 uppercase hex`. No lowercase normalization at persistence time.
+A mismatch blocks RL-8C. RL-8C must not introduce a second canonicalization standard. Writer signatures use jsonb; scientific identity is computed over the parsed canonical logical object, not caller raw JSON text. The writer must reject number values recursively, enforce exact closed payload structure, canonicalize the resulting JSONB logical value with the RL-8 SQL canonicalizer, and compute scientific hash from those canonical bytes. Raw input key ordering and whitespace are never scientific identity. Hash format is exact: `SHA-256`, `SYNTRAKE_SHA256_V1`, `64 uppercase hex`. No lowercase normalization at persistence time.
 
 ## 15. Atomic Stage-A + closure pairs and orphan prevention
 

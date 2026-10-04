@@ -104,8 +104,8 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "robustness_comparison_protocol_hash_hex text null",
       "robustness_comparison_result_identity_id uuid null",
       "robustness_comparison_result_hash_hex text null",
-      "RL8C1_COMPATIBILITY_INDEX_REQUIRED",
-      "EXISTING_OR_RL8C1_VERIFY_REQUIRED",
+      "EXISTING_EXACT_KEY: research_validation_assessment_protocols_authority_key",
+      "RL8C1_ADD: research_validation_protocols_rl8c_authority_hash_key",
       "The Result FK proves Investigation transitively",
       "The Evidence Object FK proves Investigation transitively",
     ]) expect(contract).toContain(token);
@@ -178,7 +178,7 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
     const contract = read(contractPath);
     for (const token of [
       "numbers rejected",
-      "object keys sorted deterministically",
+      "object keys sorted lexicographically by Unicode code points",
       "arrays preserve order",
       "extensions.digest",
       "SHA256(",
@@ -247,6 +247,129 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
     ]) expect(contract).toContain(token);
   });
 
+  it("freezes exact physical upstream PK names and compatibility indexes", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "evidence_identity_id, run_input_identity_id, result_identity_id",
+      "research_validation_protocol_identity_id, research_investigation_id",
+      "research_validation_result_identity_id, research_validation_protocol_identity_id",
+      "research_investigations_rl8c_authority_tuple_key",
+      "research_experiments_rl8c_subject_authority_hash_key",
+      "run_inputs_rl8c_authority_hash_key",
+      "research_results_rl8c_run_input_hash_key",
+      "research_evidence_objects_rl8c_authority_hash_key",
+      "research_validation_protocols_rl8c_authority_hash_key",
+      "research_validation_results_rl8c_authority_hash_key",
+      "research_validation_assessment_results_rl8c_authority_hash_key",
+      "research_experiment_comparison_protocols_rl8c_authority_hash_key",
+      "research_experiment_comparison_results_rl8c_authority_hash_key",
+    ]) expect(contract).toContain(token);
+    expect(contract).not.toContain("EXISTING_OR_RL8C1_VERIFY_REQUIRED");
+    expect(contract).not.toContain("(evidence_object_identity_id, run_input_identity_id, result_identity_id");
+    expect(contract).not.toContain("(validation_protocol_identity_id, research_investigation_id");
+    expect(contract).not.toContain("(validation_result_identity_id, validation_protocol_identity_id");
+  });
+
+  it("freezes deterministic server-side upstream row resolution and lookup failure semantics", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "Writers parse the canonical payload HashRefs and resolve operational rows server-side",
+      "They MUST NOT accept caller-selected upstream operational IDs for scientific evidence",
+      "Each lookup requires exactly one row",
+      "Zero matching authoritative rows fail closed",
+      "More than one matching authoritative row returns `DIVERGENT_EXISTING_IDENTITY`",
+      "No `LIMIT 1`, no `ORDER BY created_at`, no `MAX(...)`, no `latest`",
+      "runInput: tenant_id, research_investigation_id, research_experiment_id",
+      "result: tenant_id, resolved run_input_identity_id",
+      "evidenceObject: tenant_id, resolved run_input_identity_id, resolved result_identity_id",
+      "validationResult: tenant_id, resolved validation_protocol_identity_id",
+      "validationAssessmentResult: tenant_id, resolved validation_assessment_protocol_identity_id, resolved validation_result_identity_id",
+      "robustnessComparisonResult: tenant_id, resolved research_experiment_comparison_protocol_identity_id",
+      "Root writer resolution sequence is exact",
+      "Evaluation plan writer resolution is exact",
+    ]) expect(contract).toContain(token);
+  });
+
+  it("freezes lifecycle composite FKs and successor-root cross-protocol binding", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "research_scientific_promotion_transitions_rl8c_lifecycle_key",
+      "Predecessor composite FK",
+      "Rejected composite FK",
+      "Supersedes composite FK",
+      "research_scientific_promotion_transitions_rl8c_successor_root_key",
+      "same tenant, same Investigation, same stable subject, successor protocol identity/hash",
+      "Protocol is intentionally different there",
+      "Row UUID alone is never sufficient",
+    ]) expect(contract).toContain(token);
+  });
+
+  it("freezes exact writer role privileges and RLS predicates", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "GRANT USAGE ON SCHEMA investing TO investing_rl8_writer",
+      "GRANT USAGE ON SCHEMA extensions TO investing_rl8_writer",
+      "GRANT SELECT, INSERT ON investing.research_scientific_promotion_protocols_scientific_identities TO investing_rl8_writer",
+      "GRANT SELECT ON investing.research_investigations TO investing_rl8_writer",
+      "GRANT SELECT ON investing.run_inputs_scientific_identities TO investing_rl8_writer",
+      "extensions.digest",
+      "research_scientific_promotion_protocols_rl8c_writer_select",
+      "research_scientific_promotion_protocols_rl8c_writer_insert",
+      "research_scientific_promotion_transitions_rl8c_writer_insert",
+      "operation = current_setting('syntrake.investing.operation', true)",
+      "tenant_id::text = current_setting('syntrake.investing.tenant_id', true)",
+      "No UPDATE policy exists",
+      "No DELETE policy exists",
+    ]) expect(contract).toContain(token);
+    expect(contract).not.toContain("minimum SELECT/INSERT required");
+    expect(contract).not.toContain("If SELECT is required");
+    expect(contract).not.toContain("as appropriate");
+  });
+
+  it("freezes all nine HashRef domains, Stage-A gate shape and structural state validation", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "runInput = SYNTRAKE:RUN_INPUT:V1",
+      "result = SYNTRAKE:RESULT:V1",
+      "evidenceObject = SYNTRAKE:EVIDENCE_OBJECT:V1",
+      "validationProtocol = SYNTRAKE:VALIDATION_PROTOCOL:V1",
+      "validationResult = SYNTRAKE:VALIDATION_RESULT:V1",
+      "validationAssessmentProtocol = SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1",
+      "validationAssessmentResult = SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1",
+      "robustnessComparisonProtocol = SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1",
+      "robustnessComparisonResult = SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1",
+      "Root structural validation",
+      "DRAFT_RESEARCH -> EXECUTED",
+      "source is exactly one of `EXECUTED`, `INSUFFICIENT_EVIDENCE`, `PROMOTION_ELIGIBLE`, `REJECTED`",
+      "result is exactly one of `INSUFFICIENT_EVIDENCE`, `VALIDATION_FAILED`, `VALIDATION_PASSED`",
+      "GATE_ACCEPTED_EXECUTION_RESULT",
+      "GATE_RL7_ROBUSTNESS_COMPARISON",
+      "GATE_VALIDATION_RESULT",
+      "FAIL\nINCOMPATIBLE_EVIDENCE\nINSUFFICIENT_EVIDENCE\nPASS\nUNAVAILABLE",
+    ]) expect(contract).toContain(token);
+  });
+
+  it("freezes byte-exact SQL canonical JSON rules and jsonb input semantics", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "object keys sorted lexicographically by Unicode code points",
+      "comparator compares scalar code points left-to-right",
+      "shorter string first",
+      "quote ->",
+      "BACKSPACE -> \\b",
+      "TAB -> \\t",
+      "LF -> \\n",
+      "other U+0000..U+001F -> lowercase \\u00xx",
+      "invalid Unicode scalar sequences rejected",
+      "slash is not escaped",
+      "non-ASCII characters are not arbitrarily ASCII-escaped",
+      "ordering is Unicode-code-point order, not locale-dependent collation",
+      "PostgreSQL 17 parity tests include non-ASCII keys/values and control-character escaping",
+      "Writer signatures use jsonb",
+      "scientific identity is computed over the parsed canonical logical object",
+      "Raw input key ordering and whitespace are never scientific identity",
+    ]) expect(contract).toContain(token);
+  });
   it("rejects stale wording and adds no SQL migration in this design slice", () => {
     const contract = read(contractPath);
     for (const forbidden of [
@@ -261,6 +384,10 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "best effort closure",
       "latest row wins",
       "writer convention only",
+      "If SELECT is required",
+      "minimum SELECT/INSERT required",
+      "as appropriate",
+      "EXISTING_OR_RL8C1_VERIFY_REQUIRED",
     ]) expect(contract.slice(0, contract.indexOf("## 21. Forbidden stale wording"))).not.toContain(forbidden);
     const files = fs.readdirSync(path.join(repoRoot, "supabase", "migrations"));
     expect(files).not.toContain("I5_RL8C_SCIENTIFIC_PROMOTION_PERSISTENCE_CONTRACT_V1.sql");
