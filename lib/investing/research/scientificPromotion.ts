@@ -481,7 +481,14 @@ function assertLifecycleShape(input: Readonly<{ predecessorTransition: Scientifi
   if (input.resultingState === "SUPERSEDED") { if (input.supersedes === null || input.supersededByChain === null || !sameCanonical(input.transitionReasons, ["SUPERSEDED_EVIDENCE"])) throw new Error("MALFORMED_TRANSITION"); }
   else if (input.supersedes !== null || input.supersededByChain !== null) throw new Error("MALFORMED_TRANSITION");
 }
-function gateReasonUnion(gates: readonly ScientificPromotionGateOutcomeV1[]): readonly ScientificPromotionReasonV1[] { return reasons(gates.filter((gate) => gate.status !== "PASS").flatMap((gate) => [...gate.reasons])); }
+function gateReasonUnion(gates: readonly ScientificPromotionGateOutcomeV1[]): readonly ScientificPromotionReasonV1[] {
+  return uniqueReasonUnion(gates.filter((gate) => gate.status !== "PASS").flatMap((gate) => [...gate.reasons]));
+}
+function uniqueReasonUnion(input: readonly ScientificPromotionReasonV1[]): readonly ScientificPromotionReasonV1[] {
+  if (!Array.isArray(input)) throw new Error("MALFORMED_TRANSITION");
+  const values = input.map((reason) => { if (!reasonSet.has(reason)) throw new Error("MALFORMED_TRANSITION"); return reason; });
+  return Object.freeze([...new Set(values)].sort(byteCompare));
+}
 function select(selector: string, subject: ScientificPromotionSubjectV1, snapshot: ScientificPromotionEvidenceSnapshotV1): ScientificPromotionAnyHashRefV1 | null {
   switch (selector) {
     case "subject.subjectExperiment": return subject.subjectExperiment; case "subject.subjectExperimentParameters": return subject.subjectExperimentParameters; case "subject.subjectResearchIr": return subject.subjectResearchIr;

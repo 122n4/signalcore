@@ -26,6 +26,7 @@ import {
   canonicalScientificPromotionProtocolBytesV1,
   canonicalScientificPromotionProtocolV1,
   canonicalScientificPromotionTransitionBytesV1,
+  canonicalScientificPromotionTransitionV1,
   evaluateScientificPromotionStageAV1,
   gateEvidenceForScientificPromotionV1,
   hashScientificPromotionProtocolV1,
@@ -499,6 +500,45 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
     expect(canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: reordered })).toString("utf8")).toBe(canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: gateOutcomes() })).toString("utf8"));
   });
 
+  it("permits duplicate scientific reasons across gates while preserving a unique transition union", () => {
+    const repeatedEvidenceObject = gateOutcomes();
+    const completenessIndex = repeatedEvidenceObject.findIndex((gate) => gate.gateId === "GATE_EVIDENCE_COMPLETENESS");
+    const evidenceObjectIndex = repeatedEvidenceObject.findIndex((gate) => gate.gateId === "GATE_EVIDENCE_OBJECT_BINDING");
+    repeatedEvidenceObject[completenessIndex] = { ...repeatedEvidenceObject[completenessIndex]!, status: "INSUFFICIENT_EVIDENCE", reasons: ["MISSING_EVIDENCE_OBJECT"] };
+    repeatedEvidenceObject[evidenceObjectIndex] = { ...repeatedEvidenceObject[evidenceObjectIndex]!, status: "UNAVAILABLE", reasons: ["MISSING_EVIDENCE_OBJECT"] };
+    const evidenceObjectTransition = stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: repeatedEvidenceObject, transitionReasons: ["MISSING_EVIDENCE_OBJECT"] });
+    canonicalScientificPromotionTransitionBytesV1(evidenceObjectTransition);
+    expect(evaluateScientificPromotionStageAV1({ predecessorState: "EXECUTED", requestedState: "INSUFFICIENT_EVIDENCE", gateOutcomes: repeatedEvidenceObject, assessmentOutcome: "PASS", rl7Outcome: "PERMIT_FURTHER_EVALUATION", failClosedReason: null })).toEqual({ kind: "AUTHORITATIVE_TRANSITION", resultingState: "INSUFFICIENT_EVIDENCE", reasons: ["MISSING_EVIDENCE_OBJECT"] });
+
+    const repeatedRl7 = gateOutcomes();
+    const rl7Index = repeatedRl7.findIndex((gate) => gate.gateId === "GATE_RL7_ROBUSTNESS_COMPARISON");
+    repeatedRl7[completenessIndex] = { ...repeatedRl7[completenessIndex]!, status: "INSUFFICIENT_EVIDENCE", reasons: ["MISSING_RL7_COMPARISON"] };
+    repeatedRl7[rl7Index] = { ...repeatedRl7[rl7Index]!, status: "UNAVAILABLE", reasons: ["MISSING_RL7_COMPARISON"] };
+    canonicalScientificPromotionTransitionBytesV1(stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: repeatedRl7, transitionReasons: ["MISSING_RL7_COMPARISON"] }));
+
+    const multiReason = gateOutcomes();
+    multiReason[completenessIndex] = { ...multiReason[completenessIndex]!, status: "INSUFFICIENT_EVIDENCE", reasons: ["MISSING_EVIDENCE_OBJECT", "MISSING_RL7_COMPARISON"] };
+    multiReason[evidenceObjectIndex] = { ...multiReason[evidenceObjectIndex]!, status: "UNAVAILABLE", reasons: ["MISSING_EVIDENCE_OBJECT"] };
+    multiReason[rl7Index] = { ...multiReason[rl7Index]!, status: "UNAVAILABLE", reasons: ["MISSING_RL7_COMPARISON"] };
+    const unionTransition = stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: multiReason, transitionReasons: ["MISSING_EVIDENCE_OBJECT", "MISSING_RL7_COMPARISON"] });
+    canonicalScientificPromotionTransitionBytesV1(unionTransition);
+    expect(unionTransition.transitionReasons).toEqual(["MISSING_EVIDENCE_OBJECT", "MISSING_RL7_COMPARISON"]);
+
+    const reversed = [...multiReason].reverse();
+    const reversedTransition = stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: reversed, transitionReasons: ["MISSING_RL7_COMPARISON", "MISSING_EVIDENCE_OBJECT"] });
+    expect(canonicalScientificPromotionTransitionBytesV1(reversedTransition).toString("utf8")).toBe(canonicalScientificPromotionTransitionBytesV1(unionTransition).toString("utf8"));
+    expect((canonicalScientificPromotionTransitionV1(reversedTransition) as ScientificPromotionTransitionV1).transitionReasons).toEqual(["MISSING_EVIDENCE_OBJECT", "MISSING_RL7_COMPARISON"]);
+  });
+
+  it("still rejects duplicate reasons inside one gate or caller transitionReasons", () => {
+    const duplicatedGateReason = gateOutcomes();
+    duplicatedGateReason[0] = { ...duplicatedGateReason[0]!, status: "INSUFFICIENT_EVIDENCE", reasons: ["MISSING_EVIDENCE_OBJECT", "MISSING_EVIDENCE_OBJECT"] };
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: duplicatedGateReason, transitionReasons: ["MISSING_EVIDENCE_OBJECT"] }))).toThrow("MALFORMED_TRANSITION");
+
+    const oneReason = gateOutcomes();
+    oneReason[0] = { ...oneReason[0]!, status: "INSUFFICIENT_EVIDENCE", reasons: ["MISSING_EVIDENCE_OBJECT"] };
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: oneReason, transitionReasons: ["MISSING_EVIDENCE_OBJECT", "MISSING_EVIDENCE_OBJECT"] }))).toThrow("MALFORMED_TRANSITION");
+  });
   it("fails closed before deriving scientific states for authority, integrity and incompatible evidence", () => {
     expect(scientificPromotionFailClosedReasonVocabularyV1).toContain("AUTHORITY_FAILURE");
     expect(evaluateScientificPromotionStageAV1({
