@@ -490,11 +490,59 @@ describe("RL-8B deterministic scientific promotion engine", () => {
     const fail = expectPlan(fixture({ assessmentValue: "0.01" }));
     const insufficient = expectPlan(fixture({ assessmentValue: null }));
     expect(transitionHashHex(pass.stageA.transition)).toBe("BEEE521649E78934DCE216B8650F51B86F8BAE80A9A8EA5600321D1F2BB263A4");
+    expect(pass.stageA.transitionRef.hashHex).toBe("BEEE521649E78934DCE216B8650F51B86F8BAE80A9A8EA5600321D1F2BB263A4");
     expect(transitionHashHex(pass.closure!.transition)).toBe("98A85178DFF04F3598215DF0AB51CF819B8C43CA74C1F5AA74EC42E00B19D531");
+    expect(pass.closure!.transitionRef.hashHex).toBe("98A85178DFF04F3598215DF0AB51CF819B8C43CA74C1F5AA74EC42E00B19D531");
     expect(transitionHashHex(fail.stageA.transition)).toBe("F3438AB40774749A8248BAE9C070E51448515BA39167B7DF9672414B55596DF0");
+    expect(fail.stageA.transitionRef.hashHex).toBe("F3438AB40774749A8248BAE9C070E51448515BA39167B7DF9672414B55596DF0");
     expect(transitionHashHex(fail.closure!.transition)).toBe("76D3E5A550D8B5766B8F77F8FB0A3E22024FEFA1C504ED64E3AAB69E5C512E04");
+    expect(fail.closure!.transitionRef.hashHex).toBe("76D3E5A550D8B5766B8F77F8FB0A3E22024FEFA1C504ED64E3AAB69E5C512E04");
     expect(transitionHashHex(insufficient.stageA.transition)).toBe("D6135FFEAA229F0B870375333D602AE05974DE9AD424587CBBEFB82F9F8EF738");
+    expect(insufficient.stageA.transitionRef.hashHex).toBe("D6135FFEAA229F0B870375333D602AE05974DE9AD424587CBBEFB82F9F8EF738");
     expect(insufficient.closure).toBeNull();
+  });
+
+  it("rejects unchanged evidenceSnapshot re-evaluation from stable non-root leaves", () => {
+    const insufficientInput = fixture({ rl7: "ROBUSTNESS_MIXED" });
+    const insufficient = expectPlan(insufficientInput);
+    expect(insufficient.stageA.transition.resultingState).toBe("INSUFFICIENT_EVIDENCE");
+    expect(evaluateScientificPromotionV1({ ...insufficientInput, predecessor: insufficient.stageA.transition })).toEqual({ kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" });
+
+    const acceptedInput = fixture();
+    const accepted = expectPlan(acceptedInput);
+    expect(accepted.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+    expect(evaluateScientificPromotionV1({ ...acceptedInput, predecessor: accepted.closure!.transition })).toEqual({ kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" });
+
+    const rejectedInput = fixture({ assessmentValue: "0.01" });
+    const rejected = expectPlan(rejectedInput);
+    expect(rejected.closure?.transition.resultingState).toBe("REJECTED");
+    expect(evaluateScientificPromotionV1({ ...rejectedInput, predecessor: rejected.closure!.transition })).toEqual({ kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" });
+  });
+
+  it("allows stable non-root leaf refresh when accepted evidenceSnapshot changes", () => {
+    const insufficient = expectPlan(fixture({ rl7: "ROBUSTNESS_MIXED" }));
+    const stableRefresh = expectPlan({ ...fixture({ rl7: "ROBUSTNESS_STABLE" }), predecessor: insufficient.stageA.transition });
+    expect(stableRefresh.stageA.transition.resultingState).toBe("VALIDATION_PASSED");
+    expect(stableRefresh.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+    expect(stableRefresh.stageA.transition.evidenceSnapshot).not.toEqual(insufficient.stageA.transition.evidenceSnapshot);
+
+    const accepted = expectPlan(fixture());
+    const failedRefresh = expectPlan({ ...fixture({ assessmentValue: "0.01" }), predecessor: accepted.closure!.transition });
+    expect(failedRefresh.stageA.transition.resultingState).toBe("VALIDATION_FAILED");
+    expect(failedRefresh.closure?.transition.resultingState).toBe("REJECTED");
+    expect(failedRefresh.stageA.transition.evidenceSnapshot).not.toEqual(accepted.closure!.transition.evidenceSnapshot);
+    expect(accepted.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+  });
+
+  it("preserves integrity fail-closed precedence over unchanged evidenceSnapshot rejection", () => {
+    const acceptedInput = fixture();
+    const accepted = expectPlan(acceptedInput);
+    const corrupt = evaluateScientificPromotionV1({
+      ...acceptedInput,
+      predecessor: accepted.closure!.transition,
+      validationAssessmentResult: { ...acceptedInput.validationAssessmentResult!, ref: ref("SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1", "F") },
+    });
+    expect(corrupt).toEqual({ kind: "FAIL_CLOSED", reason: "CORRUPTED_EVIDENCE" });
   });
 
   it("does not expose caller-controlled science decision inputs", () => {

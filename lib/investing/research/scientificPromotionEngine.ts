@@ -174,6 +174,7 @@ export function evaluateScientificPromotionV1(input: ScientificPromotionResolved
 
     const consumedEvidence = assertAssessment({ assessmentProtocol, assessmentResult, subject, evidenceSnapshot });
     const rl7Outcome = robustnessPair === null ? "INSUFFICIENT_EVIDENCE" : assertRl7({ robustnessPair, subject, evidenceSnapshot });
+    if (sameCanonical(evidenceSnapshot, predecessor.evidenceSnapshot)) return fail("MALFORMED_TRANSITION");
     const gateOutcomes = buildGateOutcomes({ subject, evidenceSnapshot, assessmentResult, rl7Outcome, evidenceObjectPresent: evidenceObjectRef !== null, consumedEvidence });
     const requestedState = deriveRequestedState(gateOutcomes, assessmentResult.outcome, rl7Outcome);
     const decision = evaluateScientificPromotionStageAV1({
