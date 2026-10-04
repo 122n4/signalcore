@@ -68,22 +68,44 @@ source_context text check = 'PURE_RESEARCH'
 hash_algorithm text check = 'SHA-256'
 hash_domain text check = 'SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1'
 hash_version text check = 'SYNTRAKE_SHA256_V1'
-hash_hex text check = '122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C'
+hash_hex text not null check (hash_hex ~ '^[0-9A-F]{64}$')
 canonical_payload jsonb not null
 created_at timestamptz not null default transaction_timestamp()
 ```
 
 Protocol operational persistence is reusable across tenants and Investigations because the protocol canonical payload contains no tenant, principal, membership, Investigation or subject. Authority metadata MUST NOT be part of protocol scientific identity. Therefore this relation intentionally has no tenant columns. It is a global immutable protocol identity table.
 
-V1 protocol payload exactness:
+Protocol table storage is a version-forward immutable scientific protocol registry under the already frozen domain `SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1`. It supports multiple immutable protocol identities over time without introducing a new scientific domain. Physical protocol columns freeze domain-level invariants only: `hash_algorithm = SHA-256`, `hash_domain = SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1`, `hash_version = SYNTRAKE_SHA256_V1`, uppercase 64-hex `hash_hex`, `schemaVersion = SCIENTIFIC_PROMOTION_PROTOCOL_V1`, closed canonical V1 protocol object shape, and database-computed hash equals `hash_hex`. The table MUST NOT permanently constrain `protocolId = SCIENTIFIC_PROMOTION_PROTOCOL_V20261002` or `hash_hex = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`.
+
+The closed V1 protocol object keys remain exactly:
+
+```text
+schemaVersion
+protocolId
+requiredEvidenceClasses
+compatibleMetricRegistryVersion
+requiredRl7PolicyId
+rl7Required
+stateVocabulary
+gateVocabulary
+gateStatusVocabulary
+reasonVocabulary
+gateEvidenceMapping
+decisionPrecedence
+transitionGraph
+```
+
+No extra keys are admitted. Future admission may change protocol values only through an explicitly accepted future methodology contract.
+
+Current RL-8 V1 runtime authority remains exact:
 
 ```text
 schemaVersion = SCIENTIFIC_PROMOTION_PROTOCOL_V1
 protocolId = SCIENTIFIC_PROMOTION_PROTOCOL_V20261002
-hashHex = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C
+Current protocol HashRef = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C
 ```
 
-Arbitrary additional protocol keys are rejected. Missing protocol keys are rejected. The protocol writer must verify the exact frozen payload shape from the accepted RL-8A canonical runtime. The protocol payload field is `protocolId`.
+The current protocol writer must verify the exact frozen payload shape from the accepted RL-8A canonical runtime. The protocol payload field is `protocolId`.
 
 Uniqueness constraints:
 
@@ -92,7 +114,7 @@ unique (hash_algorithm, hash_domain, hash_version, hash_hex)
 unique ((canonical_payload->>'protocolId')) where hash_domain = 'SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1'
 ```
 
-Payload checks MUST prove `canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_PROTOCOL_V1'`, `canonical_payload->>'protocolId' = 'SCIENTIFIC_PROMOTION_PROTOCOL_V20261002'`, and hash hex equals `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`.
+Payload checks MUST prove `canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_PROTOCOL_V1'`, the canonical payload is closed to the frozen V1 protocol object shape, and database-computed protocol hash equals relational `hash_hex`. Current writer admission, not permanent storage schema, proves `canonical_payload->>'protocolId' = 'SCIENTIFIC_PROMOTION_PROTOCOL_V20261002'` and current HashRef equals `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`.
 
 Protocol operational ID plus hash compatibility key is mandatory:
 
@@ -118,7 +140,7 @@ references investing.research_scientific_promotion_protocols_scientific_identiti
 )
 ```
 
-The canonical payload protocol envelope must equal `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`.
+The canonical payload protocol envelope must equal `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`. current writer authority != permanent storage-domain restriction.
 
 ## 4. Transition identity relation contract
 
@@ -142,7 +164,7 @@ tenant_membership_id uuid not null
 research_investigation_id uuid not null
 research_experiment_id uuid not null
 research_scientific_promotion_protocol_identity_id uuid not null
-protocol_hash_hex text not null check = '122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C'
+protocol_hash_hex text not null check (protocol_hash_hex ~ '^[0-9A-F]{64}$')
 subject_experiment_hash_hex text not null check ~ '^[0-9A-F]{64}$'
 subject_experiment_parameters_hash_hex text not null check ~ '^[0-9A-F]{64}$'
 subject_research_ir_hash_hex text not null check ~ '^[0-9A-F]{64}$'
@@ -343,31 +365,31 @@ RL-8C1 MUST create this lifecycle composite compatibility key:
 RL8C1_ADD: research_scientific_promotion_transitions_rl8c_lifecycle_key (research_scientific_promotion_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, transition_hash_hex)
 ```
 
-Predecessor composite FK uses MATCH FULL:
+Predecessor composite FK uses MATCH SIMPLE:
 
 ```text
 (predecessor_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_transition_hash_hex)
 references research_scientific_promotion_transitions_rl8c_lifecycle_key
-MATCH FULL
+MATCH SIMPLE
 ```
 
-Rejected composite FK uses MATCH FULL:
+Rejected composite FK uses MATCH SIMPLE:
 
 ```text
 (rejected_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, rejected_transition_hash_hex)
 references research_scientific_promotion_transitions_rl8c_lifecycle_key
-MATCH FULL
+MATCH SIMPLE
 ```
 
-Supersedes composite FK uses MATCH FULL:
+Supersedes composite FK uses MATCH SIMPLE:
 
 ```text
 (supersedes_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, supersedes_transition_hash_hex)
 references research_scientific_promotion_transitions_rl8c_lifecycle_key
-MATCH FULL
+MATCH SIMPLE
 ```
 
-Lifecycle identity/hash pair-integrity CHECK constraints are mandatory even with MATCH FULL:
+Lifecycle identity/hash pair-integrity CHECK constraints are mandatory with MATCH SIMPLE:
 
 ```text
 (predecessor_transition_identity_id is null and predecessor_transition_hash_hex is null) or (predecessor_transition_identity_id is not null and predecessor_transition_hash_hex is not null)
@@ -375,6 +397,11 @@ Lifecycle identity/hash pair-integrity CHECK constraints are mandatory even with
 (supersedes_transition_identity_id is null and supersedes_transition_hash_hex is null) or (supersedes_transition_identity_id is not null and supersedes_transition_hash_hex is not null)
 (superseded_by_successor_protocol_identity_id is null and superseded_by_successor_protocol_hash_hex is null) or (superseded_by_successor_protocol_identity_id is not null and superseded_by_successor_protocol_hash_hex is not null)
 (superseded_by_successor_root_transition_identity_id is null and superseded_by_successor_root_transition_hash_hex is null) or (superseded_by_successor_root_transition_identity_id is not null and superseded_by_successor_root_transition_hash_hex is not null)
+```
+
+This combination is intentional: MATCH SIMPLE + identity/hash all-null-or-all-non-null CHECK + state-specific pair presence CHECK. For a present lifecycle reference, both ID/hash are non-null, so the full composite FK is checked. For an absent optional reference, ID/hash are both null and the FK is intentionally skipped. MATCH FULL MUST NOT be used for predecessor, rejected or supersedes lifecycle FKs because those composite FKs include always-non-null tenant, Investigation, protocol and subject columns; MATCH FULL would reject valid absent optional references.
+
+Future PostgreSQL tests MUST prove valid optional references are accepted when shared authority columns are non-null: ROOT with predecessor identity/hash both null; PROMOTION_ELIGIBLE with rejected identity/hash both null; ordinary non-SUPERSEDED with supersedes identity/hash both null. They also MUST prove identity non-null/hash null and identity null/hash non-null are rejected for every lifecycle pair.
 ```
 
 State-specific pair presence is frozen:
@@ -410,7 +437,35 @@ Successor-root cross-protocol FK uses this mechanically valid target key:
 RL8C1_ADD: research_scientific_promotion_transitions_rl8c_cross_chain_target_key (research_scientific_promotion_transition_identity_id, tenant_id, research_investigation_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, transition_hash_hex)
 ```
 
-The SUPERSEDED row's composite FK proves successor root transition identity, same tenant, same Investigation, successor protocol operational identity, successor protocol hash, same subject Experiment, same Experiment Parameters, same Research IR and successor root transition hash. Protocol is intentionally different there. Row UUID alone is never sufficient.
+The SUPERSEDED row's successor-root composite FK uses MATCH SIMPLE with this exact referencing tuple:
+
+```text
+(
+  superseded_by_successor_root_transition_identity_id,
+  tenant_id,
+  research_investigation_id,
+  superseded_by_successor_protocol_identity_id,
+  superseded_by_successor_protocol_hash_hex,
+  subject_experiment_hash_hex,
+  subject_experiment_parameters_hash_hex,
+  subject_research_ir_hash_hex,
+  superseded_by_successor_root_transition_hash_hex
+)
+references (
+  research_scientific_promotion_transition_identity_id,
+  tenant_id,
+  research_investigation_id,
+  research_scientific_promotion_protocol_identity_id,
+  protocol_hash_hex,
+  subject_experiment_hash_hex,
+  subject_experiment_parameters_hash_hex,
+  subject_research_ir_hash_hex,
+  transition_hash_hex
+)
+MATCH SIMPLE
+```
+
+The SUPERSEDED row's composite FK proves successor root transition identity, same tenant, same Investigation, successor protocol operational identity, successor protocol hash, same subject Experiment, same Experiment Parameters, same Research IR and successor root transition hash. State-specific checks guarantee that for SUPERSEDED all successor protocol/root pairs are fully non-null; for every non-SUPERSEDED transition all those optional pairs are fully null. Protocol is intentionally different there. Row UUID alone is never sufficient.
 
 Rootness is proved by `research_scientific_promotion_supersession_integrity`, not by a foreign key. The trigger MUST load the referenced successor transition and require exactly: `predecessor_transition_identity_id IS NULL`, `predecessor_transition_hash_hex IS NULL`, `predecessor_state = DRAFT_RESEARCH`, `resulting_state = EXECUTED`, `gateOutcomes = []`, `transitionReasons = []`, `supersedes = null`, `rejectedTransition = null`, `supersededByChain = null`, and exact ROOT evidenceSnapshot presence. Failure returns `DIVERGENT_EXISTING_IDENTITY`. A foreign key MUST NOT be claimed to enforce literal state values.
 
@@ -504,6 +559,14 @@ investing.persist_research_scientific_promotion_evaluation_plan_v1(p_predecessor
 investing.persist_research_scientific_promotion_supersession_v1(p_predecessor_transition_identity_id uuid, p_superseded_transition_hash_hex text, p_superseded_canonical_payload jsonb, p_successor_protocol_identity_id uuid, p_successor_root_transition_identity_id uuid) returns jsonb
 ```
 
+Current root and same-protocol evaluation-plan writers only admit the current RL-8 V1 protocol. Before persisting a current RL-8 root or same-protocol Stage-A plan, the writer requires: `transition.protocol.hashAlgorithm = SHA-256`, `transition.protocol.hashDomain = SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1`, `transition.protocol.hashVersion = SYNTRAKE_SHA256_V1`, and `transition.protocol.hashHex = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`. Anything else through the current root/evaluation writer fails closed with `INCOMPATIBLE_PROTOCOL_VERSION`. This preserves RL-8A/RL-8B current authority while keeping the storage substrate forward-compatible.
+
+The current protocol writer admits only `protocolId = SCIENTIFIC_PROMOTION_PROTOCOL_V20261002` and current HashRef `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`. Future protocol identities require a new frozen methodology contract, deterministic runtime support, exact protocol payload/hash golden, explicit migration/writer admission, and independent audit. No generic arbitrary-protocol insertion is permitted. No mutable `currentProtocol` column. No latest. No alias. No environment-selected protocol. Current authority remains the exact 20261002 protocol until a later explicit contract changes authority.
+
+Storage must be forward-compatible because a future different protocol must be able to create its own exact ROOT under the same tenant/Investigation/subject before the old current-protocol chain can persist SUPERSEDED. The SUPERSEDED row's `supersededByChain.successorProtocol` points to the future immutable protocol HashRef and `supersededByChain.successorRootTransition` points to that future protocol's exact accepted ROOT. If the physical transition table permanently hard-codes `122F...`, accepted cross-protocol methodology replacement can never occur.
+
+The supersession writer does not create successor protocol, successor root or future methodology. It only links an old accepted leaf to an already existing accepted different-protocol root. It verifies successor protocol exists, successor root exists, successor root protocol == successor protocol, successor protocol != old protocol, same tenant, same Investigation, same subject, exact rootness and acyclic chain.
+
 The root writer MUST derive `research_investigation_id`, `tenant_id`, `principal_id`, and `tenant_membership_id` from server-side context settings and the accepted referenced operational rows. The caller does not provide authority identity. The writer fails closed if any referenced row does not match server-derived authority.
 
 Every writer returns `CREATED` or `REUSED_IDENTICAL`; divergent conflict is `DIVERGENT_EXISTING_IDENTITY`. UPSERT semantics are forbidden unless the writer verifies byte-identical canonical payload, exact canonical hash and exact HashRef identity before returning `REUSED_IDENTICAL`.
@@ -568,7 +631,7 @@ Protocol table has no authority FK because protocol scientific identity is globa
 
 Scientific protocol and transition rows are immutable. `UPDATE authority = none`; `DELETE authority = none`. Both tables MUST have BEFORE UPDATE OR DELETE trigger `investing.reject_research_scientific_promotion_update_delete_v1()`.
 
-Structural checks must prove canonical payload agrees with columns: `canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_TRANSITION_V1'`, transition.protocol envelope equals `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`, and `research_scientific_promotion_protocol_identity_id` resolves to the protocol row whose exact fields are `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`, subject Experiment HashRef equals columns, predecessorState equals `predecessor_state`, resultingState equals `resulting_state`, lifecycle references match lifecycle columns, evidenceSnapshot HashRefs/nulls match the nine operational FK/hash columns, transition HashRef domain/version equals `SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1` and `SYNTRAKE_SHA256_V1`, and protocol id equals `SCIENTIFIC_PROMOTION_PROTOCOL_V20261002`.
+Structural checks must prove canonical payload agrees with columns: `canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_TRANSITION_V1'`, transition.protocol envelope equals `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`, and `research_scientific_promotion_protocol_identity_id` resolves to the protocol row whose exact fields are `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`, subject Experiment HashRef equals columns, predecessorState equals `predecessor_state`, resultingState equals `resulting_state`, lifecycle references match lifecycle columns, evidenceSnapshot HashRefs/nulls match the nine operational FK/hash columns, transition HashRef domain/version equals `SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1` and `SYNTRAKE_SHA256_V1`. Current root/evaluation writers additionally enforce protocol id `SCIENTIFIC_PROMOTION_PROTOCOL_V20261002` and current HashRef `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`.
 
 
 ## 13A. Snapshot HashRef envelopes and transition structural validation
@@ -659,7 +722,7 @@ Future PostgreSQL tests MUST prove SQL canonicalizer/hash output is byte-identic
 
 ```text
 Protocol canonical bytes SHA-256 = A3DBB4046CD52A02E90EE175298A7799BAB791B8532FBF84A1A58C11D3B1F012
-Protocol HashRef = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C
+Current protocol HashRef = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C
 Root canonical bytes SHA-256 = 3546B2ADD88325F789DD3F4B25817AA6CF3E6D9812711E26852B432AA659F7A1
 Root HashRef = 3E910D12366ED5B0CE8C93686FC18F98A0D07E550D96BF61237BA73ECE23901F
 PASS Stage-A = BEEE521649E78934DCE216B8650F51B86F8BAE80A9A8EA5600321D1F2BB263A4
@@ -756,7 +819,7 @@ No Passport mutation. No Production action.
 
 ## 19. PostgreSQL 17 test matrix
 
-Future executable migration MUST prove clean migration replay on PostgreSQL 17; owner = investing_owner; `investing_rl8_writer` role attributes exact and NOBYPASSRLS; `investing_app` is not a member of `investing_rl8_writer`; `service_role` is not a member of `investing_rl8_writer`; RLS enabled; FORCE RLS enabled; forbidden grants absent; SECURITY DEFINER allowlist contains exactly four RL-8 writer functions; writer search_path safe; SQL canonical protocol hash equals `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`; SQL transition golden hashes match RL-8B runtime golden hashes; exact protocol retry -> REUSED_IDENTICAL; divergent protocol -> conflict; exact root retry -> REUSED_IDENTICAL; concurrent identical roots -> one row / both deterministic results; concurrent divergent roots -> one winner / one DIVERGENT; exact Stage-A pair retry -> REUSED_IDENTICAL; concurrent identical Stage-A pair -> one pair only; concurrent divergent successor -> one winner / one DIVERGENT; VALIDATION_PASSED orphan commit -> impossible; VALIDATION_FAILED orphan commit -> impossible; closure COPY violation -> blocked; pair rollback -> neither row remains; INSUFFICIENT Stage-A -> one row, no closure; wrong tenant -> blocked; wrong Investigation -> blocked; wrong membership -> blocked; service_role mutation -> blocked; anon/authenticated/public mutation -> blocked; UPDATE blocked; DELETE blocked; upstream HashRef without accepted operational row -> blocked; upstream row from wrong Investigation -> blocked; run input relation is `investing.run_inputs_scientific_identities`; SUPERSEDED dangling root -> blocked; SUPERSEDED same protocol -> blocked; SUPERSEDED subject mismatch -> blocked; SUPERSEDED copy violation -> blocked; SUPERSEDED cycle -> blocked; partial-null predecessor identity/hash pair -> blocked; partial-null rejected identity/hash pair -> blocked; partial-null supersedes identity/hash pair -> blocked; partial-null successor protocol identity/hash pair -> blocked; partial-null successor root identity/hash pair -> blocked; successor identity/hash mismatch -> blocked; successor wrong tenant -> blocked; successor wrong Investigation -> blocked; successor wrong subject -> blocked; successor wrong successor protocol identity/hash -> blocked; successor target VALIDATION_PASSED instead of ROOT -> blocked; successor target EXECUTED but non-null predecessor -> blocked; successor root with lifecycle links populated -> blocked; reconstruction with multiple successors -> fail closed.
+Future executable migration MUST prove clean migration replay on PostgreSQL 17; owner = investing_owner; `investing_rl8_writer` role attributes exact and NOBYPASSRLS; `investing_app` is not a member of `investing_rl8_writer`; `service_role` is not a member of `investing_rl8_writer`; RLS enabled; FORCE RLS enabled; forbidden grants absent; SECURITY DEFINER allowlist contains exactly four RL-8 writer functions; writer search_path safe; SQL canonical protocol hash equals `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`; SQL transition golden hashes match RL-8B runtime golden hashes; exact protocol retry -> REUSED_IDENTICAL; divergent protocol -> conflict; exact root retry -> REUSED_IDENTICAL; concurrent identical roots -> one row / both deterministic results; concurrent divergent roots -> one winner / one DIVERGENT; exact Stage-A pair retry -> REUSED_IDENTICAL; concurrent identical Stage-A pair -> one pair only; concurrent divergent successor -> one winner / one DIVERGENT; VALIDATION_PASSED orphan commit -> impossible; VALIDATION_FAILED orphan commit -> impossible; closure COPY violation -> blocked; pair rollback -> neither row remains; INSUFFICIENT Stage-A -> one row, no closure; wrong tenant -> blocked; wrong Investigation -> blocked; wrong membership -> blocked; service_role mutation -> blocked; anon/authenticated/public mutation -> blocked; UPDATE blocked; DELETE blocked; upstream HashRef without accepted operational row -> blocked; upstream row from wrong Investigation -> blocked; run input relation is `investing.run_inputs_scientific_identities`; SUPERSEDED dangling root -> blocked; SUPERSEDED same protocol -> blocked; cross-protocol fixture current chain protocol = A; successor root protocol = B; A != B; SUPERSEDED A -> B accepted; A -> A supersession rejected; mismatched successor protocol ID/hash rejected; successor root protocol != supplied successor protocol rejected; future root cannot be created through CURRENT V1 root writer unless explicitly admitted by future authority; SUPERSEDED subject mismatch -> blocked; SUPERSEDED copy violation -> blocked; SUPERSEDED cycle -> blocked; partial-null predecessor identity/hash pair -> blocked; partial-null rejected identity/hash pair -> blocked; partial-null supersedes identity/hash pair -> blocked; partial-null successor protocol identity/hash pair -> blocked; partial-null successor root identity/hash pair -> blocked; successor identity/hash mismatch -> blocked; successor wrong tenant -> blocked; successor wrong Investigation -> blocked; successor wrong subject -> blocked; successor wrong successor protocol identity/hash -> blocked; successor target VALIDATION_PASSED instead of ROOT -> blocked; successor target EXECUTED but non-null predecessor -> blocked; successor root with lifecycle links populated -> blocked; reconstruction with multiple successors -> fail closed.
 
 ## 20. Production process
 

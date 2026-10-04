@@ -45,8 +45,9 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
     expect(Object.prototype.hasOwnProperty.call(protocol, "protocolToken")).toBe(false);
     expect(hashScientificPromotionProtocolV1().hashHex).toBe(expectedProtocolHash);
     expect(contract).toContain("protocolId = SCIENTIFIC_PROMOTION_PROTOCOL_V20261002");
-    expect(contract).toContain(`hashHex = ${expectedProtocolHash}`);
-    expect(contract).toContain(`hash_hex text check = '${expectedProtocolHash}'`);
+    expect(contract).toContain(`Current protocol HashRef = ${expectedProtocolHash}`);
+    expect(contract).toContain("hash_hex text not null check (hash_hex ~ '^[0-9A-F]{64}$')");
+    expect(contract).toContain("Current protocol HashRef = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C");
     expect(contract).not.toContain("protocolToken");
   });
 
@@ -183,7 +184,7 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "extensions.digest",
       "SHA256(",
       "Protocol canonical bytes SHA-256 = A3DBB4046CD52A02E90EE175298A7799BAB791B8532FBF84A1A58C11D3B1F012",
-      "Protocol HashRef = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C",
+      "Current protocol HashRef = 122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C",
       "Root canonical bytes SHA-256 = 3546B2ADD88325F789DD3F4B25817AA6CF3E6D9812711E26852B432AA659F7A1",
       "Root HashRef = 3E910D12366ED5B0CE8C93686FC18F98A0D07E550D96BF61237BA73ECE23901F",
       "PASS Stage-A = BEEE521649E78934DCE216B8650F51B86F8BAE80A9A8EA5600321D1F2BB263A4",
@@ -305,6 +306,14 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "research_scientific_promotion_protocols_rl8c_identity_hash_key",
       "Successor protocol pair FK",
       "MATCH FULL",
+      "Predecessor composite FK uses MATCH SIMPLE",
+      "Rejected composite FK uses MATCH SIMPLE",
+      "Supersedes composite FK uses MATCH SIMPLE",
+      "MATCH SIMPLE + identity/hash all-null-or-all-non-null CHECK + state-specific pair presence CHECK",
+      "MATCH FULL MUST NOT be used for predecessor, rejected or supersedes lifecycle FKs",
+      "ROOT with predecessor identity/hash both null",
+      "PROMOTION_ELIGIBLE with rejected identity/hash both null",
+      "ordinary non-SUPERSEDED with supersedes identity/hash both null",
       "predecessor_transition_identity_id is null and predecessor_transition_hash_hex is null",
       "predecessor_transition_identity_id is not null and predecessor_transition_hash_hex is not null",
       "rejected_transition_identity_id is null and rejected_transition_hash_hex is null",
@@ -392,6 +401,29 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "Raw input key ordering and whitespace are never scientific identity",
     ]) expect(contract).toContain(token);
   });
+
+  it("freezes protocol evolution storage without weakening current writer authority", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "Protocol table storage is a version-forward immutable scientific protocol registry",
+      "hash_hex text not null check (hash_hex ~ '^[0-9A-F]{64}$')",
+      "protocol_hash_hex text not null check (protocol_hash_hex ~ '^[0-9A-F]{64}$')",
+      "current writer authority != permanent storage-domain restriction",
+      "Current root and same-protocol evaluation-plan writers only admit the current RL-8 V1 protocol",
+      "Anything else through the current root/evaluation writer fails closed with `INCOMPATIBLE_PROTOCOL_VERSION`",
+      "The current protocol writer admits only `protocolId = SCIENTIFIC_PROMOTION_PROTOCOL_V20261002`",
+      "Future protocol identities require a new frozen methodology contract",
+      "No generic arbitrary-protocol insertion is permitted",
+      "No mutable `currentProtocol` column",
+      "No environment-selected protocol",
+      "The supersession writer does not create successor protocol, successor root or future methodology",
+      "successor protocol != old protocol",
+      "future root cannot be created through CURRENT V1 root writer unless explicitly admitted by future authority",
+    ]) expect(contract).toContain(token);
+    expect(contract).not.toContain(`hash_hex text check = '${expectedProtocolHash}'`);
+    expect(contract).not.toContain(`protocol_hash_hex text not null check = '${expectedProtocolHash}'`);
+  });
+
   it("rejects stale wording and adds no SQL migration in this design slice", () => {
     const contract = read(contractPath);
     for (const forbidden of [
@@ -412,6 +444,9 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "EXISTING_OR_RL8C1_VERIFY_REQUIRED",
       "EXISTING_EXACT_KEY: research_validation_assessment_protocols_authority_key",
       "research_scientific_promotion_transitions_rl8c_successor_root_key",
+      "Predecessor composite FK uses MATCH FULL",
+      "Rejected composite FK uses MATCH FULL",
+      "Supersedes composite FK uses MATCH FULL",
     ]) expect(contract.slice(0, contract.indexOf("## 21. Forbidden stale wording"))).not.toContain(forbidden);
     const files = fs.readdirSync(path.join(repoRoot, "supabase", "migrations"));
     expect(files).not.toContain("I5_RL8C_SCIENTIFIC_PROMOTION_PERSISTENCE_CONTRACT_V1.sql");
