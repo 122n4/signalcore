@@ -479,9 +479,24 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
     expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { evidenceSnapshot: snapshot({ robustnessComparisonResult: null }) }))).toThrow("MISSING_RESULT");
     expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_FAILED", { evidenceSnapshot: snapshot({ validationAssessmentResult: null }) }))).toThrow("MISSING_RESULT");
     expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: gateOutcomes("FAIL"), transitionReasons: [] }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: [] }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_FAILED", { gateOutcomes: [], transitionReasons: [] }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("INSUFFICIENT_EVIDENCE", { gateOutcomes: [], transitionReasons: [] }))).toThrow("MALFORMED_TRANSITION");
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: gateOutcomes().slice(0, 10) }))).toThrow("MALFORMED_TRANSITION");
     const tampered = gateOutcomes();
     tampered[0] = { ...tampered[0]!, evidence: [ref("SYNTRAKE:RESULT:V1", "9")] };
     expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: tampered }))).toThrow("MALFORMED_TRANSITION");
+  });
+
+  it("rejects duplicate gate evidence while preserving canonical ordering of unique evidence", () => {
+    canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: gateOutcomes() }));
+    const duplicated = gateOutcomes();
+    duplicated[0] = { ...duplicated[0]!, evidence: [runInput, runInput] };
+    expect(() => canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: duplicated }))).toThrow("MALFORMED_TRANSITION");
+    const reordered = gateOutcomes();
+    const subjectGateIndex = reordered.findIndex((gate) => gate.gateId === "GATE_SUBJECT_IDENTITY");
+    reordered[subjectGateIndex] = { ...reordered[subjectGateIndex]!, evidence: [...reordered[subjectGateIndex]!.evidence].reverse() };
+    expect(canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: reordered })).toString("utf8")).toBe(canonicalScientificPromotionTransitionBytesV1(stageTransition("VALIDATION_PASSED", { gateOutcomes: gateOutcomes() })).toString("utf8"));
   });
 
   it("fails closed before deriving scientific states for authority, integrity and incompatible evidence", () => {
@@ -518,6 +533,22 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
       rl7Outcome: "PERMIT_FURTHER_EVALUATION",
       failClosedReason: "MISSING_VALIDATION_ASSESSMENT_AUTHORITY",
     })).toEqual({ kind: "FAIL_CLOSED", reason: "MISSING_VALIDATION_ASSESSMENT_AUTHORITY" });
+    expect(evaluateScientificPromotionStageAV1({
+      predecessorState: "EXECUTED",
+      requestedState: "VALIDATION_PASSED",
+      gateOutcomes: [],
+      assessmentOutcome: "PASS",
+      rl7Outcome: "PERMIT_FURTHER_EVALUATION",
+      failClosedReason: null,
+    })).toEqual({ kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" });
+    expect(evaluateScientificPromotionStageAV1({
+      predecessorState: "EXECUTED",
+      requestedState: "VALIDATION_PASSED",
+      gateOutcomes: gateOutcomes().slice(0, 10),
+      assessmentOutcome: "PASS",
+      rl7Outcome: "PERMIT_FURTHER_EVALUATION",
+      failClosedReason: null,
+    })).toEqual({ kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" });
   });
 
   it("enforces exact Stage A sources, results, requested-state match and precedence", () => {
@@ -545,6 +576,7 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
     const passed = stageTransition("VALIDATION_PASSED");
     const promotionEligible: ScientificPromotionTransitionV1 = { ...passed, predecessorTransition: hashScientificPromotionTransitionV1(passed), predecessorState: "VALIDATION_PASSED", resultingState: "PROMOTION_ELIGIBLE" };
     canonicalScientificPromotionTransitionBytesV1(promotionEligible);
+    expect(() => assertScientificPromotionPredecessorRelationV1({ predecessor: passed, transition: promotionEligible, successorRoot: rootTransition() })).toThrow("MALFORMED_TRANSITION");
     expect(() => canonicalScientificPromotionTransitionBytesV1({ ...promotionEligible, evidenceSnapshot: snapshot({ validationResult: null }) })).toThrow("MISSING_RESULT");
     expect(() => canonicalScientificPromotionTransitionBytesV1({ ...promotionEligible, gateOutcomes: gateOutcomes("FAIL") })).toThrow("MALFORMED_TRANSITION");
     const failed = stageTransition("VALIDATION_FAILED");
@@ -557,6 +589,7 @@ describe("I5 RL-8A Scientific Promotion deterministic runtime foundation", () =>
   it("validates cross-protocol successor roots and binds successorRootTransition to the actual root payload", () => {
     const fixture = supersededFixture();
     assertScientificPromotionPredecessorRelationV1({ predecessor: fixture.predecessor, transition: fixture.transition, successorRoot: fixture.successorRoot });
+    expect(() => assertScientificPromotionPredecessorRelationV1({ predecessor: fixture.predecessor, transition: fixture.transition })).toThrow("MALFORMED_TRANSITION");
     expect(() => assertScientificPromotionPredecessorRelationV1({
       predecessor: fixture.predecessor,
       transition: { ...fixture.transition, supersededByChain: { ...fixture.transition.supersededByChain!, successorProtocol: hashScientificPromotionProtocolV1() } },

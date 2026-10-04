@@ -333,6 +333,7 @@ export function mapRl7RobustnessClassificationForPromotionV1(input: Readonly<{ c
 export function evaluateScientificPromotionStageAV1(input: Readonly<{ predecessorState: ScientificPromotionStateV1; requestedState: ScientificPromotionStateV1; gateOutcomes: readonly ScientificPromotionGateOutcomeV1[]; assessmentOutcome: ValidationAssessmentResultV1["outcome"]; rl7Outcome: "PERMIT_FURTHER_EVALUATION" | "INSUFFICIENT_EVIDENCE" | "VALIDATION_FAILED" | "FAIL_CLOSED"; failClosedReason: ScientificPromotionReasonV1 | null }>): ScientificPromotionStageADecisionV1 {
   assertClosed(input, new Set(["predecessorState", "requestedState", "gateOutcomes", "assessmentOutcome", "rl7Outcome", "failClosedReason"]), "ScientificPromotionStageADecisionInput");
   if (!stageASourceStateSet.has(input.predecessorState) || !stageAResultStateSet.has(input.requestedState)) return { kind: "FAIL_CLOSED", reason: "FORBIDDEN_TRANSITION" };
+  if (!Array.isArray(input.gateOutcomes) || input.gateOutcomes.length !== scientificPromotionGateVocabularyV1.length) return { kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" };
   if (input.failClosedReason !== null) {
     const reason = reasons([input.failClosedReason])[0]!;
     if (!failClosedReasonSet.has(reason)) return { kind: "FAIL_CLOSED", reason: "MALFORMED_TRANSITION" };
@@ -359,6 +360,8 @@ export function assertScientificPromotionPredecessorRelationV1(input: Readonly<{
   assertClosedOptional(input, new Set(["predecessor", "transition"]), new Set(["successorRoot"]), "ScientificPromotionPredecessorRelation");
   const predecessor = canonicalScientificPromotionTransitionV1(input.predecessor) as unknown as ScientificPromotionTransitionV1;
   const transition = canonicalScientificPromotionTransitionV1(input.transition) as unknown as ScientificPromotionTransitionV1;
+  if (transition.resultingState !== "SUPERSEDED" && input.successorRoot !== undefined) throw new Error("MALFORMED_TRANSITION");
+  if (transition.resultingState === "SUPERSEDED" && input.successorRoot === undefined) throw new Error("MALFORMED_TRANSITION");
   const predecessorRef = hashScientificPromotionTransitionV1(input.predecessor);
   if (!sameRef(transition.predecessorTransition, predecessorRef) || transition.predecessorState !== predecessor.resultingState || !sameRef(transition.protocol, predecessor.protocol) || !sameCanonical(transition.subject, predecessor.subject)) throw new Error("WRONG_LINEAGE");
   if (transition.resultingState === "PROMOTION_ELIGIBLE") {
@@ -407,13 +410,20 @@ function refHash(hashDomain: HashRefV1["hashDomain"], hashHex: string): HashRefV
 function state(input: ScientificPromotionStateV1): ScientificPromotionStateV1 { if (!stateSet.has(input)) throw new Error("UNKNOWN_STATE"); return input; }
 function canonicalGateOutcomes(input: readonly ScientificPromotionGateOutcomeV1[], authority: Readonly<{ protocol: ScientificPromotionHashRefV1<typeof scientificPromotionProtocolDomainV1>; subject: ScientificPromotionSubjectV1; evidenceSnapshot: ScientificPromotionEvidenceSnapshotV1; resultingState: ScientificPromotionStateV1 }> | null): readonly ScientificPromotionGateOutcomeV1[] {
   if (!Array.isArray(input)) throw new Error("MALFORMED_TRANSITION");
-  if (input.length === 0) return Object.freeze([]);
+  const requiresCompleteGates = authority !== null && ["INSUFFICIENT_EVIDENCE", "VALIDATION_FAILED", "VALIDATION_PASSED", "PROMOTION_ELIGIBLE", "REJECTED"].includes(authority.resultingState);
+  if (input.length === 0) {
+    if (requiresCompleteGates) throw new Error("MALFORMED_TRANSITION");
+    return Object.freeze([]);
+  }
+  if (requiresCompleteGates && input.length !== scientificPromotionGateVocabularyV1.length) throw new Error("MALFORMED_TRANSITION");
   const outcomes = input.map((outcome) => {
     assertClosed(outcome, gateOutcomeKeys, "ScientificPromotionGateOutcome");
     if (!gateSet.has(outcome.gateId) || !statusSet.has(outcome.status)) throw new Error("UNKNOWN_GATE");
     const gateReasons = reasons(outcome.reasons);
     if ((outcome.status === "PASS" && gateReasons.length !== 0) || (outcome.status !== "PASS" && gateReasons.length === 0) || !Array.isArray(outcome.evidence)) throw new Error("MALFORMED_TRANSITION");
-    return Object.freeze({ gateId: outcome.gateId, status: outcome.status, reasons: gateReasons, evidence: unique(outcome.evidence.map(anyRef)).sort(compareRef) });
+    const evidence = outcome.evidence.map(anyRef);
+    rejectDuplicateRefs(evidence);
+    return Object.freeze({ gateId: outcome.gateId, status: outcome.status, reasons: gateReasons, evidence: [...evidence].sort(compareRef) });
   }).sort((a, b) => byteCompare(a.gateId, b.gateId));
   uniqueStrings(outcomes.map((outcome) => outcome.gateId));
   if (outcomes.length !== scientificPromotionGateVocabularyV1.length) throw new Error("MALFORMED_TRANSITION");
@@ -485,6 +495,7 @@ function anyRef(input: ScientificPromotionAnyHashRefV1): ScientificPromotionAnyH
   return hashRefV1(input as HashRefV1);
 }
 function unique(refs: readonly ScientificPromotionAnyHashRefV1[]): ScientificPromotionAnyHashRefV1[] { return [...new Map(refs.map((ref) => [bytes(ref).toString("hex"), ref])).values()]; }
+function rejectDuplicateRefs(refs: readonly ScientificPromotionAnyHashRefV1[]): void { if (new Set(refs.map((ref) => bytes(ref).toString("hex"))).size !== refs.length) throw new Error("MALFORMED_TRANSITION"); }
 function compareRef(left: ScientificPromotionAnyHashRefV1, right: ScientificPromotionAnyHashRefV1): number { return Buffer.compare(bytes(left), bytes(right)); }
 function bytes(ref: ScientificPromotionAnyHashRefV1): Buffer { return i5ResearchInternalCanonicalJsonBytesV1(anyRef(ref) as unknown as CanonicalJsonValue); }
 function sameRef(left: ScientificPromotionAnyHashRefV1 | null, right: ScientificPromotionAnyHashRefV1 | null): boolean { if (left === null || right === null) return left === right; return bytes(left).equals(bytes(right)); }
