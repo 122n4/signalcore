@@ -402,7 +402,6 @@ Lifecycle identity/hash pair-integrity CHECK constraints are mandatory with MATC
 This combination is intentional: MATCH SIMPLE + identity/hash all-null-or-all-non-null CHECK + state-specific pair presence CHECK. For a present lifecycle reference, both ID/hash are non-null, so the full composite FK is checked. For an absent optional reference, ID/hash are both null and the FK is intentionally skipped. MATCH FULL MUST NOT be used for predecessor, rejected or supersedes lifecycle FKs because those composite FKs include always-non-null tenant, Investigation, protocol and subject columns; MATCH FULL would reject valid absent optional references.
 
 Future PostgreSQL tests MUST prove valid optional references are accepted when shared authority columns are non-null: ROOT with predecessor identity/hash both null; PROMOTION_ELIGIBLE with rejected identity/hash both null; ordinary non-SUPERSEDED with supersedes identity/hash both null. They also MUST prove identity non-null/hash null and identity null/hash non-null are rejected for every lifecycle pair.
-```
 
 State-specific pair presence is frozen:
 
@@ -503,7 +502,7 @@ investing_rl8_writer: SELECT, INSERT on exactly the two RL-8 identity relations
 investing_rl8_writer: NO UPDATE, NO DELETE, NO TRUNCATE
 ```
 
-Upstream relations grant no mutation authority to `investing_rl8_writer`. `investing_rl8_writer` receives SELECT only on exactly these upstream provenance relations: `investing.research_investigations`, `investing.research_experiments`, `investing.run_inputs_scientific_identities`, `investing.research_results_scientific_identities`, `investing.research_evidence_objects_scientific_identities`, `investing.research_validation_protocols_scientific_identities`, `investing.research_validation_results_scientific_identities`, `investing.research_validation_assessment_protocols_scientific_identities`, `investing.research_validation_assessment_results_scientific_identities`, `investing.research_experiment_comparison_protocols_scientific_identities`, and `investing.research_experiment_comparison_results_scientific_identities`. No broad schema grants. No ownership transfer to `investing_rl8_writer`.
+Upstream relations grant no mutation authority to `investing_rl8_writer`. `investing_rl8_writer` receives SELECT only on exactly these upstream provenance relations: `investing.tenant_memberships`, `investing.research_investigations`, `investing.research_experiments`, `investing.run_inputs_scientific_identities`, `investing.research_results_scientific_identities`, `investing.research_evidence_objects_scientific_identities`, `investing.research_validation_protocols_scientific_identities`, `investing.research_validation_results_scientific_identities`, `investing.research_validation_assessment_protocols_scientific_identities`, `investing.research_validation_assessment_results_scientific_identities`, `investing.research_experiment_comparison_protocols_scientific_identities`, and `investing.research_experiment_comparison_results_scientific_identities`. No broad schema grants. No ownership transfer to `investing_rl8_writer`.
 
 
 Exact writer role schema privileges:
@@ -518,6 +517,7 @@ Exact table privileges:
 ```text
 GRANT SELECT, INSERT ON investing.research_scientific_promotion_protocols_scientific_identities TO investing_rl8_writer;
 GRANT SELECT, INSERT ON investing.research_scientific_promotion_transitions_scientific_identities TO investing_rl8_writer;
+GRANT SELECT ON investing.tenant_memberships TO investing_rl8_writer;
 GRANT SELECT ON investing.research_investigations TO investing_rl8_writer;
 GRANT SELECT ON investing.research_experiments TO investing_rl8_writer;
 GRANT SELECT ON investing.run_inputs_scientific_identities TO investing_rl8_writer;
@@ -569,6 +569,20 @@ The supersession writer does not create successor protocol, successor root or fu
 
 The root writer MUST derive `research_investigation_id`, `tenant_id`, `principal_id`, and `tenant_membership_id` from server-side context settings and the accepted referenced operational rows. The caller does not provide authority identity. The writer fails closed if any referenced row does not match server-derived authority.
 
+
+Authority resolution order is frozen for every RL-8 mutation writer before scientific persistence:
+
+```text
+1. read server-derived context settings;
+2. resolve exactly one tenant_memberships row matching tenant_membership_id, tenant_id, principal_id, role = OWNER, state = ACTIVE;
+3. zero matching membership: AUTHORITY_FAILURE;
+4. more than one: fail closed;
+5. resolve exact research_investigations row under that same tenant, principal, membership, Investigation, operation_scope = TENANT_SCOPE, source_context = PURE_RESEARCH;
+6. only after membership + Investigation authority succeeds: resolve Experiment / upstream scientific evidence; acquire scientific locks; persist.
+```
+
+`persist_research_scientific_promotion_protocol_v1` uses this same OWNER / ACTIVE membership plus authorized Investigation proof before it may create or reuse the current global protocol scientific identity. Global scientific identity does not imply unauthenticated or global mutation authority. Root, evaluation-plan and supersession writers require the same proof before resolving any scientific lineage. Revoked membership, non-OWNER membership, membership belonging to another principal, membership belonging to another tenant and missing membership all fail closed before scientific state evaluation or persistence.
+
 Every writer returns `CREATED` or `REUSED_IDENTICAL`; divergent conflict is `DIVERGENT_EXISTING_IDENTITY`. UPSERT semantics are forbidden unless the writer verifies byte-identical canonical payload, exact canonical hash and exact HashRef identity before returning `REUSED_IDENTICAL`.
 
 ## 12. RLS and FORCE RLS contract
@@ -594,6 +608,7 @@ research_scientific_promotion_protocols_rl8c_writer_select
 research_scientific_promotion_protocols_rl8c_writer_insert
 research_scientific_promotion_transitions_rl8c_writer_select
 research_scientific_promotion_transitions_rl8c_writer_insert
+tenant_memberships_rl8c_writer_select
 research_investigations_rl8c_writer_select
 research_experiments_rl8c_writer_select
 run_inputs_rl8c_writer_select
@@ -606,6 +621,32 @@ research_validation_assessment_results_rl8c_writer_select
 research_experiment_comparison_protocols_rl8c_writer_select
 research_experiment_comparison_results_rl8c_writer_select
 ```
+
+
+Tenant membership SELECT policy is exact:
+
+```text
+tenant_memberships_rl8c_writer_select
+on investing.tenant_memberships
+for SELECT
+to investing_rl8_writer
+using (
+  current_setting('syntrake.investing.operation', true) in (
+    'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1',
+    'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1',
+    'RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',
+    'RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1'
+  )
+  and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+  and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
+  and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
+  and principal_id::text = current_setting('syntrake.investing.principal_id', true)
+  and role = 'OWNER'
+  and state = 'ACTIVE'
+)
+```
+
+No client-supplied membership tuple is authority by itself. Custom GUC values are context only; they are never sufficient proof of ownership without matching authoritative rows.
 
 Transition INSERT predicate must enforce exact equality:
 
@@ -819,7 +860,7 @@ No Passport mutation. No Production action.
 
 ## 19. PostgreSQL 17 test matrix
 
-Future executable migration MUST prove clean migration replay on PostgreSQL 17; owner = investing_owner; `investing_rl8_writer` role attributes exact and NOBYPASSRLS; `investing_app` is not a member of `investing_rl8_writer`; `service_role` is not a member of `investing_rl8_writer`; RLS enabled; FORCE RLS enabled; forbidden grants absent; SECURITY DEFINER allowlist contains exactly four RL-8 writer functions; writer search_path safe; SQL canonical protocol hash equals `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`; SQL transition golden hashes match RL-8B runtime golden hashes; exact protocol retry -> REUSED_IDENTICAL; divergent protocol -> conflict; exact root retry -> REUSED_IDENTICAL; concurrent identical roots -> one row / both deterministic results; concurrent divergent roots -> one winner / one DIVERGENT; exact Stage-A pair retry -> REUSED_IDENTICAL; concurrent identical Stage-A pair -> one pair only; concurrent divergent successor -> one winner / one DIVERGENT; VALIDATION_PASSED orphan commit -> impossible; VALIDATION_FAILED orphan commit -> impossible; closure COPY violation -> blocked; pair rollback -> neither row remains; INSUFFICIENT Stage-A -> one row, no closure; wrong tenant -> blocked; wrong Investigation -> blocked; wrong membership -> blocked; service_role mutation -> blocked; anon/authenticated/public mutation -> blocked; UPDATE blocked; DELETE blocked; upstream HashRef without accepted operational row -> blocked; upstream row from wrong Investigation -> blocked; run input relation is `investing.run_inputs_scientific_identities`; SUPERSEDED dangling root -> blocked; SUPERSEDED same protocol -> blocked; cross-protocol fixture current chain protocol = A; successor root protocol = B; A != B; SUPERSEDED A -> B accepted; A -> A supersession rejected; mismatched successor protocol ID/hash rejected; successor root protocol != supplied successor protocol rejected; future root cannot be created through CURRENT V1 root writer unless explicitly admitted by future authority; SUPERSEDED subject mismatch -> blocked; SUPERSEDED copy violation -> blocked; SUPERSEDED cycle -> blocked; partial-null predecessor identity/hash pair -> blocked; partial-null rejected identity/hash pair -> blocked; partial-null supersedes identity/hash pair -> blocked; partial-null successor protocol identity/hash pair -> blocked; partial-null successor root identity/hash pair -> blocked; successor identity/hash mismatch -> blocked; successor wrong tenant -> blocked; successor wrong Investigation -> blocked; successor wrong subject -> blocked; successor wrong successor protocol identity/hash -> blocked; successor target VALIDATION_PASSED instead of ROOT -> blocked; successor target EXECUTED but non-null predecessor -> blocked; successor root with lifecycle links populated -> blocked; reconstruction with multiple successors -> fail closed.
+Future executable migration MUST prove clean migration replay on PostgreSQL 17; authority gate with valid OWNER + ACTIVE exact tuple -> PASS; wrong tenant_membership_id -> BLOCKED; correct membership ID but wrong tenant -> BLOCKED; correct membership ID but wrong principal -> BLOCKED; role != OWNER -> BLOCKED; state = REVOKED -> BLOCKED; missing membership row -> BLOCKED; fake GUC tuple with no matching membership -> BLOCKED; valid membership but wrong Investigation -> BLOCKED; no scientific row may be inserted in any failing authority case; SECURITY DEFINER regression proves invoking as investing_app with forged custom GUC values cannot bypass tenant_memberships + research_investigations authority resolution because elevated table capability is not authorization; owner = investing_owner; `investing_rl8_writer` role attributes exact and NOBYPASSRLS; `investing_app` is not a member of `investing_rl8_writer`; `service_role` is not a member of `investing_rl8_writer`; RLS enabled; FORCE RLS enabled; forbidden grants absent; SECURITY DEFINER allowlist contains exactly four RL-8 writer functions; writer search_path safe; SQL canonical protocol hash equals `122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C`; SQL transition golden hashes match RL-8B runtime golden hashes; exact protocol retry -> REUSED_IDENTICAL; divergent protocol -> conflict; exact root retry -> REUSED_IDENTICAL; concurrent identical roots -> one row / both deterministic results; concurrent divergent roots -> one winner / one DIVERGENT; exact Stage-A pair retry -> REUSED_IDENTICAL; concurrent identical Stage-A pair -> one pair only; concurrent divergent successor -> one winner / one DIVERGENT; VALIDATION_PASSED orphan commit -> impossible; VALIDATION_FAILED orphan commit -> impossible; closure COPY violation -> blocked; pair rollback -> neither row remains; INSUFFICIENT Stage-A -> one row, no closure; wrong tenant -> blocked; wrong Investigation -> blocked; wrong membership -> blocked; service_role mutation -> blocked; anon/authenticated/public mutation -> blocked; UPDATE blocked; DELETE blocked; upstream HashRef without accepted operational row -> blocked; upstream row from wrong Investigation -> blocked; run input relation is `investing.run_inputs_scientific_identities`; SUPERSEDED dangling root -> blocked; SUPERSEDED same protocol -> blocked; cross-protocol fixture current chain protocol = A; successor root protocol = B; A != B; SUPERSEDED A -> B accepted; A -> A supersession rejected; mismatched successor protocol ID/hash rejected; successor root protocol != supplied successor protocol rejected; future root cannot be created through CURRENT V1 root writer unless explicitly admitted by future authority; SUPERSEDED subject mismatch -> blocked; SUPERSEDED copy violation -> blocked; SUPERSEDED cycle -> blocked; partial-null predecessor identity/hash pair -> blocked; partial-null rejected identity/hash pair -> blocked; partial-null supersedes identity/hash pair -> blocked; partial-null successor protocol identity/hash pair -> blocked; partial-null successor root identity/hash pair -> blocked; successor identity/hash mismatch -> blocked; successor wrong tenant -> blocked; successor wrong Investigation -> blocked; successor wrong subject -> blocked; successor wrong successor protocol identity/hash -> blocked; successor target VALIDATION_PASSED instead of ROOT -> blocked; successor target EXECUTED but non-null predecessor -> blocked; successor root with lifecycle links populated -> blocked; reconstruction with multiple successors -> fail closed.
 
 ## 20. Production process
 

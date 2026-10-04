@@ -337,14 +337,23 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "GRANT USAGE ON SCHEMA investing TO investing_rl8_writer",
       "GRANT USAGE ON SCHEMA extensions TO investing_rl8_writer",
       "GRANT SELECT, INSERT ON investing.research_scientific_promotion_protocols_scientific_identities TO investing_rl8_writer",
+      "GRANT SELECT ON investing.tenant_memberships TO investing_rl8_writer",
       "GRANT SELECT ON investing.research_investigations TO investing_rl8_writer",
       "GRANT SELECT ON investing.run_inputs_scientific_identities TO investing_rl8_writer",
       "extensions.digest",
       "research_scientific_promotion_protocols_rl8c_writer_select",
       "research_scientific_promotion_protocols_rl8c_writer_insert",
       "research_scientific_promotion_transitions_rl8c_writer_insert",
+      "tenant_memberships_rl8c_writer_select",
+      "on investing.tenant_memberships",
+      "for SELECT",
+      "to investing_rl8_writer",
       "operation = current_setting('syntrake.investing.operation', true)",
+      "tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)",
       "tenant_id::text = current_setting('syntrake.investing.tenant_id', true)",
+      "principal_id::text = current_setting('syntrake.investing.principal_id', true)",
+      "role = 'OWNER'",
+      "state = 'ACTIVE'",
       "No UPDATE policy exists",
       "No DELETE policy exists",
     ]) expect(contract).toContain(token);
@@ -399,6 +408,31 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "Writer signatures use jsonb",
       "scientific identity is computed over the parsed canonical logical object",
       "Raw input key ordering and whitespace are never scientific identity",
+    ]) expect(contract).toContain(token);
+  });
+
+
+  it("freezes membership authority proof for writer access", () => {
+    const contract = read(contractPath);
+    for (const token of [
+      "investing.tenant_memberships",
+      "GRANT SELECT ON investing.tenant_memberships TO investing_rl8_writer",
+      "tenant_memberships_rl8c_writer_select",
+      "current_setting('syntrake.investing.operation', true) in (",
+      "current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'",
+      "tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)",
+      "tenant_id::text = current_setting('syntrake.investing.tenant_id', true)",
+      "principal_id::text = current_setting('syntrake.investing.principal_id', true)",
+      "role = 'OWNER'",
+      "state = 'ACTIVE'",
+      "No client-supplied membership tuple is authority by itself",
+      "Authority resolution order is frozen",
+      "zero matching membership: AUTHORITY_FAILURE",
+      "only after membership + Investigation authority succeeds",
+      "Global scientific identity does not imply unauthenticated or global mutation authority",
+      "fake GUC tuple with no matching membership -> BLOCKED",
+      "SECURITY DEFINER regression proves invoking as investing_app with forged custom GUC values cannot bypass tenant_memberships + research_investigations authority resolution",
+      "elevated table capability is not authorization",
     ]) expect(contract).toContain(token);
   });
 
