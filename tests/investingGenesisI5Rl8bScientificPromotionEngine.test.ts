@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -222,8 +223,15 @@ function assessment(validationProtocol: HashRefV1, validationResult: HashRefV1, 
   return { protocol, protocolRef, result: resultPayload, resultRef };
 }
 
+function resolvedEvidenceObject(content: ResearchExecutionEvidenceContentV1, descriptorOverrides: Partial<ResearchExecutionEvidenceObjectV1["descriptor"]> = {}): { ref: HashRefV1; object: ResearchExecutionEvidenceObjectV1 } {
+  const contentBytes = i5ResearchInternalCanonicalJsonBytesV1(content as unknown as CanonicalJsonValue);
+  const descriptor = { schemaVersion: "EVIDENCE_CONTENT_DESCRIPTOR_V1", kind: "RESEARCH_EXECUTION_EVIDENCE", artifactSchemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1", format: "CANONICAL_JSON_UTF8_V1", contentByteLength: String(contentBytes.length), ...descriptorOverrides } as ResearchExecutionEvidenceObjectV1["descriptor"];
+  const ref = refHash("SYNTRAKE:EVIDENCE_OBJECT:V1", hashResearchExecutionEvidenceObjectV1(descriptor, contentBytes));
+  return { ref, object: { descriptor, content, contentBytes, contentSha256: sha256HexV1(contentBytes), evidenceHash: ref } };
+}
+
 function evidenceObject(runInput: HashRefV1, result: HashRefV1, runPayload: RunInputHashPayloadV1, resultPayload: ResultHashPayloadV1): { ref: HashRefV1; object: ResearchExecutionEvidenceObjectV1 } {
-  const content: ResearchExecutionEvidenceContentV1 = {
+  return resolvedEvidenceObject({
     schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1",
     result,
     runInput,
@@ -238,11 +246,12 @@ function evidenceObject(runInput: HashRefV1, result: HashRefV1, runPayload: RunI
     engineId: resultPayload.engineId,
     engineVersion: resultPayload.engineVersion,
     resultArtifacts: { executionTrace: resultPayload.executionTrace, valuationSeries: resultPayload.valuationSeries, metricResultSet: resultPayload.metricResultSet, benchmark: resultPayload.benchmark },
-  };
-  const contentBytes = i5ResearchInternalCanonicalJsonBytesV1(content as unknown as CanonicalJsonValue);
-  const descriptor = { schemaVersion: "EVIDENCE_CONTENT_DESCRIPTOR_V1", kind: "RESEARCH_EXECUTION_EVIDENCE", artifactSchemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1", format: "CANONICAL_JSON_UTF8_V1", contentByteLength: String(contentBytes.length) } as const;
-  const ref = refHash("SYNTRAKE:EVIDENCE_OBJECT:V1", hashResearchExecutionEvidenceObjectV1(descriptor, contentBytes));
-  return { ref, object: { descriptor, content, contentBytes, contentSha256: sha256HexV1(contentBytes), evidenceHash: ref } };
+  });
+}
+
+function mutateEvidenceObject(input: ScientificPromotionResolvedEvidenceV1, mutate: (content: ResearchExecutionEvidenceContentV1) => ResearchExecutionEvidenceContentV1, descriptorOverrides: Partial<ResearchExecutionEvidenceObjectV1["descriptor"]> = {}): ScientificPromotionResolvedEvidenceV1 {
+  if (input.evidenceObject === null) throw new Error("expected evidence object");
+  return { ...input, evidenceObject: resolvedEvidenceObject(mutate(input.evidenceObject.object.content), descriptorOverrides) };
 }
 
 function comparisonProtocol(result: HashRefV1, validationResult: HashRefV1, overrides: Partial<ExperimentComparisonProtocolV1> = {}): ExperimentComparisonProtocolV1 {
@@ -337,6 +346,20 @@ function expectPlan(input: ScientificPromotionResolvedEvidenceV1) {
   return plan;
 }
 
+function gate(plan: ReturnType<typeof expectPlan>, gateId: (typeof scientificPromotionGateVocabularyV1)[number]) {
+  const found = plan.stageA.transition.gateOutcomes.find((candidate) => candidate.gateId === gateId);
+  if (found === undefined) throw new Error(`missing gate ${gateId}`);
+  return found;
+}
+
+function transitionHashHex(transition: ScientificPromotionTransitionV1): string {
+  return createHash("sha256")
+    .update(Buffer.from("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1\n", "utf8"))
+    .update(canonicalScientificPromotionTransitionBytesV1(transition))
+    .digest("hex")
+    .toUpperCase();
+}
+
 describe("RL-8B deterministic scientific promotion engine", () => {
   it("builds VALIDATION_PASSED then PROMOTION_ELIGIBLE for Assessment PASS and RL7 STABLE", () => {
     const plan = expectPlan(fixture());
@@ -377,12 +400,28 @@ describe("RL-8B deterministic scientific promotion engine", () => {
     expect(plan.closure?.transition.resultingState ?? null).toBe(closure);
   });
 
-  it("treats missing Evidence Object and missing RL7 as scientific insufficiency", () => {
+  it("treats missing Evidence Object and missing RL7 as exact scientific insufficiency gates", () => {
     const missingEvidence = expectPlan(fixture({ evidenceObject: false }));
     expect(missingEvidence.stageA.transition.resultingState).toBe("INSUFFICIENT_EVIDENCE");
+    expect(gate(missingEvidence, "GATE_EVIDENCE_OBJECT_BINDING")).toEqual({
+      gateId: "GATE_EVIDENCE_OBJECT_BINDING",
+      status: "UNAVAILABLE",
+      reasons: ["MISSING_EVIDENCE_OBJECT"],
+      evidence: [],
+    });
+    expect(gate(missingEvidence, "GATE_EVIDENCE_COMPLETENESS").reasons).toContain("MISSING_EVIDENCE_OBJECT");
     expect(missingEvidence.stageA.transition.transitionReasons).toContain("MISSING_EVIDENCE_OBJECT");
+
     const missingRl7 = expectPlan(fixture({ rl7: null }));
+    expect(gate(missingRl7, "GATE_RL7_ROBUSTNESS_COMPARISON")).toEqual({
+      gateId: "GATE_RL7_ROBUSTNESS_COMPARISON",
+      status: "UNAVAILABLE",
+      reasons: ["MISSING_RL7_COMPARISON"],
+      evidence: [],
+    });
+    expect(gate(missingRl7, "GATE_EVIDENCE_COMPLETENESS").reasons).toContain("MISSING_RL7_COMPARISON");
     expect(missingRl7.stageA.transition.transitionReasons).toContain("MISSING_RL7_COMPARISON");
+
     const both = expectPlan(fixture({ evidenceObject: false, rl7: null }));
     expect(both.stageA.transition.transitionReasons).toEqual(["MISSING_EVIDENCE_OBJECT", "MISSING_RL7_COMPARISON"]);
   });
@@ -412,6 +451,50 @@ describe("RL-8B deterministic scientific promotion engine", () => {
   ] as const)("fails closed with no transition for %s", (reason, mutate) => {
     const plan = evaluateScientificPromotionV1(mutate(fixture()) as ScientificPromotionResolvedEvidenceV1);
     expect(plan).toEqual({ kind: "FAIL_CLOSED", reason });
+  });
+
+  it.each([
+    ["researchSpec", (base: ScientificPromotionResolvedEvidenceV1) => mutateEvidenceObject(base, (content) => ({ ...content, researchSpec: ref("SYNTRAKE:RESEARCH_SPEC:V1", "F") }))],
+    ["datasetSnapshot", (base) => mutateEvidenceObject(base, (content) => ({ ...content, datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "F") }))],
+    ["metricRequestSet", (base) => mutateEvidenceObject(base, (content) => ({ ...content, metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", "F") }))],
+    ["executionConfig", (base) => mutateEvidenceObject(base, (content) => ({ ...content, executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", "F") }))],
+    ["executionTrace", (base) => mutateEvidenceObject(base, (content) => ({ ...content, resultArtifacts: { ...content.resultArtifacts, executionTrace: artifactDescriptorV1("RESEARCH_EXECUTION_TRACE_V2", canonicalJsonlArtifactBytesV1([{ changed: true }]), 1) } }))],
+    ["valuationSeries", (base) => mutateEvidenceObject(base, (content) => ({ ...content, resultArtifacts: { ...content.resultArtifacts, valuationSeries: artifactDescriptorV1("RESEARCH_VALUATION_SERIES_V2", canonicalJsonlArtifactBytesV1([{ changed: true }]), 1) } }))],
+    ["metricResultSet", (base) => mutateEvidenceObject(base, (content) => ({ ...content, resultArtifacts: { ...content.resultArtifacts, metricResultSet: artifactDescriptorV1("METRIC_RESULT_SET_V2", canonicalJsonlArtifactBytesV1([{ changed: true }]), 1) } }))],
+    ["benchmark", (base) => mutateEvidenceObject(base, (content) => ({ ...content, resultArtifacts: { ...content.resultArtifacts, benchmark: artifactDescriptorV1("RESEARCH_BENCHMARK_SERIES_V2", canonicalJsonlArtifactBytesV1([{ changed: true }]), 1) } }))],
+    ["descriptor artifact schema", (base) => mutateEvidenceObject(base, (content) => content, { artifactSchemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V0" as "RESEARCH_EXECUTION_EVIDENCE_V1" })],
+    ["content schema", (base) => mutateEvidenceObject(base, (content) => ({ ...content, schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V0" as "RESEARCH_EXECUTION_EVIDENCE_V1" }))],
+    ["dataset series wrong domain", (base) => mutateEvidenceObject(base, (content) => ({ ...content, datasetSeries: [ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "F")] }))],
+    ["dataset series duplicate", (base) => mutateEvidenceObject(base, (content) => ({ ...content, datasetSeries: [datasetSeries, datasetSeries] }))],
+    ["dataset series unsorted", (base) => mutateEvidenceObject(base, (content) => ({ ...content, datasetSeries: [ref("SYNTRAKE:DATASET_SERIES:V1", "F"), ref("SYNTRAKE:DATASET_SERIES:V1", "1")] }))],
+  ] as const)("fails closed for self-consistent but semantically invalid evidence object %s", (_case, mutate) => {
+    const plan = evaluateScientificPromotionV1(mutate(fixture()) as ScientificPromotionResolvedEvidenceV1);
+    expect(plan).toEqual({ kind: "FAIL_CLOSED", reason: "CORRUPTED_EVIDENCE" });
+  });
+
+  it("fails closed when a V20260927 result uses the V1 metric result-set artifact schema", () => {
+    const base = fixture();
+    const payload = { ...base.result.payload, metricResultSet: artifactDescriptorV1("METRIC_RESULT_SET_V1", canonicalJsonlArtifactBytesV1([{ ok: true }]), 1) };
+    const refWithV1MetricSchema = refHash("SYNTRAKE:RESULT:V1", hashResultV1(payload));
+    const plan = evaluateScientificPromotionV1({ ...base, result: { ref: refWithV1MetricSchema, payload }, evidenceObject: null });
+    expect(plan).toEqual({ kind: "FAIL_CLOSED", reason: "INCOMPATIBLE_ARTIFACT_SCHEMA" });
+  });
+
+  it("binds Stage A to the authoritative predecessor relation", () => {
+    const source = readFileSync("lib/investing/research/scientificPromotionEngine.ts", "utf8");
+    expect(source).toContain("assertScientificPromotionPredecessorRelationV1({ predecessor: input.predecessor, transition: stageATransition })");
+  });
+
+  it("keeps literal golden transition hashes for PASS, FAIL, and INSUFFICIENT paths", () => {
+    const pass = expectPlan(fixture());
+    const fail = expectPlan(fixture({ assessmentValue: "0.01" }));
+    const insufficient = expectPlan(fixture({ assessmentValue: null }));
+    expect(transitionHashHex(pass.stageA.transition)).toBe("BEEE521649E78934DCE216B8650F51B86F8BAE80A9A8EA5600321D1F2BB263A4");
+    expect(transitionHashHex(pass.closure!.transition)).toBe("98A85178DFF04F3598215DF0AB51CF819B8C43CA74C1F5AA74EC42E00B19D531");
+    expect(transitionHashHex(fail.stageA.transition)).toBe("F3438AB40774749A8248BAE9C070E51448515BA39167B7DF9672414B55596DF0");
+    expect(transitionHashHex(fail.closure!.transition)).toBe("76D3E5A550D8B5766B8F77F8FB0A3E22024FEFA1C504ED64E3AAB69E5C512E04");
+    expect(transitionHashHex(insufficient.stageA.transition)).toBe("D6135FFEAA229F0B870375333D602AE05974DE9AD424587CBBEFB82F9F8EF738");
+    expect(insufficient.closure).toBeNull();
   });
 
   it("does not expose caller-controlled science decision inputs", () => {

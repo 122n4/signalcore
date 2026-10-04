@@ -11,8 +11,10 @@ import {
   type RunInputHashPayloadV1,
 } from "./canonical";
 import {
+  assertMetricResultSetSchemaForRegistryV1,
   canonicalResultHashPayloadV1,
   hashResultV1,
+  type ResearchArtifactDescriptorV1,
   type ResultHashPayloadV1,
 } from "./resultArtifacts";
 import {
@@ -115,6 +117,14 @@ const inputKeys = new Set([
 const authorityKeys = new Set(["status", "reason"]);
 const payloadKeys = new Set(["ref", "payload"]);
 const evidenceObjectKeys = new Set(["ref", "object"]);
+const researchExecutionEvidenceObjectKeys = new Set(["descriptor", "content", "contentBytes", "contentSha256", "evidenceHash"]);
+const evidenceDescriptorKeys = new Set(["schemaVersion", "kind", "artifactSchemaVersion", "format", "contentByteLength"]);
+const evidenceContentKeys = new Set([
+  "schemaVersion", "result", "runInput", "researchSpec", "researchIr", "experiment", "datasetSnapshot", "datasetSeries",
+  "metricRegistryVersion", "metricRequestSet", "executionConfig", "engineId", "engineVersion", "resultArtifacts",
+]);
+const evidenceResultArtifactsKeys = new Set(["executionTrace", "valuationSeries", "metricResultSet", "benchmark"]);
+const artifactDescriptorKeys = new Set(["artifactSchemaVersion", "format", "contentSha256", "contentByteLength", "recordCount"]);
 const robustnessKeys = new Set(["protocolRef", "protocol", "resultRef", "result"]);
 const stageASourceStates = new Set<string>(["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"] satisfies ScientificPromotionStageASourceStateV1[]);
 
@@ -190,6 +200,7 @@ export function evaluateScientificPromotionV1(input: ScientificPromotionResolved
       rejectedTransition: null,
       supersededByChain: null,
     }) as unknown as ScientificPromotionTransitionV1;
+    assertScientificPromotionPredecessorRelationV1({ predecessor: input.predecessor, transition: stageATransition });
     const stageARef = hashScientificPromotionTransitionV1(stageATransition);
     const closure = buildClosure(stageATransition, stageARef);
     return deepFreeze({
@@ -212,14 +223,54 @@ function verifiedPayloadRef<D extends HashDomainV1, P>(bundle: ResolvedPayloadV1
 
 function verifyEvidenceObject(bundle: Readonly<{ ref: HashRefForDomainV1; object: ResearchExecutionEvidenceObjectV1 }>): HashRefForDomainV1 {
   assertClosed(bundle, evidenceObjectKeys, "ResolvedEvidenceObject");
+  assertClosed(bundle.object, researchExecutionEvidenceObjectKeys, "ResearchExecutionEvidenceObject");
   const ref = hashRefV1(bundle.ref);
   assertHashRefDomainV1(ref, "SYNTRAKE:EVIDENCE_OBJECT:V1");
+  const descriptor = bundle.object.descriptor;
+  assertClosed(descriptor, evidenceDescriptorKeys, "ResearchExecutionEvidenceDescriptor");
+  if (descriptor.schemaVersion !== "EVIDENCE_CONTENT_DESCRIPTOR_V1" || descriptor.kind !== "RESEARCH_EXECUTION_EVIDENCE" || descriptor.artifactSchemaVersion !== "RESEARCH_EXECUTION_EVIDENCE_V1" || descriptor.format !== "CANONICAL_JSON_UTF8_V1") throw new Error("CORRUPTED_EVIDENCE");
+  if (!Buffer.isBuffer(bundle.object.contentBytes)) throw new Error("CORRUPTED_EVIDENCE");
+  if (descriptor.contentByteLength !== String(bundle.object.contentBytes.byteLength)) throw new Error("CORRUPTED_EVIDENCE");
+  try { assertEvidenceContentShape(bundle.object.content); }
+  catch { throw new Error("CORRUPTED_EVIDENCE"); }
   if (!sameCanonical(bundle.object.evidenceHash, ref)) throw new Error("CORRUPTED_EVIDENCE");
-  if (hashResearchExecutionEvidenceObjectV1(bundle.object.descriptor, bundle.object.contentBytes) !== ref.hashHex) throw new Error("CORRUPTED_EVIDENCE");
+  if (hashResearchExecutionEvidenceObjectV1(descriptor, bundle.object.contentBytes) !== ref.hashHex) throw new Error("CORRUPTED_EVIDENCE");
   if (sha256HexV1(bundle.object.contentBytes) !== bundle.object.contentSha256) throw new Error("CORRUPTED_EVIDENCE");
   const contentBytes = i5ResearchInternalCanonicalJsonBytesV1(bundle.object.content as unknown as CanonicalJsonValue);
   if (!Buffer.from(contentBytes).equals(Buffer.from(bundle.object.contentBytes))) throw new Error("CORRUPTED_EVIDENCE");
   return ref as HashRefForDomainV1;
+}
+
+
+function assertEvidenceContentShape(content: ResearchExecutionEvidenceObjectV1["content"]): void {
+  assertClosed(content, evidenceContentKeys, "ResearchExecutionEvidenceContent");
+  if (content.schemaVersion !== "RESEARCH_EXECUTION_EVIDENCE_V1") throw new Error("CORRUPTED_EVIDENCE");
+  assertHashRefDomainV1(hashRefV1(content.result), "SYNTRAKE:RESULT:V1");
+  assertHashRefDomainV1(hashRefV1(content.runInput), "SYNTRAKE:RUN_INPUT:V1");
+  assertHashRefDomainV1(hashRefV1(content.researchSpec), "SYNTRAKE:RESEARCH_SPEC:V1");
+  assertHashRefDomainV1(hashRefV1(content.researchIr), "SYNTRAKE:RESEARCH_IR:V1");
+  assertHashRefDomainV1(hashRefV1(content.experiment), "SYNTRAKE:EXPERIMENT:V1");
+  assertHashRefDomainV1(hashRefV1(content.datasetSnapshot), "SYNTRAKE:DATASET_SNAPSHOT:V1");
+  assertHashRefDomainV1(hashRefV1(content.metricRequestSet), "SYNTRAKE:METRIC_REQUEST_SET:V1");
+  assertHashRefDomainV1(hashRefV1(content.executionConfig), "SYNTRAKE:EXECUTION_CONFIG:V1");
+  if (!Array.isArray(content.datasetSeries)) throw new Error("CORRUPTED_EVIDENCE");
+  const datasetSeries = content.datasetSeries.map((item) => {
+    const ref = hashRefV1(item);
+    assertHashRefDomainV1(ref, "SYNTRAKE:DATASET_SERIES:V1");
+    return ref;
+  });
+  if (new Set(datasetSeries.map((ref) => canonicalString(ref as unknown as CanonicalJsonValue))).size !== datasetSeries.length) throw new Error("CORRUPTED_EVIDENCE");
+  const sorted = [...datasetSeries].sort((left, right) => Buffer.compare(Buffer.from(left.hashHex, "utf8"), Buffer.from(right.hashHex, "utf8")));
+  if (!sameCanonical(datasetSeries, sorted)) throw new Error("CORRUPTED_EVIDENCE");
+  assertClosed(content.resultArtifacts, evidenceResultArtifactsKeys, "ResearchExecutionEvidenceResultArtifacts");
+  assertArtifactDescriptor(content.resultArtifacts.executionTrace);
+  assertArtifactDescriptor(content.resultArtifacts.valuationSeries);
+  assertArtifactDescriptor(content.resultArtifacts.metricResultSet);
+  if (content.resultArtifacts.benchmark !== null) assertArtifactDescriptor(content.resultArtifacts.benchmark);
+}
+
+function assertArtifactDescriptor(input: ResearchArtifactDescriptorV1): void {
+  assertClosed(input, artifactDescriptorKeys, "ResearchArtifactDescriptor");
 }
 
 function verifyRobustnessShape(input: ScientificPromotionResolvedEvidenceV1["robustness"]): ScientificPromotionResolvedEvidenceV1["robustness"] {
@@ -251,6 +302,8 @@ function assertExecutionLineage(input: Readonly<{
   if (!sameCanonical(input.runInput.experiment, input.subject.subjectExperiment) || !sameCanonical(input.runInput.researchIr, input.subject.subjectResearchIr)) throw new Error("WRONG_LINEAGE");
   if (!sameCanonical(input.result.runInput, input.runInputRef)) throw new Error("WRONG_LINEAGE");
   if (input.result.engineId !== input.runInput.engineId || input.result.engineVersion !== input.runInput.engineVersion) throw new Error("INCOMPATIBLE_ENGINE_VERSION");
+  try { assertMetricResultSetSchemaForRegistryV1(input.runInput.metricRegistryVersion, input.result.metricResultSet); }
+  catch { throw new Error("INCOMPATIBLE_ARTIFACT_SCHEMA"); }
   if (!sameCanonical(input.validationProtocol.subjectExperiment, input.subject.subjectExperiment) || !sameCanonical(input.validationProtocol.subjectResearchIr, input.subject.subjectResearchIr)) throw new Error("WRONG_LINEAGE");
   if (input.validationProtocol.engineId !== input.runInput.engineId || input.validationProtocol.engineVersion !== input.runInput.engineVersion) throw new Error("INCOMPATIBLE_ENGINE_VERSION");
   if (input.validationProtocol.metricRegistryVersion !== input.runInput.metricRegistryVersion) throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
@@ -258,9 +311,11 @@ function assertExecutionLineage(input: Readonly<{
   if (!sameCanonical(input.validationResult.validationProtocol, input.validationProtocolRef) || !sameCanonical(input.validationResult.subjectExperiment, input.subject.subjectExperiment)) throw new Error("WRONG_LINEAGE");
   if (input.evidenceObject !== null) {
     const content = input.evidenceObject.content;
-    if (!sameCanonical(content.runInput, input.runInputRef) || !sameCanonical(content.result, input.resultRef) || !sameCanonical(content.experiment, input.subject.subjectExperiment) || !sameCanonical(content.researchIr, input.subject.subjectResearchIr)) throw new Error("WRONG_LINEAGE");
-    if (content.metricRegistryVersion !== input.runInput.metricRegistryVersion) throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
-    if (content.engineId !== input.result.engineId || content.engineVersion !== input.result.engineVersion) throw new Error("INCOMPATIBLE_ENGINE_VERSION");
+    if (!sameCanonical(content.runInput, input.runInputRef) || !sameCanonical(content.result, input.resultRef) || !sameCanonical(content.researchIr, input.runInput.researchIr) || !sameCanonical(content.experiment, input.runInput.experiment)) throw new Error("CORRUPTED_EVIDENCE");
+    if (!sameCanonical(content.researchSpec, input.runInput.researchSpec) || !sameCanonical(content.datasetSnapshot, input.runInput.datasetSnapshot) || !sameCanonical(content.metricRequestSet, input.runInput.metricRequestSet) || !sameCanonical(content.executionConfig, input.runInput.executionConfig)) throw new Error("CORRUPTED_EVIDENCE");
+    if (content.metricRegistryVersion !== input.runInput.metricRegistryVersion) throw new Error("CORRUPTED_EVIDENCE");
+    if (content.engineId !== input.result.engineId || content.engineVersion !== input.result.engineVersion) throw new Error("CORRUPTED_EVIDENCE");
+    if (!sameCanonical(content.resultArtifacts.executionTrace, input.result.executionTrace) || !sameCanonical(content.resultArtifacts.valuationSeries, input.result.valuationSeries) || !sameCanonical(content.resultArtifacts.metricResultSet, input.result.metricResultSet) || !sameCanonical(content.resultArtifacts.benchmark, input.result.benchmark)) throw new Error("CORRUPTED_EVIDENCE");
   }
 }
 
@@ -301,8 +356,8 @@ function buildGateOutcomes(input: Readonly<{
       status = "INSUFFICIENT_EVIDENCE";
       reasons = missingCompleteness;
     } else if (gateId === "GATE_EVIDENCE_OBJECT_BINDING" && !input.evidenceObjectPresent) {
-      status = "PASS";
-      reasons = [];
+      status = "UNAVAILABLE";
+      reasons = ["MISSING_EVIDENCE_OBJECT"];
     } else if (gateId === "GATE_VALIDATION_ASSESSMENT") {
       if (input.assessmentResult.outcome === "FAIL") { status = "FAIL"; reasons = ["FAILED_VALIDATION"]; }
       if (input.assessmentResult.outcome === "INSUFFICIENT_EVIDENCE") { status = "INSUFFICIENT_EVIDENCE"; reasons = ["INCOMPLETE_VALIDATION"]; }
@@ -311,8 +366,8 @@ function buildGateOutcomes(input: Readonly<{
       reasons = ["MISSING_METRIC_RESULT_SET"];
     } else if (gateId === "GATE_RL7_ROBUSTNESS_COMPARISON") {
       if (input.rl7Outcome === "INSUFFICIENT_EVIDENCE") {
-        status = input.evidenceSnapshot.robustnessComparisonProtocol === null ? "PASS" : "INSUFFICIENT_EVIDENCE";
-        reasons = input.evidenceSnapshot.robustnessComparisonProtocol === null ? [] : ["INSUFFICIENT_RL7_EVIDENCE"];
+        status = input.evidenceSnapshot.robustnessComparisonProtocol === null ? "UNAVAILABLE" : "INSUFFICIENT_EVIDENCE";
+        reasons = input.evidenceSnapshot.robustnessComparisonProtocol === null ? ["MISSING_RL7_COMPARISON"] : ["INSUFFICIENT_RL7_EVIDENCE"];
       } else if (input.rl7Outcome === "VALIDATION_FAILED") {
         status = "FAIL";
         reasons = ["FAILED_ROBUSTNESS_GATE"];
@@ -368,6 +423,7 @@ function reasonFromError(error: unknown): ScientificPromotionReasonV1 {
   ];
   for (const reason of known) if (message.includes(reason)) return reason;
   if (message.includes("HashRef domain")) return "WRONG_HASHREF_DOMAIN";
+  if (message.includes("RESULT_METRIC_REGISTRY_ARTIFACT_SCHEMA_MISMATCH")) return "INCOMPATIBLE_ARTIFACT_SCHEMA";
   if (message.includes("VALIDATION_ASSESSMENT")) return "INCOMPATIBLE_VALIDATION_ASSESSMENT";
   if (message.includes("COMPARISON") || message.includes("ROBUSTNESS")) return "UNKNOWN_RL7_CLASSIFICATION";
   if (message.includes("RESULT") || message.includes("EVIDENCE")) return "CORRUPTED_EVIDENCE";
@@ -380,6 +436,10 @@ function sameCanonical(left: unknown, right: unknown): boolean {
 
 function byteCompare(left: string, right: string): number {
   return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+}
+
+function canonicalString(value: CanonicalJsonValue): string {
+  return i5ResearchInternalCanonicalJsonBytesV1(value).toString("utf8");
 }
 
 function assertClosed(value: unknown, allowed: ReadonlySet<string>, label: string): void {
