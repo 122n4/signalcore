@@ -424,3 +424,4 @@ export {
   type VerifiedValidationAssessmentEvidenceV1,
 } from "./validationAssessment";
 export * from "./scientificPromotion";
+export * from "./scientificPromotionEngine";
