@@ -1,9 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  canonicalScientificPromotionProtocolV1,
+  hashScientificPromotionProtocolV1,
+  scientificPromotionTransitionGraphV1,
+} from "../lib/investing/research/scientificPromotion";
 
 const repoRoot = path.resolve(__dirname, "..");
 const contractPath = "docs/investing-genesis/I5_RL8C_SCIENTIFIC_PROMOTION_PERSISTENCE_CONTRACT_V1.md";
+const expectedProtocolHash = "122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C";
 
 function read(relativePath: string): string {
   return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -21,15 +27,30 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
       "RL-8A corrected technical predecessor = ec691bbf4b1c47d4e909b2b2ba14d13a9e7e6bec",
       "RL-8 Design Freeze = 333e77f550a40b374a49764f58cc61276c6c965e",
       "STACKED WIP / DESIGN FREEZE / NO DATABASE MUTATION",
-      "Migration:\n`NONE`",
-      "Supabase mutation:\n`NONE`",
-      "Production mutation:\n`NONE`",
+      "Migration: `NONE`",
+      "Supabase mutation: `NONE`",
+      "Production mutation: `NONE`",
       "NOT IMPLEMENTED BY THIS SLICE",
       "wip/i5-rl8c-persistence-contract-20261004",
     ]) expect(contract).toContain(token);
   });
 
-  it("freezes exactly two RL-8 scientific domains and the exact relation names", () => {
+  it("mechanically binds protocol payload and hash to the accepted RL-8 runtime", () => {
+    const contract = read(contractPath);
+    const protocol = canonicalScientificPromotionProtocolV1();
+    expect(protocol).toMatchObject({
+      schemaVersion: "SCIENTIFIC_PROMOTION_PROTOCOL_V1",
+      protocolId: "SCIENTIFIC_PROMOTION_PROTOCOL_V20261002",
+    });
+    expect(Object.prototype.hasOwnProperty.call(protocol, "protocolToken")).toBe(false);
+    expect(hashScientificPromotionProtocolV1().hashHex).toBe(expectedProtocolHash);
+    expect(contract).toContain("protocolId = SCIENTIFIC_PROMOTION_PROTOCOL_V20261002");
+    expect(contract).toContain(`hashHex = ${expectedProtocolHash}`);
+    expect(contract).toContain(`hash_hex text check = '${expectedProtocolHash}'`);
+    expect(contract).not.toContain("protocolToken");
+  });
+
+  it("freezes exactly two RL-8 scientific domains and exact relation names", () => {
     const contract = read(contractPath);
     for (const token of [
       "investing.research_scientific_promotion_protocols_scientific_identities",
@@ -44,231 +65,205 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
     ]) expect(contract).toContain(token);
   });
 
-  it("freezes protocol identity and global reusability without authority metadata in scientific identity", () => {
+  it("freezes transition authority columns and subject Experiment operational binding", () => {
     const contract = read(contractPath);
     for (const token of [
-      "research_scientific_promotion_protocol_identity_id uuid primary key",
-      "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1",
-      "SCIENTIFIC_PROMOTION_PROTOCOL_V20261002",
-      "SCIENTIFIC_PROMOTION_PROTOCOL_V1",
-      "Protocol operational persistence is reusable across tenants and Investigations",
-      "no tenant columns",
-      "global immutable protocol identity table",
-      "unique (hash_algorithm, hash_domain, hash_version, hash_hex)",
+      "operation text not null check",
+      "capability text not null check = 'RESEARCH_MUTATE'",
+      "operation_scope text not null check = 'TENANT_SCOPE'",
+      "source_context text not null check = 'PURE_RESEARCH'",
+      "research_experiment_id uuid not null",
+      "research_experiments_rl8c".replace("research_experiments_rl8c", "investing.research_experiments"),
+      "experiment_hash_hex",
+      "experiment_parameters_hash_hex",
+      "research_ir_hash_hex",
+      "This proves `subjectExperiment`, `subjectExperimentParameters` and `subjectResearchIr`",
     ]) expect(contract).toContain(token);
   });
 
-  it("freezes transition columns, upstream operational provenance FKs and state presence rules", () => {
+  it("freezes exact run input relation and upstream FK paths with operational ID plus hash", () => {
     const contract = read(contractPath);
+    expect(contract).toContain("investing.run_inputs_scientific_identities");
+    expect(contract).not.toContain("investing.research_run_inputs_scientific_identities");
     for (const token of [
-      "research_scientific_promotion_transition_identity_id uuid primary key",
-      "tenant_id uuid not null",
-      "principal_id uuid not null",
-      "tenant_membership_id uuid not null",
-      "research_investigation_id uuid not null",
-      "predecessor_transition_identity_id uuid null",
-      "transition_hash_domain text check = 'SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1'",
       "run_input_identity_id uuid null",
+      "run_input_hash_hex text null",
       "result_identity_id uuid null",
+      "result_hash_hex text null",
       "evidence_object_identity_id uuid null",
+      "evidence_object_hash_hex text null",
+      "validation_protocol_identity_id uuid null",
+      "validation_protocol_hash_hex text null",
+      "validation_result_identity_id uuid null",
+      "validation_result_hash_hex text null",
+      "validation_assessment_protocol_identity_id uuid null",
+      "validation_assessment_protocol_hash_hex text null",
       "validation_assessment_result_identity_id uuid null",
+      "validation_assessment_result_hash_hex text null",
+      "robustness_comparison_protocol_identity_id uuid null",
+      "robustness_comparison_protocol_hash_hex text null",
       "robustness_comparison_result_identity_id uuid null",
-      "Persistence MUST NOT accept nine arbitrary HashRef strings",
-      "ROOT (`EXECUTED`) admits only `runInput` and `result`",
-      "Stage B/lifecycle (`PROMOTION_ELIGIBLE`, `REJECTED`, `SUPERSEDED`) MUST copy predecessor evidence",
+      "robustness_comparison_result_hash_hex text null",
+      "RL8C1_COMPATIBILITY_INDEX_REQUIRED",
+      "EXISTING_OR_RL8C1_VERIFY_REQUIRED",
+      "The Result FK proves Investigation transitively",
+      "The Evidence Object FK proves Investigation transitively",
     ]) expect(contract).toContain(token);
+    for (const vague of ["where current upstream schemas support", "where the upstream schema supports", "when an upstream relation includes"]) expect(contract).not.toContain(vague);
   });
 
-  it("freezes root uniqueness and single-successor invariant with resultingState excluded", () => {
+  it("freezes Investigation compatibility key, root uniqueness and single successor", () => {
     const normalized = compact(read(contractPath));
     for (const token of [
+      "research_investigations_rl8c_authority_tuple_key",
+      "research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context",
       "research_scientific_promotion_one_root_per_chain_key",
       "tenant_id research_investigation_id subject_experiment_hash_hex subject_experiment_parameters_hash_hex subject_research_ir_hash_hex protocol_hash_hex",
-      "Exactly one authoritative root may exist for one chain key",
+      "research_scientific_promotion_one_successor_per_predecessor",
+      "resultingState` is excluded from successor uniqueness",
       "REUSED_IDENTICAL",
       "DIVERGENT_EXISTING_IDENTITY",
-      "research_scientific_promotion_one_successor_per_predecessor",
-      "predecessor_transition_identity_id",
-      "resultingState` is excluded from successor uniqueness",
-      "Any second different state, hash, canonical payload, evidenceSnapshot, reasons or lifecycle link returns `DIVERGENT_EXISTING_IDENTITY`",
     ]) expect(normalized).toContain(compact(token));
   });
 
-  it("freezes atomic Stage-A closure pairs and DB-impossible orphan intermediates", () => {
+  it("freezes dedicated writer role, closed table grants and SECURITY DEFINER allowlist", () => {
     const contract = read(contractPath);
     for (const token of [
-      "VALIDATION_PASSED -> PROMOTION_ELIGIBLE",
-      "VALIDATION_FAILED -> REJECTED",
-      "They MUST persist atomically in one database transaction",
-      "INSUFFICIENT_EVIDENCE` persists Stage A only",
-      "research_scientific_promotion_no_orphan_intermediate",
-      "DEFERRABLE INITIALLY DEFERRED constraint trigger",
-      "VALIDATION_PASSED successor resulting_state = PROMOTION_ELIGIBLE",
-      "VALIDATION_FAILED successor resulting_state = REJECTED",
-      "does not rely on TypeScript convention",
-      "does not rely on a transaction-local custom GUC",
-    ]) expect(contract).toContain(token);
-  });
-
-  it("freezes exact writer function names, signatures and conflict vocabulary", () => {
-    const contract = read(contractPath);
-    for (const token of [
-      "investing.persist_research_scientific_promotion_protocol_v1(",
-      "p_protocol_hash_hex text",
-      "investing.persist_research_scientific_promotion_root_v1(",
-      "p_research_investigation_id uuid",
-      "investing.persist_research_scientific_promotion_evaluation_plan_v1(",
-      "p_closure_transition_hash_hex text default null",
-      "investing.persist_research_scientific_promotion_supersession_v1(",
-      "p_successor_root_transition_identity_id uuid",
-      "CREATED",
-      "REUSED_IDENTICAL",
-      "DIVERGENT_EXISTING_IDENTITY",
-      "UPSERT semantics are forbidden",
-    ]) expect(contract).toContain(token);
-  });
-
-  it("freezes SECURITY INVOKER, safe grants, service_role denial and direct-insert bypass prevention", () => {
-    const contract = read(contractPath);
-    for (const token of [
-      "SECURITY INVOKER",
-      "owner = investing_owner",
+      "investing_rl8_writer",
+      "NOLOGIN",
+      "NOINHERIT",
+      "NOBYPASSRLS",
+      "investing_app: SELECT only",
+      "investing_app: NO INSERT, NO UPDATE, NO DELETE, NO TRUNCATE, NO REFERENCES, NO TRIGGER",
+      "SECURITY DEFINER",
+      "owner = investing_rl8_writer",
       "set search_path = pg_catalog",
-      "No RL-8C routine may be `SECURITY DEFINER`",
-      "revoke all on function investing.persist_research_scientific_promotion_protocol_v1",
-      "public, anon, authenticated, service_role",
-      "public`, `anon`, `authenticated`, and `service_role` have no writer EXECUTE authority",
+      "deliberate narrow exception",
+      "No other RL-8 writer function may be SECURITY DEFINER",
+      "grant execute only to `investing_app`",
+    ]) expect(contract).toContain(token);
+    for (const forbidden of [
       "grant select, insert on investing.research_scientific_promotion_protocols_scientific_identities to investing_app",
       "grant select, insert on investing.research_scientific_promotion_transitions_scientific_identities to investing_app",
       "Direct INSERT by `investing_app` remains technically possible",
-      "all material scientific invariants MUST be enforced by database constraints, FKs, RLS and triggers",
-      "Writer convention alone is not security",
-    ]) expect(contract).toContain(token);
+      "All writers and trigger functions MUST be:\n\n```text\nSECURITY INVOKER",
+      "No RL-8C routine may be `SECURITY DEFINER`",
+    ]) expect(contract.slice(0, contract.indexOf("## 21. Forbidden stale wording"))).not.toContain(forbidden);
   });
 
-  it("freezes RLS, FORCE RLS, operation vocabulary and authority tuple FKs", () => {
+  it("freezes root writer signature without caller-supplied Investigation authority", () => {
+    const contract = read(contractPath);
+    expect(contract).toContain("investing.persist_research_scientific_promotion_root_v1(p_transition_hash_hex text, p_canonical_payload jsonb) returns jsonb");
+    expect(contract).toContain("The root writer MUST derive `research_investigation_id`, `tenant_id`, `principal_id`, and `tenant_membership_id`");
+    expect(contract).not.toContain("persist_research_scientific_promotion_root_v1(\n  p_research_investigation_id uuid");
+  });
+
+  it("freezes RLS/FORCE RLS without bypass and exact operation vocabulary", () => {
     const contract = read(contractPath);
     for (const token of [
-      "RLS enabled and FORCE RLS enabled",
+      "Both RL-8C relations have RLS enabled and FORCE RLS enabled",
+      "SECURITY DEFINER is not an RLS bypass because `investing_rl8_writer` is `NOBYPASSRLS`",
       "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1",
       "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1",
       "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1",
       "RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1",
       "syntrake.investing.operation",
-      "syntrake.investing.capability",
-      "syntrake.investing.tenant_id",
-      "syntrake.investing.principal_id",
-      "syntrake.investing.tenant_membership_id",
       "syntrake.investing.research_investigation_id",
       "No `auth.uid()` shortcut",
       "No authenticated-role-only authorization",
-      "foreign key (tenant_membership_id, tenant_id, principal_id)",
-      "Row UUID alone is never trusted",
     ]) expect(contract).toContain(token);
   });
 
-  it("freezes append-only payload/hash structural checks", () => {
+  it("freezes database canonical hash verification and cross-language goldens", () => {
     const contract = read(contractPath);
     for (const token of [
-      "UPDATE authority = none",
-      "DELETE authority = none",
-      "investing.reject_research_scientific_promotion_update_delete_v1()",
-      "canonical_payload->>'schemaVersion' = 'SCIENTIFIC_PROMOTION_TRANSITION_V1'",
-      "protocol HashRef domain/version/hash equals protocol columns",
-      "subject Experiment HashRef equals",
-      "predecessorState equals `predecessor_state`",
-      "resultingState equals `resulting_state`",
-      "evidenceSnapshot HashRefs/nulls match the nine operational FK columns",
-      "64 uppercase hex",
-      "No lowercase normalization at persistence time",
+      "numbers rejected",
+      "object keys sorted deterministically",
+      "arrays preserve order",
+      "extensions.digest",
+      "SHA256(",
+      expectedProtocolHash,
+      "PASS Stage-A = BEEE521649E78934DCE216B8650F51B86F8BAE80A9A8EA5600321D1F2BB263A4",
+      "PASS closure = 98A85178DFF04F3598215DF0AB51CF819B8C43CA74C1F5AA74EC42E00B19D531",
+      "FAIL Stage-A = F3438AB40774749A8248BAE9C070E51448515BA39167B7DF9672414B55596DF0",
+      "FAIL closure = 76D3E5A550D8B5766B8F77F8FB0A3E22024FEFA1C504ED64E3AAB69E5C512E04",
+      "INSUFFICIENT Stage-A = D6135FFEAA229F0B870375333D602AE05974DE9AD424587CBBEFB82F9F8EF738",
     ]) expect(contract).toContain(token);
   });
 
-  it("freezes SUPERSEDED linkage, cycle prevention and deterministic reconstruction", () => {
+  it("mechanically binds SUPERSEDED source states to runtime graph and freezes copy/cycle enforcement", () => {
+    const contract = read(contractPath);
+    const runtimeSources = scientificPromotionTransitionGraphV1.filter((edge) => edge.to === "SUPERSEDED").map((edge) => edge.from).sort();
+    expect(runtimeSources).toEqual(["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"]);
+    for (const token of ["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED", "No other source state is allowed"]) expect(contract).toContain(token);
+    expect(contract).not.toContain("SUPERSEDED only from allowed stable leaves `PROMOTION_ELIGIBLE` or `REJECTED`");
+    for (const token of [
+      "evidenceSnapshot = COPY predecessor",
+      "gateOutcomes = COPY predecessor",
+      "transitionReasons = [SUPERSEDED_EVIDENCE]",
+      "supersedes = predecessor HashRef",
+      "rejectedTransition = null",
+      "research_scientific_promotion_supersession_integrity",
+      "Multi-hop cycle validation is mandatory in the writer",
+    ]) expect(contract).toContain(token);
+  });
+
+  it("freezes closure copy enforcement and DB-impossible orphan intermediates", () => {
     const contract = read(contractPath);
     for (const token of [
-      "supersedes",
-      "supersededByChain.successorProtocol",
-      "supersededByChain.successorRootTransition",
-      "SUPERSEDED only from allowed stable leaves `PROMOTION_ELIGIBLE` or `REJECTED`",
-      "successor protocol differs",
-      "referenced successor is actually ROOT",
-      "one old chain -> at most one successor-chain link",
-      "recursive CTE under advisory locks",
-      "no cycles",
+      "VALIDATION_PASSED -> PROMOTION_ELIGIBLE",
+      "VALIDATION_FAILED -> REJECTED",
+      "DEFERRABLE INITIALLY DEFERRED constraint trigger",
+      "research_scientific_promotion_no_orphan_intermediate",
+      "closure.evidenceSnapshot == predecessor.evidenceSnapshot",
+      "closure.gateOutcomes == predecessor.gateOutcomes",
+      "closure.transitionReasons == []",
+      "closure.transitionReasons == predecessor.transitionReasons",
+      "closure.rejectedTransition == predecessor HashRef",
+      "does not rely on TypeScript convention",
+    ]) expect(contract).toContain(token);
+  });
+
+  it("freezes reconstruction, lock ordering, future slices and PostgreSQL 17 matrix", () => {
+    const contract = read(contractPath);
+    for (const token of [
       "resolve unique root for chain key",
       "follow unique successor",
-      "zero successor = active leaf",
-      "more than one successor = corrupt history / `DIVERGENT_EXISTING_IDENTITY`",
-      "`VALIDATION_PASSED` or `VALIDATION_FAILED` as committed leaf = corrupt history",
       "No timestamp choice",
-      "no mutable latest pointer",
-    ]) expect(contract).toContain(token);
-  });
-
-  it("freezes advisory lock identities, lock ordering, no-new-evidence retry semantics and future slices", () => {
-    const contract = read(contractPath);
-    for (const token of [
-      "pg_advisory_xact_lock",
       "RL8C_PROTOCOL:",
       "RL8C_ROOT:",
       "RL8C_SUCCESSOR:",
       "RL8C_SUPERSEDE:",
-      "Lock ordering is exact",
       "1. protocol identity",
       "2. root chain key",
       "3. predecessor successor slot",
       "4. supersession link",
-      "identical retry of the ORIGINAL transition request returns `REUSED_IDENTICAL`",
-      "a different successor for an already-consumed predecessor returns `DIVERGENT_EXISTING_IDENTITY`",
-      "RL-8C1: schema + authority + immutable protocol/transition identities",
-      "RL-8C2: protocol/root/evaluation-plan writers",
-      "RL-8C3: SUPERSEDED linkage writer",
-      "No Passport mutation",
-    ]) expect(contract).toContain(token);
-  });
-
-  it("freezes PostgreSQL 17 concurrency/security matrix and production authorization gate", () => {
-    const contract = read(contractPath);
-    for (const token of [
-      "clean migration replay on PostgreSQL 17",
-      "owner = investing_owner",
-      "forbidden grants absent",
-      "SECURITY DEFINER absent",
-      "exact protocol retry -> REUSED_IDENTICAL",
-      "concurrent identical roots -> one row / both deterministic results",
-      "concurrent divergent roots -> one winner / one DIVERGENT",
-      "VALIDATION_PASSED orphan commit -> impossible",
-      "VALIDATION_FAILED orphan commit -> impossible",
-      "service_role mutation -> blocked",
-      "anon/authenticated/public mutation -> blocked",
-      "SUPERSEDED cycle -> blocked",
-      "reconstruction with multiple successors -> fail closed",
-      "contract accepted\n-> migration created in Git\n-> candidate SHA",
-      "explicit owner authorization\n-> Production apply",
+      "RL-8C1: schema + compatibility authority/hash indexes + subject Experiment operational binding + dedicated investing_rl8_writer role",
+      "RL-8C2: privileged narrow writer functions",
+      "RL-8C3: SUPERSEDED writer",
+      "SECURITY DEFINER allowlist contains exactly four RL-8 writer functions",
+      "run input relation is `investing.run_inputs_scientific_identities`",
       "Production migration MUST NOT happen from this design slice",
     ]) expect(contract).toContain(token);
   });
 
-  it("rejects stale wording that permits optional writer behavior", () => {
+  it("rejects stale wording and adds no SQL migration in this design slice", () => {
     const contract = read(contractPath);
-    const forbidden = [
+    for (const forbidden of [
+      "protocolToken",
+      "investing.research_run_inputs_scientific_identities",
+      "SUPERSEDED only from allowed stable leaves PROMOTION_ELIGIBLE or REJECTED",
+      "grant select, insert on investing.research_scientific_promotion_protocols_scientific_identities to investing_app",
+      "grant select, insert on investing.research_scientific_promotion_transitions_scientific_identities to investing_app",
+      "all writers are SECURITY INVOKER",
       "implementation may choose",
       "optional orphan prevention",
       "best effort closure",
       "latest row wins",
-      "service_role authorized writer",
-      "authenticated role owns rows",
-      "timestamp current state",
       "writer convention only",
-    ];
-    const bodyBeforeForbiddenList = contract.slice(0, contract.indexOf("## 25. Forbidden stale wording"));
-    for (const token of forbidden) expect(bodyBeforeForbiddenList).not.toContain(token);
-  });
-
-  it("adds no SQL migration in this design slice", () => {
+    ]) expect(contract.slice(0, contract.indexOf("## 21. Forbidden stale wording"))).not.toContain(forbidden);
     const files = fs.readdirSync(path.join(repoRoot, "supabase", "migrations"));
     expect(files).not.toContain("I5_RL8C_SCIENTIFIC_PROMOTION_PERSISTENCE_CONTRACT_V1.sql");
-    expect(read(contractPath)).toContain("no SQL, no migration, no table, no function, no trigger");
+    expect(contract).toContain("no SQL, no migration, no table, no function, no trigger");
   });
 });
