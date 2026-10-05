@@ -263,14 +263,22 @@ function fixtureHash(label: string): string {
   return sha256Hex(label);
 }
 
-async function expectPgRejection(action: () => Promise<unknown>, pattern?: RegExp): Promise<void> {
+function pgErrorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined;
+}
+
+async function expectPgRejection(client: PoolClient, action: () => Promise<unknown>, pattern?: RegExp): Promise<void> {
+  await client.query("savepoint rl8c_expected_rejection");
   let error: unknown = null;
   try {
     await action();
   } catch (caught) {
     error = caught;
   }
+  await client.query("rollback to savepoint rl8c_expected_rejection");
+  await client.query("release savepoint rl8c_expected_rejection");
   expect(error).not.toBeNull();
+  expect(pgErrorCode(error)).not.toBe("25P02");
   if (pattern) expect(error instanceof Error ? error.message : String(error)).toMatch(pattern);
 }
 
@@ -620,6 +628,23 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
     }
   }, 60_000);
 
+  it("recovers the surrounding transaction after expected PostgreSQL failures", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        await expectPgRejection(client, () => client.query("select 1 / 0 as invalid_division"));
+        const firstRecovery = await client.query<{ ok: number }>("select 1 as ok");
+        expect(firstRecovery.rows[0]?.ok).toBe(1);
+        await expectPgRejection(client, () => client.query("select 1 / 0 as invalid_division_again"));
+        const secondRecovery = await client.query<{ ok: number }>("select 1 as ok");
+        expect(secondRecovery.rows[0]?.ok).toBe(1);
+      });
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+
   it("executes canonical HashRef evidence sorting and gate evidence rejection cases", async () => {
     const client = await pool.connect();
     try {
@@ -692,12 +717,12 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
       await withTransaction(client, async () => {
         const fixture = await createRl8cRootFixture(client, "structural-negatives");
         await insertCurrentProtocolIdentity(client, fixture);
-        await expectPgRejection(() => insertRl8cRootTransition(client, fixture, rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, result: null } })));
-        await expectPgRejection(() => insertRl8cRootTransition(client, fixture, rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, evidenceObject } })));
-        await expectPgRejection(() => insertRl8cRootTransition(client, fixture, rootTransition({ gateOutcomes: passingGateOutcomes() })));
+        await expectPgRejection(client, () => insertRl8cRootTransition(client, fixture, rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, result: null } })));
+        await expectPgRejection(client, () => insertRl8cRootTransition(client, fixture, rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, evidenceObject } })));
+        await expectPgRejection(client, () => insertRl8cRootTransition(client, fixture, rootTransition({ gateOutcomes: passingGateOutcomes() })));
         await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
         await client.query("set local role investing_rl8_writer");
-        await expectPgRejection(() => client.query("insert into investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, run_input_identity_id, run_input_hash_hex, result_identity_id, result_hash_hex, canonical_payload) values (extensions.gen_random_uuid(),'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'DRAFT_RESEARCH','EXECUTED','SHA-256',$11,'SYNTRAKE_SHA256_V1',$12,$13,null,$14,$15,$16::jsonb)", [fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.protocolIdentityId, protocolHashRef, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, scientificPromotionTransitionDomainV1, rootHashRef, fixture.runInputIdentityId, fixture.resultIdentityId, result.hashHex, JSON.stringify(rootTransition())]));
+        await expectPgRejection(client, () => client.query("insert into investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, run_input_identity_id, run_input_hash_hex, result_identity_id, result_hash_hex, canonical_payload) values (extensions.gen_random_uuid(),'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'DRAFT_RESEARCH','EXECUTED','SHA-256',$11,'SYNTRAKE_SHA256_V1',$12,$13,null,$14,$15,$16::jsonb)", [fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.protocolIdentityId, protocolHashRef, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, scientificPromotionTransitionDomainV1, rootHashRef, fixture.runInputIdentityId, fixture.resultIdentityId, result.hashHex, JSON.stringify(rootTransition())]));
         const wrongDomain = await client.query<{ ok: boolean }>("select investing.rl8c_hashref_matches_v1($1::jsonb, 'SYNTRAKE:RUN_INPUT:V1', $2) as ok", [JSON.stringify(ref("SYNTRAKE:RESULT:V1", "1")), runInput.hashHex]);
         expect(wrongDomain.rows[0]?.ok).toBe(false);
       });
@@ -731,7 +756,9 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
         await client.query("set local role investing_rl8_writer");
         expect((await client.query("select count(*)::int as count from investing.tenant_memberships")).rows[0]?.count).toBe(0);
         await client.query("reset role");
-        await expectPgRejection(() => createRl8cRootFixture(client, "authority-non-owner", { membershipRole: "VIEWER" }), /tenant_memberships_role_check|violates check constraint/i);
+        await expectPgRejection(client, () => createRl8cRootFixture(client, "authority-non-owner", { membershipRole: "VIEWER" }), /tenant_memberships_role_check|violates check constraint/i);
+        const nonOwnerRecovery = await client.query<{ ok: number }>("select 1 as ok");
+        expect(nonOwnerRecovery.rows[0]?.ok).toBe(1);
         await client.query("reset role");
         await setRl8Context(client, valid, "RESEARCH_EXECUTION_RUN_V1");
         await client.query("set local role investing_rl8_writer");
@@ -772,9 +799,9 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
         for (const role of ["investing_app", "anon", "authenticated"]) {
           await client.query("reset role");
           await client.query(`set local role ${role}`);
-          await expectPgRejection(() => client.query("insert into investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1::uuid,'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256',$2,'SYNTRAKE_SHA256_V1',$3,$4::jsonb)", ["00000000-0000-4000-8000-00000000c001", scientificPromotionProtocolDomainV1, protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]));
-          await expectPgRejection(() => client.query("update investing.research_scientific_promotion_protocols_scientific_identities set hash_hex=hash_hex"));
-          await expectPgRejection(() => client.query("delete from investing.research_scientific_promotion_protocols_scientific_identities"));
+          await expectPgRejection(client, () => client.query("insert into investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1::uuid,'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256',$2,'SYNTRAKE_SHA256_V1',$3,$4::jsonb)", ["00000000-0000-4000-8000-00000000c001", scientificPromotionProtocolDomainV1, protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]));
+          await expectPgRejection(client, () => client.query("update investing.research_scientific_promotion_protocols_scientific_identities set hash_hex=hash_hex"));
+          await expectPgRejection(client, () => client.query("delete from investing.research_scientific_promotion_protocols_scientific_identities"));
         }
         await client.query("reset role");
         const serviceRole = await client.query<{ table_insert: boolean; function_execute: boolean }>("select has_table_privilege('service_role','investing.research_scientific_promotion_protocols_scientific_identities','INSERT') as table_insert, has_function_privilege('service_role','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') as function_execute");
@@ -802,11 +829,11 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
         expect(sameHashRows.rows).toEqual([{ transition_hash_hex: rootHashRef, count: 2 }]);
         await setRl8Context(client, left);
         await client.query("set local role investing_rl8_writer");
-        await expectPgRejection(() => client.query("update investing.research_scientific_promotion_transitions_scientific_identities set canonical_payload=canonical_payload where research_scientific_promotion_transition_identity_id=$1", [leftTransition]));
-        await expectPgRejection(() => client.query("delete from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=$1", [leftTransition]));
+        await expectPgRejection(client, () => client.query("update investing.research_scientific_promotion_transitions_scientific_identities set canonical_payload=canonical_payload where research_scientific_promotion_transition_identity_id=$1", [leftTransition]));
+        await expectPgRejection(client, () => client.query("delete from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=$1", [leftTransition]));
         await client.query("reset role");
-        await expectPgRejection(() => client.query("update investing.research_scientific_promotion_transitions_scientific_identities set canonical_payload=canonical_payload where research_scientific_promotion_transition_identity_id=$1", [leftTransition]), /append-only/i);
-        await expectPgRejection(() => client.query("delete from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=$1", [leftTransition]), /append-only/i);
+        await expectPgRejection(client, () => client.query("update investing.research_scientific_promotion_transitions_scientific_identities set canonical_payload=canonical_payload where research_scientific_promotion_transition_identity_id=$1", [leftTransition]), /append-only/i);
+        await expectPgRejection(client, () => client.query("delete from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=$1", [leftTransition]), /append-only/i);
       });
     } finally {
       client.release();
