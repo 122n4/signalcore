@@ -233,3 +233,57 @@ describe("I5 RL-8C1 executable PostgreSQL correction coverage", () => {
     }
   });
 });
+
+describe("I5 RL-8C1 final closure static invariants", () => {
+  it("has exactly one extensions USAGE grant before SET LOCAL ROLE", () => {
+    expect((normalized.match(/grant usage on schema extensions to investing_rl8_writer/g) ?? []).length).toBe(1);
+    expect(normalized.indexOf("grant usage on schema extensions to investing_rl8_writer")).toBeLessThan(normalized.indexOf("set local role investing_owner"));
+  });
+
+  it("scopes transition hash uniqueness by tenant and Investigation", () => {
+    expect(normalized).toContain("constraint research_scientific_promotion_transition_hash_key unique (tenant_id, research_investigation_id, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex)");
+    expect(normalized).not.toContain("constraint research_scientific_promotion_transition_hash_key unique (transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex)");
+  });
+
+  it("closes nested subject, evidenceSnapshot, and supersededByChain shapes", () => {
+    expect(normalized).toContain("array['subjectexperiment','subjectexperimentparameters','subjectresearchir']");
+    expect(normalized).toContain("array['evidenceobject','result','robustnesscomparisonprotocol','robustnesscomparisonresult','runinput','validationassessmentprotocol','validationassessmentresult','validationprotocol','validationresult']");
+    expect(normalized).toContain("array['successorprotocol','successorroott ransition']".replace("successorroott ransition", "successorroottransition"));
+  });
+
+  it("freezes snapshot state matrix and SUPERSEDED structural handling", () => {
+    expect(normalized).toContain("p_resulting_state = 'insufficient_evidence'");
+    expect(normalized).toContain("p_validation_assessment_result_identity_id is not null");
+    expect(normalized).toContain("p_resulting_state in ('validation_failed','validation_passed','promotion_eligible','rejected')");
+    expect(normalized).toContain("p_robustness_comparison_result_identity_id is not null");
+    expect(normalized).toContain("p_payload->'transitionreasons' = '[\"superseded_evidence\"]'::jsonb");
+    expect(normalized).toContain("p_payload->'gateoutcomes' = '[]'::jsonb or investing.rl8c_validate_gate_outcomes_v1");
+  });
+
+  it("validates closed reason vocabulary, transition reason union, and gate evidence binding", () => {
+    expect(normalized).toContain("rl8c_reason_allowed_v1");
+    expect(normalized).toContain("rl8c_transition_reason_union_valid_v1");
+    expect(normalized).toContain("rl8c_gate_evidence_binding_valid_v1");
+    expect(normalized).toContain("select distinct r.value #>> '{}' as reason");
+    expect(normalized).toContain("when 'gate_accepted_execution_result' then g.value->'evidence' <> jsonb_build_array(r.run_input, r.result_ref)");
+    expect(normalized).toContain("when 'gate_metric_result_set_v2'");
+    expect(normalized).toContain("when 'gate_rl7_robustness_comparison'");
+  });
+
+  it("requires PG17 file to carry real closure literals and case names", () => {
+    const pg17 = fs.readFileSync(path.join(repoRoot, "tests/investingGenesisI5Rl8c1ScientificPromotionPg17.test.ts"), "utf8").toLowerCase();
+    for (const literal of [
+      "a3dbb4046cd52a02e90ee175298a7799bab791b8532fbf84a1a58c11d3b1f012",
+      "122f57c9d0cee90af122c949d34c4862364bdd6c5df1acd87799f1110b7e124c",
+      "3546b2add88325f789dd3f4b25817aa6cf3e6d9812711e26852b432aa659f7a1",
+      "3e910d12366ed5b0ce8c93686fc18f98a0d07e550d96bf61237ba73ece23901f",
+      "root missing result",
+      "duplicate gate",
+      "unknown reason",
+      "wrong result investigation",
+      "cross-scope identical transition hash",
+      "unrelated research_mutate operation",
+      "unicode canonicalizer parity",
+    ]) expect(pg17).toContain(literal);
+  });
+});

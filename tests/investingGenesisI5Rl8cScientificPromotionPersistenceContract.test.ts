@@ -66,6 +66,14 @@ describe("I5 RL-8C Scientific Promotion Persistence Contract V1 design freeze", 
     ]) expect(contract).toContain(token);
   });
 
+  it("scopes transition hash uniqueness by tenant and Investigation", () => {
+    const contract = read(contractPath);
+    expect(contract).toContain("research_scientific_promotion_transition_hash_key (");
+    expect(contract).toContain("tenant_id,\n  research_investigation_id,\n  transition_hash_algorithm,");
+    expect(contract).toContain("Protocol hash uniqueness remains global");
+    expect(contract).toContain("identical scientific transition payload may legitimately occur in two independently authorized Investigations");
+  });
+
   it("freezes transition authority columns and subject Experiment operational binding", () => {
     const contract = read(contractPath);
     for (const token of [

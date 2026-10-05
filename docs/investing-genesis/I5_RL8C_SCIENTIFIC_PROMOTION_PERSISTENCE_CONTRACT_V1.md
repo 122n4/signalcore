@@ -142,6 +142,22 @@ references investing.research_scientific_promotion_protocols_scientific_identiti
 
 The canonical payload protocol envelope must equal `SHA-256 / SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1 / SYNTRAKE_SHA256_V1 / protocol_hash_hex`. current writer authority != permanent storage-domain restriction.
 
+
+Transition hash uniqueness is tenant + Investigation scoped, not globally scoped. RL-8C1 MUST freeze the transition hash key as:
+
+```text
+research_scientific_promotion_transition_hash_key (
+  tenant_id,
+  research_investigation_id,
+  transition_hash_algorithm,
+  transition_hash_domain,
+  transition_hash_version,
+  transition_hash_hex
+)
+```
+
+Protocol hash uniqueness remains global. An identical scientific transition payload may legitimately occur in two independently authorized Investigations; one tenant/Investigation must never block another merely because canonical bytes happen to match.
+
 ## 4. Transition identity relation contract
 
 Relation name:
