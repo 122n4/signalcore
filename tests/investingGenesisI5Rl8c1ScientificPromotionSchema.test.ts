@@ -1,4 +1,4 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -124,5 +124,112 @@ describe("I5 RL-8C1 scientific promotion schema authority migration", () => {
       "security invoker",
     ]);
     expect(normalized).not.toMatch(/language\\s+(sql|plpgsql)[\\s\\S]{0,120}security definer/);
+  });
+});
+
+describe("I5 RL-8C1 executable PostgreSQL correction coverage", () => {
+  it("keeps extensions grant before SET LOCAL ROLE investing_owner", () => {
+    const grantIndex = normalized.indexOf("grant usage on schema extensions to investing_rl8_writer");
+    const setRoleIndex = normalized.indexOf("set local role investing_owner");
+    expect(grantIndex).toBeGreaterThanOrEqual(0);
+    expect(setRoleIndex).toBeGreaterThan(grantIndex);
+    expect(normalized).not.toContain("grant create on schema extensions");
+  });
+
+  it("grants writer execute for check helpers and withholds helper execute from app/public roles", () => {
+    for (const signature of [
+      "investing.rl8c_jsonb_has_number_v1(jsonb)",
+      "investing.rl8c_canonical_jsonb_v1(jsonb)",
+      "investing.rl8c_sha256_hex_v1(text, jsonb)",
+    ]) expect(normalized).toContain(`grant execute on function ${signature} to investing_rl8_writer`);
+    expect(normalized).toContain("from public, anon, authenticated, service_role, investing_app");
+    expect(normalized).toContain("forbidden helper execute grant exists");
+  });
+
+  it("requires all nine evidence ID/hash pair checks and parent dependencies", () => {
+    expect(normalized).toContain("research_scientific_promotion_evidence_pair_check");
+    expect(normalized).toContain("research_scientific_promotion_evidence_parent_dependency_check");
+    for (const pair of [
+      "run_input_identity_id is null and run_input_hash_hex is null",
+      "result_identity_id is null and result_hash_hex is null",
+      "evidence_object_identity_id is null and evidence_object_hash_hex is null",
+      "validation_protocol_identity_id is null and validation_protocol_hash_hex is null",
+      "validation_result_identity_id is null and validation_result_hash_hex is null",
+      "validation_assessment_protocol_identity_id is null and validation_assessment_protocol_hash_hex is null",
+      "validation_assessment_result_identity_id is null and validation_assessment_result_hash_hex is null",
+      "robustness_comparison_protocol_identity_id is null and robustness_comparison_protocol_hash_hex is null",
+      "robustness_comparison_result_identity_id is null and robustness_comparison_result_hash_hex is null",
+      "result_identity_id is null or run_input_identity_id is not null",
+      "evidence_object_identity_id is null or (run_input_identity_id is not null and result_identity_id is not null)",
+      "validation_assessment_result_identity_id is null or (validation_assessment_protocol_identity_id is not null and validation_result_identity_id is not null)",
+    ]) expect(normalized).toContain(pair);
+  });
+
+  it("freezes all nine evidence HashRef domains and all eleven gates", () => {
+    for (const domain of [
+      "syntrake:run_input:v1",
+      "syntrake:result:v1",
+      "syntrake:evidence_object:v1",
+      "syntrake:validation_protocol:v1",
+      "syntrake:validation_result:v1",
+      "syntrake:validation_assessment_protocol:v1",
+      "syntrake:validation_assessment_result:v1",
+      "syntrake:experiment_comparison_protocol:v1",
+      "syntrake:experiment_comparison_result:v1",
+    ]) expect(normalized).toContain(domain);
+    for (const gate of [
+      "gate_accepted_execution_result",
+      "gate_authority_and_tenancy",
+      "gate_evidence_completeness",
+      "gate_evidence_object_binding",
+      "gate_lineage_integrity",
+      "gate_metric_result_set_v2",
+      "gate_protocol_compatibility",
+      "gate_rl7_robustness_comparison",
+      "gate_subject_identity",
+      "gate_validation_assessment",
+      "gate_validation_result",
+    ]) expect(normalized).toContain(gate);
+    for (const status of ["fail", "incompatible_evidence", "insufficient_evidence", "pass", "unavailable"]) expect(normalized).toContain(status);
+  });
+
+  it("closes protocol and transition V1 payload shapes", () => {
+    expect(normalized).toContain("rl8c_validate_protocol_payload_shape_v1");
+    expect(normalized).toContain("rl8c_validate_transition_payload_shape_v1");
+    expect(normalized).toContain("jsonb_object_has_exact_keys_v1(p_payload, array['compatiblemetricregistryversion'");
+    expect(normalized).toContain("jsonb_object_has_exact_keys_v1(p_payload, array['evidencesnapshot'");
+    expect(normalized).toContain("p_payload->'gateoutcomes' = '[]'::jsonb");
+    expect(normalized).toContain("p_run_input_identity_id is not null and p_result_identity_id is not null");
+  });
+
+  it("proves Result and Evidence Object RLS through the authorized Run Input lineage", () => {
+    const resultPolicy = /create policy research_results_rl8c_writer_select(?<body>.*?);/.exec(normalized)?.groups?.body ?? "";
+    expect(resultPolicy).toContain("exists (select 1 from investing.run_inputs_scientific_identities ri");
+    expect(resultPolicy).toContain("ri.research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)");
+    const evidencePolicy = /create policy research_evidence_objects_rl8c_writer_select(?<body>.*?);/.exec(normalized)?.groups?.body ?? "";
+    expect(evidencePolicy).toContain("exists (select 1 from investing.run_inputs_scientific_identities ri");
+    expect(evidencePolicy).toContain("exists (select 1 from investing.research_results_scientific_identities rr");
+    expect(evidencePolicy).toContain("rr.run_input_identity_id = research_evidence_objects_scientific_identities.run_input_identity_id");
+  });
+
+  it("requires an RL-8 operation boundary on every upstream writer SELECT policy", () => {
+    const policyNames = [
+      "tenant_memberships_rl8c_writer_select",
+      "research_investigations_rl8c_writer_select",
+      "research_experiments_rl8c_writer_select",
+      "run_inputs_rl8c_writer_select",
+      "research_results_rl8c_writer_select",
+      "research_evidence_objects_rl8c_writer_select",
+      "research_validation_protocols_rl8c_writer_select",
+      "research_validation_results_rl8c_writer_select",
+      "research_validation_assessment_protocols_rl8c_writer_select",
+      "research_validation_assessment_results_rl8c_writer_select",
+      "research_experiment_comparison_protocols_rl8c_writer_select",
+      "research_experiment_comparison_results_rl8c_writer_select",
+    ];
+    for (const policy of policyNames) {
+      const body = new RegExp(`create policy ${policy}(?<body>.*?);`).exec(normalized)?.groups?.body ?? "";
+      expect(body, policy).toContain("research_scientific_promotion_");
+    }
   });
 });
