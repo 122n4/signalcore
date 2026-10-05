@@ -306,6 +306,17 @@ describe("I5 RL-8C1 final closure static invariants", () => {
       "investing.rl8c_validate_transition_payload_shape_v1",
       "createrl8crootfixture",
       "insertrl8croottransition",
+      "research_spec_revisions",
+      "research_result_artifacts",
+      "relation, parent_experiment_id",
+      "'baseline'",
+      "'variant'",
+      "experiment_hash_algorithm",
+      "experiment_parameters_hash_algorithm",
+      "createsameauthorityinvestigationfixture",
+      "insertcurrentprotocolidentity(client, left)",
+      "wrongdomain.rows[0]?.ok).tobe(false)",
+      "authority-non-owner",
       "actual root table insert",
       "authority/rls matrix",
       "operation-boundary negative",
@@ -316,5 +327,10 @@ describe("I5 RL-8C1 final closure static invariants", () => {
       "canonical unicode/control-character parity",
     ]) expect(pg17).toContain(literal);
     expect(pg17).not.toContain("declares the full required executable closure matrix");
+    expect(pg17).not.toContain("research_spec_revision_id, research_investigation_id, research_experiment_id) values (extensions.gen_random_uuid()");
+    expect(pg17).not.toContain("extensions.gen_random_uuid(), extensions.gen_random_uuid(), extensions.gen_random_uuid()");
+    expect(pg17).not.toContain("insertcurrentprotocolidentity(client, right)");
+    expect(pg17).not.toContain("extensions.gen_random_uuid(),'research_scientific_promotion_protocol_create_v1'");
+    expect(pg17).not.toContain("[\"research_investigation_id\", \"00000000-0000-0000-0000-000000000004\"]]);");
   });
 });
