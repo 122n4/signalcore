@@ -241,6 +241,134 @@ async function validateTransitionPayload(client: PoolClient, transition: Scienti
   return result.rows[0]?.ok === true;
 }
 
+
+type Rl8cAuthorityFixture = {
+  tenantId: string;
+  principalId: string;
+  tenantMembershipId: string;
+  researchInvestigationId: string;
+  researchExperimentId: string;
+  runInputIdentityId: string;
+  resultIdentityId: string;
+  protocolIdentityId: string;
+};
+
+async function expectPgRejection(action: () => Promise<unknown>): Promise<void> {
+  let rejected = false;
+  try {
+    await action();
+  } catch {
+    rejected = true;
+  }
+  expect(rejected).toBe(true);
+}
+
+async function withTransaction<T>(client: PoolClient, action: () => Promise<T>): Promise<T> {
+  await client.query("begin");
+  try {
+    const result = await action();
+    await client.query("rollback");
+    return result;
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  }
+}
+
+async function setRl8Context(client: PoolClient, fixture: Pick<Rl8cAuthorityFixture, "tenantId" | "principalId" | "tenantMembershipId" | "researchInvestigationId">, operation = "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1"): Promise<void> {
+  await client.query("select set_config('syntrake.investing.operation', $1, true)", [operation]);
+  await client.query("select set_config('syntrake.investing.capability', 'RESEARCH_MUTATE', true)");
+  await client.query("select set_config('syntrake.investing.tenant_id', $1, true)", [fixture.tenantId]);
+  await client.query("select set_config('syntrake.investing.principal_id', $1, true)", [fixture.principalId]);
+  await client.query("select set_config('syntrake.investing.tenant_membership_id', $1, true)", [fixture.tenantMembershipId]);
+  await client.query("select set_config('syntrake.investing.research_investigation_id', $1, true)", [fixture.researchInvestigationId]);
+}
+
+async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string }> = {}): Promise<Rl8cAuthorityFixture> {
+  const ids = await client.query<Rl8cAuthorityFixture>(`
+    select
+      extensions.gen_random_uuid()::text as "tenantId",
+      extensions.gen_random_uuid()::text as "principalId",
+      extensions.gen_random_uuid()::text as "tenantMembershipId",
+      extensions.gen_random_uuid()::text as "researchInvestigationId",
+      extensions.gen_random_uuid()::text as "researchExperimentId",
+      extensions.gen_random_uuid()::text as "runInputIdentityId",
+      extensions.gen_random_uuid()::text as "resultIdentityId",
+      extensions.gen_random_uuid()::text as "protocolIdentityId"
+  `);
+  const fixture = ids.rows[0];
+  if (!fixture) throw new Error("missing generated fixture ids");
+  const membershipState = overrides.membershipState ?? "ACTIVE";
+  const membershipRole = overrides.membershipRole ?? "OWNER";
+  await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', $2)", [fixture.principalId, `rl8c1-${suffix}`]);
+  await client.query("insert into investing.tenants (tenant_id) values ($1)", [fixture.tenantId]);
+  await client.query("insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id, role, state, revoked_at) values ($1, $2, $3, $4, $5, case when $5 = 'REVOKED' then transaction_timestamp() else null end)", [fixture.tenantMembershipId, fixture.tenantId, fixture.principalId, membershipRole, membershipState]);
+  await client.query(`
+    insert into investing.idempotency_records (idempotency_key, material_request_hash, correlation_id, actor_kind, actor_id, operation_scope, operation, principal_id, tenant_id)
+    values ($1, $2, $3, 'USER_PRINCIPAL', $4, 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', $5, $6)
+  `, [`rl8c1-investigation-${suffix}`, "A".repeat(64), `rl8c1-correlation-${suffix}`, fixture.principalId, fixture.principalId, fixture.tenantId]);
+  await client.query(`
+    insert into investing.research_investigations (
+      research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
+      operation_scope, operation, capability, source_context, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    )
+    select $1, $2, null, $3, 'USER_PRINCIPAL', $3::text, $4, null, 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', $5, idempotency_record_id, $6, $7
+    from investing.idempotency_records where idempotency_key = $6
+  `, [fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, "A".repeat(64), `rl8c1-investigation-${suffix}`, `rl8c1-correlation-${suffix}`]);
+  await client.query(`
+    insert into investing.research_experiments (
+      research_experiment_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
+      operation_scope, source_context, operation, capability, relation, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain,
+      research_ir_hash_version, research_ir_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
+    )
+    values ($1, $2, $3, null, $4, 'USER_PRINCIPAL', $4::text, $5, null, 'TENANT_SCOPE', 'PURE_RESEARCH', 'RESEARCH_EXPERIMENT_BASELINE_CREATE_V1', 'RESEARCH_MUTATE', 'BASELINE', extensions.gen_random_uuid(), 'SHA-256', 'SYNTRAKE:RESEARCH_IR:V1', 'SYNTRAKE_SHA256_V1', $6, $7, (select idempotency_record_id from investing.idempotency_records where idempotency_key=$8), $8, $9)
+  `, [fixture.researchExperimentId, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, researchIr.hashHex, "B".repeat(64), `rl8c1-investigation-${suffix}`, `rl8c1-correlation-${suffix}`]);
+  await client.query(`
+    insert into investing.run_inputs_scientific_identities (
+      run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
+      operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex,
+      metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
+    ) values ($1,$2,null,$3,$4,$5,$6,extensions.gen_random_uuid(),'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$7,$8,$9,$10,'METRIC_REGISTRY_V20260927',$11,'ENGINE_V20260918',$12,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$13,$14::jsonb)
+  `, [fixture.runInputIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, "7".repeat(64), researchIr.hashHex, experiment.hashHex, "8".repeat(64), "9".repeat(64), "A".repeat(64), runInput.hashHex, JSON.stringify({ schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1", researchSourceContext: "PURE_RESEARCH", metricRegistryVersion: "METRIC_REGISTRY_V20260927", engineVersion: "ENGINE_V20260918", researchSpec: ref("SYNTRAKE:RESEARCH_SPEC:V1", "7"), researchIr, experiment, datasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "8"), metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", "9"), executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", "A") })]);
+  await client.query(`
+    insert into investing.research_results_scientific_identities (
+      result_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id,
+      execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, operation, capability, operation_scope, source_context,
+      engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
+    ) values ($1,$2,null,$3,$4,$5,extensions.gen_random_uuid(),extensions.gen_random_uuid(),extensions.gen_random_uuid(),'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$6,$7::jsonb)
+  `, [fixture.resultIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, result.hashHex, JSON.stringify({ schemaVersion: "RESULT_HASH_PAYLOAD_V1" })]);
+  return fixture;
+}
+
+async function insertCurrentProtocolIdentity(client: PoolClient, fixture: Rl8cAuthorityFixture): Promise<void> {
+  await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
+  await client.query("set local role investing_rl8_writer");
+  await client.query(`
+    insert into investing.research_scientific_promotion_protocols_scientific_identities (
+      research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context,
+      hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
+    ) values ($1,'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256',$2,'SYNTRAKE_SHA256_V1',$3,$4::jsonb)
+  `, [fixture.protocolIdentityId, scientificPromotionProtocolDomainV1, protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
+}
+
+async function insertRl8cRootTransition(client: PoolClient, fixture: Rl8cAuthorityFixture, transition: ScientificPromotionTransitionV1 = rootTransition()): Promise<string> {
+  const transitionIdentity = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]?.id;
+  if (!transitionIdentity) throw new Error("missing transition id");
+  const hash = hashScientificPromotionTransitionV1(transition).hashHex;
+  await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
+  await client.query("set local role investing_rl8_writer");
+  await client.query(`
+    insert into investing.research_scientific_promotion_transitions_scientific_identities (
+      research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id,
+      research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex,
+      subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex,
+      predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex,
+      run_input_identity_id, run_input_hash_hex, result_identity_id, result_hash_hex, canonical_payload
+    ) values ($1,'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'DRAFT_RESEARCH','EXECUTED','SHA-256',$12,'SYNTRAKE_SHA256_V1',$13,$14,$15,$16,$17,$18::jsonb)
+  `, [transitionIdentity, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.protocolIdentityId, transition.protocol.hashHex, transition.subject.subjectExperiment.hashHex, transition.subject.subjectExperimentParameters.hashHex, transition.subject.subjectResearchIr.hashHex, scientificPromotionTransitionDomainV1, hash, fixture.runInputIdentityId, transition.evidenceSnapshot.runInput?.hashHex, fixture.resultIdentityId, transition.evidenceSnapshot.result?.hashHex, JSON.stringify(transition)]);
+  return transitionIdentity;
+}
+
 maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconciliation", () => {
   let pool: Pool;
 
@@ -389,6 +517,134 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
       expect(await validateTransitionPayload(client, stageATransition({ gateOutcomes: passingGateOutcomes().slice(1) }))).toBe(false);
       expect(await validateTransitionPayload(client, stageATransition({ gateOutcomes: [{ ...passingGateOutcomes()[0], gateId: "UNKNOWN_GATE" as never }, ...passingGateOutcomes().slice(1)] }))).toBe(false);
       expect(await validateTransitionPayload(client, stageATransition({ gateOutcomes: [{ ...passingGateOutcomes()[0], status: "UNKNOWN" as never }, ...passingGateOutcomes().slice(1)] }))).toBe(false);
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+
+  it("executes actual ROOT table INSERT with RLS, CHECKs, FKs, protocol FK, subject FK, provenance FKs, hash check, and INSERT grant", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const fixture = await createRl8cRootFixture(client, "root-insert");
+        await insertCurrentProtocolIdentity(client, fixture);
+        const transitionIdentity = await insertRl8cRootTransition(client, fixture);
+        const persisted = await client.query<{ count: string; run_input_hash_hex: string; result_hash_hex: string }>(`
+          select count(*)::text as count, max(run_input_hash_hex) as run_input_hash_hex, max(result_hash_hex) as result_hash_hex
+          from investing.research_scientific_promotion_transitions_scientific_identities
+          where research_scientific_promotion_transition_identity_id = $1
+        `, [transitionIdentity]);
+        expect(persisted.rows[0]).toEqual({ count: "1", run_input_hash_hex: runInput.hashHex, result_hash_hex: result.hashHex });
+      });
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+  it("executes actual table structural negatives", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const fixture = await createRl8cRootFixture(client, "structural-negatives");
+        await insertCurrentProtocolIdentity(client, fixture);
+        await expectPgRejection(() => insertRl8cRootTransition(client, fixture, rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, result: null } })));
+        await expectPgRejection(() => insertRl8cRootTransition(client, fixture, rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, evidenceObject } })));
+        await expectPgRejection(() => insertRl8cRootTransition(client, fixture, rootTransition({ gateOutcomes: passingGateOutcomes() })));
+        await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
+        await client.query("set local role investing_rl8_writer");
+        await expectPgRejection(() => client.query("insert into investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, run_input_identity_id, run_input_hash_hex, result_identity_id, result_hash_hex, canonical_payload) values (extensions.gen_random_uuid(),'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'DRAFT_RESEARCH','EXECUTED','SHA-256',$11,'SYNTRAKE_SHA256_V1',$12,$13,null,$14,$15,$16::jsonb)", [fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.protocolIdentityId, protocolHashRef, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, scientificPromotionTransitionDomainV1, rootHashRef, fixture.runInputIdentityId, fixture.resultIdentityId, result.hashHex, JSON.stringify(rootTransition())]));
+        await expectPgRejection(() => client.query("select investing.rl8c_hashref_matches_v1($1::jsonb, 'SYNTRAKE:RUN_INPUT:V1', $2)", [JSON.stringify(ref("SYNTRAKE:RESULT:V1", "1")), runInput.hashHex]));
+      });
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+  it("executes actual authority/RLS matrix and operation-boundary negative", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const valid = await createRl8cRootFixture(client, "authority-valid");
+        await setRl8Context(client, valid);
+        await client.query("set local role investing_rl8_writer");
+        expect((await client.query("select count(*)::int as count from investing.tenant_memberships")).rows[0]?.count).toBe(1);
+        for (const [key, value] of [["tenant_id", "00000000-0000-0000-0000-000000000001"], ["principal_id", "00000000-0000-0000-0000-000000000002"], ["tenant_membership_id", "00000000-0000-0000-0000-000000000003"], ["research_investigation_id", "00000000-0000-0000-0000-000000000004"]]) {
+          await client.query("reset role");
+          await setRl8Context(client, { ...valid, tenantId: key === "tenant_id" ? value : valid.tenantId, principalId: key === "principal_id" ? value : valid.principalId, tenantMembershipId: key === "tenant_membership_id" ? value : valid.tenantMembershipId, researchInvestigationId: key === "research_investigation_id" ? value : valid.researchInvestigationId });
+          await client.query("set local role investing_rl8_writer");
+          expect((await client.query("select count(*)::int as count from investing.tenant_memberships")).rows[0]?.count).toBe(0);
+        }
+        await client.query("reset role");
+        const revoked = await createRl8cRootFixture(client, "authority-revoked", { membershipState: "REVOKED" });
+        await setRl8Context(client, revoked);
+        await client.query("set local role investing_rl8_writer");
+        expect((await client.query("select count(*)::int as count from investing.tenant_memberships")).rows[0]?.count).toBe(0);
+        await client.query("reset role");
+        await setRl8Context(client, valid, "RESEARCH_EXECUTION_RUN_V1");
+        await client.query("set local role investing_rl8_writer");
+        expect((await client.query("select count(*)::int as count from investing.run_inputs_scientific_identities")).rows[0]?.count).toBe(0);
+      });
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+  it("executes actual cross-Investigation provenance RLS", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const investigationA = await createRl8cRootFixture(client, "cross-investigation-a");
+        const investigationB = await createRl8cRootFixture(client, "cross-investigation-b");
+        await setRl8Context(client, investigationA);
+        await client.query("set local role investing_rl8_writer");
+        const visibleResultB = await client.query<{ count: number }>("select count(*)::int as count from investing.research_results_scientific_identities where result_identity_id=$1", [investigationB.resultIdentityId]);
+        expect(visibleResultB.rows[0]?.count).toBe(0);
+      });
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+  it("executes investing_app, anon, authenticated mutation denial and service_role grant absence", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        for (const role of ["investing_app", "anon", "authenticated"]) {
+          await client.query("reset role");
+          await client.query(`set local role ${role}`);
+          await expectPgRejection(() => client.query("insert into investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (extensions.gen_random_uuid(),'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256',$1,'SYNTRAKE_SHA256_V1',$2,$3::jsonb)", [scientificPromotionProtocolDomainV1, protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]));
+          await expectPgRejection(() => client.query("update investing.research_scientific_promotion_protocols_scientific_identities set hash_hex=hash_hex"));
+          await expectPgRejection(() => client.query("delete from investing.research_scientific_promotion_protocols_scientific_identities"));
+        }
+        await client.query("reset role");
+        const serviceRole = await client.query<{ table_insert: boolean; function_execute: boolean }>("select has_table_privilege('service_role','investing.research_scientific_promotion_protocols_scientific_identities','INSERT') as table_insert, has_function_privilege('service_role','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') as function_execute");
+        expect(serviceRole.rows[0]).toEqual({ table_insert: false, function_execute: false });
+      });
+    } finally {
+      client.release();
+    }
+  }, 60_000);
+
+  it("executes append-only trigger and cross-scope identical hash", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const left = await createRl8cRootFixture(client, "same-hash-left");
+        const right = await createRl8cRootFixture(client, "same-hash-right");
+        await insertCurrentProtocolIdentity(client, left);
+        await client.query("reset role");
+        await insertCurrentProtocolIdentity(client, right);
+        await client.query("reset role");
+        const leftTransition = await insertRl8cRootTransition(client, left);
+        await client.query("reset role");
+        const rightTransition = await insertRl8cRootTransition(client, right);
+        expect(leftTransition).not.toBe(rightTransition);
+        await setRl8Context(client, left);
+        await client.query("set local role investing_rl8_writer");
+        await expectPgRejection(() => client.query("update investing.research_scientific_promotion_transitions_scientific_identities set canonical_payload=canonical_payload where research_scientific_promotion_transition_identity_id=$1", [leftTransition]));
+        await expectPgRejection(() => client.query("delete from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=$1", [leftTransition]));
+      });
     } finally {
       client.release();
     }

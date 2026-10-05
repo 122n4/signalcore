@@ -265,9 +265,13 @@ describe("I5 RL-8C1 final closure static invariants", () => {
     expect(normalized).toContain("rl8c_transition_reason_union_valid_v1");
     expect(normalized).toContain("rl8c_gate_evidence_binding_valid_v1");
     expect(normalized).toContain("select distinct r.value #>> '{}' as reason");
-    expect(normalized).toContain("create or replace function investing.rl8c_sorted_unique_hashrefs_v1");
-    expect(normalized).toContain("investing.rl8c_canonical_jsonb_v1(value) as canonical");
-    expect(normalized).toContain('order by canonical collate "c"');
+    const helper = /create or replace function investing\.rl8c_sorted_unique_hashrefs_v1(?<body>.*?)\$\$;/s.exec(normalized)?.groups?.body ?? "";
+    expect(helper).toContain("investing.rl8c_canonical_jsonb_v1(value) as canonical");
+    expect(helper).not.toContain("distinct on (canonical)");
+    expect(helper).toContain("select distinct");
+    expect(helper).toContain("ref,");
+    expect(helper).toContain("canonical");
+    expect(helper).toContain('order by canonical collate "c"');
     expect(normalized).not.toContain("order by x.value::text");
     expect(normalized).not.toContain("g.value->'evidence' <> jsonb_build_array(r.run_input, r.result_ref)");
     expect(normalized).toContain("when 'gate_accepted_execution_result' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.result_ref, r.run_input))");
@@ -300,6 +304,15 @@ describe("I5 RL-8C1 final closure static invariants", () => {
       "investing.rl8c_sorted_unique_hashrefs_v1($1::jsonb)",
       "investing.rl8c_gate_evidence_binding_valid_v1($1::jsonb)",
       "investing.rl8c_validate_transition_payload_shape_v1",
+      "createrl8crootfixture",
+      "insertrl8croottransition",
+      "actual root table insert",
+      "authority/rls matrix",
+      "operation-boundary negative",
+      "cross-investigation provenance",
+      "investing_app, anon, authenticated mutation denial",
+      "append-only trigger",
+      "cross-scope identical hash",
       "canonical unicode/control-character parity",
     ]) expect(pg17).toContain(literal);
     expect(pg17).not.toContain("declares the full required executable closure matrix");

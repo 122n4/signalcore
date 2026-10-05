@@ -75,9 +75,10 @@ create or replace function investing.rl8c_sorted_unique_hashrefs_v1(p_refs jsonb
     from jsonb_array_elements(case when jsonb_typeof(p_refs) = 'array' then p_refs else '[]'::jsonb end)
     where value <> 'null'::jsonb
   ), dedup as (
-    select distinct on (canonical) ref, canonical
+    select distinct
+      ref,
+      canonical
     from refs
-    order by canonical collate "C"
   )
   select coalesce(jsonb_agg(ref order by canonical collate "C"), '[]'::jsonb) from dedup
 $$;
