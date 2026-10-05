@@ -260,30 +260,48 @@ describe("I5 RL-8C1 final closure static invariants", () => {
     expect(normalized).toContain("p_payload->'gateoutcomes' = '[]'::jsonb or investing.rl8c_validate_gate_outcomes_v1");
   });
 
-  it("validates closed reason vocabulary, transition reason union, and gate evidence binding", () => {
+  it("validates closed reason vocabulary, transition reason union, and canonical gate evidence binding", () => {
     expect(normalized).toContain("rl8c_reason_allowed_v1");
     expect(normalized).toContain("rl8c_transition_reason_union_valid_v1");
     expect(normalized).toContain("rl8c_gate_evidence_binding_valid_v1");
     expect(normalized).toContain("select distinct r.value #>> '{}' as reason");
-    expect(normalized).toContain("when 'gate_accepted_execution_result' then g.value->'evidence' <> jsonb_build_array(r.run_input, r.result_ref)");
-    expect(normalized).toContain("when 'gate_metric_result_set_v2'");
-    expect(normalized).toContain("when 'gate_rl7_robustness_comparison'");
+    expect(normalized).toContain("create or replace function investing.rl8c_sorted_unique_hashrefs_v1");
+    expect(normalized).toContain("investing.rl8c_canonical_jsonb_v1(value) as canonical");
+    expect(normalized).toContain('order by canonical collate "c"');
+    expect(normalized).not.toContain("order by x.value::text");
+    expect(normalized).not.toContain("g.value->'evidence' <> jsonb_build_array(r.run_input, r.result_ref)");
+    expect(normalized).toContain("when 'gate_accepted_execution_result' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.result_ref, r.run_input))");
+    for (const gate of [
+      "gate_accepted_execution_result",
+      "gate_evidence_completeness",
+      "gate_evidence_object_binding",
+      "gate_lineage_integrity",
+      "gate_metric_result_set_v2",
+      "gate_protocol_compatibility",
+      "gate_rl7_robustness_comparison",
+      "gate_subject_identity",
+      "gate_validation_assessment",
+      "gate_validation_result",
+    ]) {
+      expect(normalized).toContain(`when '${gate}' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1`);
+    }
+    expect(normalized).toContain("when 'gate_authority_and_tenancy' then g.value->'evidence' <> '[]'::jsonb");
   });
 
-  it("requires PG17 file to carry real closure literals and case names", () => {
+  it("requires PG17 file to execute SQL closure assertions instead of only declaring case names", () => {
     const pg17 = fs.readFileSync(path.join(repoRoot, "tests/investingGenesisI5Rl8c1ScientificPromotionPg17.test.ts"), "utf8").toLowerCase();
     for (const literal of [
       "a3dbb4046cd52a02e90ee175298a7799bab791b8532fbf84a1a58c11d3b1f012",
       "122f57c9d0cee90af122c949d34c4862364bdd6c5df1acd87799f1110b7e124c",
       "3546b2add88325f789dd3f4b25817aa6cf3e6d9812711e26852b432aa659f7a1",
       "3e910d12366ed5b0ce8c93686fc18f98a0d07e550d96bf61237ba73ece23901f",
-      "root missing result",
-      "duplicate gate",
-      "unknown reason",
-      "wrong result investigation",
-      "cross-scope identical transition hash",
-      "unrelated research_mutate operation",
-      "unicode canonicalizer parity",
+      "investing.rl8c_canonical_jsonb_v1($1::jsonb)",
+      "investing.rl8c_sha256_hex_v1($2, $1::jsonb)",
+      "investing.rl8c_sorted_unique_hashrefs_v1($1::jsonb)",
+      "investing.rl8c_gate_evidence_binding_valid_v1($1::jsonb)",
+      "investing.rl8c_validate_transition_payload_shape_v1",
+      "canonical unicode/control-character parity",
     ]) expect(pg17).toContain(literal);
+    expect(pg17).not.toContain("declares the full required executable closure matrix");
   });
 });

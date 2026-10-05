@@ -68,6 +68,20 @@ create or replace function investing.rl8c_hashref_presence_v1(p_ref jsonb, p_dom
   select case when p_ref is null or p_ref = 'null'::jsonb then p_identity_id is null and p_hash_hex is null else p_identity_id is not null and p_hash_hex is not null and investing.rl8c_hashref_matches_v1(p_ref, p_domain, p_hash_hex) end
 $$;
 
+
+create or replace function investing.rl8c_sorted_unique_hashrefs_v1(p_refs jsonb) returns jsonb language sql immutable strict set search_path = pg_catalog as $$
+  with refs as (
+    select value as ref, investing.rl8c_canonical_jsonb_v1(value) as canonical
+    from jsonb_array_elements(case when jsonb_typeof(p_refs) = 'array' then p_refs else '[]'::jsonb end)
+    where value <> 'null'::jsonb
+  ), dedup as (
+    select distinct on (canonical) ref, canonical
+    from refs
+    order by canonical collate "C"
+  )
+  select coalesce(jsonb_agg(ref order by canonical collate "C"), '[]'::jsonb) from dedup
+$$;
+
 create or replace function investing.rl8c_reason_allowed_v1(p_reason text) returns boolean language sql immutable strict set search_path = pg_catalog as $$
   select p_reason in ('AMBIGUOUS_VALIDATION_ASSESSMENT_AUTHORITY','AUTHORITY_FAILURE','CORRUPTED_EVIDENCE','DIVERGENT_EXISTING_IDENTITY','FAILED_ROBUSTNESS_GATE','FAILED_VALIDATION','FORBIDDEN_TRANSITION','INCOMPATIBLE_ARTIFACT_SCHEMA','INCOMPATIBLE_ENGINE_VERSION','INCOMPATIBLE_METRIC_REGISTRY','INCOMPATIBLE_PROTOCOL_VERSION','INCOMPATIBLE_SCHEMA_VERSION','INCOMPATIBLE_VALIDATION_ASSESSMENT','INCOMPLETE_VALIDATION','INSUFFICIENT_RL7_EVIDENCE','MALFORMED_HASHREF','MALFORMED_PROTOCOL','MALFORMED_TRANSITION','MISSING_EVIDENCE_OBJECT','MISSING_METRIC_RESULT_SET','MISSING_RESULT','MISSING_RL7_COMPARISON','MISSING_SUBJECT','MISSING_VALIDATION_ASSESSMENT_AUTHORITY','MISSING_VALIDATION_RESULT','SUPERSEDED_EVIDENCE','UNAUTHORIZED_EVIDENCE','UNKNOWN_GATE','UNKNOWN_RL7_CLASSIFICATION','UNKNOWN_STATE','WRONG_HASHREF_DOMAIN','WRONG_INVESTIGATION','WRONG_LINEAGE','WRONG_TENANT')
 $$;
@@ -115,17 +129,17 @@ create or replace function investing.rl8c_gate_evidence_binding_valid_v1(p_paylo
   select not exists (
     select 1 from gates g, refs r where
       case g.value->>'gateId'
-        when 'GATE_ACCEPTED_EXECUTION_RESULT' then g.value->'evidence' <> jsonb_build_array(r.run_input, r.result_ref)
+        when 'GATE_ACCEPTED_EXECUTION_RESULT' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.result_ref, r.run_input))
         when 'GATE_AUTHORITY_AND_TENANCY' then g.value->'evidence' <> '[]'::jsonb
-        when 'GATE_EVIDENCE_COMPLETENESS' then g.value->'evidence' <> (select coalesce(jsonb_agg(x.value order by x.value::text collate "C"), '[]'::jsonb) from jsonb_array_elements(jsonb_build_array(r.evidence_object, r.result_ref, r.robustness_protocol, r.robustness_result, r.run_input, r.validation_assessment_protocol, r.validation_assessment_result, r.validation_protocol, r.validation_result)) x where x.value <> 'null'::jsonb)
-        when 'GATE_EVIDENCE_OBJECT_BINDING' then g.value->'evidence' <> case when r.evidence_object = 'null'::jsonb then '[]'::jsonb else jsonb_build_array(r.evidence_object) end
-        when 'GATE_LINEAGE_INTEGRITY' then g.value->'evidence' <> (select coalesce(jsonb_agg(x.value order by x.value::text collate "C"), '[]'::jsonb) from jsonb_array_elements(jsonb_build_array(r.evidence_object, r.result_ref, r.robustness_protocol, r.robustness_result, r.run_input, r.validation_assessment_protocol, r.validation_assessment_result, r.validation_protocol, r.validation_result, r.subject_experiment, r.subject_experiment_parameters, r.subject_research_ir)) x where x.value <> 'null'::jsonb)
-        when 'GATE_METRIC_RESULT_SET_V2' then g.value->'evidence' <> case when r.validation_assessment_result = 'null'::jsonb then '[]'::jsonb else jsonb_build_array(r.validation_assessment_result) end
-        when 'GATE_PROTOCOL_COMPATIBILITY' then g.value->'evidence' <> (select coalesce(jsonb_agg(x.value order by x.value::text collate "C"), '[]'::jsonb) from jsonb_array_elements(jsonb_build_array(r.result_ref, r.robustness_protocol, r.validation_assessment_protocol, r.validation_assessment_result, r.validation_protocol, r.protocol)) x where x.value <> 'null'::jsonb)
-        when 'GATE_RL7_ROBUSTNESS_COMPARISON' then g.value->'evidence' <> (select coalesce(jsonb_agg(x.value order by x.value::text collate "C"), '[]'::jsonb) from jsonb_array_elements(jsonb_build_array(r.robustness_protocol, r.robustness_result)) x where x.value <> 'null'::jsonb)
-        when 'GATE_SUBJECT_IDENTITY' then g.value->'evidence' <> jsonb_build_array(r.subject_experiment, r.subject_experiment_parameters, r.subject_research_ir)
-        when 'GATE_VALIDATION_ASSESSMENT' then g.value->'evidence' <> (select coalesce(jsonb_agg(x.value order by x.value::text collate "C"), '[]'::jsonb) from jsonb_array_elements(jsonb_build_array(r.validation_assessment_protocol, r.validation_assessment_result)) x where x.value <> 'null'::jsonb)
-        when 'GATE_VALIDATION_RESULT' then g.value->'evidence' <> (select coalesce(jsonb_agg(x.value order by x.value::text collate "C"), '[]'::jsonb) from jsonb_array_elements(jsonb_build_array(r.validation_protocol, r.validation_result)) x where x.value <> 'null'::jsonb)
+        when 'GATE_EVIDENCE_COMPLETENESS' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.evidence_object, r.result_ref, r.robustness_protocol, r.robustness_result, r.run_input, r.validation_assessment_protocol, r.validation_assessment_result, r.validation_protocol, r.validation_result))
+        when 'GATE_EVIDENCE_OBJECT_BINDING' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.evidence_object))
+        when 'GATE_LINEAGE_INTEGRITY' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.evidence_object, r.result_ref, r.robustness_protocol, r.robustness_result, r.run_input, r.validation_assessment_protocol, r.validation_assessment_result, r.validation_protocol, r.validation_result, r.subject_experiment, r.subject_experiment_parameters, r.subject_research_ir))
+        when 'GATE_METRIC_RESULT_SET_V2' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.validation_assessment_result))
+        when 'GATE_PROTOCOL_COMPATIBILITY' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.result_ref, r.robustness_protocol, r.validation_assessment_protocol, r.validation_assessment_result, r.validation_protocol, r.protocol))
+        when 'GATE_RL7_ROBUSTNESS_COMPARISON' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.robustness_protocol, r.robustness_result))
+        when 'GATE_SUBJECT_IDENTITY' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.subject_experiment, r.subject_experiment_parameters, r.subject_research_ir))
+        when 'GATE_VALIDATION_ASSESSMENT' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.validation_assessment_protocol, r.validation_assessment_result))
+        when 'GATE_VALIDATION_RESULT' then g.value->'evidence' <> investing.rl8c_sorted_unique_hashrefs_v1(jsonb_build_array(r.validation_protocol, r.validation_result))
         else true
       end
   )
@@ -171,6 +185,7 @@ revoke all on function investing.rl8c_sha256_hex_v1(text, jsonb) from public, an
 revoke all on function investing.rl8c_jsonb_object_has_exact_keys_v1(jsonb, text[]) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_hashref_matches_v1(jsonb, text, text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_hashref_presence_v1(jsonb, text, uuid, text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl8c_sorted_unique_hashrefs_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_reason_allowed_v1(text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_jsonb_string_array_sorted_unique_reasons_v1(jsonb, boolean) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_transition_reason_union_valid_v1(jsonb, jsonb, text) from public, anon, authenticated, service_role, investing_app;
@@ -185,6 +200,7 @@ grant execute on function investing.rl8c_sha256_hex_v1(text, jsonb) to investing
 grant execute on function investing.rl8c_jsonb_object_has_exact_keys_v1(jsonb, text[]) to investing_rl8_writer;
 grant execute on function investing.rl8c_hashref_matches_v1(jsonb, text, text) to investing_rl8_writer;
 grant execute on function investing.rl8c_hashref_presence_v1(jsonb, text, uuid, text) to investing_rl8_writer;
+grant execute on function investing.rl8c_sorted_unique_hashrefs_v1(jsonb) to investing_rl8_writer;
 grant execute on function investing.rl8c_reason_allowed_v1(text) to investing_rl8_writer;
 grant execute on function investing.rl8c_jsonb_string_array_sorted_unique_reasons_v1(jsonb, boolean) to investing_rl8_writer;
 grant execute on function investing.rl8c_transition_reason_union_valid_v1(jsonb, jsonb, text) to investing_rl8_writer;
