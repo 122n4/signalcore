@@ -572,6 +572,36 @@ maybeDescribe("I5 RL-8C1 scientific promotion PostgreSQL 17 executable reconcili
       const policies = await client.query<{ policyname: string; qual: string | null }>("select policyname, qual from pg_policies where schemaname='investing' and policyname like '%rl8c_writer_select' order by policyname");
       expect(policies.rows.length).toBeGreaterThanOrEqual(14);
       expect(policies.rows.every((policy) => policy.qual?.includes("RESEARCH_SCIENTIFIC_PROMOTION_"))).toBe(true);
+
+      const catalogObjects = await client.query<{ name: string }>(`
+        select conname as name
+        from pg_constraint c join pg_namespace n on n.oid = c.connamespace
+        where n.nspname = 'investing'
+        union
+        select c.relname as name
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'investing' and c.relkind in ('i', 'I')
+      `);
+      const catalogNames = catalogObjects.rows.map((row) => row.name);
+      expect(catalogNames).toEqual(expect.arrayContaining([
+        "rl8c_sp_transitions_validation_protocol_fk",
+        "rl8c_sp_transitions_validation_assessment_protocol_fk",
+        "rl8c_sp_transitions_validation_assessment_result_fk",
+        "rl8c_sp_transitions_robustness_protocol_fk",
+        "rl8c_sp_transitions_cross_chain_target_key",
+        "rl8c_validation_assessment_protocols_authority_hash_key",
+        "rl8c_experiment_comparison_protocols_authority_hash_key",
+      ]));
+      for (const staleName of [
+        "research_scientific_promotion_transitions_validation_protocol_fk",
+        "research_scientific_promotion_transitions_validation_assessment_protocol_fk",
+        "research_scientific_promotion_transitions_validation_assessment_result_fk",
+        "research_scientific_promotion_transitions_robustness_protocol_fk",
+        "research_scientific_promotion_transitions_rl8c_cross_chain_target_key",
+        "research_validation_assessment_protocols_rl8c_authority_hash_key",
+        "research_experiment_comparison_protocols_rl8c_authority_hash_key",
+        "research_scientific_promotion_transitions_validation_assessment",
+      ]) expect(catalogNames).not.toContain(staleName);
     } finally {
       client.release();
     }

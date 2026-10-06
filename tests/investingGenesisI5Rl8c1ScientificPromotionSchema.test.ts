@@ -12,6 +12,21 @@ function expectContainsAll(source: string, tokens: readonly string[]): void {
   for (const token of tokens) expect(source).toContain(token);
 }
 
+function explicitPostgresIdentifiers(source: string): string[] {
+  const identifiers = new Set<string>();
+  const patterns = [
+    /\bconstraint\s+([a-z_][a-z0-9_]*)/gi,
+    /\bcreate\s+(?:unique\s+)?index\s+(?:if\s+not\s+exists\s+)?([a-z_][a-z0-9_]*)/gi,
+    /\bcreate\s+policy\s+([a-z_][a-z0-9_]*)/gi,
+    /\bcreate\s+trigger\s+([a-z_][a-z0-9_]*)/gi,
+    /\bcreate\s+or\s+replace\s+function\s+(?:[a-z_][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) identifiers.add(match[1].toLowerCase());
+  }
+  return Array.from(identifiers).sort();
+}
+
 describe("I5 RL-8C1 scientific promotion schema authority migration", () => {
   it("creates exactly the RL-8C1 migration surface without RL-8C2 writers", () => {
     const matching = fs.readdirSync(path.join(repoRoot, "supabase", "migrations")).filter((name) => name.includes("rl8c1_scientific_promotion_schema_authority"));
@@ -50,14 +65,42 @@ describe("I5 RL-8C1 scientific promotion schema authority migration", () => {
       "research_evidence_objects_rl8c_authority_hash_key",
       "research_validation_protocols_rl8c_authority_hash_key",
       "research_validation_results_rl8c_authority_hash_key",
-      "research_validation_assessment_protocols_rl8c_authority_hash_key",
+      "rl8c_validation_assessment_protocols_authority_hash_key",
       "research_validation_assessment_results_rl8c_authority_hash_key",
-      "research_experiment_comparison_protocols_rl8c_authority_hash_key",
+      "rl8c_experiment_comparison_protocols_authority_hash_key",
       "research_experiment_comparison_results_rl8c_authority_hash_key",
     ]);
     expect(normalized).toContain("evidence_identity_id, run_input_identity_id, result_identity_id");
     expect(normalized).toContain("research_validation_protocol_identity_id, research_investigation_id");
     expect(normalized).toContain("research_validation_result_identity_id, research_validation_protocol_identity_id");
+  });
+
+  it("keeps every explicit RL-8C PostgreSQL identifier within the 63-byte catalog limit", () => {
+    const identifiers = explicitPostgresIdentifiers(sql);
+    expect(identifiers.length).toBeGreaterThan(0);
+    for (const identifier of identifiers) {
+      expect(Buffer.byteLength(identifier, "utf8"), identifier).toBeLessThanOrEqual(63);
+    }
+    const truncated = identifiers.map((identifier) => Buffer.from(identifier, "utf8").subarray(0, 63).toString("utf8"));
+    expect(new Set(truncated).size).toBe(identifiers.length);
+    expect(identifiers).toEqual(expect.arrayContaining([
+      "rl8c_sp_transitions_validation_protocol_fk",
+      "rl8c_sp_transitions_validation_assessment_protocol_fk",
+      "rl8c_sp_transitions_validation_assessment_result_fk",
+      "rl8c_sp_transitions_robustness_protocol_fk",
+      "rl8c_sp_transitions_cross_chain_target_key",
+      "rl8c_validation_assessment_protocols_authority_hash_key",
+      "rl8c_experiment_comparison_protocols_authority_hash_key",
+    ]));
+    for (const staleIdentifier of [
+      "research_scientific_promotion_transitions_validation_protocol_fk",
+      "research_scientific_promotion_transitions_validation_assessment_protocol_fk",
+      "research_scientific_promotion_transitions_validation_assessment_result_fk",
+      "research_scientific_promotion_transitions_robustness_protocol_fk",
+      "research_scientific_promotion_transitions_rl8c_cross_chain_target_key",
+      "research_validation_assessment_protocols_rl8c_authority_hash_key",
+      "research_experiment_comparison_protocols_rl8c_authority_hash_key",
+    ]) expect(identifiers).not.toContain(staleIdentifier);
   });
 
   it("keeps protocol storage forward-compatible while preserving current protocol goldens outside table constants", () => {
