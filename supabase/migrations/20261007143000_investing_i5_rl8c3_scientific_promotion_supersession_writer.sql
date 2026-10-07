@@ -233,15 +233,155 @@ begin
 end;
 $$;
 
+create or replace function investing.reconstruct_research_scientific_promotion_chain_v1(
+  p_root_transition_identity_id uuid
+) returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = pg_catalog
+as $$
+declare
+  v_auth record;
+  v_current record;
+  v_successor record;
+  v_successor_count integer;
+  v_successor_root record;
+  v_successor_protocol record;
+  v_visited uuid[] := array[]::uuid[];
+  v_traversal jsonb := '[]'::jsonb;
+  v_cross_chain_hops jsonb := '[]'::jsonb;
+  v_depth integer := 0;
+  v_operation text;
+begin
+  v_operation := current_setting('syntrake.investing.operation', true);
+  if v_operation not in (
+    'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1',
+    'RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',
+    'RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1'
+  ) then
+    raise exception 'FORBIDDEN_OPERATION';
+  end if;
+  select * into v_auth from investing.rl8c_assert_writer_authority_v1(v_operation);
+
+  select * into v_current
+  from investing.research_scientific_promotion_transitions_scientific_identities
+  where research_scientific_promotion_transition_identity_id = p_root_transition_identity_id
+    and tenant_id = v_auth.tenant_id
+    and principal_id = v_auth.principal_id
+    and tenant_membership_id = v_auth.tenant_membership_id
+    and research_investigation_id = v_auth.research_investigation_id;
+  if v_current.research_scientific_promotion_transition_identity_id is null then
+    raise exception 'AUTHORITY_FAILURE';
+  end if;
+  if v_current.predecessor_transition_identity_id is not null or v_current.predecessor_state <> 'DRAFT_RESEARCH' or v_current.resulting_state <> 'EXECUTED' then
+    return jsonb_build_object('status','CORRUPT_HISTORY','reason','ROOT_INVALID','rootTransitionIdentityId',p_root_transition_identity_id);
+  end if;
+
+  loop
+    v_depth := v_depth + 1;
+    if v_depth > 128 then
+      return jsonb_build_object('status','CORRUPT_HISTORY','reason','RECONSTRUCTION_DEPTH_LIMIT','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+    end if;
+    if v_current.research_scientific_promotion_transition_identity_id = any(v_visited) then
+      return jsonb_build_object('status','CORRUPT_HISTORY','reason','CYCLE','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+    end if;
+    v_visited := v_visited || v_current.research_scientific_promotion_transition_identity_id;
+    v_traversal := v_traversal || jsonb_build_array(jsonb_build_object(
+      'transitionIdentityId', v_current.research_scientific_promotion_transition_identity_id,
+      'transitionHashHex', v_current.transition_hash_hex,
+      'predecessorState', v_current.predecessor_state,
+      'resultingState', v_current.resulting_state,
+      'protocolHashHex', v_current.protocol_hash_hex
+    ));
+
+    select count(*) into v_successor_count
+    from investing.research_scientific_promotion_transitions_scientific_identities
+    where predecessor_transition_identity_id = v_current.research_scientific_promotion_transition_identity_id;
+    if v_successor_count > 1 then
+      return jsonb_build_object('status','CORRUPT_HISTORY','reason','MULTIPLE_SUCCESSORS','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+    end if;
+
+    if v_successor_count = 1 then
+      select * into v_successor
+      from investing.research_scientific_promotion_transitions_scientific_identities
+      where predecessor_transition_identity_id = v_current.research_scientific_promotion_transition_identity_id;
+      v_current := v_successor;
+      continue;
+    end if;
+
+    if v_current.resulting_state in ('VALIDATION_PASSED','VALIDATION_FAILED') then
+      return jsonb_build_object('status','CORRUPT_HISTORY','reason','ORPHAN_INTERMEDIATE_LEAF','rootTransitionIdentityId',p_root_transition_identity_id,'leafTransitionIdentityId',v_current.research_scientific_promotion_transition_identity_id,'leafTransitionHashHex',v_current.transition_hash_hex,'leafState',v_current.resulting_state,'traversal',v_traversal);
+    end if;
+
+    if v_current.resulting_state = 'SUPERSEDED' then
+      if v_current.superseded_by_successor_protocol_identity_id is null or v_current.superseded_by_successor_root_transition_identity_id is null then
+        return jsonb_build_object('status','CORRUPT_HISTORY','reason','DANGLING_SUPERSESSION','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+      end if;
+      select * into v_successor_protocol
+      from investing.research_scientific_promotion_protocols_scientific_identities
+      where research_scientific_promotion_protocol_identity_id = v_current.superseded_by_successor_protocol_identity_id
+        and hash_hex = v_current.superseded_by_successor_protocol_hash_hex;
+      if v_successor_protocol.research_scientific_promotion_protocol_identity_id is null or v_successor_protocol.hash_hex = v_current.protocol_hash_hex then
+        return jsonb_build_object('status','CORRUPT_HISTORY','reason','WRONG_SUCCESSOR_PROTOCOL','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+      end if;
+      select * into v_successor_root
+      from investing.research_scientific_promotion_transitions_scientific_identities
+      where research_scientific_promotion_transition_identity_id = v_current.superseded_by_successor_root_transition_identity_id
+        and transition_hash_hex = v_current.superseded_by_successor_root_transition_hash_hex
+        and tenant_id = v_current.tenant_id
+        and research_investigation_id = v_current.research_investigation_id
+        and research_scientific_promotion_protocol_identity_id = v_successor_protocol.research_scientific_promotion_protocol_identity_id
+        and protocol_hash_hex = v_successor_protocol.hash_hex
+        and subject_experiment_hash_hex = v_current.subject_experiment_hash_hex
+        and subject_experiment_parameters_hash_hex = v_current.subject_experiment_parameters_hash_hex
+        and subject_research_ir_hash_hex = v_current.subject_research_ir_hash_hex;
+      if v_successor_root.research_scientific_promotion_transition_identity_id is null
+        or v_successor_root.predecessor_transition_identity_id is not null
+        or v_successor_root.predecessor_state <> 'DRAFT_RESEARCH'
+        or v_successor_root.resulting_state <> 'EXECUTED'
+      then
+        return jsonb_build_object('status','CORRUPT_HISTORY','reason','WRONG_SUCCESSOR_ROOT','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+      end if;
+      if v_successor_root.research_scientific_promotion_transition_identity_id = any(v_visited) then
+        return jsonb_build_object('status','CORRUPT_HISTORY','reason','CYCLE','rootTransitionIdentityId',p_root_transition_identity_id,'traversal',v_traversal);
+      end if;
+      v_cross_chain_hops := v_cross_chain_hops || jsonb_build_array(jsonb_build_object(
+        'fromSupersededTransitionIdentityId', v_current.research_scientific_promotion_transition_identity_id,
+        'fromProtocolHashHex', v_current.protocol_hash_hex,
+        'successorProtocolHashHex', v_successor_protocol.hash_hex,
+        'successorRootTransitionIdentityId', v_successor_root.research_scientific_promotion_transition_identity_id,
+        'successorRootTransitionHashHex', v_successor_root.transition_hash_hex
+      ));
+      v_current := v_successor_root;
+      continue;
+    end if;
+
+    return jsonb_build_object(
+      'status','OK',
+      'rootTransitionIdentityId',p_root_transition_identity_id,
+      'activeLeafTransitionIdentityId',v_current.research_scientific_promotion_transition_identity_id,
+      'activeLeafTransitionHashHex',v_current.transition_hash_hex,
+      'activeLeafState',v_current.resulting_state,
+      'traversal',v_traversal,
+      'crossChainHops',v_cross_chain_hops
+    );
+  end loop;
+end;
+$$;
+
 revoke all on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) from public, anon, authenticated, service_role;
+revoke all on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) from public, anon, authenticated, service_role;
 grant execute on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) to investing_rl8_writer;
 
 reset role;
 alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) owner to investing_rl8_writer;
+alter function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) owner to investing_rl8_writer;
 
 set local role investing_rl8_writer;
 grant execute on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) to investing_app;
+grant execute on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) to investing_app;
 reset role;
 
 do $$
@@ -251,8 +391,13 @@ begin
     where n.nspname='investing' and p.proname='persist_research_scientific_promotion_supersession_v1'
       and p.prosecdef and p.proconfig @> array['search_path=pg_catalog'] and pg_catalog.pg_get_userbyid(p.proowner)='investing_rl8_writer'
   ) then raise exception 'RL-8C3 postcondition failed: supersession writer surface mismatch'; end if;
-  if not has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') then raise exception 'RL-8C3 postcondition failed: investing_app execute missing'; end if;
-  if has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') or has_function_privilege('anon','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') or has_function_privilege('authenticated','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') then raise exception 'RL-8C3 postcondition failed: forbidden execute grant exists'; end if;
+  if not exists (
+    select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname='investing' and p.proname='reconstruct_research_scientific_promotion_chain_v1'
+      and p.prosecdef and p.proconfig @> array['search_path=pg_catalog'] and pg_catalog.pg_get_userbyid(p.proowner)='investing_rl8_writer'
+  ) then raise exception 'RL-8C3 postcondition failed: reconstruction helper surface mismatch'; end if;
+  if not has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') or not has_function_privilege('investing_app','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') then raise exception 'RL-8C3 postcondition failed: investing_app execute missing'; end if;
+  if has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') or has_function_privilege('anon','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') or has_function_privilege('authenticated','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') or has_function_privilege('service_role','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') or has_function_privilege('anon','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') or has_function_privilege('authenticated','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') then raise exception 'RL-8C3 postcondition failed: forbidden execute grant exists'; end if;
   if exists (select 1 from pg_catalog.pg_roles where rolname='investing_rl8_writer' and (rolcanlogin or rolinherit or rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls)) then raise exception 'RL-8C3 postcondition failed: writer role drift'; end if;
   if pg_catalog.pg_has_role('investing_app','investing_rl8_writer','member') or pg_catalog.pg_has_role('service_role','investing_rl8_writer','member') then raise exception 'RL-8C3 postcondition failed: forbidden role membership'; end if;
   if exists (select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='investing' and c.relname in ('research_scientific_promotion_protocols_scientific_identities','research_scientific_promotion_transitions_scientific_identities') and (not c.relrowsecurity or not c.relforcerowsecurity)) then raise exception 'RL-8C3 postcondition failed: RLS/FORCE RLS drift'; end if;

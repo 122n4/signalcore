@@ -29,6 +29,7 @@ async function applyMigration(pool: Pool, name: string): Promise<void> {
 describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
   it("creates exactly the narrow supersession writer surface", () => {
     expect(normalized).toContain("create or replace function investing.persist_research_scientific_promotion_supersession_v1(");
+    expect(normalized).toContain("create or replace function investing.reconstruct_research_scientific_promotion_chain_v1(");
     expect(normalized).toContain("p_predecessor_transition_identity_id uuid");
     expect(normalized).toContain("p_transition_hash_hex text");
     expect(normalized).toContain("p_canonical_payload jsonb");
@@ -36,6 +37,7 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
     expect(normalized).toContain("set search_path = pg_catalog");
     expect(normalized).toContain("alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) owner to investing_rl8_writer");
     expect(normalized).toContain("grant execute on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) to investing_app");
+    expect(normalized).toContain("grant execute on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) to investing_app");
     expect(normalized).toContain("revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) from public, anon, authenticated, service_role");
   });
 
@@ -50,6 +52,11 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
     expect(normalized).not.toContain("paper");
     expect(normalized).not.toContain("live");
     expect(normalized).not.toContain("recommendation");
+    expect(normalized).not.toContain("max(created_at");
+    expect(normalized).not.toContain("order by created_at");
+    expect(normalized).not.toContain("limit 1");
+    expect(normalized).not.toContain("latest");
+    expect(normalized).not.toContain("current pointer");
     expect(normalized).toContain("successorprotocol");
     expect(normalized.match(/syntrake:scientific_promotion_transition:v1/g)?.length ?? 0).toBeGreaterThan(0);
     expect(normalized).not.toContain("syntrake:scientific_promotion_supersession");
@@ -73,6 +80,11 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
       "p_canonical_payload->'evidenceSnapshot' <> v_predecessor.canonical_payload->'evidenceSnapshot'".toLowerCase(),
       "p_canonical_payload->'gateOutcomes' <> v_predecessor.canonical_payload->'gateOutcomes'".toLowerCase(),
       "where predecessor_transition_identity_id = v_predecessor.research_scientific_promotion_transition_identity_id",
+      "reconstruct_research_scientific_promotion_chain_v1",
+      "MULTIPLE_SUCCESSORS",
+      "ORPHAN_INTERMEDIATE_LEAF",
+      "DANGLING_SUPERSESSION",
+      "crossChainHops",
     ]) expect(normalized).toContain(required.toLowerCase());
   });
 });
@@ -96,22 +108,28 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
       await pool.query("create schema extensions authorization postgres");
       await pool.query("create extension if not exists pgcrypto with schema extensions");
       for (const migration of replayMigrations) await applyMigration(pool, migration);
-      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean }>(`
+      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean }>(`
         select
           has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as app_execute,
           has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as service_execute,
+          has_function_privilege('investing_app','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') as reconstruct_app_execute,
+          has_function_privilege('service_role','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') as reconstruct_service_execute,
           pg_catalog.pg_get_userbyid(p.proowner) as owner_name,
           p.prosecdef,
           p.proconfig @> array['search_path=pg_catalog'] as search_path_safe,
+          rp.owner_name as reconstruct_owner_name,
+          rp.prosecdef as reconstruct_prosecdef,
+          rp.search_path_safe as reconstruct_search_path_safe,
           c.relforcerowsecurity as force_rls,
           exists (select 1 from pg_indexes where schemaname='investing' and indexname='research_scientific_promotion_one_successor_per_predecessor') as successor_index
         from pg_proc p
         join pg_namespace n on n.oid = p.pronamespace
+        join lateral (select pg_catalog.pg_get_userbyid(r.proowner) as owner_name, r.prosecdef, r.proconfig @> array['search_path=pg_catalog'] as search_path_safe from pg_proc r join pg_namespace rn on rn.oid = r.pronamespace where rn.nspname='investing' and r.proname='reconstruct_research_scientific_promotion_chain_v1') rp on true
         join pg_class c on c.relname = 'research_scientific_promotion_transitions_scientific_identities'
         join pg_namespace cn on cn.oid = c.relnamespace and cn.nspname = 'investing'
         where n.nspname = 'investing' and p.proname = 'persist_research_scientific_promotion_supersession_v1'
       `);
-      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true });
+      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true });
     } finally {
       await pool.end();
     }
