@@ -343,19 +343,41 @@ as $$
 declare
   v_id uuid;
   v_existing record;
+  v_auth record;
+  v_computed_hash text;
+  v_subject_experiment_hash text;
+  v_subject_experiment_parameters_hash text;
+  v_subject_research_ir_hash text;
 begin
+  v_computed_hash := investing.rl8c_sha256_hex_v1('SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1', p_canonical_payload);
+  if v_computed_hash <> p_transition_hash_hex then raise exception 'MALFORMED_HASHREF'; end if;
   if p_canonical_payload->>'predecessorState' <> 'DRAFT_RESEARCH' or p_canonical_payload->>'resultingState' <> 'EXECUTED' or p_canonical_payload->'predecessorTransition' <> 'null'::jsonb then
     raise exception 'MALFORMED_TRANSITION';
   end if;
-  select research_scientific_promotion_transition_identity_id, canonical_payload into v_existing
+  if not investing.rl8c_hashref_equals_current_protocol_v1(p_canonical_payload) then raise exception 'INCOMPATIBLE_PROTOCOL_VERSION'; end if;
+
+  select * into v_auth from investing.rl8c_assert_writer_authority_v1('RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1');
+  v_subject_experiment_hash := investing.rl8c_required_hash_v1(p_canonical_payload, array['subject','subjectExperiment','hashHex']);
+  v_subject_experiment_parameters_hash := investing.rl8c_required_hash_v1(p_canonical_payload, array['subject','subjectExperimentParameters','hashHex']);
+  v_subject_research_ir_hash := investing.rl8c_required_hash_v1(p_canonical_payload, array['subject','subjectResearchIr','hashHex']);
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_auth.tenant_id::text || ':' || v_auth.research_investigation_id::text || ':122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C:' || v_subject_experiment_hash || ':' || v_subject_experiment_parameters_hash || ':' || v_subject_research_ir_hash, 0));
+
+  select research_scientific_promotion_transition_identity_id, transition_hash_hex, protocol_hash_hex, research_scientific_promotion_protocol_identity_id, canonical_payload into v_existing
   from investing.research_scientific_promotion_transitions_scientific_identities
-  where predecessor_transition_identity_id is null
+  where tenant_id = v_auth.tenant_id
+    and research_investigation_id = v_auth.research_investigation_id
+    and predecessor_transition_identity_id is null
     and protocol_hash_hex = '122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C'
-    and subject_experiment_hash_hex = investing.rl8c_required_hash_v1(p_canonical_payload, array['subject','subjectExperiment','hashHex'])
-    and subject_experiment_parameters_hash_hex = investing.rl8c_required_hash_v1(p_canonical_payload, array['subject','subjectExperimentParameters','hashHex'])
-    and subject_research_ir_hash_hex = investing.rl8c_required_hash_v1(p_canonical_payload, array['subject','subjectResearchIr','hashHex']);
+    and subject_experiment_hash_hex = v_subject_experiment_hash
+    and subject_experiment_parameters_hash_hex = v_subject_experiment_parameters_hash
+    and subject_research_ir_hash_hex = v_subject_research_ir_hash;
   if v_existing.research_scientific_promotion_transition_identity_id is not null then
-    if v_existing.canonical_payload = p_canonical_payload then
+    if v_existing.canonical_payload = p_canonical_payload
+      and v_existing.transition_hash_hex = p_transition_hash_hex
+      and v_existing.protocol_hash_hex = '122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C'
+      and v_computed_hash = p_transition_hash_hex
+    then
       return jsonb_build_object('status','REUSED_IDENTICAL','researchScientificPromotionTransitionIdentityId',v_existing.research_scientific_promotion_transition_identity_id,'transitionHashHex',p_transition_hash_hex);
     end if;
     return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
@@ -383,8 +405,22 @@ declare
   v_stage_state text;
   v_closure_state text;
   v_existing_successor record;
+  v_existing_closure record;
+  v_stage_computed_hash text;
+  v_closure_computed_hash text;
 begin
   perform 1 from investing.rl8c_assert_writer_authority_v1('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1');
+  v_stage_computed_hash := investing.rl8c_sha256_hex_v1('SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1', p_stage_a_canonical_payload);
+  if v_stage_computed_hash <> p_stage_a_transition_hash_hex then raise exception 'MALFORMED_HASHREF'; end if;
+  if p_closure_canonical_payload is not null then
+    if p_closure_transition_hash_hex is null then raise exception 'MALFORMED_HASHREF'; end if;
+    v_closure_computed_hash := investing.rl8c_sha256_hex_v1('SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1', p_closure_canonical_payload);
+  elsif p_closure_transition_hash_hex is not null then
+    raise exception 'MALFORMED_HASHREF';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('RL8C2_PLAN:' || p_predecessor_transition_identity_id::text, 0));
+
   select * into v_predecessor
   from investing.research_scientific_promotion_transitions_scientific_identities
   where research_scientific_promotion_transition_identity_id = p_predecessor_transition_identity_id;
@@ -396,12 +432,52 @@ begin
     raise exception 'WRONG_LINEAGE';
   end if;
 
-  select research_scientific_promotion_transition_identity_id, transition_hash_hex, canonical_payload into v_existing_successor
+  select research_scientific_promotion_transition_identity_id, transition_hash_hex, canonical_payload, resulting_state into v_existing_successor
   from investing.research_scientific_promotion_transitions_scientific_identities
   where predecessor_transition_identity_id = p_predecessor_transition_identity_id;
   if v_existing_successor.research_scientific_promotion_transition_identity_id is not null then
-    if v_existing_successor.transition_hash_hex = p_stage_a_transition_hash_hex and v_existing_successor.canonical_payload = p_stage_a_canonical_payload then
-      return jsonb_build_object('status','REUSED_IDENTICAL','stageATransitionIdentityId',v_existing_successor.research_scientific_promotion_transition_identity_id);
+    if not (v_existing_successor.transition_hash_hex = p_stage_a_transition_hash_hex and v_existing_successor.canonical_payload = p_stage_a_canonical_payload and v_stage_computed_hash = p_stage_a_transition_hash_hex) then
+      return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
+    end if;
+    v_stage_state := v_existing_successor.resulting_state;
+    if v_stage_state = 'INSUFFICIENT_EVIDENCE' then
+      if p_closure_transition_hash_hex is null and p_closure_canonical_payload is null then
+        return jsonb_build_object('status','REUSED_IDENTICAL','stageATransitionIdentityId',v_existing_successor.research_scientific_promotion_transition_identity_id,'closureTransitionIdentityId',null);
+      end if;
+      return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
+    end if;
+
+    select research_scientific_promotion_transition_identity_id, transition_hash_hex, canonical_payload, resulting_state, predecessor_transition_identity_id, predecessor_transition_hash_hex, rejected_transition_identity_id, rejected_transition_hash_hex into v_existing_closure
+    from investing.research_scientific_promotion_transitions_scientific_identities
+    where predecessor_transition_identity_id = v_existing_successor.research_scientific_promotion_transition_identity_id;
+    if p_closure_transition_hash_hex is null or p_closure_canonical_payload is null or v_existing_closure.research_scientific_promotion_transition_identity_id is null then
+      return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
+    end if;
+    if v_stage_state = 'VALIDATION_PASSED' then
+      if v_existing_closure.resulting_state = 'PROMOTION_ELIGIBLE'
+        and v_existing_closure.predecessor_transition_identity_id = v_existing_successor.research_scientific_promotion_transition_identity_id
+        and v_existing_closure.predecessor_transition_hash_hex = v_existing_successor.transition_hash_hex
+        and v_existing_closure.transition_hash_hex = p_closure_transition_hash_hex
+        and v_existing_closure.canonical_payload = p_closure_canonical_payload
+        and v_closure_computed_hash = p_closure_transition_hash_hex
+      then
+        return jsonb_build_object('status','REUSED_IDENTICAL','stageATransitionIdentityId',v_existing_successor.research_scientific_promotion_transition_identity_id,'closureTransitionIdentityId',v_existing_closure.research_scientific_promotion_transition_identity_id);
+      end if;
+      return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
+    end if;
+    if v_stage_state = 'VALIDATION_FAILED' then
+      if v_existing_closure.resulting_state = 'REJECTED'
+        and v_existing_closure.predecessor_transition_identity_id = v_existing_successor.research_scientific_promotion_transition_identity_id
+        and v_existing_closure.predecessor_transition_hash_hex = v_existing_successor.transition_hash_hex
+        and v_existing_closure.rejected_transition_identity_id = v_existing_successor.research_scientific_promotion_transition_identity_id
+        and v_existing_closure.rejected_transition_hash_hex = v_existing_successor.transition_hash_hex
+        and v_existing_closure.transition_hash_hex = p_closure_transition_hash_hex
+        and v_existing_closure.canonical_payload = p_closure_canonical_payload
+        and v_closure_computed_hash = p_closure_transition_hash_hex
+      then
+        return jsonb_build_object('status','REUSED_IDENTICAL','stageATransitionIdentityId',v_existing_successor.research_scientific_promotion_transition_identity_id,'closureTransitionIdentityId',v_existing_closure.research_scientific_promotion_transition_identity_id);
+      end if;
+      return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
     end if;
     return jsonb_build_object('status','DIVERGENT_EXISTING_IDENTITY');
   end if;
@@ -415,6 +491,7 @@ begin
   end if;
 
   if p_closure_transition_hash_hex is null or p_closure_canonical_payload is null then raise exception 'MALFORMED_TRANSITION'; end if;
+  if v_closure_computed_hash <> p_closure_transition_hash_hex then raise exception 'MALFORMED_HASHREF'; end if;
   v_closure_state := p_closure_canonical_payload->>'resultingState';
   if (v_stage_state = 'VALIDATION_PASSED' and v_closure_state <> 'PROMOTION_ELIGIBLE') or (v_stage_state = 'VALIDATION_FAILED' and v_closure_state <> 'REJECTED') then
     raise exception 'FORBIDDEN_TRANSITION';
