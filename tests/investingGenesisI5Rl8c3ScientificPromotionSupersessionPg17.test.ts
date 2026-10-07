@@ -73,6 +73,9 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
       "WRONG_SUCCESSOR_PROTOCOL",
       "WRONG_SUCCESSOR_ROOT",
       "SUPERSESSION_CYCLE",
+      "RL8C_PROTOCOL:",
+      "RL8C_ROOT:",
+      "RL8C_SUCCESSOR:",
       "RL8C_SUPERSEDE:",
       "v_predecessor.resulting_state not in ('EXECUTED','INSUFFICIENT_EVIDENCE','PROMOTION_ELIGIBLE','REJECTED')".toLowerCase(),
       "v_successor_protocol_hash = v_predecessor.protocol_hash_hex",
@@ -85,6 +88,32 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
       "ORPHAN_INTERMEDIATE_LEAF",
       "DANGLING_SUPERSESSION",
       "crossChainHops",
+    ]) expect(normalized).toContain(required.toLowerCase());
+
+    const protocolLock = normalized.indexOf("rl8c_protocol:");
+    const rootLock = normalized.indexOf("rl8c_root:");
+    const successorLock = normalized.indexOf("rl8c_successor:");
+    const supersedeLock = normalized.indexOf("rl8c_supersede:");
+    expect(protocolLock).toBeGreaterThanOrEqual(0);
+    expect(rootLock).toBeGreaterThan(protocolLock);
+    expect(successorLock).toBeGreaterThan(rootLock);
+    expect(supersedeLock).toBeGreaterThan(successorLock);
+  });
+
+  it("installs independent database supersession integrity enforcement", () => {
+    for (const required of [
+      "create or replace function investing.rl8c_validate_supersession_integrity_v1()",
+      "create constraint trigger research_scientific_promotion_supersession_integrity",
+      "deferrable initially deferred",
+      "for each row execute function investing.rl8c_validate_supersession_integrity_v1()",
+      "alter function investing.rl8c_validate_supersession_integrity_v1() owner to investing_rl8_writer",
+      "revoke all on function investing.rl8c_validate_supersession_integrity_v1() from public, anon, authenticated, service_role, investing_app",
+      "RL-8C3 supersession integrity violation: canonical payload mismatch",
+      "RL-8C3 supersession integrity violation: successor root missing",
+      "RL-8C3 supersession integrity violation: same protocol",
+      "RL-8C3 supersession integrity violation: forbidden predecessor state",
+      "RL-8C3 postcondition failed: supersession integrity trigger missing",
+      "RL-8C3 postcondition failed: supersession trigger authority mismatch",
     ]) expect(normalized).toContain(required.toLowerCase());
   });
 });
@@ -108,7 +137,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
       await pool.query("create schema extensions authorization postgres");
       await pool.query("create extension if not exists pgcrypto with schema extensions");
       for (const migration of replayMigrations) await applyMigration(pool, migration);
-      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean }>(`
+      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean; supersession_trigger: boolean; supersession_trigger_deferrable: boolean; supersession_trigger_initially_deferred: boolean; trigger_owner_name: string; trigger_prosecdef: boolean; trigger_search_path_safe: boolean }>(`
         select
           has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as app_execute,
           has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as service_execute,
@@ -121,15 +150,22 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
           rp.prosecdef as reconstruct_prosecdef,
           rp.search_path_safe as reconstruct_search_path_safe,
           c.relforcerowsecurity as force_rls,
-          exists (select 1 from pg_indexes where schemaname='investing' and indexname='research_scientific_promotion_one_successor_per_predecessor') as successor_index
+          exists (select 1 from pg_indexes where schemaname='investing' and indexname='research_scientific_promotion_one_successor_per_predecessor') as successor_index,
+          exists (select 1 from pg_trigger t join pg_class tc on tc.oid = t.tgrelid join pg_namespace tn on tn.oid = tc.relnamespace where tn.nspname='investing' and tc.relname='research_scientific_promotion_transitions_scientific_identities' and t.tgname='research_scientific_promotion_supersession_integrity') as supersession_trigger,
+          exists (select 1 from pg_trigger t join pg_class tc on tc.oid = t.tgrelid join pg_namespace tn on tn.oid = tc.relnamespace where tn.nspname='investing' and tc.relname='research_scientific_promotion_transitions_scientific_identities' and t.tgname='research_scientific_promotion_supersession_integrity' and t.tgdeferrable) as supersession_trigger_deferrable,
+          exists (select 1 from pg_trigger t join pg_class tc on tc.oid = t.tgrelid join pg_namespace tn on tn.oid = tc.relnamespace where tn.nspname='investing' and tc.relname='research_scientific_promotion_transitions_scientific_identities' and t.tgname='research_scientific_promotion_supersession_integrity' and t.tginitdeferred) as supersession_trigger_initially_deferred,
+          tp.owner_name as trigger_owner_name,
+          tp.prosecdef as trigger_prosecdef,
+          tp.search_path_safe as trigger_search_path_safe
         from pg_proc p
         join pg_namespace n on n.oid = p.pronamespace
         join lateral (select pg_catalog.pg_get_userbyid(r.proowner) as owner_name, r.prosecdef, r.proconfig @> array['search_path=pg_catalog'] as search_path_safe from pg_proc r join pg_namespace rn on rn.oid = r.pronamespace where rn.nspname='investing' and r.proname='reconstruct_research_scientific_promotion_chain_v1') rp on true
+        join lateral (select pg_catalog.pg_get_userbyid(t.proowner) as owner_name, t.prosecdef, t.proconfig @> array['search_path=pg_catalog'] as search_path_safe from pg_proc t join pg_namespace tn on tn.oid = t.pronamespace where tn.nspname='investing' and t.proname='rl8c_validate_supersession_integrity_v1') tp on true
         join pg_class c on c.relname = 'research_scientific_promotion_transitions_scientific_identities'
         join pg_namespace cn on cn.oid = c.relnamespace and cn.nspname = 'investing'
         where n.nspname = 'investing' and p.proname = 'persist_research_scientific_promotion_supersession_v1'
       `);
-      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true });
+      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true, supersession_trigger: true, supersession_trigger_deferrable: true, supersession_trigger_initially_deferred: true, trigger_owner_name: "investing_rl8_writer", trigger_prosecdef: true, trigger_search_path_safe: true });
     } finally {
       await pool.end();
     }

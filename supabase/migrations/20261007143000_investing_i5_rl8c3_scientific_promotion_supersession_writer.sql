@@ -122,7 +122,6 @@ begin
   v_computed_hash := investing.rl8c_sha256_hex_v1('SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1', p_canonical_payload);
   if v_computed_hash <> p_transition_hash_hex then raise exception 'MALFORMED_HASHREF'; end if;
 
-  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('RL8C_SUPERSEDE:' || p_predecessor_transition_identity_id::text, 0));
 
   select * into v_predecessor
   from investing.research_scientific_promotion_transitions_scientific_identities
@@ -133,6 +132,9 @@ begin
     and tenant_membership_id = v_auth.tenant_membership_id;
   if v_predecessor.research_scientific_promotion_transition_identity_id is null then raise exception 'WRONG_LINEAGE'; end if;
   if v_predecessor.resulting_state not in ('EXECUTED','INSUFFICIENT_EVIDENCE','PROMOTION_ELIGIBLE','REJECTED') then raise exception 'FORBIDDEN_TRANSITION'; end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('RL8C_PROTOCOL:' || v_predecessor.research_scientific_promotion_protocol_identity_id::text, 0));
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('RL8C_ROOT:' || v_predecessor.tenant_id::text || ':' || v_predecessor.research_investigation_id::text || ':' || v_predecessor.protocol_hash_hex || ':' || v_predecessor.subject_experiment_hash_hex || ':' || v_predecessor.subject_experiment_parameters_hash_hex || ':' || v_predecessor.subject_research_ir_hash_hex, 0));
 
   if p_canonical_payload->>'predecessorState' <> v_predecessor.resulting_state
     or p_canonical_payload->>'resultingState' <> 'SUPERSEDED'
@@ -173,6 +175,8 @@ begin
   if v_successor_root.research_scientific_promotion_transition_identity_id is null then raise exception 'WRONG_SUCCESSOR_ROOT'; end if;
   if v_successor_root.predecessor_transition_identity_id is not null or v_successor_root.predecessor_state <> 'DRAFT_RESEARCH' or v_successor_root.resulting_state <> 'EXECUTED' then raise exception 'WRONG_SUCCESSOR_ROOT'; end if;
   if v_successor_root.research_scientific_promotion_transition_identity_id = v_predecessor.research_scientific_promotion_transition_identity_id then raise exception 'FORBIDDEN_TRANSITION'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('RL8C_SUCCESSOR:' || v_successor_protocol.research_scientific_promotion_protocol_identity_id::text || ':' || v_successor_root.research_scientific_promotion_transition_identity_id::text, 0));
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('RL8C_SUPERSEDE:' || v_predecessor.research_scientific_promotion_transition_identity_id::text, 0));
   if investing.rl8c_supersession_cycle_reaches_v1(v_successor_root.research_scientific_promotion_transition_identity_id, v_predecessor.research_scientific_promotion_transition_identity_id) then raise exception 'SUPERSESSION_CYCLE'; end if;
 
   select research_scientific_promotion_transition_identity_id, transition_hash_hex, canonical_payload into v_existing_successor
@@ -232,6 +236,78 @@ begin
   return jsonb_build_object('status','CREATED','researchScientificPromotionTransitionIdentityId',v_transition_id,'transitionHashHex',p_transition_hash_hex);
 end;
 $$;
+
+create or replace function investing.rl8c_validate_supersession_integrity_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+declare
+  v_predecessor record;
+  v_successor_protocol record;
+  v_successor_root record;
+begin
+  if new.resulting_state <> 'SUPERSEDED' then
+    return null;
+  end if;
+
+  select * into v_predecessor
+  from investing.research_scientific_promotion_transitions_scientific_identities
+  where research_scientific_promotion_transition_identity_id = new.predecessor_transition_identity_id
+    and transition_hash_hex = new.predecessor_transition_hash_hex
+    and tenant_id = new.tenant_id
+    and research_investigation_id = new.research_investigation_id
+    and research_scientific_promotion_protocol_identity_id = new.research_scientific_promotion_protocol_identity_id
+    and protocol_hash_hex = new.protocol_hash_hex
+    and subject_experiment_hash_hex = new.subject_experiment_hash_hex
+    and subject_experiment_parameters_hash_hex = new.subject_experiment_parameters_hash_hex
+    and subject_research_ir_hash_hex = new.subject_research_ir_hash_hex;
+  if v_predecessor.research_scientific_promotion_transition_identity_id is null then raise exception 'RL-8C3 supersession integrity violation: predecessor missing'; end if;
+  if v_predecessor.resulting_state not in ('EXECUTED','INSUFFICIENT_EVIDENCE','PROMOTION_ELIGIBLE','REJECTED') then raise exception 'RL-8C3 supersession integrity violation: forbidden predecessor state'; end if;
+  if new.supersedes_transition_identity_id <> v_predecessor.research_scientific_promotion_transition_identity_id or new.supersedes_transition_hash_hex <> v_predecessor.transition_hash_hex then raise exception 'RL-8C3 supersession integrity violation: supersedes mismatch'; end if;
+  if new.canonical_payload->'predecessorTransition'->>'hashHex' <> v_predecessor.transition_hash_hex
+    or new.canonical_payload->'supersedes'->>'hashHex' <> v_predecessor.transition_hash_hex
+    or new.canonical_payload->'evidenceSnapshot' <> v_predecessor.canonical_payload->'evidenceSnapshot'
+    or new.canonical_payload->'gateOutcomes' <> v_predecessor.canonical_payload->'gateOutcomes'
+    or new.canonical_payload->'transitionReasons' <> '["SUPERSEDED_EVIDENCE"]'::jsonb
+    or new.canonical_payload->'rejectedTransition' <> 'null'::jsonb
+    or new.canonical_payload->'supersededByChain' is null
+    or new.canonical_payload->'supersededByChain' = 'null'::jsonb
+  then
+    raise exception 'RL-8C3 supersession integrity violation: canonical payload mismatch';
+  end if;
+
+  select * into v_successor_protocol
+  from investing.research_scientific_promotion_protocols_scientific_identities
+  where research_scientific_promotion_protocol_identity_id = new.superseded_by_successor_protocol_identity_id
+    and hash_hex = new.superseded_by_successor_protocol_hash_hex;
+  if v_successor_protocol.research_scientific_promotion_protocol_identity_id is null then raise exception 'RL-8C3 supersession integrity violation: successor protocol missing'; end if;
+  if v_successor_protocol.hash_hex = new.protocol_hash_hex then raise exception 'RL-8C3 supersession integrity violation: same protocol'; end if;
+
+  select * into v_successor_root
+  from investing.research_scientific_promotion_transitions_scientific_identities
+  where research_scientific_promotion_transition_identity_id = new.superseded_by_successor_root_transition_identity_id
+    and transition_hash_hex = new.superseded_by_successor_root_transition_hash_hex
+    and tenant_id = new.tenant_id
+    and research_investigation_id = new.research_investigation_id
+    and research_scientific_promotion_protocol_identity_id = v_successor_protocol.research_scientific_promotion_protocol_identity_id
+    and protocol_hash_hex = v_successor_protocol.hash_hex
+    and subject_experiment_hash_hex = new.subject_experiment_hash_hex
+    and subject_experiment_parameters_hash_hex = new.subject_experiment_parameters_hash_hex
+    and subject_research_ir_hash_hex = new.subject_research_ir_hash_hex;
+  if v_successor_root.research_scientific_promotion_transition_identity_id is null then raise exception 'RL-8C3 supersession integrity violation: successor root missing'; end if;
+  if v_successor_root.predecessor_transition_identity_id is not null or v_successor_root.predecessor_state <> 'DRAFT_RESEARCH' or v_successor_root.resulting_state <> 'EXECUTED' then raise exception 'RL-8C3 supersession integrity violation: successor root shape'; end if;
+  if v_successor_root.research_scientific_promotion_transition_identity_id in (new.research_scientific_promotion_transition_identity_id, v_predecessor.research_scientific_promotion_transition_identity_id) then raise exception 'RL-8C3 supersession integrity violation: self-reference'; end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists research_scientific_promotion_supersession_integrity on investing.research_scientific_promotion_transitions_scientific_identities;
+create constraint trigger research_scientific_promotion_supersession_integrity
+after insert on investing.research_scientific_promotion_transitions_scientific_identities
+deferrable initially deferred
+for each row execute function investing.rl8c_validate_supersession_integrity_v1();
 
 create or replace function investing.reconstruct_research_scientific_promotion_chain_v1(
   p_root_transition_identity_id uuid
@@ -370,12 +446,14 @@ begin
 end;
 $$;
 
+revoke all on function investing.rl8c_validate_supersession_integrity_v1() from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) from public, anon, authenticated, service_role;
 grant execute on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) to investing_rl8_writer;
 
 reset role;
+alter function investing.rl8c_validate_supersession_integrity_v1() owner to investing_rl8_writer;
 alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) owner to investing_rl8_writer;
 alter function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) owner to investing_rl8_writer;
 
@@ -386,6 +464,12 @@ reset role;
 
 do $$
 begin
+  if not exists (select 1 from pg_trigger where tgname='research_scientific_promotion_supersession_integrity' and tgdeferrable and tginitdeferred) then raise exception 'RL-8C3 postcondition failed: supersession integrity trigger missing'; end if;
+  if not exists (
+    select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname='investing' and p.proname='rl8c_validate_supersession_integrity_v1'
+      and p.prosecdef and p.proconfig @> array['search_path=pg_catalog'] and pg_catalog.pg_get_userbyid(p.proowner)='investing_rl8_writer'
+  ) then raise exception 'RL-8C3 postcondition failed: supersession trigger authority mismatch'; end if;
   if not exists (
     select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
     where n.nspname='investing' and p.proname='persist_research_scientific_promotion_supersession_v1'
