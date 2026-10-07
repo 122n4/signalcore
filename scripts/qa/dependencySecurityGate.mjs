@@ -7,18 +7,23 @@ const SEVERITIES = new Set(["info", "low", "moderate", "high", "critical"]);
 export const KNOWN_DEV_ONLY_EXCEPTIONS = [
   {
     id: "GHSA-vfj7-8cjw-p6xm",
-    source: 1240992,
     vulnerablePackage: "braces",
-    expectedSeverity: "high",
-    expectedVulnerableRange: "<=3.0.3",
-    expectedInstalledVersion: "3.0.3",
-    expectedRootAdvisoryUrl: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+    expectedRootAdvisories: [
+      {
+        source: 1240992,
+        url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+        package: "braces",
+        dependency: "braces",
+        severity: "high",
+        range: "<=3.0.3",
+      },
+    ],
     expectedFindings: {
       "@next/eslint-plugin-next": {
         severity: "high",
         isDirect: false,
         range: ">=14.3.0-canary.0",
-        nodes: ["node_modules/@next/eslint-plugin-next"],
+        nodes: { "node_modules/@next/eslint-plugin-next": "16.2.6" },
         fixAvailable: {
           name: "eslint-config-next",
           version: "14.2.35",
@@ -31,8 +36,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: false,
         range: "*",
-        nodes: ["node_modules/braces"],
-        rootRange: "<=3.0.3",
+        nodes: { "node_modules/braces": "3.0.3" },
         fixAvailable: {
           name: "tailwindcss",
           version: "4.3.3",
@@ -45,7 +49,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: false,
         range: "2.0.0 - 3.6.0",
-        nodes: ["node_modules/chokidar"],
+        nodes: { "node_modules/chokidar": "3.6.0" },
         fixAvailable: {
           name: "tailwindcss",
           version: "4.3.3",
@@ -58,7 +62,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: true,
         range: ">=14.3.0-canary.0",
-        nodes: ["node_modules/eslint-config-next"],
+        nodes: { "node_modules/eslint-config-next": "16.2.6" },
         fixAvailable: {
           name: "eslint-config-next",
           version: "14.2.35",
@@ -71,7 +75,10 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: false,
         range: "*",
-        nodes: ["node_modules/fast-glob", "node_modules/tailwindcss/node_modules/fast-glob"],
+        nodes: {
+          "node_modules/fast-glob": "3.3.1",
+          "node_modules/tailwindcss/node_modules/fast-glob": "3.3.3",
+        },
         fixAvailable: {
           name: "eslint-config-next",
           version: "14.2.35",
@@ -84,7 +91,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: false,
         range: ">=0.2.0",
-        nodes: ["node_modules/micromatch"],
+        nodes: { "node_modules/micromatch": "4.0.8" },
         fixAvailable: {
           name: "tailwindcss",
           version: "4.3.3",
@@ -97,7 +104,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: true,
         range: "<=0.0.0-oxide-insiders.ff2c25f || 2.1.0-canary.1 - 3.4.19",
-        nodes: ["node_modules/tailwindcss"],
+        nodes: { "node_modules/tailwindcss": "3.4.17" },
         fixAvailable: {
           name: "tailwindcss",
           version: "4.3.3",
@@ -170,37 +177,114 @@ function runNpmAudit(args) {
   };
 }
 
+export function renderRawAuditEvidence(label, auditResult) {
+  return [
+    `RAW_NPM_AUDIT_${label}_BEGIN`,
+    `status=${auditResult.status ?? "UNKNOWN"}`,
+    "stdout:",
+    auditResult.stdout || "",
+    "stderr:",
+    auditResult.stderr || "",
+    `RAW_NPM_AUDIT_${label}_END`,
+  ].join("\n");
+}
+
 function collectAdvisories(vulnerability) {
   return (vulnerability.via || []).filter((entry) => entry && typeof entry === "object");
 }
 
-function installedVersionsFromLock(lockJsonText) {
-  const versions = new Map();
+function nodePackageName(nodePath) {
+  const marker = "node_modules/";
+  const index = nodePath.lastIndexOf(marker);
+  if (index === -1) return nodePath;
+  return nodePath.slice(index + marker.length);
+}
+
+function installedVersionDataFromLock(lockJsonText) {
+  const byNode = new Map();
+  const nodesByPackage = new Map();
   const lock = JSON.parse(lockJsonText);
   for (const [nodePath, pkg] of Object.entries(lock.packages || {})) {
     if (!nodePath.startsWith("node_modules/") || !pkg?.version) continue;
-    const parts = nodePath.split("node_modules/");
-    const name = parts[parts.length - 1];
-    if (!name.includes("node_modules/")) versions.set(name, pkg.version);
+    byNode.set(nodePath, pkg.version);
+    const name = nodePackageName(nodePath);
+    if (!nodesByPackage.has(name)) nodesByPackage.set(name, []);
+    nodesByPackage.get(name).push(nodePath);
   }
-  return versions;
+  return { byNode, nodesByPackage };
 }
 
-function matchingExceptionForFinding(name, vulnerability, exception) {
+function advisoryIdentity(advisory) {
+  return {
+    source: advisory.source,
+    url: advisory.url,
+    package: advisory.name,
+    dependency: advisory.dependency,
+    severity: advisory.severity,
+    range: advisory.range,
+  };
+}
+
+function sameAdvisory(actual, expected) {
+  return actual.source === expected.source &&
+    actual.url === expected.url &&
+    actual.package === expected.package &&
+    actual.dependency === expected.dependency &&
+    actual.severity === expected.severity &&
+    actual.range === expected.range;
+}
+
+function validateRootAdvisories(fullAudit, exception) {
+  const vuln = fullAudit.vulnerabilities?.[exception.vulnerablePackage];
+  if (!vuln) return { ok: false, reason: `root vulnerable package ${exception.vulnerablePackage} is absent`, advisories: [] };
+  const actual = collectAdvisories(vuln).map(advisoryIdentity);
+  const expected = exception.expectedRootAdvisories;
+  if (actual.length !== expected.length) {
+    return { ok: false, reason: `root advisory count drift: ${actual.length} !== ${expected.length}`, advisories: actual };
+  }
+  for (const expectedAdvisory of expected) {
+    if (!actual.some((entry) => sameAdvisory(entry, expectedAdvisory))) {
+      return { ok: false, reason: `root advisory identity drift: ${JSON.stringify(actual)}`, advisories: actual };
+    }
+  }
+  return { ok: true, advisories: actual };
+}
+
+function validateFindingNodes(name, expected, vulnerability, versionData) {
+  const expectedNodes = Object.keys(expected.nodes);
+  const actualAuditNodes = vulnerability.nodes || [];
+  if (!sameArray(actualAuditNodes, expectedNodes)) return { ok: false, reason: `${name} dependency node drift` };
+
+  const lockNodes = versionData.nodesByPackage.get(name) || [];
+  if (!sameArray(lockNodes, expectedNodes)) {
+    return { ok: false, reason: `${name} package-lock node set drift: expected ${expectedNodes.join(",")}; got ${lockNodes.join(",")}` };
+  }
+
+  for (const [node, expectedVersion] of Object.entries(expected.nodes)) {
+    const installedVersion = versionData.byNode.get(node);
+    if (!installedVersion) return { ok: false, reason: `${name} missing package-lock node ${node}` };
+    if (installedVersion !== expectedVersion) return { ok: false, reason: `${name} installed version drift at ${node}: ${installedVersion} !== ${expectedVersion}` };
+  }
+  return { ok: true };
+}
+
+function matchingExceptionForFinding(name, vulnerability, exception, versionData) {
   const expected = exception.expectedFindings[name];
   if (!expected) return { ok: false, reason: `finding ${name} is not registered in exception ${exception.id}` };
   if (vulnerability.severity !== expected.severity) return { ok: false, reason: `${name} severity drift: ${vulnerability.severity} !== ${expected.severity}` };
   if (!SEVERITIES.has(vulnerability.severity)) return { ok: false, reason: `${name} has unknown severity ${vulnerability.severity}` };
   if (vulnerability.isDirect !== expected.isDirect) return { ok: false, reason: `${name} directness drift` };
   if (vulnerability.range !== expected.range) return { ok: false, reason: `${name} range drift: ${vulnerability.range} !== ${expected.range}` };
-  if (!sameArray(vulnerability.nodes, expected.nodes)) return { ok: false, reason: `${name} dependency node drift` };
+  const nodeMatch = validateFindingNodes(name, expected, vulnerability, versionData);
+  if (!nodeMatch.ok) return nodeMatch;
 
   const expectedFix = expected.fixAvailable;
   const actualFix = vulnerability.fixAvailable;
-  if (actualFix === false) {
+  if (expectedFix === false || actualFix === false) {
+    if (expectedFix !== actualFix) return { ok: false, reason: `${name} fixAvailable representation drift: expected ${JSON.stringify(expectedFix)} got ${JSON.stringify(actualFix)}` };
     return { ok: true, remediation: { classification: "NON_ACTIONABLE", raw: actualFix, reason: "npm reports no fix available." } };
   }
-  if (!actualFix || typeof actualFix !== "object") {
+  if (!actualFix || typeof actualFix !== "object" || !expectedFix || typeof expectedFix !== "object") {
     return { ok: false, reason: `${name} has ambiguous fixAvailable representation` };
   }
   if (
@@ -214,19 +298,6 @@ function matchingExceptionForFinding(name, vulnerability, exception) {
     return { ok: false, reason: `${name} remediation is not classified as non-actionable` };
   }
   return { ok: true, remediation: { classification: expectedFix.classification, raw: actualFix, reason: expectedFix.reason } };
-}
-
-function rootAdvisoryMatches(fullAudit, exception, installedVersions) {
-  const vuln = fullAudit.vulnerabilities?.[exception.vulnerablePackage];
-  if (!vuln) return { ok: false, reason: `root vulnerable package ${exception.vulnerablePackage} is absent` };
-  const advisories = collectAdvisories(vuln);
-  const advisory = advisories.find((entry) => entry.url === exception.expectedRootAdvisoryUrl || entry.source === exception.source || entry.name === exception.id);
-  if (!advisory) return { ok: false, reason: `root advisory ${exception.id} is absent` };
-  if (advisory.severity !== exception.expectedSeverity) return { ok: false, reason: `root advisory severity drift: ${advisory.severity}` };
-  if (advisory.range !== exception.expectedVulnerableRange) return { ok: false, reason: `root advisory range drift: ${advisory.range}` };
-  const installed = installedVersions.get(exception.vulnerablePackage);
-  if (installed !== exception.expectedInstalledVersion) return { ok: false, reason: `installed ${exception.vulnerablePackage} drift: ${installed} !== ${exception.expectedInstalledVersion}` };
-  return { ok: true, advisory };
 }
 
 export function classifyDependencySecurity({ fullAudit, productionAudit, packageLockJsonText, fullAuditProcessOk = true, productionAuditProcessOk = true }) {
@@ -243,9 +314,9 @@ export function classifyDependencySecurity({ fullAudit, productionAudit, package
   if (typeof productionTotal !== "number" || typeof fullTotal !== "number") failures.push("missing audit metadata totals");
   if (productionTotal > 0) failures.push(`production audit has ${productionTotal} vulnerabilities`);
 
-  let installedVersions = new Map();
+  let versionData = { byNode: new Map(), nodesByPackage: new Map() };
   try {
-    installedVersions = installedVersionsFromLock(packageLockJsonText || "{}");
+    versionData = installedVersionDataFromLock(packageLockJsonText || "{}");
   } catch (error) {
     failures.push(`package-lock JSON is malformed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -278,11 +349,11 @@ export function classifyDependencySecurity({ fullAudit, productionAudit, package
     failures.push(`full audit finding set drift: expected ${expectedNames.join(", ")}; got ${actualNames.join(", ")}`);
   }
 
-  const rootMatch = rootAdvisoryMatches(fullAudit, exception, installedVersions);
+  const rootMatch = validateRootAdvisories(fullAudit, exception);
   if (!rootMatch.ok) failures.push(rootMatch.reason);
 
   for (const [name, vulnerability] of Object.entries(fullVulnerabilities)) {
-    const match = matchingExceptionForFinding(name, vulnerability, exception);
+    const match = matchingExceptionForFinding(name, vulnerability, exception, versionData);
     if (!match.ok) {
       failures.push(match.reason);
       continue;
@@ -299,14 +370,16 @@ export function classifyDependencySecurity({ fullAudit, productionAudit, package
     });
   }
 
-  const rootAdvisories = rootMatch.ok ? [{
+  const rootAdvisories = rootMatch.ok ? rootMatch.advisories.map((advisory) => ({
     id: exception.id,
-    package: exception.vulnerablePackage,
-    severity: rootMatch.advisory.severity,
-    range: rootMatch.advisory.range,
-    url: rootMatch.advisory.url,
-    installedVersion: installedVersions.get(exception.vulnerablePackage),
-  }] : [];
+    package: advisory.package,
+    severity: advisory.severity,
+    range: advisory.range,
+    url: advisory.url,
+    source: advisory.source,
+    dependency: advisory.dependency,
+    installedVersion: versionData.byNode.get(`node_modules/${exception.vulnerablePackage}`),
+  })) : [];
 
   if (failures.length) {
     return {
@@ -349,13 +422,14 @@ function formatFinding(finding) {
 
 export function renderSummary(classification) {
   const lines = [];
+  lines.push("POLICY_CLASSIFICATION_BEGIN");
   lines.push(`PRODUCTION_DEPENDENCY_AUDIT = ${classification.productionStatus}`);
   lines.push(`PRODUCTION_VULNERABILITY_TOTAL = ${classification.productionTotal ?? "UNKNOWN"}`);
   lines.push(`FULL_DEPENDENCY_AUDIT = ${classification.fullStatus}`);
   lines.push(`FULL_VULNERABILITY_TOTAL = ${classification.fullTotal ?? "UNKNOWN"}`);
   lines.push(`ROOT_ADVISORY_COUNT = ${classification.rootAdvisories.length}`);
   for (const advisory of classification.rootAdvisories) {
-    lines.push(`ROOT_ADVISORY ${advisory.id} package=${advisory.package} severity=${advisory.severity} range=${advisory.range} installed=${advisory.installedVersion} url=${advisory.url}`);
+    lines.push(`ROOT_ADVISORY ${advisory.id} source=${advisory.source} package=${advisory.package} dependency=${advisory.dependency} severity=${advisory.severity} range=${advisory.range} installed=${advisory.installedVersion} url=${advisory.url}`);
   }
   lines.push(`RESIDUAL_DEV_ONLY_FINDING_COUNT = ${classification.findings.length}`);
   for (const finding of classification.findings) lines.push(formatFinding(finding));
@@ -364,12 +438,15 @@ export function renderSummary(classification) {
     for (const failure of classification.failures) lines.push(`- ${failure}`);
   }
   lines.push(`DEPENDENCY_SECURITY_GATE = ${classification.finalGate}`);
+  lines.push("POLICY_CLASSIFICATION_END");
   return lines.join("\n");
 }
 
 function main() {
   const prod = runNpmAudit(["audit", "--omit=dev", "--json"]);
   const full = runNpmAudit(["audit", "--json"]);
+  console.log(renderRawAuditEvidence("PRODUCTION", prod));
+  console.log(renderRawAuditEvidence("FULL", full));
   const lockText = readFileSync("package-lock.json", "utf8");
   if (!prod.ok || !full.ok) {
     const classification = classifyDependencySecurity({

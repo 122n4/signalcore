@@ -1,12 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { classifyDependencySecurity } from "../scripts/qa/dependencySecurityGate.mjs";
+import { classifyDependencySecurity, renderRawAuditEvidence } from "../scripts/qa/dependencySecurityGate.mjs";
 
 const lock = JSON.stringify({
   packages: {
     "": { name: "fixture" },
+    "node_modules/@next/eslint-plugin-next": { version: "16.2.6" },
     "node_modules/braces": { version: "3.0.3" },
+    "node_modules/chokidar": { version: "3.6.0" },
+    "node_modules/eslint-config-next": { version: "16.2.6" },
+    "node_modules/fast-glob": { version: "3.3.1" },
+    "node_modules/micromatch": { version: "4.0.8" },
+    "node_modules/tailwindcss": { version: "3.4.17" },
+    "node_modules/tailwindcss/node_modules/fast-glob": { version: "3.3.3" },
   },
 });
+
+function lockWith(path: string, version: string | null) {
+  const parsed = JSON.parse(lock);
+  if (version === null) delete parsed.packages[path];
+  else parsed.packages[path] = { version };
+  return JSON.stringify(parsed);
+}
 
 function prodAudit(vulnerabilities: Record<string, any> = {}) {
   return {
@@ -149,7 +163,7 @@ describe("dependency security gate", () => {
   });
 
   it("fails critical vulnerability", () => {
-    const result = classify(knownFullAudit({ braces: { severity: "critical", via: [{ source: 1240992, url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "critical", range: "<=3.0.3" }] } }));
+    const result = classify(knownFullAudit({ braces: { severity: "critical", via: [{ source: 1240992, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "critical", range: "<=3.0.3" }] } }));
     expect(result.finalGate).toBe("FAIL");
   });
 
@@ -159,12 +173,40 @@ describe("dependency security gate", () => {
   });
 
   it("fails advisory severity drift", () => {
-    const result = classify(knownFullAudit({ braces: { via: [{ source: 1240992, url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "moderate", range: "<=3.0.3" }] } }));
+    const result = classify(knownFullAudit({ braces: { via: [{ source: 1240992, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "moderate", range: "<=3.0.3" }] } }));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails new root advisory drift", () => {
+    const result = classify(knownFullAudit({ braces: { via: [
+      { source: 1240992, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "high", range: "<=3.0.3" },
+      { source: 9999999, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-unexpected", severity: "high", range: "<=3.0.3" },
+    ] } }));
     expect(result.finalGate).toBe("FAIL");
   });
 
   it("fails dependency path drift", () => {
     const result = classify(knownFullAudit({ micromatch: { nodes: ["node_modules/other/node_modules/micromatch"] } }));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails direct package version drift", () => {
+    const result = classify(knownFullAudit(), prodAudit(), lockWith("node_modules/tailwindcss", "3.4.18"));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails transitive package version drift", () => {
+    const result = classify(knownFullAudit(), prodAudit(), lockWith("node_modules/micromatch", "4.0.9"));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails nested node version drift", () => {
+    const result = classify(knownFullAudit(), prodAudit(), lockWith("node_modules/tailwindcss/node_modules/fast-glob", "3.3.4"));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails additional duplicate node", () => {
+    const result = classify(knownFullAudit(), prodAudit(), lockWith("node_modules/other/node_modules/fast-glob", "3.3.3"));
     expect(result.finalGate).toBe("FAIL");
   });
 
@@ -175,6 +217,29 @@ describe("dependency security gate", () => {
 
   it("fails when a safe or unexpected remediation appears", () => {
     const result = classify(knownFullAudit({ braces: { fixAvailable: { name: "braces", version: "3.0.4", isSemVerMajor: false } } }));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails fixAvailable object to false drift", () => {
+    const result = classify(knownFullAudit({ braces: { fixAvailable: false } }));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails fixAvailable false to object drift", () => {
+    const clean = prodAudit();
+    clean.vulnerabilities = {
+      example: {
+        name: "example",
+        severity: "high",
+        isDirect: false,
+        via: [],
+        range: "*",
+        nodes: ["node_modules/example"],
+        fixAvailable: { name: "example", version: "2.0.0", isSemVerMajor: true },
+      },
+    };
+    clean.metadata.vulnerabilities.total = 1;
+    const result = classify(clean, prodAudit(), JSON.stringify({ packages: { "node_modules/example": { version: "1.0.0" } } }));
     expect(result.finalGate).toBe("FAIL");
   });
 
@@ -192,5 +257,12 @@ describe("dependency security gate", () => {
   it("fails audit command failure", () => {
     const result = classify(knownFullAudit(), prodAudit(), lock, false);
     expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("renders raw audit evidence boundaries", () => {
+    const rendered = renderRawAuditEvidence("FULL", { status: 1, stdout: "{\"vulnerabilities\":{}}", stderr: "" });
+    expect(rendered).toContain("RAW_NPM_AUDIT_FULL_BEGIN");
+    expect(rendered).toContain("{\"vulnerabilities\":{}}");
+    expect(rendered).toContain("RAW_NPM_AUDIT_FULL_END");
   });
 });
