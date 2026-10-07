@@ -512,10 +512,6 @@ begin
 end;
 $$;
 
-alter function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) owner to investing_rl8_writer;
-alter function investing.persist_research_scientific_promotion_root_v1(text, jsonb) owner to investing_rl8_writer;
-alter function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) owner to investing_rl8_writer;
-
 revoke all on function investing.rl8c_assert_writer_authority_v1(text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_required_hash_v1(jsonb, text[]) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl8c_hashref_equals_current_protocol_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
@@ -527,12 +523,22 @@ grant execute on function investing.rl8c_required_hash_v1(jsonb, text[]) to inve
 grant execute on function investing.rl8c_hashref_equals_current_protocol_v1(jsonb) to investing_rl8_writer;
 grant execute on function investing.rl8c_insert_transition_from_payload_v1(text, text, jsonb, uuid, text, uuid, text) to investing_rl8_writer;
 
+reset role;
+
+alter function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) owner to investing_rl8_writer;
+alter function investing.persist_research_scientific_promotion_root_v1(text, jsonb) owner to investing_rl8_writer;
+alter function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) owner to investing_rl8_writer;
+
+set local role investing_rl8_writer;
+
 revoke all on function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function investing.persist_research_scientific_promotion_root_v1(text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) from public, anon, authenticated, service_role;
 grant execute on function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) to investing_app;
 grant execute on function investing.persist_research_scientific_promotion_root_v1(text, jsonb) to investing_app;
 grant execute on function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) to investing_app;
+
+reset role;
 
 do $$
 declare
@@ -547,6 +553,58 @@ begin
     and p.proconfig @> array['search_path=pg_catalog']
     and pg_catalog.pg_get_userbyid(p.proowner) = 'investing_rl8_writer';
   if v_writer_count <> 3 then raise exception 'RL-8C2 postcondition failed: writer surface mismatch'; end if;
+  if not exists (
+    select 1 from pg_catalog.pg_roles
+    where rolname = 'investing_rl8_writer'
+      and not rolcanlogin
+      and not rolinherit
+      and not rolsuper
+      and not rolcreatedb
+      and not rolcreaterole
+      and not rolreplication
+      and not rolbypassrls
+  ) then raise exception 'RL-8C2 postcondition failed: writer role attributes drifted'; end if;
+  if pg_catalog.pg_has_role('investing_app', 'investing_rl8_writer', 'member')
+    or pg_catalog.pg_has_role('service_role', 'investing_rl8_writer', 'member')
+    or pg_catalog.pg_has_role('investing_rl8_writer', 'investing_owner', 'member')
+    or pg_catalog.pg_has_role('investing_owner', 'investing_rl8_writer', 'member') then
+    raise exception 'RL-8C2 postcondition failed: forbidden writer role membership exists';
+  end if;
+  if exists (
+    select 1 from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'investing'
+      and p.proname in (
+        'rl8c_assert_writer_authority_v1',
+        'rl8c_required_hash_v1',
+        'rl8c_hashref_equals_current_protocol_v1',
+        'rl8c_resolve_optional_uuid_v1',
+        'rl8c_insert_transition_from_payload_v1',
+        'rl8c_validate_closure_pair_v1'
+      )
+      and pg_catalog.pg_get_userbyid(p.proowner) <> 'investing_owner'
+  ) then raise exception 'RL-8C2 postcondition failed: helper owner drifted'; end if;
+  if exists (
+    select 1 from information_schema.routine_privileges
+    where routine_schema = 'investing'
+      and routine_name in (
+        'rl8c_assert_writer_authority_v1',
+        'rl8c_required_hash_v1',
+        'rl8c_hashref_equals_current_protocol_v1',
+        'rl8c_resolve_optional_uuid_v1',
+        'rl8c_insert_transition_from_payload_v1',
+        'rl8c_validate_closure_pair_v1'
+      )
+      and grantee in ('PUBLIC','anon','authenticated','service_role','investing_app')
+      and privilege_type = 'EXECUTE'
+  ) then raise exception 'RL-8C2 postcondition failed: helper execute grant leaked'; end if;
+  if (
+    select count(*) from information_schema.routine_privileges
+    where routine_schema = 'investing'
+      and routine_name in ('persist_research_scientific_promotion_protocol_v1','persist_research_scientific_promotion_root_v1','persist_research_scientific_promotion_evaluation_plan_v1')
+      and grantee = 'investing_app'
+      and privilege_type = 'EXECUTE'
+  ) <> 3 then raise exception 'RL-8C2 postcondition failed: investing_app writer execute grant mismatch'; end if;
   if exists (
     select 1 from information_schema.routine_privileges
     where routine_schema = 'investing'

@@ -176,7 +176,7 @@ async function applyMigration(client: PoolClient, relativePath: string): Promise
     await client.query(sql);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`PG17 RL-8C1 migration replay failed for ${relativePath}: ${message}`);
+    throw new Error(`PG17 RL-8C2 migration replay failed for ${relativePath}: ${message}`);
   }
 }
 
@@ -192,6 +192,42 @@ async function sqlCanonicalAndHash(client: PoolClient, payload: CanonicalJsonVal
   return { canonical: row.canonical, canonicalSha: row.canonical_sha, hashref: row.hashref };
 }
 
+describe("I5 RL-8C2 scientific promotion writer migration static ownership guard", () => {
+  const migrationSql = fs.readFileSync(path.join(repoRoot, "supabase", "migrations", migrationName), "utf8");
+  const normalized = migrationSql.toLowerCase().replace(/\s+/g, " ");
+
+  it("does not use role-membership workarounds for writer ownership transfer", () => {
+    for (const forbidden of [
+      "grant investing_rl8_writer to investing_owner",
+      "grant investing_rl8_writer to investing_app",
+      "grant investing_rl8_writer to service_role",
+      "grant investing_owner to investing_rl8_writer",
+    ]) expect(normalized).not.toContain(forbidden);
+  });
+
+  it("orders helper ACLs, writer ownership transfer, writer ACLs, and postconditions", () => {
+    const ownerIndex = normalized.indexOf("set local role investing_owner");
+    const helperAclIndex = normalized.indexOf("revoke all on function investing.rl8c_assert_writer_authority_v1(text)");
+    const resetBeforeOwnerTransferIndex = normalized.indexOf("reset role", helperAclIndex);
+    const ownerTransferIndex = normalized.indexOf("alter function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) owner to investing_rl8_writer");
+    const writerRoleIndex = normalized.indexOf("set local role investing_rl8_writer", ownerTransferIndex);
+    const writerAclIndex = normalized.indexOf("revoke all on function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb)", writerRoleIndex);
+    const appGrantIndex = normalized.indexOf("grant execute on function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) to investing_app", writerAclIndex);
+    const resetBeforePostconditionIndex = normalized.indexOf("reset role", appGrantIndex);
+    const postconditionIndex = normalized.indexOf("rl-8c2 postcondition failed", resetBeforePostconditionIndex);
+    const commitIndex = normalized.lastIndexOf("commit");
+    expect(ownerIndex).toBeGreaterThanOrEqual(0);
+    expect(helperAclIndex).toBeGreaterThan(ownerIndex);
+    expect(resetBeforeOwnerTransferIndex).toBeGreaterThan(helperAclIndex);
+    expect(ownerTransferIndex).toBeGreaterThan(resetBeforeOwnerTransferIndex);
+    expect(writerRoleIndex).toBeGreaterThan(ownerTransferIndex);
+    expect(writerAclIndex).toBeGreaterThan(writerRoleIndex);
+    expect(appGrantIndex).toBeGreaterThan(writerAclIndex);
+    expect(resetBeforePostconditionIndex).toBeGreaterThan(appGrantIndex);
+    expect(postconditionIndex).toBeGreaterThan(resetBeforePostconditionIndex);
+    expect(commitIndex).toBeGreaterThan(postconditionIndex);
+  });
+});
 async function validateTransitionPayload(client: PoolClient, transition: ScientificPromotionTransitionV1): Promise<boolean> {
   const s = transition.evidenceSnapshot;
   const result = await client.query<{ ok: boolean }>(`
