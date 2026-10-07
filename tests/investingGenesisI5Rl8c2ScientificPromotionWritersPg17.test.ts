@@ -566,6 +566,35 @@ async function createWriterReadyRoot(client: PoolClient, suffix: string): Promis
   await seedFullStageAEvidence(client, fixture, suffix);
   return { fixture, rootId: root.rows[0]!.result.researchScientificPromotionTransitionIdentityId, rootPayload };
 }
+
+async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+  await client.query("begin");
+  try {
+    const result = await createWriterReadyRoot(client, suffix);
+    await client.query("commit");
+    return result;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  }
+}
+
+async function createCommittedProtocolFixture(client: PoolClient, suffix: string): Promise<Rl8cAuthorityFixture> {
+  await client.query("begin");
+  try {
+    const fixture = await createRl8cRootFixture(client, suffix);
+    await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
+    await client.query("set local role investing_app");
+    const protocol = await client.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
+    fixture.protocolIdentityId = protocol.rows[0]!.result.researchScientificPromotionProtocolIdentityId;
+    await client.query("reset role");
+    await client.query("commit");
+    return fixture;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  }
+}
 maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliation", () => {
   let pool: Pool;
 
@@ -1123,12 +1152,8 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
     const left = await pool.connect();
     const right = await pool.connect();
     try {
-      const fixture = await createRl8cRootFixture(setup, "c2-concurrency-root");
-      await setRl8Context(setup, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
-      await setup.query("set local role investing_app");
-      const protocol = await setup.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
-      fixture.protocolIdentityId = protocol.rows[0]!.result.researchScientificPromotionProtocolIdentityId;
-      await setup.query("reset role");
+      const fixture = await createCommittedProtocolFixture(setup, "c2-concurrency-root");
+
       const rootPayload = rootTransition();
       await left.query("begin");
       await right.query("begin");
@@ -1157,12 +1182,8 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
     const left = await pool.connect();
     const right = await pool.connect();
     try {
-      const fixture = await createRl8cRootFixture(setup, "c2-concurrency-divergent-root");
-      await setRl8Context(setup, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
-      await setup.query("set local role investing_app");
-      const protocol = await setup.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
-      fixture.protocolIdentityId = protocol.rows[0]!.result.researchScientificPromotionProtocolIdentityId;
-      await setup.query("reset role");
+      const fixture = await createCommittedProtocolFixture(setup, "c2-concurrency-divergent-root");
+
       const altRunInput = (await setup.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
       const altResult = (await setup.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
       const altFixture = { ...fixture, runInputIdentityId: altRunInput, resultIdentityId: altResult, runInputHashHex: fixtureHash("c2-concurrency-divergent-root:alt-run-input"), resultHashHex: fixtureHash("c2-concurrency-divergent-root:alt-result") };
@@ -1192,7 +1213,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
     const left = await pool.connect();
     const right = await pool.connect();
     try {
-      const identical = await createWriterReadyRoot(setup, "c2-concurrency-identical-plan");
+      const identical = await createCommittedWriterReadyRoot(setup, "c2-concurrency-identical-plan");
       const stage = stageATransition();
       const closure = closureTransition(stage);
       await left.query("begin"); await right.query("begin");
@@ -1207,7 +1228,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
       const identicalCount = await setup.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where predecessor_transition_identity_id=$1", [identical.rootId]);
       expect(identicalCount.rows[0]?.count).toBe(1);
 
-      const divergent = await createWriterReadyRoot(setup, "c2-concurrency-divergent-plan");
+      const divergent = await createCommittedWriterReadyRoot(setup, "c2-concurrency-divergent-plan");
       const passStage = stageATransition(); const passClosure = closureTransition(passStage);
       const failStage = failedStageATransition(); const failClosure = closureTransition(failStage);
       await left.query("begin"); await right.query("begin");
