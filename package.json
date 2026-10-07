@@ -55,7 +55,8 @@
     "research:data-hunter:loop": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/runResearchDataHunter.ts --loop",
     "research:data-stage": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/prepareMarketDataStaging.ts",
     "paper:reconcile": "node -r ./scripts/register-alias.cjs ./node_modules/jiti/bin/jiti.js scripts/trading/reconcilePaperTrading.ts",
-    "trading:scanner:fallback-catalog": "node scripts/trading/generateTradingScannerFallbackCatalog.mjs"
+    "trading:scanner:fallback-catalog": "node scripts/trading/generateTradingScannerFallbackCatalog.mjs",
+    "audit:dependencies": "node scripts/qa/dependencySecurityGate.mjs"
   },
   "overrides": {
     "@clerk/shared": "3.47.7",
