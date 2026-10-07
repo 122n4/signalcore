@@ -1053,9 +1053,102 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         const stage = stageATransition();
         const malformedClosure = closureTransition(stage);
         const before = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities");
-        await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb)", [fixture.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(malformedClosure).hashHex, JSON.stringify({ ...malformedClosure, evidenceSnapshot: { ...malformedClosure.evidenceSnapshot, result: null } })]), /MALFORMED|CHECK|violates/i);
+        await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb)", [fixture.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1({ ...malformedClosure, evidenceSnapshot: { ...malformedClosure.evidenceSnapshot, result: null } }).hashHex, JSON.stringify({ ...malformedClosure, evidenceSnapshot: { ...malformedClosure.evidenceSnapshot, result: null } })]), /MALFORMED|CHECK|violates|COPY|payload/i);
         const after = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities");
         expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
       });
     } finally { client.release(); }
+  }, 60_000);
+  it("proves divergent closure payload with valid hash is divergent", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const pass = await createWriterReadyRoot(client, "c2-divergent-closure-payload");
+        await setRl8Context(client, pass.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        const stage = stageATransition();
+        const closure = closureTransition(stage);
+        const created = await client.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [pass.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)]);
+        expect(created.rows[0]?.result.status).toBe("CREATED");
+        const divergentClosure = { ...closure, transitionReasons: ["FAILED_VALIDATION" as const] };
+        const replay = await client.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [pass.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(divergentClosure).hashHex, JSON.stringify(divergentClosure)]);
+        expect(replay.rows[0]?.result.status).toBe("DIVERGENT_EXISTING_IDENTITY");
+      });
+    } finally { client.release(); }
+  }, 60_000);
+
+  it("exercises public writer authority failures through investing_app", async () => {
+    const client = await pool.connect();
+    try {
+      await withTransaction(client, async () => {
+        const valid = await createRl8cRootFixture(client, "c2-writer-auth-matrix");
+        const cases: Array<[string, Partial<Rl8cAuthorityFixture>, string, string]> = [
+          ["wrong tenant", { tenantId: "00000000-0000-0000-0000-00000000a001" }, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1", "RESEARCH_MUTATE"],
+          ["wrong principal", { principalId: "00000000-0000-0000-0000-00000000a002" }, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1", "RESEARCH_MUTATE"],
+          ["wrong membership", { tenantMembershipId: "00000000-0000-0000-0000-00000000a003" }, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1", "RESEARCH_MUTATE"],
+          ["wrong investigation", { researchInvestigationId: "00000000-0000-0000-0000-00000000a004" }, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1", "RESEARCH_MUTATE"],
+          ["wrong operation", {}, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1", "RESEARCH_MUTATE"],
+          ["wrong capability", {}, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1", "RESEARCH_READ"],
+        ];
+        for (const [, override, operation, capability] of cases) {
+          await client.query("reset role");
+          await setRl8Context(client, { ...valid, ...override }, operation);
+          if (capability !== "RESEARCH_MUTATE") await client.query("select set_config('syntrake.investing.capability', $1, true)", [capability]);
+          await client.query("set local role investing_app");
+          const before = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_protocols_scientific_identities");
+          await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb)", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]), /AUTHORITY_FAILURE/);
+          await client.query("reset role");
+          const after = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_protocols_scientific_identities");
+          expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
+        }
+
+        const revoked = await createRl8cRootFixture(client, "c2-writer-auth-revoked", { membershipState: "REVOKED" });
+        await setRl8Context(client, revoked, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
+        await client.query("set local role investing_app");
+        await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb)", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]), /AUTHORITY_FAILURE/);
+        await client.query("reset role");
+        await expectPgRejection(client, () => createRl8cRootFixture(client, "c2-writer-auth-non-owner", { membershipRole: "VIEWER" }), /tenant_memberships_role_check|violates check constraint/i);
+
+        for (const role of ["service_role", "anon", "authenticated"] as const) {
+          await client.query(`set local role ${role}`);
+          await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb)", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]), /permission denied|does not exist|execute/i);
+          await client.query("reset role");
+        }
+      });
+    } finally { client.release(); }
+  }, 60_000);
+
+  it("executes real two-connection ROOT and plan concurrency", async () => {
+    const setup = await pool.connect();
+    const left = await pool.connect();
+    const right = await pool.connect();
+    try {
+      const fixture = await createRl8cRootFixture(setup, "c2-concurrency-root");
+      await setRl8Context(setup, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
+      await setup.query("set local role investing_app");
+      const protocol = await setup.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
+      fixture.protocolIdentityId = protocol.rows[0]!.result.researchScientificPromotionProtocolIdentityId;
+      await setup.query("reset role");
+      const rootPayload = rootTransition();
+      await left.query("begin");
+      await right.query("begin");
+      await setRl8Context(left, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
+      await setRl8Context(right, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
+      await left.query("set local role investing_app");
+      await right.query("set local role investing_app");
+      const leftQuery = left.query<{ result: { status: string; researchScientificPromotionTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(rootPayload).hashHex, JSON.stringify(rootPayload)]);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const rightQuery = right.query<{ result: { status: string; researchScientificPromotionTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(rootPayload).hashHex, JSON.stringify(rootPayload)]);
+      const leftResult = await leftQuery;
+      await left.query("commit");
+      const rightResult = await rightQuery;
+      await right.query("commit");
+      expect([leftResult.rows[0]!.result.status, rightResult.rows[0]!.result.status].sort()).toEqual(["CREATED", "REUSED_IDENTICAL"]);
+      const rootCount = await setup.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and research_investigation_id=$2 and predecessor_transition_identity_id is null", [fixture.tenantId, fixture.researchInvestigationId]);
+      expect(rootCount.rows[0]?.count).toBe(1);
+    } finally {
+      await left.query("rollback").catch(() => undefined);
+      await right.query("rollback").catch(() => undefined);
+      setup.release(); left.release(); right.release();
+    }
   }, 60_000);});
