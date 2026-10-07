@@ -472,7 +472,7 @@ async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixt
   `, [fixture.evidenceObjectIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, fixture.resultIdentityId, content, fixture.evidenceObjectHashHex]);
 }
 
-async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean }> = {}): Promise<Rl8cAuthorityFixture> {
+async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean }> = {}): Promise<Rl8cAuthorityFixture> {
   const fixture = { ...(await nextFixtureIds(client)), ...overrides };
   await seedAuthorityScope(client, fixture, suffix, overrides);
   await seedResearchMaterialAndSpec(client, fixture, suffix);
@@ -487,7 +487,7 @@ async function createRl8cRootFixture(client: PoolClient, suffix: string, overrid
   return seedRl8RootAuthorityFixture(client, suffix, overrides);
 }
 
-async function createSameAuthorityInvestigationFixture(client: PoolClient, suffix: string, authority: Pick<Rl8cAuthorityFixture, "tenantId" | "principalId" | "tenantMembershipId">, overrides: Partial<{ runInputHashHex: string; resultHashHex: string }> = {}): Promise<Rl8cAuthorityFixture> {
+async function createSameAuthorityInvestigationFixture(client: PoolClient, suffix: string, authority: Pick<Rl8cAuthorityFixture, "tenantId" | "principalId" | "tenantMembershipId">, overrides: Partial<{ runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string }> = {}): Promise<Rl8cAuthorityFixture> {
   return seedRl8RootAuthorityFixture(client, suffix, { ...authority, ...overrides, reuseAuthority: true });
 }
 
@@ -882,7 +882,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
           tenantId: investigationA.tenantId,
           principalId: investigationA.principalId,
           tenantMembershipId: investigationA.tenantMembershipId,
-        }, { runInputHashHex: fixtureHash("cross-investigation-b:run-input"), resultHashHex: fixtureHash("cross-investigation-b:result") });
+        }, { runInputHashHex: fixtureHash("cross-investigation-b:run-input"), resultHashHex: fixtureHash("cross-investigation-b:result"), evidenceObjectHashHex: fixtureHash("cross-investigation-b:evidence") });
         await setRl8Context(client, investigationA);
         await client.query("set local role investing_rl8_writer");
         expect((await client.query("select count(*)::int as count from investing.research_investigations")).rows[0]?.count).toBe(1);
@@ -929,6 +929,9 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         await client.query("reset role");
         const rightTransition = await insertRl8cRootTransition(client, right);
         expect(leftTransition).not.toBe(rightTransition);
+        const rightScopedCount = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id = any($1::uuid[])", [[leftTransition, rightTransition]]);
+        expect(rightScopedCount.rows[0]?.count).toBe(1);
+        await client.query("reset role");
         const sameHashRows = await client.query<{ transition_hash_hex: string; count: number }>("select transition_hash_hex, count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id = any($1::uuid[]) group by transition_hash_hex", [[leftTransition, rightTransition]]);
         expect(sameHashRows.rows).toEqual([{ transition_hash_hex: rootHashRef, count: 2 }]);
         await setRl8Context(client, left);
