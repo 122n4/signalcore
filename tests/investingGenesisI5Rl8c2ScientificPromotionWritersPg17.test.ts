@@ -1151,4 +1151,78 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
       await right.query("rollback").catch(() => undefined);
       setup.release(); left.release(); right.release();
     }
+  }, 60_000);
+  it("executes real two-connection divergent ROOT concurrency", async () => {
+    const setup = await pool.connect();
+    const left = await pool.connect();
+    const right = await pool.connect();
+    try {
+      const fixture = await createRl8cRootFixture(setup, "c2-concurrency-divergent-root");
+      await setRl8Context(setup, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
+      await setup.query("set local role investing_app");
+      const protocol = await setup.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
+      fixture.protocolIdentityId = protocol.rows[0]!.result.researchScientificPromotionProtocolIdentityId;
+      await setup.query("reset role");
+      const altRunInput = (await setup.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const altResult = (await setup.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const altFixture = { ...fixture, runInputIdentityId: altRunInput, resultIdentityId: altResult, runInputHashHex: fixtureHash("c2-concurrency-divergent-root:alt-run-input"), resultHashHex: fixtureHash("c2-concurrency-divergent-root:alt-result") };
+      await seedRunInput(setup, altFixture);
+      await seedResult(setup, altFixture, "c2-concurrency-divergent-root-alt");
+      const leftPayload = rootTransition();
+      const rightPayload = rootTransition({ evidenceSnapshot: { ...rootTransition().evidenceSnapshot, runInput: { ...runInput, hashHex: canonicalSha256HexV1(altFixture.runInputHashHex) }, result: { ...result, hashHex: canonicalSha256HexV1(altFixture.resultHashHex) } } });
+      await left.query("begin"); await right.query("begin");
+      await setRl8Context(left, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1"); await setRl8Context(right, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
+      await left.query("set local role investing_app"); await right.query("set local role investing_app");
+      const leftQuery = left.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(leftPayload).hashHex, JSON.stringify(leftPayload)]);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const rightQuery = right.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(rightPayload).hashHex, JSON.stringify(rightPayload)]);
+      const leftResult = await leftQuery; await left.query("commit");
+      const rightResult = await rightQuery; await right.query("commit");
+      expect([leftResult.rows[0]!.result.status, rightResult.rows[0]!.result.status].sort()).toEqual(["CREATED", "DIVERGENT_EXISTING_IDENTITY"]);
+      const count = await setup.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and research_investigation_id=$2 and predecessor_transition_identity_id is null", [fixture.tenantId, fixture.researchInvestigationId]);
+      expect(count.rows[0]?.count).toBe(1);
+    } finally {
+      await left.query("rollback").catch(() => undefined); await right.query("rollback").catch(() => undefined);
+      setup.release(); left.release(); right.release();
+    }
+  }, 60_000);
+
+  it("executes real two-connection identical and divergent evaluation-plan concurrency", async () => {
+    const setup = await pool.connect();
+    const left = await pool.connect();
+    const right = await pool.connect();
+    try {
+      const identical = await createWriterReadyRoot(setup, "c2-concurrency-identical-plan");
+      const stage = stageATransition();
+      const closure = closureTransition(stage);
+      await left.query("begin"); await right.query("begin");
+      await setRl8Context(left, identical.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1"); await setRl8Context(right, identical.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+      await left.query("set local role investing_app"); await right.query("set local role investing_app");
+      const leftQuery = left.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [identical.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)]);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const rightQuery = right.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [identical.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)]);
+      const leftResult = await leftQuery; await left.query("commit");
+      const rightResult = await rightQuery; await right.query("commit");
+      expect([leftResult.rows[0]!.result.status, rightResult.rows[0]!.result.status].sort()).toEqual(["CREATED", "REUSED_IDENTICAL"]);
+      const identicalCount = await setup.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where predecessor_transition_identity_id=$1", [identical.rootId]);
+      expect(identicalCount.rows[0]?.count).toBe(1);
+
+      const divergent = await createWriterReadyRoot(setup, "c2-concurrency-divergent-plan");
+      const passStage = stageATransition(); const passClosure = closureTransition(passStage);
+      const failStage = failedStageATransition(); const failClosure = closureTransition(failStage);
+      await left.query("begin"); await right.query("begin");
+      await setRl8Context(left, divergent.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1"); await setRl8Context(right, divergent.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+      await left.query("set local role investing_app"); await right.query("set local role investing_app");
+      const passQuery = left.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [divergent.rootId, hashScientificPromotionTransitionV1(passStage).hashHex, JSON.stringify(passStage), hashScientificPromotionTransitionV1(passClosure).hashHex, JSON.stringify(passClosure)]);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const failQuery = right.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [divergent.rootId, hashScientificPromotionTransitionV1(failStage).hashHex, JSON.stringify(failStage), hashScientificPromotionTransitionV1(failClosure).hashHex, JSON.stringify(failClosure)]);
+      const passResult = await passQuery; await left.query("commit");
+      const failResult = await failQuery; await right.query("commit");
+      expect([passResult.rows[0]!.result.status, failResult.rows[0]!.result.status].sort()).toEqual(["CREATED", "DIVERGENT_EXISTING_IDENTITY"]);
+      const divergentCount = await setup.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where predecessor_transition_identity_id=$1", [divergent.rootId]);
+      expect(divergentCount.rows[0]?.count).toBe(1);
+    } finally {
+      await left.query("rollback").catch(() => undefined); await right.query("rollback").catch(() => undefined);
+      setup.release(); left.release(); right.release();
+    }
   }, 60_000);});
