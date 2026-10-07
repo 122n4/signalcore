@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyDependencySecurity, renderRawAuditEvidence } from "../scripts/qa/dependencySecurityGate.mjs";
+import { KNOWN_DEV_ONLY_EXCEPTIONS, classifyDependencySecurity, renderRawAuditEvidence } from "../scripts/qa/dependencySecurityGate.mjs";
 
 const lock = JSON.stringify({
   packages: {
@@ -134,10 +134,19 @@ function knownFullAudit(overrides: Record<string, any> = {}) {
   };
 }
 
+function withMetadata(audit: any) {
+  const counts = { info: 0, low: 0, moderate: 0, high: 0, critical: 0 };
+  for (const vulnerability of Object.values<any>(audit.vulnerabilities || {})) {
+    counts[vulnerability.severity as keyof typeof counts] += 1;
+  }
+  audit.metadata.vulnerabilities = { ...counts, total: Object.keys(audit.vulnerabilities || {}).length };
+  return audit;
+}
+
 function classify(fullAudit: any, productionAudit: any = prodAudit(), packageLockJsonText = lock, processOk = true) {
   return classifyDependencySecurity({
-    fullAudit,
-    productionAudit,
+    fullAudit: withMetadata(fullAudit),
+    productionAudit: withMetadata(productionAudit),
     packageLockJsonText,
     fullAuditProcessOk: processOk,
     productionAuditProcessOk: processOk,
@@ -172,15 +181,33 @@ describe("dependency security gate", () => {
     expect(result.finalGate).toBe("FAIL");
   });
 
-  it("fails advisory severity drift", () => {
+  it("fails advisory identity field drift", () => {
     const result = classify(knownFullAudit({ braces: { via: [{ source: 1240992, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "moderate", range: "<=3.0.3" }] } }));
     expect(result.finalGate).toBe("FAIL");
   });
 
-  it("fails new root advisory drift", () => {
+  it("fails second root advisory on same package", () => {
     const result = classify(knownFullAudit({ braces: { via: [
       { source: 1240992, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm", severity: "high", range: "<=3.0.3" },
       { source: 9999999, name: "braces", dependency: "braces", url: "https://github.com/advisories/GHSA-unexpected", severity: "high", range: "<=3.0.3" },
+    ] } }));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails new independent root advisory under micromatch", () => {
+    const result = classify(knownFullAudit({ micromatch: { via: [
+      "braces",
+      { source: 8888888, name: "micromatch", dependency: "micromatch", url: "https://github.com/advisories/GHSA-micromatch", severity: "high", range: "<=4.0.8" },
+    ] } }));
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails new independent root advisory under another existing finding", () => {
+    const result = classify(knownFullAudit({ tailwindcss: { via: [
+      "chokidar",
+      "fast-glob",
+      "micromatch",
+      { source: 7777777, name: "tailwindcss", dependency: "tailwindcss", url: "https://github.com/advisories/GHSA-tailwind", severity: "high", range: "<=3.4.17" },
     ] } }));
     expect(result.finalGate).toBe("FAIL");
   });
@@ -223,26 +250,57 @@ describe("dependency security gate", () => {
   it("fails fixAvailable object to false drift", () => {
     const result = classify(knownFullAudit({ braces: { fixAvailable: false } }));
     expect(result.finalGate).toBe("FAIL");
+    expect(result.failures.join("\n")).toContain("fixAvailable representation drift");
   });
 
   it("fails fixAvailable false to object drift", () => {
-    const clean = prodAudit();
-    clean.vulnerabilities = {
-      example: {
-        name: "example",
-        severity: "high",
-        isDirect: false,
-        via: [],
-        range: "*",
-        nodes: ["node_modules/example"],
-        fixAvailable: { name: "example", version: "2.0.0", isSemVerMajor: true },
-      },
-    };
-    clean.metadata.vulnerabilities.total = 1;
-    const result = classify(clean, prodAudit(), JSON.stringify({ packages: { "node_modules/example": { version: "1.0.0" } } }));
+    const exceptions = structuredClone(KNOWN_DEV_ONLY_EXCEPTIONS) as any;
+    exceptions[0].expectedFindings.braces.fixAvailable = false;
+    const result = classifyDependencySecurity({
+      fullAudit: withMetadata(knownFullAudit({ braces: { fixAvailable: { name: "tailwindcss", version: "4.3.3", isSemVerMajor: true } } })),
+      productionAudit: prodAudit(),
+      packageLockJsonText: lock,
+      exceptions,
+    });
+    expect(result.finalGate).toBe("FAIL");
+    expect(result.failures.join("\n")).toContain("fixAvailable representation drift");
+  });
+
+
+  it("fails wrong audit report version", () => {
+    const audit = knownFullAudit();
+    audit.auditReportVersion = 1;
+    const result = classifyDependencySecurity({ fullAudit: audit, productionAudit: prodAudit(), packageLockJsonText: lock });
     expect(result.finalGate).toBe("FAIL");
   });
 
+  it("fails total versus finding-count mismatch", () => {
+    const audit = withMetadata(knownFullAudit());
+    audit.metadata.vulnerabilities.total = 8;
+    const result = classifyDependencySecurity({ fullAudit: audit, productionAudit: prodAudit(), packageLockJsonText: lock });
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails total versus severity-sum mismatch", () => {
+    const audit = withMetadata(knownFullAudit());
+    audit.metadata.vulnerabilities.high = 6;
+    const result = classifyDependencySecurity({ fullAudit: audit, productionAudit: prodAudit(), packageLockJsonText: lock });
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails missing severity counter", () => {
+    const audit = withMetadata(knownFullAudit());
+    delete audit.metadata.vulnerabilities.low;
+    const result = classifyDependencySecurity({ fullAudit: audit, productionAudit: prodAudit(), packageLockJsonText: lock });
+    expect(result.finalGate).toBe("FAIL");
+  });
+
+  it("fails negative or non-integer severity counter", () => {
+    const audit = withMetadata(knownFullAudit());
+    audit.metadata.vulnerabilities.moderate = -1;
+    const result = classifyDependencySecurity({ fullAudit: audit, productionAudit: prodAudit(), packageLockJsonText: lock });
+    expect(result.finalGate).toBe("FAIL");
+  });
   it("fails malformed audit input", () => {
     const result = classifyDependencySecurity({
       fullAudit: undefined,

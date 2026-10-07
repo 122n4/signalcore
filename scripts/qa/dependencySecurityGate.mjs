@@ -131,18 +131,35 @@ function vulnerabilityTotal(audit) {
   return audit?.metadata?.vulnerabilities?.total;
 }
 
+function auditSemanticFailures(audit, label) {
+  const failures = [];
+  if (!audit || typeof audit !== "object") return [`${label} audit JSON is not an object`];
+  if (audit.auditReportVersion !== 2) failures.push(`${label} auditReportVersion must be 2`);
+  if (!audit.vulnerabilities || typeof audit.vulnerabilities !== "object" || Array.isArray(audit.vulnerabilities)) {
+    failures.push(`${label} vulnerabilities must be an object`);
+  }
+  const counts = audit.metadata?.vulnerabilities;
+  if (!counts || typeof counts !== "object") {
+    failures.push(`${label} audit JSON is missing vulnerability counters`);
+    return failures;
+  }
+  const keys = ["info", "low", "moderate", "high", "critical", "total"];
+  for (const key of keys) {
+    if (!Number.isInteger(counts[key]) || counts[key] < 0) failures.push(`${label} vulnerability counter ${key} must be a finite non-negative integer`);
+  }
+  if (failures.length) return failures;
+  const severitySum = counts.info + counts.low + counts.moderate + counts.high + counts.critical;
+  if (counts.total !== severitySum) failures.push(`${label} vulnerability total does not equal severity sum`);
+  const findingCount = Object.keys(audit.vulnerabilities || {}).length;
+  if (counts.total !== findingCount) failures.push(`${label} vulnerability total does not equal finding count`);
+  return failures;
+}
+
 function parseAuditJson(text, label) {
   try {
     const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object") {
-      return { ok: false, reason: `${label} audit JSON is not an object` };
-    }
-    if (!parsed.metadata?.vulnerabilities || typeof parsed.vulnerabilities !== "object") {
-      return { ok: false, reason: `${label} audit JSON is missing metadata or vulnerabilities` };
-    }
-    if (typeof parsed.metadata.vulnerabilities.total !== "number") {
-      return { ok: false, reason: `${label} audit JSON is missing vulnerability total` };
-    }
+    const failures = auditSemanticFailures(parsed, label);
+    if (failures.length) return { ok: false, reason: failures.join("; ") };
     return { ok: true, audit: parsed };
   } catch (error) {
     return { ok: false, reason: `${label} audit JSON is malformed: ${error instanceof Error ? error.message : String(error)}` };
@@ -234,17 +251,29 @@ function sameAdvisory(actual, expected) {
     actual.range === expected.range;
 }
 
-function validateRootAdvisories(fullAudit, exception) {
-  const vuln = fullAudit.vulnerabilities?.[exception.vulnerablePackage];
-  if (!vuln) return { ok: false, reason: `root vulnerable package ${exception.vulnerablePackage} is absent`, advisories: [] };
-  const actual = collectAdvisories(vuln).map(advisoryIdentity);
+function collectGlobalAdvisories(fullAudit) {
+  const advisories = [];
+  const seen = new Set();
+  for (const vulnerability of Object.values(fullAudit.vulnerabilities || {})) {
+    for (const advisory of collectAdvisories(vulnerability).map(advisoryIdentity)) {
+      const key = JSON.stringify(advisory);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      advisories.push(advisory);
+    }
+  }
+  return advisories.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+}
+
+function validateGlobalRootAdvisories(fullAudit, exception) {
+  const actual = collectGlobalAdvisories(fullAudit);
   const expected = exception.expectedRootAdvisories;
   if (actual.length !== expected.length) {
-    return { ok: false, reason: `root advisory count drift: ${actual.length} !== ${expected.length}`, advisories: actual };
+    return { ok: false, reason: `global root advisory count drift: ${actual.length} !== ${expected.length}`, advisories: actual };
   }
   for (const expectedAdvisory of expected) {
     if (!actual.some((entry) => sameAdvisory(entry, expectedAdvisory))) {
-      return { ok: false, reason: `root advisory identity drift: ${JSON.stringify(actual)}`, advisories: actual };
+      return { ok: false, reason: `global root advisory identity drift: ${JSON.stringify(actual)}`, advisories: actual };
     }
   }
   return { ok: true, advisories: actual };
@@ -300,13 +329,15 @@ function matchingExceptionForFinding(name, vulnerability, exception, versionData
   return { ok: true, remediation: { classification: expectedFix.classification, raw: actualFix, reason: expectedFix.reason } };
 }
 
-export function classifyDependencySecurity({ fullAudit, productionAudit, packageLockJsonText, fullAuditProcessOk = true, productionAuditProcessOk = true }) {
+export function classifyDependencySecurity({ fullAudit, productionAudit, packageLockJsonText, fullAuditProcessOk = true, productionAuditProcessOk = true, exceptions = KNOWN_DEV_ONLY_EXCEPTIONS }) {
   const findings = [];
   const failures = [];
 
   if (!fullAuditProcessOk) failures.push("full npm audit did not produce valid complete JSON");
   if (!productionAuditProcessOk) failures.push("production npm audit did not produce valid complete JSON");
   if (!fullAudit || !productionAudit) failures.push("missing audit input");
+  if (fullAudit) failures.push(...auditSemanticFailures(fullAudit, "full"));
+  if (productionAudit) failures.push(...auditSemanticFailures(productionAudit, "production"));
   if (failures.length) return { finalGate: "FAIL", productionStatus: "UNKNOWN", fullStatus: "UNKNOWN", failures, findings, rootAdvisories: [] };
 
   const productionTotal = vulnerabilityTotal(productionAudit);
@@ -329,7 +360,7 @@ export function classifyDependencySecurity({ fullAudit, productionAudit, package
     if (prodVulnerabilities[name]) failures.push(`${name} is present in production audit`);
   }
 
-  const exception = KNOWN_DEV_ONLY_EXCEPTIONS[0];
+  const exception = exceptions[0];
   const actualNames = Object.keys(fullVulnerabilities).sort();
   if (actualNames.length === 0) {
     return {
@@ -349,7 +380,7 @@ export function classifyDependencySecurity({ fullAudit, productionAudit, package
     failures.push(`full audit finding set drift: expected ${expectedNames.join(", ")}; got ${actualNames.join(", ")}`);
   }
 
-  const rootMatch = validateRootAdvisories(fullAudit, exception);
+  const rootMatch = validateGlobalRootAdvisories(fullAudit, exception);
   if (!rootMatch.ok) failures.push(rootMatch.reason);
 
   for (const [name, vulnerability] of Object.entries(fullVulnerabilities)) {
