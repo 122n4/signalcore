@@ -626,6 +626,13 @@ async function seedFullStageAEvidence(client: PoolClient, fixture: Rl8cAuthority
 function closureTransition(stageA: ScientificPromotionTransitionV1): ScientificPromotionTransitionV1 {
   return { ...stageA, predecessorState: stageA.resultingState, resultingState: stageA.resultingState === "VALIDATION_PASSED" ? "PROMOTION_ELIGIBLE" : "REJECTED", predecessorTransition: hashScientificPromotionTransitionV1(stageA), transitionReasons: stageA.resultingState === "VALIDATION_PASSED" ? [] : stageA.transitionReasons, rejectedTransition: stageA.resultingState === "VALIDATION_FAILED" ? hashScientificPromotionTransitionV1(stageA) : null };
 }
+function closureWithGateCopyMismatch(stageA: ScientificPromotionTransitionV1): ScientificPromotionTransitionV1 {
+  const closure = closureTransition(stageA);
+  return {
+    ...closure,
+    gateOutcomes: closure.gateOutcomes.map((gate, index) => index === 0 ? { ...gate, evidence: [] } : gate),
+  };
+}
 
 function insufficientStageATransition(): ScientificPromotionTransitionV1 {
   const gates = passingGateOutcomes().map((gate, index) => index === 0 ? { ...gate, status: "INSUFFICIENT_EVIDENCE" as const, reasons: ["INCOMPLETE_VALIDATION" as const] } : gate);
@@ -1062,6 +1069,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         const closure = closureTransition(stageA);
         const evaluation = await client.query<{ result: { status: string; stageATransitionIdentityId: string; closureTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [rootId, hashScientificPromotionTransitionV1(stageA).hashHex, JSON.stringify(stageA), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)]);
         expect(evaluation.rows[0]?.result.status).toBe("CREATED");
+        await client.query("reset role");
         const persisted = await client.query<{ resulting_state: string }>("select resulting_state from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id = any($1::uuid[]) order by resulting_state", [[evaluation.rows[0]!.result.stageATransitionIdentityId, evaluation.rows[0]!.result.closureTransitionIdentityId]]);
         expect(persisted.rows.map((row) => row.resulting_state)).toEqual(["PROMOTION_ELIGIBLE", "VALIDATION_PASSED"]);
       });
@@ -1096,7 +1104,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         await client.query("set local role investing_rl8_writer");
         const stageA = stageATransition();
         await client.query("select investing.rl8c_insert_transition_from_payload_v1('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',$1,$2::jsonb,$3,$4,null,null)", [hashScientificPromotionTransitionV1(stageA).hashHex, JSON.stringify(stageA), rootId, rootHashRef]);
-        await expectPgRejection(client, () => client.query("set constraints research_scientific_promotion_stage_a_closure_integrity immediate"), /orphan VALIDATION_PASSED/);
+        await expectPgRejection(client, () => client.query("set constraints all immediate"), /orphan VALIDATION_PASSED/);
       });
     } finally { client.release(); }
   }, 60_000);
@@ -1109,6 +1117,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
         await client.query("set local role investing_app");
         await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb)", ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", JSON.stringify(rootPayload)]), /MALFORMED_HASHREF/);
+        await client.query("reset role");
         const after = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities");
         expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
       });
@@ -1166,12 +1175,13 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
     try {
       await withTransaction(client, async () => {
         const fixture = await createWriterReadyRoot(client, "c2-atomic");
+        const stage = stageATransition();
+        const malformedClosure = closureWithGateCopyMismatch(stage);
+        const before = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities");
         await setRl8Context(client, fixture.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
         await client.query("set local role investing_app");
-        const stage = stageATransition();
-        const malformedClosure = closureTransition(stage);
-        const before = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities");
-        await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb)", [fixture.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1({ ...malformedClosure, evidenceSnapshot: { ...malformedClosure.evidenceSnapshot, result: null } }).hashHex, JSON.stringify({ ...malformedClosure, evidenceSnapshot: { ...malformedClosure.evidenceSnapshot, result: null } })]), /MALFORMED|CHECK|violates|COPY|payload/i);
+        await expectPgRejection(client, () => client.query("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb)", [fixture.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(malformedClosure).hashHex, JSON.stringify(malformedClosure)]), /CLOSURE_COPY_VIOLATION|COPY/i);
+        await client.query("reset role");
         const after = await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities");
         expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
       });
@@ -1188,7 +1198,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         const closure = closureTransition(stage);
         const created = await client.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [pass.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)]);
         expect(created.rows[0]?.result.status).toBe("CREATED");
-        const divergentClosure = { ...closure, transitionReasons: ["FAILED_VALIDATION" as const] };
+        const divergentClosure = closureWithGateCopyMismatch(stage);
         const replay = await client.query<{ result: { status: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [pass.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), hashScientificPromotionTransitionV1(divergentClosure).hashHex, JSON.stringify(divergentClosure)]);
         expect(replay.rows[0]?.result.status).toBe("DIVERGENT_EXISTING_IDENTITY");
       });

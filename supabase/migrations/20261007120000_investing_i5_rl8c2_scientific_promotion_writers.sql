@@ -264,6 +264,7 @@ $$;
 create or replace function investing.rl8c_validate_closure_pair_v1()
 returns trigger
 language plpgsql
+security definer
 set search_path = pg_catalog
 as $$
 begin
@@ -499,6 +500,10 @@ begin
   if p_closure_canonical_payload->'predecessorTransition'->>'hashHex' <> p_stage_a_transition_hash_hex or p_closure_canonical_payload->>'predecessorState' <> v_stage_state then
     raise exception 'WRONG_LINEAGE';
   end if;
+  if p_closure_canonical_payload->'evidenceSnapshot' <> p_stage_a_canonical_payload->'evidenceSnapshot'
+    or p_closure_canonical_payload->'gateOutcomes' <> p_stage_a_canonical_payload->'gateOutcomes' then
+    raise exception 'CLOSURE_COPY_VIOLATION';
+  end if;
   v_closure_id := investing.rl8c_insert_transition_from_payload_v1(
     'RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',
     p_closure_transition_hash_hex,
@@ -525,6 +530,7 @@ grant execute on function investing.rl8c_insert_transition_from_payload_v1(text,
 
 reset role;
 
+alter function investing.rl8c_validate_closure_pair_v1() owner to investing_rl8_writer;
 alter function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) owner to investing_rl8_writer;
 alter function investing.persist_research_scientific_promotion_root_v1(text, jsonb) owner to investing_rl8_writer;
 alter function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) owner to investing_rl8_writer;
@@ -579,11 +585,19 @@ begin
         'rl8c_required_hash_v1',
         'rl8c_hashref_equals_current_protocol_v1',
         'rl8c_resolve_optional_uuid_v1',
-        'rl8c_insert_transition_from_payload_v1',
-        'rl8c_validate_closure_pair_v1'
+        'rl8c_insert_transition_from_payload_v1'
       )
       and pg_catalog.pg_get_userbyid(p.proowner) <> 'investing_owner'
   ) then raise exception 'RL-8C2 postcondition failed: helper owner drifted'; end if;
+  if not exists (
+    select 1 from pg_catalog.pg_proc p
+    join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'investing'
+      and p.proname = 'rl8c_validate_closure_pair_v1'
+      and p.prosecdef
+      and p.proconfig @> array['search_path=pg_catalog']
+      and pg_catalog.pg_get_userbyid(p.proowner) = 'investing_rl8_writer'
+  ) then raise exception 'RL-8C2 postcondition failed: closure trigger authority mismatch'; end if;
   if exists (
     select 1 from information_schema.routine_privileges
     where routine_schema = 'investing'
@@ -592,8 +606,7 @@ begin
         'rl8c_required_hash_v1',
         'rl8c_hashref_equals_current_protocol_v1',
         'rl8c_resolve_optional_uuid_v1',
-        'rl8c_insert_transition_from_payload_v1',
-        'rl8c_validate_closure_pair_v1'
+        'rl8c_insert_transition_from_payload_v1'
       )
       and grantee in ('PUBLIC','anon','authenticated','service_role','investing_app')
       and privilege_type = 'EXECUTE'
