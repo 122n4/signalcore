@@ -337,7 +337,7 @@ async function seedAuthorityScope(client: PoolClient, fixture: Rl8cAuthorityFixt
       research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id, tenant_membership_id, account_access_id,
       operation_scope, operation, capability, source_context, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
     )
-    select $1, $2, null, $3, 'USER_PRINCIPAL', $3::text, $4, null, 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', $5, idempotency_record_id, $6, $7
+    select $1, $2, null, $3, 'USER_PRINCIPAL', ($3::uuid)::text, $4, null, 'TENANT_SCOPE', 'RESEARCH_INVESTIGATION_CREATE_V1', 'RESEARCH_MUTATE', 'PURE_RESEARCH', $5, idempotency_record_id, $6, $7
     from investing.idempotency_records where idempotency_key = $6
   `, [fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixtureHash(`${suffix}:investigation`), `rl8c1-${suffix}-investigation-idem`, `rl8c1-${suffix}-investigation-corr`]);
 }
@@ -369,9 +369,9 @@ async function seedResearchMaterialAndSpec(client: PoolClient, fixture: Rl8cAuth
       material_root_id, research_investigation_id, tenant_id, account_id, principal_id, actor_kind, actor_id,
       tenant_membership_id, account_access_id, operation_scope, source_context, material_kind, created_by_operation
     ) values
-      ($1,$4,$5,null,$6,'USER_PRINCIPAL',$6::text,$7,null,'TENANT_SCOPE','PURE_RESEARCH','DRAFT','RESEARCH_DRAFT_REVISION_CREATE_V1'),
-      ($2,$4,$5,null,$6,'USER_PRINCIPAL',$6::text,$7,null,'TENANT_SCOPE','PURE_RESEARCH','HYPOTHESIS','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
-      ($3,$4,$5,null,$6,'USER_PRINCIPAL',$6::text,$7,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC','RESEARCH_SPEC_REVISION_CREATE_V1')
+      ($1,$4,$5,null,$6,'USER_PRINCIPAL',($6::uuid)::text,$7,null,'TENANT_SCOPE','PURE_RESEARCH','DRAFT','RESEARCH_DRAFT_REVISION_CREATE_V1'),
+      ($2,$4,$5,null,$6,'USER_PRINCIPAL',($6::uuid)::text,$7,null,'TENANT_SCOPE','PURE_RESEARCH','HYPOTHESIS','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1'),
+      ($3,$4,$5,null,$6,'USER_PRINCIPAL',($6::uuid)::text,$7,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC','RESEARCH_SPEC_REVISION_CREATE_V1')
   `, [draftRoot, hypothesisRoot, specRoot, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId]);
   await client.query(`
     insert into investing.research_material_revisions (
@@ -379,8 +379,8 @@ async function seedResearchMaterialAndSpec(client: PoolClient, fixture: Rl8cAuth
       tenant_membership_id, account_access_id, operation_scope, operation, capability, source_context, material_kind, revision_number,
       predecessor_revision_id, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
     ) values
-      ($1,$2,$6,$7,null,$8,'USER_PRINCIPAL',$8::text,$9,null,'TENANT_SCOPE','RESEARCH_DRAFT_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','DRAFT',1,null,'RESEARCH_DRAFT_HASH_PAYLOAD_V1','{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb,$10,$10,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$12),$12,$13),
-      ($3,$4,$6,$7,null,$8,'USER_PRINCIPAL',$8::text,$9,null,'TENANT_SCOPE','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','HYPOTHESIS',1,null,'HYPOTHESIS_HASH_PAYLOAD_V1','{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb,$11,$11,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$14),$14,$15)
+      ($1,$2,$6,$7,null,$8,'USER_PRINCIPAL',($8::uuid)::text,$9,null,'TENANT_SCOPE','RESEARCH_DRAFT_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','DRAFT',1,null,'RESEARCH_DRAFT_HASH_PAYLOAD_V1','{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb,$10,$10,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$12),$12,$13),
+      ($3,$4,$6,$7,null,$8,'USER_PRINCIPAL',($8::uuid)::text,$9,null,'TENANT_SCOPE','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','HYPOTHESIS',1,null,'HYPOTHESIS_HASH_PAYLOAD_V1','{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb,$11,$11,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$14),$14,$15)
   `, [draftRevision, draftRoot, hypothesisRevision, hypothesisRoot, specRoot, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, draftHash, hypothesisHash, `rl8c1-${suffix}-draft-idem`, `rl8c1-${suffix}-draft-corr`, `rl8c1-${suffix}-hypothesis-idem`, `rl8c1-${suffix}-hypothesis-corr`]);
   const specCandidate = {
     schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1",
@@ -394,7 +394,7 @@ async function seedResearchMaterialAndSpec(client: PoolClient, fixture: Rl8cAuth
       tenant_membership_id, account_access_id, operation_scope, source_context, operation, capability, revision_number, predecessor_revision_id,
       source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status,
       canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id
-    ) values ($1,$2,$3,$4,null,$5,'USER_PRINCIPAL',$5::text,$6,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC_REVISION_CREATE_V1','RESEARCH_MUTATE',1,null,$7,$8,$9,$10,'RESEARCH_SPEC_CANDIDATE_V1','CANDIDATE_ONLY',$11::jsonb,$12,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$13),$13,$14)
+    ) values ($1,$2,$3,$4,null,$5,'USER_PRINCIPAL',($5::uuid)::text,$6,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC_REVISION_CREATE_V1','RESEARCH_MUTATE',1,null,$7,$8,$9,$10,'RESEARCH_SPEC_CANDIDATE_V1','CANDIDATE_ONLY',$11::jsonb,$12,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$13),$13,$14)
   `, [fixture.researchSpecRevisionId, specRoot, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, draftRevision, draftHash, hypothesisRevision, hypothesisHash, JSON.stringify(specCandidate), fixtureHash(`${suffix}:spec`), `rl8c1-${suffix}-spec-idem`, `rl8c1-${suffix}-spec-corr`]);
 }
 
@@ -410,8 +410,8 @@ async function seedBaselineAndVariantExperiment(client: PoolClient, fixture: Rl8
       experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex,
       material_request_hash, idempotency_record_id, idempotency_key, correlation_id
     ) values
-      ($1,$3,$4,null,$5,'USER_PRINCIPAL',$5::text,$6,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_BASELINE_CREATE_V1','RESEARCH_MUTATE','BASELINE',null,$7,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$10,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$11,null,null,null,null,$12,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$13),$13,$14),
-      ($2,$3,$4,null,$5,'USER_PRINCIPAL',$5::text,$6,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_VARIANT_CREATE_V1','RESEARCH_MUTATE','VARIANT',$1,$7,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$10,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$8,'SHA-256','SYNTRAKE:EXPERIMENT_PARAMETERS:V1','SYNTRAKE_SHA256_V1',$9,$15,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$16),$16,$17)
+      ($1,$3,$4,null,$5,'USER_PRINCIPAL',($5::uuid)::text,$6,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_BASELINE_CREATE_V1','RESEARCH_MUTATE','BASELINE',null,$7,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$10,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$11,null,null,null,null,$12,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$13),$13,$14),
+      ($2,$3,$4,null,$5,'USER_PRINCIPAL',($5::uuid)::text,$6,null,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_VARIANT_CREATE_V1','RESEARCH_MUTATE','VARIANT',$1,$7,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$10,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$8,'SHA-256','SYNTRAKE:EXPERIMENT_PARAMETERS:V1','SYNTRAKE_SHA256_V1',$9,$15,(select idempotency_record_id from investing.idempotency_records where idempotency_key=$16),$16,$17)
   `, [fixture.baselineExperimentId, fixture.researchExperimentId, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchSpecRevisionId, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, fixtureHash(`${suffix}:baseline-experiment`), fixtureHash(`${suffix}:baseline`), `rl8c1-${suffix}-baseline-idem`, `rl8c1-${suffix}-baseline-corr`, fixtureHash(`${suffix}:variant`), `rl8c1-${suffix}-variant-idem`, `rl8c1-${suffix}-variant-corr`]);
 }
 
