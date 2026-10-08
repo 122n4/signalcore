@@ -5,6 +5,8 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   canonicalSha256HexV1,
+  i5ResearchInternalCanonicalJsonBytesV1,
+  sha256HexV1,
   type CanonicalJsonValue,
   type HashDomainV1,
   type HashRefV1,
@@ -662,16 +664,28 @@ async function rl8c3SuccessorCount(client: PoolClient, predecessorId: string): P
   return (await client.query<{ count: number }>("select count(*)::int as count from investing.research_scientific_promotion_transitions_scientific_identities where predecessor_transition_identity_id=$1", [predecessorId])).rows[0]!.count;
 }
 
+function testOnlyScientificPromotionRef<D extends typeof scientificPromotionProtocolDomainV1 | typeof scientificPromotionTransitionDomainV1>(hashDomain: D, payload: CanonicalJsonValue): { hashAlgorithm: "SHA-256"; hashDomain: D; hashVersion: "SYNTRAKE_SHA256_V1"; hashHex: ReturnType<typeof canonicalSha256HexV1> } {
+  return {
+    hashAlgorithm: "SHA-256",
+    hashDomain,
+    hashVersion: "SYNTRAKE_SHA256_V1",
+    hashHex: canonicalSha256HexV1(sha256HexV1(Buffer.concat([Buffer.from(`${hashDomain}\n`, "utf8"), i5ResearchInternalCanonicalJsonBytesV1(payload)]))),
+  };
+}
+
 async function createFutureProtocolRoot(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<Rl8c3FutureRoot> {
   const protocolIdentityId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const payload = { ...(canonicalScientificPromotionProtocolV1() as unknown as Record<string, CanonicalJsonValue>), protocolId: `SCIENTIFIC_PROMOTION_PROTOCOL_TEST_${suffix}` } as unknown as CanonicalJsonValue;
-  const protocolHash = (await client.query<{ hash: string }>("select investing.rl8c_sha256_hex_v1($1,$2::jsonb) as hash", [scientificPromotionProtocolDomainV1, JSON.stringify(payload)])).rows[0]!.hash;
-  await client.query(`insert into investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256',$2,'SYNTRAKE_SHA256_V1',$3,$4::jsonb)`, [protocolIdentityId, scientificPromotionProtocolDomainV1, protocolHash, JSON.stringify(payload)]);
-  const protocolRef = { hashAlgorithm: "SHA-256", hashDomain: scientificPromotionProtocolDomainV1, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: canonicalSha256HexV1(protocolHash) } as ScientificPromotionTransitionV1["protocol"];
+  const protocolRef = testOnlyScientificPromotionRef(scientificPromotionProtocolDomainV1, payload) as ScientificPromotionTransitionV1["protocol"];
+  const dbProtocolHash = (await client.query<{ hash: string }>("select investing.rl8c_sha256_hex_v1($1,$2::jsonb) as hash", [scientificPromotionProtocolDomainV1, JSON.stringify(payload)])).rows[0]!.hash;
+  expect(dbProtocolHash).toBe(protocolRef.hashHex);
+  await client.query(`insert into investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256',$2,'SYNTRAKE_SHA256_V1',$3,$4::jsonb)`, [protocolIdentityId, scientificPromotionProtocolDomainV1, protocolRef.hashHex, JSON.stringify(payload)]);
   const rootPayload = rootTransition({ protocol: protocolRef });
-  const rootRef = hashScientificPromotionTransitionV1(rootPayload);
+  const rootRef = testOnlyScientificPromotionRef(scientificPromotionTransitionDomainV1, rootPayload as unknown as CanonicalJsonValue) as Rl8c3FutureRoot["rootRef"];
+  const dbRootHash = (await client.query<{ hash: string }>("select investing.rl8c_sha256_hex_v1($1,$2::jsonb) as hash", [scientificPromotionTransitionDomainV1, JSON.stringify(rootPayload)])).rows[0]!.hash;
+  expect(dbRootHash).toBe(rootRef.hashHex);
   const rootId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
-  await client.query(`insert into investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, run_input_identity_id, run_input_hash_hex, result_identity_id, result_hash_hex, canonical_payload) values ($1,'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'DRAFT_RESEARCH','EXECUTED','SHA-256',$12,'SYNTRAKE_SHA256_V1',$13,$14,$15,$16,$17,$18::jsonb)`, [rootId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, protocolIdentityId, protocolHash, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, scientificPromotionTransitionDomainV1, rootRef.hashHex, fixture.runInputIdentityId, runInput.hashHex, fixture.resultIdentityId, result.hashHex, JSON.stringify(rootPayload)]);
+  await client.query(`insert into investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, run_input_identity_id, run_input_hash_hex, result_identity_id, result_hash_hex, canonical_payload) values ($1,'RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'DRAFT_RESEARCH','EXECUTED','SHA-256',$12,'SYNTRAKE_SHA256_V1',$13,$14,$15,$16,$17,$18::jsonb)`, [rootId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, protocolIdentityId, protocolRef.hashHex, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, scientificPromotionTransitionDomainV1, rootRef.hashHex, fixture.runInputIdentityId, runInput.hashHex, fixture.resultIdentityId, result.hashHex, JSON.stringify(rootPayload)]);
   return { protocolIdentityId, protocolRef, rootId, rootRef, rootPayload };
 }
 
@@ -696,7 +710,7 @@ async function createRl8c3Leaf(client: PoolClient, state: "EXECUTED" | "INSUFFIC
     await setRl8Context(client, root.fixture, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
     await client.query("set local role investing_app");
     const stage = state === "INSUFFICIENT_EVIDENCE" ? insufficientStageATransition() : state === "VALIDATION_FAILED" || state === "REJECTED" ? failedStageATransition() : stageATransition();
-    const closure = state === "PROMOTION_ELIGIBLE" || state === "REJECTED" ? closureTransition(stage) : null;
+    const closure = stage.resultingState === "VALIDATION_PASSED" || stage.resultingState === "VALIDATION_FAILED" ? closureTransition(stage) : null;
     const persisted = await client.query<{ result: { stageATransitionIdentityId: string; closureTransitionIdentityId: string | null } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [root.rootId, hashScientificPromotionTransitionV1(stage).hashHex, JSON.stringify(stage), closure ? hashScientificPromotionTransitionV1(closure).hashHex : null, closure ? JSON.stringify(closure) : null]);
     await client.query("reset role");
     await client.query("commit");
@@ -709,11 +723,18 @@ async function createRl8c3Leaf(client: PoolClient, state: "EXECUTED" | "INSUFFIC
 }
 
 async function reconstructRl8c3(client: PoolClient, fixture: Rl8cAuthorityFixture, rootId: string): Promise<Record<string, unknown>> {
-  await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1");
-  await client.query("set local role investing_app");
-  const result = await client.query<{ result: Record<string, unknown> }>("select investing.reconstruct_research_scientific_promotion_chain_v1($1) as result", [rootId]);
-  await client.query("reset role");
-  return result.rows[0]!.result;
+  await client.query("begin");
+  try {
+    await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1");
+    await client.query("set local role investing_app");
+    const result = await client.query<{ result: Record<string, unknown> }>("select investing.reconstruct_research_scientific_promotion_chain_v1($1) as result", [rootId]);
+    await client.query("reset role");
+    await client.query("commit");
+    return result.rows[0]!.result;
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  }
 }
 
 maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", () => {
