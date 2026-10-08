@@ -613,31 +613,54 @@ begin
       and pg_catalog.pg_get_userbyid(p.proowner) = 'investing_rl8_writer'
   ) then raise exception 'RL-8C2 postcondition failed: closure trigger authority mismatch'; end if;
   if exists (
-    select 1 from information_schema.routine_privileges
-    where routine_schema = 'investing'
-      and routine_name in (
-        'rl8c_assert_writer_authority_v1',
-        'rl8c_required_hash_v1',
-        'rl8c_hashref_equals_current_protocol_v1',
-        'rl8c_resolve_optional_uuid_v1',
-        'rl8c_insert_transition_from_payload_v1'
-      )
-      and grantee in ('PUBLIC','anon','authenticated','service_role','investing_app')
-      and privilege_type = 'EXECUTE'
+    select 1
+    from (values
+      ('investing.rl8c_assert_writer_authority_v1(text)'::text),
+      ('investing.rl8c_required_hash_v1(jsonb,text[])'::text),
+      ('investing.rl8c_hashref_equals_current_protocol_v1(jsonb)'::text),
+      ('investing.rl8c_resolve_optional_uuid_v1(regclass,text,text,text)'::text),
+      ('investing.rl8c_insert_transition_from_payload_v1(text,text,jsonb,uuid,text,uuid,text)'::text)
+    ) helper(function_identity)
+    where pg_catalog.has_function_privilege('anon', helper.function_identity, 'EXECUTE')
+       or pg_catalog.has_function_privilege('authenticated', helper.function_identity, 'EXECUTE')
+       or pg_catalog.has_function_privilege('service_role', helper.function_identity, 'EXECUTE')
+       or pg_catalog.has_function_privilege('investing_app', helper.function_identity, 'EXECUTE')
+       or exists (
+         select 1
+         from pg_catalog.pg_proc p
+         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+         cross join lateral pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) acl
+         where n.nspname = 'investing'
+           and pg_catalog.replace(n.nspname || '.' || p.proname || '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')', ' ', '') = helper.function_identity
+           and acl.grantee = 0
+           and acl.privilege_type = 'EXECUTE'
+       )
   ) then raise exception 'RL-8C2 postcondition failed: helper execute grant leaked'; end if;
-  if (
-    select count(*) from information_schema.routine_privileges
-    where routine_schema = 'investing'
-      and routine_name in ('persist_research_scientific_promotion_protocol_v1','persist_research_scientific_promotion_root_v1','persist_research_scientific_promotion_evaluation_plan_v1')
-      and grantee = 'investing_app'
-      and privilege_type = 'EXECUTE'
-  ) <> 3 then raise exception 'RL-8C2 postcondition failed: investing_app writer execute grant mismatch'; end if;
+  if not (
+    pg_catalog.has_function_privilege('investing_app','investing.persist_research_scientific_promotion_protocol_v1(text,jsonb)','EXECUTE')
+    and pg_catalog.has_function_privilege('investing_app','investing.persist_research_scientific_promotion_root_v1(text,jsonb)','EXECUTE')
+    and pg_catalog.has_function_privilege('investing_app','investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid,text,jsonb,text,jsonb)','EXECUTE')
+  ) then raise exception 'RL-8C2 postcondition failed: investing_app writer execute grant mismatch'; end if;
   if exists (
-    select 1 from information_schema.routine_privileges
-    where routine_schema = 'investing'
-      and routine_name in ('persist_research_scientific_promotion_protocol_v1','persist_research_scientific_promotion_root_v1','persist_research_scientific_promotion_evaluation_plan_v1')
-      and grantee in ('PUBLIC','anon','authenticated','service_role')
-      and privilege_type = 'EXECUTE'
+    select 1
+    from (values
+      ('investing.persist_research_scientific_promotion_protocol_v1(text,jsonb)'::text),
+      ('investing.persist_research_scientific_promotion_root_v1(text,jsonb)'::text),
+      ('investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid,text,jsonb,text,jsonb)'::text)
+    ) writer(function_identity)
+    where pg_catalog.has_function_privilege('anon', writer.function_identity, 'EXECUTE')
+       or pg_catalog.has_function_privilege('authenticated', writer.function_identity, 'EXECUTE')
+       or pg_catalog.has_function_privilege('service_role', writer.function_identity, 'EXECUTE')
+       or exists (
+         select 1
+         from pg_catalog.pg_proc p
+         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+         cross join lateral pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) acl
+         where n.nspname = 'investing'
+           and pg_catalog.replace(n.nspname || '.' || p.proname || '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')', ' ', '') = writer.function_identity
+           and acl.grantee = 0
+           and acl.privilege_type = 'EXECUTE'
+       )
   ) then raise exception 'RL-8C2 postcondition failed: forbidden writer execute grant exists'; end if;
   if pg_catalog.has_schema_privilege('investing_rl8_writer','investing','CREATE') then
     raise exception 'RL-8C2 postcondition failed: writer schema CREATE leaked';
