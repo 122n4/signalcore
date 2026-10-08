@@ -96,6 +96,19 @@ as $$
   select exists(select 1 from walk where transition_id = p_forbidden_transition_identity_id)
 $$;
 
+revoke all on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) from public, anon, authenticated, service_role, investing_app;
+grant execute on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) to investing_rl8_writer;
+
+reset role;
+
+grant investing_rl8_writer to postgres with set true;
+
+set local role investing_owner;
+grant create on schema investing to investing_rl8_writer;
+reset role;
+
+set local role investing_rl8_writer;
+
 drop function if exists investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb);
 
 create or replace function investing.persist_research_scientific_promotion_supersession_v1(
@@ -309,12 +322,6 @@ begin
 end;
 $$;
 
-drop trigger if exists research_scientific_promotion_supersession_integrity on investing.research_scientific_promotion_transitions_scientific_identities;
-create constraint trigger research_scientific_promotion_supersession_integrity
-after insert on investing.research_scientific_promotion_transitions_scientific_identities
-deferrable initially deferred
-for each row execute function investing.rl8c_validate_supersession_integrity_v1();
-
 create or replace function investing.reconstruct_research_scientific_promotion_chain_v1(
   p_root_transition_identity_id uuid
 ) returns jsonb
@@ -452,21 +459,32 @@ begin
 end;
 $$;
 
-revoke all on function investing.rl8c_validate_supersession_integrity_v1() from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) from public, anon, authenticated, service_role;
-revoke all on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) from public, anon, authenticated, service_role;
-grant execute on function investing.rl8c_supersession_cycle_reaches_v1(uuid, uuid) to investing_rl8_writer;
+reset role;
+
+set local role investing_owner;
+drop trigger if exists research_scientific_promotion_supersession_integrity on investing.research_scientific_promotion_transitions_scientific_identities;
+create constraint trigger research_scientific_promotion_supersession_integrity
+after insert on investing.research_scientific_promotion_transitions_scientific_identities
+deferrable initially deferred
+for each row execute function investing.rl8c_validate_supersession_integrity_v1();
 
 reset role;
-alter function investing.rl8c_validate_supersession_integrity_v1() owner to investing_rl8_writer;
-alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) owner to investing_rl8_writer;
-alter function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) owner to investing_rl8_writer;
 
 set local role investing_rl8_writer;
+
+revoke all on function investing.rl8c_validate_supersession_integrity_v1() from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) from public, anon, authenticated, service_role;
 grant execute on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) to investing_app;
 grant execute on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) to investing_app;
+
 reset role;
+
+set local role investing_owner;
+revoke create on schema investing from investing_rl8_writer;
+reset role;
+
+grant investing_rl8_writer to postgres with set false;
 
 do $$
 begin
@@ -494,7 +512,17 @@ begin
   if not has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') or not has_function_privilege('investing_app','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') then raise exception 'RL-8C3 postcondition failed: investing_app execute missing'; end if;
   if has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') or has_function_privilege('anon','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') or has_function_privilege('authenticated','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') or has_function_privilege('service_role','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') or has_function_privilege('anon','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') or has_function_privilege('authenticated','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') then raise exception 'RL-8C3 postcondition failed: forbidden execute grant exists'; end if;
   if exists (select 1 from pg_catalog.pg_roles where rolname='investing_rl8_writer' and (rolcanlogin or rolinherit or rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls)) then raise exception 'RL-8C3 postcondition failed: writer role drift'; end if;
-  if pg_catalog.pg_has_role('investing_app','investing_rl8_writer','member') or pg_catalog.pg_has_role('service_role','investing_rl8_writer','member') then raise exception 'RL-8C3 postcondition failed: forbidden role membership'; end if;
+  if pg_catalog.pg_has_role('investing_owner','investing_rl8_writer','member') or pg_catalog.pg_has_role('investing_app','investing_rl8_writer','member') or pg_catalog.pg_has_role('service_role','investing_rl8_writer','member') then raise exception 'RL-8C3 postcondition failed: forbidden role membership'; end if;
+  if pg_catalog.has_schema_privilege('investing_rl8_writer','investing','CREATE') then raise exception 'RL-8C3 postcondition failed: writer schema CREATE leaked'; end if;
+  if exists (
+    select 1
+    from pg_catalog.pg_auth_members m
+    join pg_catalog.pg_roles role_r on role_r.oid = m.roleid
+    join pg_catalog.pg_roles member_r on member_r.oid = m.member
+    where role_r.rolname = 'investing_rl8_writer'
+      and member_r.rolname = 'postgres'
+      and m.set_option
+  ) then raise exception 'RL-8C3 postcondition failed: postgres SET OPTION leaked'; end if;
   if exists (select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='investing' and c.relname in ('research_scientific_promotion_protocols_scientific_identities','research_scientific_promotion_transitions_scientific_identities') and (not c.relrowsecurity or not c.relforcerowsecurity)) then raise exception 'RL-8C3 postcondition failed: RLS/FORCE RLS drift'; end if;
 end $$;
 

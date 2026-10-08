@@ -61,10 +61,16 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
     expect(normalized).toContain("p_successor_root_transition_identity_id uuid");
     expect(normalized).toContain("security definer");
     expect(normalized).toContain("set search_path = pg_catalog");
-    expect(normalized).toContain("alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) owner to investing_rl8_writer");
     expect(normalized).toContain("grant execute on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) to investing_app");
     expect(normalized).toContain("grant execute on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) to investing_app");
     expect(normalized).toContain("revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) from public, anon, authenticated, service_role");
+    expect(normalized).toContain("grant investing_rl8_writer to postgres with set true");
+    expect(normalized).toContain("grant create on schema investing to investing_rl8_writer");
+    expect(normalized).toContain("revoke create on schema investing from investing_rl8_writer");
+    expect(normalized).toContain("grant investing_rl8_writer to postgres with set false");
+    expect(normalized).not.toContain("alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) owner to investing_rl8_writer");
+    expect(normalized).not.toContain("alter function investing.rl8c_validate_supersession_integrity_v1() owner to investing_rl8_writer");
+    expect(normalized).not.toContain("grant investing_rl8_writer to investing_owner");
   });
 
   it("preserves security, RLS, append-only, and scientific domain boundaries", () => {
@@ -127,6 +133,9 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
     expect(normalized).toContain("drop function if exists investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb)");
     expect(normalized).toContain("pg_get_function_identity_arguments(p.oid) = 'p_predecessor_transition_identity_id uuid, p_superseded_transition_hash_hex text, p_superseded_canonical_payload jsonb, p_successor_protocol_identity_id uuid, p_successor_root_transition_identity_id uuid'");
     expect(normalized).toContain("p.pronargs = 3");
+    expect(normalized).toContain("pg_catalog.has_schema_privilege('investing_rl8_writer','investing','create')");
+    expect(normalized).toContain("member_r.rolname = 'postgres'");
+    expect(normalized).toContain("and m.set_option");
     expect(normalized).toContain("research_scientific_promotion_protocol_identity_id = p_successor_protocol_identity_id");
     expect(normalized).toContain("research_scientific_promotion_transition_identity_id = p_successor_root_transition_identity_id");
     expect(normalized).toContain("rl8c_successor:' || v_predecessor.research_scientific_promotion_transition_identity_id::text");
@@ -140,7 +149,6 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
       "create constraint trigger research_scientific_promotion_supersession_integrity",
       "deferrable initially deferred",
       "for each row execute function investing.rl8c_validate_supersession_integrity_v1()",
-      "alter function investing.rl8c_validate_supersession_integrity_v1() owner to investing_rl8_writer",
       "revoke all on function investing.rl8c_validate_supersession_integrity_v1() from public, anon, authenticated, service_role, investing_app",
       "RL-8C3 supersession integrity violation: canonical payload mismatch",
       "RL-8C3 supersession integrity violation: successor root missing",
@@ -171,10 +179,13 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
       await pool.query("create schema extensions authorization postgres");
       await pool.query("create extension if not exists pgcrypto with schema extensions");
       for (const migration of replayMigrations) await applyMigration(pool, migration);
-      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean; supersession_trigger: boolean; supersession_trigger_deferrable: boolean; supersession_trigger_initially_deferred: boolean; trigger_owner_name: string; trigger_prosecdef: boolean; trigger_search_path_safe: boolean; supersession_identity_arguments: string; supersession_three_arg_overload_count: number }>(`
+      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean; supersession_trigger: boolean; supersession_trigger_deferrable: boolean; supersession_trigger_initially_deferred: boolean; trigger_owner_name: string; trigger_prosecdef: boolean; trigger_search_path_safe: boolean; supersession_identity_arguments: string; supersession_three_arg_overload_count: number; writer_create: boolean; postgres_set_option: boolean; forbidden_membership: boolean }>(`
         select
           has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as app_execute,
           pg_catalog.pg_get_function_identity_arguments(p.oid) as supersession_identity_arguments,
+          has_schema_privilege('investing_rl8_writer','investing','CREATE') as writer_create,
+          exists (select 1 from pg_auth_members m join pg_roles role_r on role_r.oid=m.roleid join pg_roles member_r on member_r.oid=m.member where role_r.rolname='investing_rl8_writer' and member_r.rolname='postgres' and m.set_option) as postgres_set_option,
+          (pg_has_role('investing_owner','investing_rl8_writer','member') or pg_has_role('investing_app','investing_rl8_writer','member') or pg_has_role('service_role','investing_rl8_writer','member')) as forbidden_membership,
           (select count(*)::int from pg_proc p3 join pg_namespace n3 on n3.oid = p3.pronamespace where n3.nspname='investing' and p3.proname='persist_research_scientific_promotion_supersession_v1' and p3.pronargs=3) as supersession_three_arg_overload_count,
           has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as service_execute,
           has_function_privilege('investing_app','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') as reconstruct_app_execute,
@@ -201,7 +212,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
         join pg_namespace cn on cn.oid = c.relnamespace and cn.nspname = 'investing'
         where n.nspname = 'investing' and p.proname = 'persist_research_scientific_promotion_supersession_v1'
       `);
-      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true, supersession_trigger: true, supersession_trigger_deferrable: true, supersession_trigger_initially_deferred: true, trigger_owner_name: "investing_rl8_writer", trigger_prosecdef: true, trigger_search_path_safe: true, supersession_identity_arguments: "p_predecessor_transition_identity_id uuid, p_superseded_transition_hash_hex text, p_superseded_canonical_payload jsonb, p_successor_protocol_identity_id uuid, p_successor_root_transition_identity_id uuid", supersession_three_arg_overload_count: 0 });
+      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true, supersession_trigger: true, supersession_trigger_deferrable: true, supersession_trigger_initially_deferred: true, trigger_owner_name: "investing_rl8_writer", trigger_prosecdef: true, trigger_search_path_safe: true, supersession_identity_arguments: "p_predecessor_transition_identity_id uuid, p_superseded_transition_hash_hex text, p_superseded_canonical_payload jsonb, p_successor_protocol_identity_id uuid, p_successor_root_transition_identity_id uuid", supersession_three_arg_overload_count: 0, writer_create: false, postgres_set_option: false, forbidden_membership: false });
     } finally {
       await pool.end();
     }

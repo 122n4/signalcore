@@ -261,6 +261,26 @@ begin
 end;
 $$;
 
+revoke all on function investing.rl8c_assert_writer_authority_v1(text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl8c_required_hash_v1(jsonb, text[]) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl8c_hashref_equals_current_protocol_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl8c_resolve_optional_uuid_v1(regclass, text, text, text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl8c_insert_transition_from_payload_v1(text, text, jsonb, uuid, text, uuid, text) from public, anon, authenticated, service_role, investing_app;
+grant execute on function investing.rl8c_assert_writer_authority_v1(text) to investing_rl8_writer;
+grant execute on function investing.rl8c_required_hash_v1(jsonb, text[]) to investing_rl8_writer;
+grant execute on function investing.rl8c_hashref_equals_current_protocol_v1(jsonb) to investing_rl8_writer;
+grant execute on function investing.rl8c_insert_transition_from_payload_v1(text, text, jsonb, uuid, text, uuid, text) to investing_rl8_writer;
+
+reset role;
+
+grant investing_rl8_writer to postgres with set true;
+
+set local role investing_owner;
+grant create on schema investing to investing_rl8_writer;
+reset role;
+
+set local role investing_rl8_writer;
+
 create or replace function investing.rl8c_validate_closure_pair_v1()
 returns trigger
 language plpgsql
@@ -293,12 +313,6 @@ begin
   return null;
 end;
 $$;
-
-drop trigger if exists research_scientific_promotion_stage_a_closure_integrity on investing.research_scientific_promotion_transitions_scientific_identities;
-create constraint trigger research_scientific_promotion_stage_a_closure_integrity
-after insert on investing.research_scientific_promotion_transitions_scientific_identities
-deferrable initially deferred
-for each row execute function investing.rl8c_validate_closure_pair_v1();
 
 create or replace function investing.persist_research_scientific_promotion_protocol_v1(p_protocol_hash_hex text, p_canonical_payload jsonb)
 returns jsonb
@@ -517,26 +531,20 @@ begin
 end;
 $$;
 
-revoke all on function investing.rl8c_assert_writer_authority_v1(text) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl8c_required_hash_v1(jsonb, text[]) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl8c_hashref_equals_current_protocol_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl8c_resolve_optional_uuid_v1(regclass, text, text, text) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl8c_insert_transition_from_payload_v1(text, text, jsonb, uuid, text, uuid, text) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl8c_validate_closure_pair_v1() from public, anon, authenticated, service_role, investing_app;
-grant execute on function investing.rl8c_assert_writer_authority_v1(text) to investing_rl8_writer;
-grant execute on function investing.rl8c_required_hash_v1(jsonb, text[]) to investing_rl8_writer;
-grant execute on function investing.rl8c_hashref_equals_current_protocol_v1(jsonb) to investing_rl8_writer;
-grant execute on function investing.rl8c_insert_transition_from_payload_v1(text, text, jsonb, uuid, text, uuid, text) to investing_rl8_writer;
+reset role;
+
+set local role investing_owner;
+drop trigger if exists research_scientific_promotion_stage_a_closure_integrity on investing.research_scientific_promotion_transitions_scientific_identities;
+create constraint trigger research_scientific_promotion_stage_a_closure_integrity
+after insert on investing.research_scientific_promotion_transitions_scientific_identities
+deferrable initially deferred
+for each row execute function investing.rl8c_validate_closure_pair_v1();
 
 reset role;
 
-alter function investing.rl8c_validate_closure_pair_v1() owner to investing_rl8_writer;
-alter function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) owner to investing_rl8_writer;
-alter function investing.persist_research_scientific_promotion_root_v1(text, jsonb) owner to investing_rl8_writer;
-alter function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) owner to investing_rl8_writer;
-
 set local role investing_rl8_writer;
 
+revoke all on function investing.rl8c_validate_closure_pair_v1() from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function investing.persist_research_scientific_promotion_root_v1(text, jsonb) from public, anon, authenticated, service_role;
 revoke all on function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) from public, anon, authenticated, service_role;
@@ -545,6 +553,12 @@ grant execute on function investing.persist_research_scientific_promotion_root_v
 grant execute on function investing.persist_research_scientific_promotion_evaluation_plan_v1(uuid, text, jsonb, text, jsonb) to investing_app;
 
 reset role;
+
+set local role investing_owner;
+revoke create on schema investing from investing_rl8_writer;
+reset role;
+
+grant investing_rl8_writer to postgres with set false;
 
 do $$
 declare
@@ -625,6 +639,21 @@ begin
       and grantee in ('PUBLIC','anon','authenticated','service_role')
       and privilege_type = 'EXECUTE'
   ) then raise exception 'RL-8C2 postcondition failed: forbidden writer execute grant exists'; end if;
+  if pg_catalog.has_schema_privilege('investing_rl8_writer','investing','CREATE') then
+    raise exception 'RL-8C2 postcondition failed: writer schema CREATE leaked';
+  end if;
+  if exists (
+    select 1
+    from pg_catalog.pg_auth_members m
+    join pg_catalog.pg_roles role_r on role_r.oid = m.roleid
+    join pg_catalog.pg_roles member_r on member_r.oid = m.member
+    where role_r.rolname = 'investing_rl8_writer'
+      and member_r.rolname = 'postgres'
+      and m.set_option
+  ) then raise exception 'RL-8C2 postcondition failed: postgres SET OPTION leaked'; end if;
+  if pg_catalog.pg_has_role('investing_owner','investing_rl8_writer','member') or pg_catalog.pg_has_role('investing_app','investing_rl8_writer','member') or pg_catalog.pg_has_role('service_role','investing_rl8_writer','member') then
+    raise exception 'RL-8C2 postcondition failed: forbidden writer membership';
+  end if;
   if exists (select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace where n.nspname='investing' and p.proname='persist_research_scientific_promotion_supersession_v1') then
     raise exception 'RL-8C2 postcondition failed: supersession writer is out of scope';
   end if;
