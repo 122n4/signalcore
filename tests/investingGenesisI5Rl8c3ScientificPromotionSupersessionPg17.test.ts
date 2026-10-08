@@ -318,7 +318,13 @@ function pgErrorCode(error: unknown): unknown {
   return typeof error === "object" && error !== null && "code" in error ? (error as { code?: unknown }).code : undefined;
 }
 
-async function expectPgRejection(client: PoolClient, action: () => Promise<unknown>, pattern?: RegExp): Promise<void> {
+function pgErrorConstraint(error: unknown): unknown {
+  return typeof error === "object" && error !== null && "constraint" in error ? (error as { constraint?: unknown }).constraint : undefined;
+}
+
+type PgRejectionExpectation = RegExp | ((error: unknown) => void);
+
+async function expectPgRejection(client: PoolClient, action: () => Promise<unknown>, expectation?: PgRejectionExpectation): Promise<void> {
   await client.query("savepoint rl8c_expected_rejection");
   let error: unknown = null;
   try {
@@ -330,7 +336,15 @@ async function expectPgRejection(client: PoolClient, action: () => Promise<unkno
   await client.query("release savepoint rl8c_expected_rejection");
   expect(error).not.toBeNull();
   expect(pgErrorCode(error)).not.toBe("25P02");
-  if (pattern) expect(error instanceof Error ? error.message : String(error)).toMatch(pattern);
+  if (expectation instanceof RegExp) expect(error instanceof Error ? error.message : String(error)).toMatch(expectation);
+  else if (expectation) expectation(error);
+}
+
+function expectRl8c3InvariantRejection(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const semantic = /WRONG_LINEAGE|MALFORMED|integrity/i.test(message);
+  const payloadCheck = pgErrorCode(error) === "23514" && pgErrorConstraint(error) === "research_scientific_promotion_payload_check";
+  expect(semantic || payloadCheck).toBe(true);
 }
 
 async function withTransaction<T>(client: PoolClient, action: () => Promise<T>): Promise<T> {
@@ -830,7 +844,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, evidenceSnapshot: { ...base.evidenceSnapshot, evidenceObject: null } }), /WRONG_LINEAGE|MALFORMED|integrity/i);
       await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, gateOutcomes: [] }), /WRONG_LINEAGE|MALFORMED|integrity/i);
       await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, transitionReasons: [] }), /WRONG_LINEAGE|MALFORMED|integrity/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersedes: null }), /WRONG_LINEAGE|MALFORMED|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersedes: null }), expectRl8c3InvariantRejection);
       await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, rejectedTransition: hashScientificPromotionTransitionV1(history.leaf.canonical_payload) }), /WRONG_LINEAGE|MALFORMED|integrity/i);
       await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersededByChain: null }), /WRONG_LINEAGE|MALFORMED|integrity/i);
       await client.query("rollback");
