@@ -273,7 +273,7 @@ grant execute on function investing.rl8c_insert_transition_from_payload_v1(text,
 
 reset role;
 
-grant investing_rl8_writer to postgres with set true;
+grant investing_rl8_writer to postgres with inherit false, set true;
 
 set local role investing_owner;
 grant create on schema investing to investing_rl8_writer;
@@ -558,7 +558,7 @@ set local role investing_owner;
 revoke create on schema investing from investing_rl8_writer;
 reset role;
 
-grant investing_rl8_writer to postgres with set false;
+revoke investing_rl8_writer from postgres granted by postgres;
 
 do $$
 declare
@@ -649,8 +649,18 @@ begin
     join pg_catalog.pg_roles member_r on member_r.oid = m.member
     where role_r.rolname = 'investing_rl8_writer'
       and member_r.rolname = 'postgres'
-      and m.set_option
-  ) then raise exception 'RL-8C2 postcondition failed: postgres SET OPTION leaked'; end if;
+      and (m.set_option or m.inherit_option)
+  ) then raise exception 'RL-8C2 postcondition failed: postgres writer membership option leaked'; end if;
+  if exists (
+    select 1
+    from pg_catalog.pg_auth_members m
+    join pg_catalog.pg_roles role_r on role_r.oid = m.roleid
+    join pg_catalog.pg_roles member_r on member_r.oid = m.member
+    join pg_catalog.pg_roles grantor_r on grantor_r.oid = m.grantor
+    where role_r.rolname = 'investing_rl8_writer'
+      and member_r.rolname = 'postgres'
+      and grantor_r.rolname = 'postgres'
+  ) then raise exception 'RL-8C2 postcondition failed: postgres self-granted writer membership leaked'; end if;
   if pg_catalog.pg_has_role('investing_owner','investing_rl8_writer','member') or pg_catalog.pg_has_role('investing_app','investing_rl8_writer','member') or pg_catalog.pg_has_role('service_role','investing_rl8_writer','member') then
     raise exception 'RL-8C2 postcondition failed: forbidden writer membership';
   end if;

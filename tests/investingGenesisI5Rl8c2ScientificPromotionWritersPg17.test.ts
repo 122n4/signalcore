@@ -229,15 +229,15 @@ describe("I5 RL-8C2 scientific promotion writer migration static ownership guard
   it("uses a temporary managed-Postgres bootstrap and creates writer functions directly as investing_rl8_writer", () => {
     const ownerIndex = normalized.indexOf("set local role investing_owner");
     const helperAclIndex = normalized.indexOf("revoke all on function investing.rl8c_assert_writer_authority_v1(text)");
-    const setTrueIndex = normalized.indexOf("grant investing_rl8_writer to postgres with set true", helperAclIndex);
+    const setTrueIndex = normalized.indexOf("grant investing_rl8_writer to postgres with inherit false, set true", helperAclIndex);
     const grantCreateIndex = normalized.indexOf("grant create on schema investing to investing_rl8_writer", setTrueIndex);
     const writerRoleIndex = normalized.indexOf("set local role investing_rl8_writer", grantCreateIndex);
     const writerFunctionIndex = normalized.indexOf("create or replace function investing.persist_research_scientific_promotion_protocol_v1", writerRoleIndex);
     const triggerOwnerIndex = normalized.indexOf("set local role investing_owner", writerFunctionIndex);
     const triggerIndex = normalized.indexOf("create constraint trigger research_scientific_promotion_stage_a_closure_integrity", triggerOwnerIndex);
     const revokeCreateIndex = normalized.indexOf("revoke create on schema investing from investing_rl8_writer", triggerIndex);
-    const setFalseIndex = normalized.indexOf("grant investing_rl8_writer to postgres with set false", revokeCreateIndex);
-    const postconditionIndex = normalized.indexOf("rl-8c2 postcondition failed", setFalseIndex);
+    const revokeSelfGrantIndex = normalized.indexOf("revoke investing_rl8_writer from postgres granted by postgres", revokeCreateIndex);
+    const postconditionIndex = normalized.indexOf("rl-8c2 postcondition failed", revokeSelfGrantIndex);
     const commitIndex = normalized.lastIndexOf("commit");
     expect(ownerIndex).toBeGreaterThanOrEqual(0);
     expect(helperAclIndex).toBeGreaterThan(ownerIndex);
@@ -248,14 +248,15 @@ describe("I5 RL-8C2 scientific promotion writer migration static ownership guard
     expect(triggerOwnerIndex).toBeGreaterThan(writerFunctionIndex);
     expect(triggerIndex).toBeGreaterThan(triggerOwnerIndex);
     expect(revokeCreateIndex).toBeGreaterThan(triggerIndex);
-    expect(setFalseIndex).toBeGreaterThan(revokeCreateIndex);
-    expect(postconditionIndex).toBeGreaterThan(setFalseIndex);
+    expect(revokeSelfGrantIndex).toBeGreaterThan(revokeCreateIndex);
+    expect(postconditionIndex).toBeGreaterThan(revokeSelfGrantIndex);
     expect(commitIndex).toBeGreaterThan(postconditionIndex);
     expect(normalized).not.toContain("alter function investing.rl8c_validate_closure_pair_v1() owner to investing_rl8_writer");
     expect(normalized).not.toContain("alter function investing.persist_research_scientific_promotion_protocol_v1(text, jsonb) owner to investing_rl8_writer");
     expect(normalized).toContain("pg_catalog.has_schema_privilege('investing_rl8_writer','investing','create')");
     expect(normalized).toContain("member_r.rolname = 'postgres'");
-    expect(normalized).toContain("and m.set_option");
+    expect(normalized).toContain("m.set_option or m.inherit_option");
+    expect(normalized).toContain("grantor_r.rolname = 'postgres'");
   });
 });
 async function validateTransitionPayload(client: PoolClient, transition: ScientificPromotionTransitionV1): Promise<boolean> {
@@ -733,20 +734,27 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
       const writer = await client.query<{ rolcanlogin: boolean; rolinherit: boolean; rolbypassrls: boolean }>("select rolcanlogin, rolinherit, rolbypassrls from pg_roles where rolname='investing_rl8_writer'");
       expect(writer.rows[0]).toEqual({ rolcanlogin: false, rolinherit: false, rolbypassrls: false });
 
-      const finalBootstrapState = await client.query<{ writer_create: boolean; postgres_set_option: boolean; forbidden_membership: boolean }>(`
+      const finalBootstrapState = await client.query<{ writer_create: boolean; postgres_option_leak: boolean; postgres_self_grant: boolean; forbidden_membership: boolean }>(`
         select
           has_schema_privilege('investing_rl8_writer','investing','CREATE') as writer_create,
           exists (
             select 1 from pg_auth_members m
             join pg_roles role_r on role_r.oid = m.roleid
             join pg_roles member_r on member_r.oid = m.member
-            where role_r.rolname='investing_rl8_writer' and member_r.rolname='postgres' and m.set_option
-          ) as postgres_set_option,
+            where role_r.rolname='investing_rl8_writer' and member_r.rolname='postgres' and (m.set_option or m.inherit_option)
+          ) as postgres_option_leak,
+          exists (
+            select 1 from pg_auth_members m
+            join pg_roles role_r on role_r.oid = m.roleid
+            join pg_roles member_r on member_r.oid = m.member
+            join pg_roles grantor_r on grantor_r.oid = m.grantor
+            where role_r.rolname='investing_rl8_writer' and member_r.rolname='postgres' and grantor_r.rolname='postgres'
+          ) as postgres_self_grant,
           pg_has_role('investing_owner','investing_rl8_writer','member')
             or pg_has_role('investing_app','investing_rl8_writer','member')
             or pg_has_role('service_role','investing_rl8_writer','member') as forbidden_membership
       `);
-      expect(finalBootstrapState.rows[0]).toEqual({ writer_create: false, postgres_set_option: false, forbidden_membership: false });
+      expect(finalBootstrapState.rows[0]).toEqual({ writer_create: false, postgres_option_leak: false, postgres_self_grant: false, forbidden_membership: false });
 
       const privileges = await client.query<{ ok: boolean }>(`
         select has_schema_privilege('investing_rl8_writer','extensions','USAGE')
