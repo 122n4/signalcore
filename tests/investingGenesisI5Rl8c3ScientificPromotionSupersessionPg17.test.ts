@@ -55,14 +55,16 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
     expect(normalized).toContain("create or replace function investing.persist_research_scientific_promotion_supersession_v1(");
     expect(normalized).toContain("create or replace function investing.reconstruct_research_scientific_promotion_chain_v1(");
     expect(normalized).toContain("p_predecessor_transition_identity_id uuid");
-    expect(normalized).toContain("p_transition_hash_hex text");
-    expect(normalized).toContain("p_canonical_payload jsonb");
+    expect(normalized).toContain("p_superseded_transition_hash_hex text");
+    expect(normalized).toContain("p_superseded_canonical_payload jsonb");
+    expect(normalized).toContain("p_successor_protocol_identity_id uuid");
+    expect(normalized).toContain("p_successor_root_transition_identity_id uuid");
     expect(normalized).toContain("security definer");
     expect(normalized).toContain("set search_path = pg_catalog");
-    expect(normalized).toContain("alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) owner to investing_rl8_writer");
-    expect(normalized).toContain("grant execute on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) to investing_app");
+    expect(normalized).toContain("alter function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) owner to investing_rl8_writer");
+    expect(normalized).toContain("grant execute on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) to investing_app");
     expect(normalized).toContain("grant execute on function investing.reconstruct_research_scientific_promotion_chain_v1(uuid) to investing_app");
-    expect(normalized).toContain("revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb) from public, anon, authenticated, service_role");
+    expect(normalized).toContain("revoke all on function investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb, uuid, uuid) from public, anon, authenticated, service_role");
   });
 
   it("preserves security, RLS, append-only, and scientific domain boundaries", () => {
@@ -104,8 +106,8 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
       "v_predecessor.resulting_state not in ('EXECUTED','INSUFFICIENT_EVIDENCE','PROMOTION_ELIGIBLE','REJECTED')".toLowerCase(),
       "v_successor_protocol_hash = v_predecessor.protocol_hash_hex",
       "v_successor_root.predecessor_transition_identity_id is not null",
-      "p_canonical_payload->'evidenceSnapshot' <> v_predecessor.canonical_payload->'evidenceSnapshot'".toLowerCase(),
-      "p_canonical_payload->'gateOutcomes' <> v_predecessor.canonical_payload->'gateOutcomes'".toLowerCase(),
+      "p_superseded_canonical_payload->'evidenceSnapshot' <> v_predecessor.canonical_payload->'evidenceSnapshot'".toLowerCase(),
+      "p_superseded_canonical_payload->'gateOutcomes' <> v_predecessor.canonical_payload->'gateOutcomes'".toLowerCase(),
       "where predecessor_transition_identity_id = v_predecessor.research_scientific_promotion_transition_identity_id",
       "reconstruct_research_scientific_promotion_chain_v1",
       "MULTIPLE_SUCCESSORS",
@@ -122,6 +124,14 @@ describe("I5 RL-8C3 scientific promotion supersession static contract", () => {
     expect(rootLock).toBeGreaterThan(protocolLock);
     expect(successorLock).toBeGreaterThan(rootLock);
     expect(supersedeLock).toBeGreaterThan(successorLock);
+    expect(normalized).toContain("drop function if exists investing.persist_research_scientific_promotion_supersession_v1(uuid, text, jsonb)");
+    expect(normalized).toContain("pg_get_function_identity_arguments(p.oid) = 'p_predecessor_transition_identity_id uuid, p_superseded_transition_hash_hex text, p_superseded_canonical_payload jsonb, p_successor_protocol_identity_id uuid, p_successor_root_transition_identity_id uuid'");
+    expect(normalized).toContain("p.pronargs = 3");
+    expect(normalized).toContain("research_scientific_promotion_protocol_identity_id = p_successor_protocol_identity_id");
+    expect(normalized).toContain("research_scientific_promotion_transition_identity_id = p_successor_root_transition_identity_id");
+    expect(normalized).toContain("rl8c_successor:' || v_predecessor.research_scientific_promotion_transition_identity_id::text");
+    expect(normalized).toContain("rl8c_supersede:' || v_predecessor.research_scientific_promotion_transition_identity_id::text || ':' || p_successor_protocol_identity_id::text || ':' || p_successor_root_transition_identity_id::text");
+    expect(normalized).not.toContain("create or replace function investing.persist_research_scientific_promotion_supersession_v1( p_predecessor_transition_identity_id uuid, p_transition_hash_hex text, p_canonical_payload jsonb )");
   });
 
   it("installs independent database supersession integrity enforcement", () => {
@@ -161,10 +171,12 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
       await pool.query("create schema extensions authorization postgres");
       await pool.query("create extension if not exists pgcrypto with schema extensions");
       for (const migration of replayMigrations) await applyMigration(pool, migration);
-      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean; supersession_trigger: boolean; supersession_trigger_deferrable: boolean; supersession_trigger_initially_deferred: boolean; trigger_owner_name: string; trigger_prosecdef: boolean; trigger_search_path_safe: boolean }>(`
+      const checks = await pool.query<{ app_execute: boolean; service_execute: boolean; reconstruct_app_execute: boolean; reconstruct_service_execute: boolean; reconstruct_owner_name: string; reconstruct_prosecdef: boolean; reconstruct_search_path_safe: boolean; owner_name: string; prosecdef: boolean; search_path_safe: boolean; force_rls: boolean; successor_index: boolean; supersession_trigger: boolean; supersession_trigger_deferrable: boolean; supersession_trigger_initially_deferred: boolean; trigger_owner_name: string; trigger_prosecdef: boolean; trigger_search_path_safe: boolean; supersession_identity_arguments: string; supersession_three_arg_overload_count: number }>(`
         select
-          has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as app_execute,
-          has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as service_execute,
+          has_function_privilege('investing_app','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as app_execute,
+          pg_catalog.pg_get_function_identity_arguments(p.oid) as supersession_identity_arguments,
+          (select count(*)::int from pg_proc p3 join pg_namespace n3 on n3.oid = p3.pronamespace where n3.nspname='investing' and p3.proname='persist_research_scientific_promotion_supersession_v1' and p3.pronargs=3) as supersession_three_arg_overload_count,
+          has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as service_execute,
           has_function_privilege('investing_app','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') as reconstruct_app_execute,
           has_function_privilege('service_role','investing.reconstruct_research_scientific_promotion_chain_v1(uuid)','EXECUTE') as reconstruct_service_execute,
           pg_catalog.pg_get_userbyid(p.proowner) as owner_name,
@@ -189,7 +201,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 migration surface", () =
         join pg_namespace cn on cn.oid = c.relnamespace and cn.nspname = 'investing'
         where n.nspname = 'investing' and p.proname = 'persist_research_scientific_promotion_supersession_v1'
       `);
-      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true, supersession_trigger: true, supersession_trigger_deferrable: true, supersession_trigger_initially_deferred: true, trigger_owner_name: "investing_rl8_writer", trigger_prosecdef: true, trigger_search_path_safe: true });
+      expect(checks.rows[0]).toEqual({ app_execute: true, service_execute: false, reconstruct_app_execute: true, reconstruct_service_execute: false, reconstruct_owner_name: "investing_rl8_writer", reconstruct_prosecdef: true, reconstruct_search_path_safe: true, owner_name: "investing_rl8_writer", prosecdef: true, search_path_safe: true, force_rls: true, successor_index: true, supersession_trigger: true, supersession_trigger_deferrable: true, supersession_trigger_initially_deferred: true, trigger_owner_name: "investing_rl8_writer", trigger_prosecdef: true, trigger_search_path_safe: true, supersession_identity_arguments: "p_predecessor_transition_identity_id uuid, p_superseded_transition_hash_hex text, p_superseded_canonical_payload jsonb, p_successor_protocol_identity_id uuid, p_successor_root_transition_identity_id uuid", supersession_three_arg_overload_count: 0 });
     } finally {
       await pool.end();
     }
@@ -719,11 +731,20 @@ async function hashTransitionFixtureForExplicitProtocol(client: PoolClient, payl
   return localHash;
 }
 
-async function callRl8c3Supersession(client: PoolClient, fixture: Rl8cAuthorityFixture, predecessorId: string, payload: ScientificPromotionTransitionV1): Promise<{ status: string; researchScientificPromotionTransitionIdentityId?: string; transitionHashHex?: string }> {
+async function callRl8c3Supersession(
+  client: PoolClient,
+  fixture: Rl8cAuthorityFixture,
+  predecessorId: string,
+  successor: Pick<Rl8c3FutureRoot, "protocolIdentityId" | "rootId">,
+  payload: ScientificPromotionTransitionV1,
+): Promise<{ status: string; researchScientificPromotionTransitionIdentityId?: string; transitionHashHex?: string }> {
   const transitionHash = await hashTransitionFixtureForExplicitProtocol(client, payload);
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_SUPERSESSION_PERSIST_V1");
   await client.query("set local role investing_app");
-  const response = await client.query<{ result: { status: string; researchScientificPromotionTransitionIdentityId?: string; transitionHashHex?: string } }>("select investing.persist_research_scientific_promotion_supersession_v1($1,$2,$3::jsonb) as result", [predecessorId, transitionHash, JSON.stringify(payload)]);
+  const response = await client.query<{ result: { status: string; researchScientificPromotionTransitionIdentityId?: string; transitionHashHex?: string } }>(
+    "select investing.persist_research_scientific_promotion_supersession_v1($1,$2,$3::jsonb,$4,$5) as result",
+    [predecessorId, transitionHash, JSON.stringify(payload), successor.protocolIdentityId, successor.rootId],
+  );
   await client.query("reset role");
   return response.rows[0]!.result;
 }
@@ -783,7 +804,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         try {
           const again = await createFutureProtocolRoot(client, history.fixture, `B_VALID_${state}_COMMIT`);
           await client.query("commit");
-          const resultValue = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, again)));
+          const resultValue = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, again, rl8c3SupersessionPayload(history.leaf, again)));
           expect(resultValue.status).toBe("CREATED");
           const persisted = await rl8c3Transition(client, resultValue.researchScientificPromotionTransitionIdentityId!);
           expect(persisted.resulting_state).toBe("SUPERSEDED");
@@ -812,20 +833,20 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         const successorCountBefore = await rl8c3SuccessorCount(client, history.leafId);
         const supersededCountBefore = await rl8c3SupersededSuccessorCount(client, history.leafId);
         await client.query("begin");
-        await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, successor)), /FORBIDDEN_TRANSITION/);
+        await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, rl8c3SupersessionPayload(history.leaf, successor)), /FORBIDDEN_TRANSITION/);
         await client.query("rollback");
         expect(await rl8c3SuccessorCount(client, history.leafId)).toBe(successorCountBefore);
         expect(await rl8c3SupersededSuccessorCount(client, history.leafId)).toBe(supersededCountBefore);
       }
       const base = await createRl8c3Leaf(client, "EXECUTED", "forbidden-superseded");
       const b = await withCommitted(client, () => createFutureProtocolRoot(client, base.fixture, "B_FORBIDDEN_SUPERSEDED"));
-      const first = await withCommitted(client, () => callRl8c3Supersession(client, base.fixture, base.leafId, rl8c3SupersessionPayload(base.leaf, b)));
+      const first = await withCommitted(client, () => callRl8c3Supersession(client, base.fixture, base.leafId, b, rl8c3SupersessionPayload(base.leaf, b)));
       const superseded = await rl8c3Transition(client, first.researchScientificPromotionTransitionIdentityId!);
       const c = await withCommitted(client, () => createFutureProtocolRoot(client, base.fixture, "C_FORBIDDEN_SUPERSEDED"));
       const successorCountBefore = await rl8c3SuccessorCount(client, superseded.research_scientific_promotion_transition_identity_id);
       const supersededCountBefore = await rl8c3SupersededSuccessorCount(client, superseded.research_scientific_promotion_transition_identity_id);
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, base.fixture, superseded.research_scientific_promotion_transition_identity_id, rl8c3SupersessionPayload(superseded, c)), /FORBIDDEN_TRANSITION/);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, base.fixture, superseded.research_scientific_promotion_transition_identity_id, c, rl8c3SupersessionPayload(superseded, c)), /FORBIDDEN_TRANSITION/);
       await client.query("rollback");
       expect(await rl8c3SuccessorCount(client, superseded.research_scientific_promotion_transition_identity_id)).toBe(successorCountBefore);
       expect(await rl8c3SupersededSuccessorCount(client, superseded.research_scientific_promotion_transition_identity_id)).toBe(supersededCountBefore);
@@ -839,14 +860,14 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_LINEAGE_COPY"));
       const base = rl8c3SupersessionPayload(history.leaf, successor);
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersededByChain: { ...base.supersededByChain!, successorRootTransition: { ...successor.rootRef, hashHex: canonicalSha256HexV1("A".repeat(64)) } } }), /WRONG_SUCCESSOR_ROOT|violates/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersededByChain: { successorProtocol: hashScientificPromotionProtocolV1(), successorRootTransition: hashScientificPromotionTransitionV1(rootTransition()) } }), /FORBIDDEN_TRANSITION|same protocol|violates/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, evidenceSnapshot: { ...base.evidenceSnapshot, evidenceObject: null } }), /WRONG_LINEAGE|MALFORMED|integrity/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, gateOutcomes: [] }), /WRONG_LINEAGE|MALFORMED|integrity/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, transitionReasons: [] }), /WRONG_LINEAGE|MALFORMED|integrity/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersedes: null }), expectRl8c3InvariantRejection);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, rejectedTransition: hashScientificPromotionTransitionV1(history.leaf.canonical_payload) }), /WRONG_LINEAGE|MALFORMED|integrity/i);
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { ...base, supersededByChain: null }), /WRONG_LINEAGE|MALFORMED|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, supersededByChain: { ...base.supersededByChain!, successorRootTransition: { ...successor.rootRef, hashHex: canonicalSha256HexV1("A".repeat(64)) } } }), /WRONG_SUCCESSOR_ROOT|violates/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, supersededByChain: { successorProtocol: hashScientificPromotionProtocolV1(), successorRootTransition: hashScientificPromotionTransitionV1(rootTransition()) } }), /WRONG_SUCCESSOR_PROTOCOL|FORBIDDEN_TRANSITION|same protocol|violates/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, evidenceSnapshot: { ...base.evidenceSnapshot, evidenceObject: null } }), /WRONG_LINEAGE|MALFORMED|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, gateOutcomes: [] }), /WRONG_LINEAGE|MALFORMED|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, transitionReasons: [] }), /WRONG_LINEAGE|MALFORMED|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, supersedes: null }), expectRl8c3InvariantRejection);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, rejectedTransition: hashScientificPromotionTransitionV1(history.leaf.canonical_payload) }), /WRONG_LINEAGE|MALFORMED|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, { ...base, supersededByChain: null }), /WRONG_LINEAGE|MALFORMED|integrity/i);
       await client.query("rollback");
     } finally { client.release(); }
   }, 180_000);
@@ -857,10 +878,10 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       const history = await createRl8c3Leaf(client, "EXECUTED", "replay");
       const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_REPLAY"));
       const payload = rl8c3SupersessionPayload(history.leaf, successor);
-      const first = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, payload));
-      const second = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, payload));
+      const first = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, payload));
+      const second = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, payload));
       const other = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "C_REPLAY"));
-      const divergent = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, other)));
+      const divergent = await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, other, rl8c3SupersessionPayload(history.leaf, other)));
       expect(first.status).toBe("CREATED");
       expect(second.status).toBe("REUSED_IDENTICAL");
       expect(divergent.status).toBe("DIVERGENT_EXISTING_IDENTITY");
@@ -876,13 +897,13 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       const identical = await createRl8c3Leaf(setup, "EXECUTED", "concurrent-identical");
       const b = await withCommitted(setup, () => createFutureProtocolRoot(setup, identical.fixture, "B_CONCURRENT_IDENTICAL"));
       const payload = rl8c3SupersessionPayload(identical.leaf, b);
-      const same = await Promise.all([withCommitted(left, () => callRl8c3Supersession(left, identical.fixture, identical.leafId, payload)), withCommitted(right, () => callRl8c3Supersession(right, identical.fixture, identical.leafId, payload))]);
+      const same = await Promise.all([withCommitted(left, () => callRl8c3Supersession(left, identical.fixture, identical.leafId, b, payload)), withCommitted(right, () => callRl8c3Supersession(right, identical.fixture, identical.leafId, b, payload))]);
       expect(same.map((item) => item.status).sort()).toEqual(["CREATED", "REUSED_IDENTICAL"].sort());
       expect(await rl8c3SuccessorCount(setup, identical.leafId)).toBe(1);
       const divergent = await createRl8c3Leaf(setup, "EXECUTED", "concurrent-divergent");
       const d1 = await withCommitted(setup, () => createFutureProtocolRoot(setup, divergent.fixture, "B_CONCURRENT_DIVERGENT"));
       const d2 = await withCommitted(setup, () => createFutureProtocolRoot(setup, divergent.fixture, "C_CONCURRENT_DIVERGENT"));
-      const diff = await Promise.all([withCommitted(left, () => callRl8c3Supersession(left, divergent.fixture, divergent.leafId, rl8c3SupersessionPayload(divergent.leaf, d1))), withCommitted(right, () => callRl8c3Supersession(right, divergent.fixture, divergent.leafId, rl8c3SupersessionPayload(divergent.leaf, d2)))]);
+      const diff = await Promise.all([withCommitted(left, () => callRl8c3Supersession(left, divergent.fixture, divergent.leafId, d1, rl8c3SupersessionPayload(divergent.leaf, d1))), withCommitted(right, () => callRl8c3Supersession(right, divergent.fixture, divergent.leafId, d2, rl8c3SupersessionPayload(divergent.leaf, d2)))]);
       expect(diff.map((item) => item.status)).toContain("CREATED");
       expect(diff.map((item) => item.status)).toContain("DIVERGENT_EXISTING_IDENTITY");
       expect(await rl8c3SuccessorCount(setup, divergent.leafId)).toBe(1);
@@ -894,15 +915,15 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     try {
       const a = await createRl8c3Leaf(client, "EXECUTED", "cycle");
       const b = await withCommitted(client, () => createFutureProtocolRoot(client, a.fixture, "B_CYCLE"));
-      await withCommitted(client, () => callRl8c3Supersession(client, a.fixture, a.leafId, rl8c3SupersessionPayload(a.leaf, b)));
+      await withCommitted(client, () => callRl8c3Supersession(client, a.fixture, a.leafId, b, rl8c3SupersessionPayload(a.leaf, b)));
       const bRoot = await rl8c3Transition(client, b.rootId);
       const c = await withCommitted(client, () => createFutureProtocolRoot(client, a.fixture, "C_CYCLE"));
-      await withCommitted(client, () => callRl8c3Supersession(client, a.fixture, b.rootId, rl8c3SupersessionPayload(bRoot, c)));
+      await withCommitted(client, () => callRl8c3Supersession(client, a.fixture, b.rootId, c, rl8c3SupersessionPayload(bRoot, c)));
       const cRoot = await rl8c3Transition(client, c.rootId);
       expect((await reconstructRl8c3(client, a.fixture, a.rootId)).activeLeafTransitionIdentityId).toBe(c.rootId);
       const fakeBackToA: Rl8c3FutureRoot = { protocolIdentityId: a.fixture.protocolIdentityId, protocolRef: hashScientificPromotionProtocolV1(), rootId: a.rootId, rootRef: hashScientificPromotionTransitionV1(a.rootPayload), rootPayload: a.rootPayload };
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, a.fixture, c.rootId, rl8c3SupersessionPayload(cRoot, fakeBackToA)), /SUPERSESSION_CYCLE|FORBIDDEN|WRONG_SUCCESSOR/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, a.fixture, c.rootId, fakeBackToA, rl8c3SupersessionPayload(cRoot, fakeBackToA)), /SUPERSESSION_CYCLE|FORBIDDEN|WRONG_SUCCESSOR/i);
       await client.query("rollback");
     } finally { client.release(); }
   }, 240_000);
@@ -918,7 +939,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       expect((await reconstructRl8c3(client, rejected.fixture, rejected.rootId)).activeLeafState).toBe("REJECTED");
       const a = await createRl8c3Leaf(client, "EXECUTED", "reconstruct-cross");
       const b = await withCommitted(client, () => createFutureProtocolRoot(client, a.fixture, "B_RECONSTRUCT"));
-      await withCommitted(client, () => callRl8c3Supersession(client, a.fixture, a.leafId, rl8c3SupersessionPayload(a.leaf, b)));
+      await withCommitted(client, () => callRl8c3Supersession(client, a.fixture, a.leafId, b, rl8c3SupersessionPayload(a.leaf, b)));
       const view = await reconstructRl8c3(client, a.fixture, a.rootId);
       expect(view.status).toBe("OK");
       expect(view.rootTransitionIdentityId).toBe(a.rootId);
@@ -962,10 +983,10 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     try {
       const history = await createRl8c3Leaf(client, "EXECUTED", "authority-rollback-append");
       const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_AUTH_ROLLBACK_APPEND"));
-      const grants = await client.query<{ service_execute: boolean; anon_execute: boolean; authenticated_execute: boolean }>("select has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as service_execute, has_function_privilege('anon','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as anon_execute, has_function_privilege('authenticated','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb)','EXECUTE') as authenticated_execute");
+      const grants = await client.query<{ service_execute: boolean; anon_execute: boolean; authenticated_execute: boolean }>("select has_function_privilege('service_role','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as service_execute, has_function_privilege('anon','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as anon_execute, has_function_privilege('authenticated','investing.persist_research_scientific_promotion_supersession_v1(uuid,text,jsonb,uuid,uuid)','EXECUTE') as authenticated_execute");
       expect(grants.rows[0]).toEqual({ service_execute: false, anon_execute: false, authenticated_execute: false });
       await client.query("begin");
-      const created = await callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, successor));
+      const created = await callRl8c3Supersession(client, history.fixture, history.leafId, successor, rl8c3SupersessionPayload(history.leaf, successor));
       expect(created.status).toBe("CREATED");
       await client.query("rollback");
       expect(await rl8c3SuccessorCount(client, history.leafId)).toBe(0);
@@ -990,7 +1011,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       expect(protocolRows.rows[0]!.count).toBe(0);
       expect(await hashTransitionFixtureForExplicitProtocol(client, payload)).toMatch(/^[0-9A-F]{64}$/u);
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, payload), /WRONG_SUCCESSOR_PROTOCOL|violates|append-only/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, payload), /WRONG_SUCCESSOR_PROTOCOL|violates|append-only/i);
       await client.query("rollback");
     } finally { client.release(); }
   }, 120_000);
@@ -1002,7 +1023,22 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_MISSING_ROOT"));
       const missingRoot = { ...successor, rootRef: { ...successor.rootRef, hashHex: canonicalSha256HexV1("B".repeat(64)) } };
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, missingRoot)), /WRONG_SUCCESSOR_ROOT|violates/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, rl8c3SupersessionPayload(history.leaf, missingRoot)), /WRONG_SUCCESSOR_ROOT|violates/i);
+      await client.query("rollback");
+    } finally { client.release(); }
+  }, 120_000);
+
+  it("REAL PG17 mismatched successor identity/hash pairs are rejected by writer", async () => {
+    const client = await behaviorPool.connect();
+    try {
+      const history = await createRl8c3Leaf(client, "EXECUTED", "mismatched-successor-pairs");
+      const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_MISMATCHED_PAIRS"));
+      const wrongProtocolIdentity = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const wrongRootIdentity = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const payload = rl8c3SupersessionPayload(history.leaf, successor);
+      await client.query("begin");
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { protocolIdentityId: wrongProtocolIdentity, rootId: successor.rootId }, payload), /WRONG_SUCCESSOR_PROTOCOL/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, { protocolIdentityId: successor.protocolIdentityId, rootId: wrongRootIdentity }, payload), /WRONG_SUCCESSOR_ROOT/i);
       await client.query("rollback");
     } finally { client.release(); }
   }, 120_000);
@@ -1014,7 +1050,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_WRONG_PREDECESSOR"));
       const payload = rl8c3SupersessionPayload(history.leaf, successor, { predecessorTransition: { hashAlgorithm: "SHA-256", hashDomain: scientificPromotionTransitionDomainV1, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: canonicalSha256HexV1("C".repeat(64)) } });
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, payload), /WRONG_LINEAGE|integrity/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, payload), /WRONG_LINEAGE|integrity/i);
       await client.query("rollback");
     } finally { client.release(); }
   }, 120_000);
@@ -1025,7 +1061,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       const history = await createRl8c3Leaf(client, "EXECUTED", "same-protocol-trigger");
       const sameProtocolRoot: Rl8c3FutureRoot = { protocolIdentityId: history.leaf.research_scientific_promotion_protocol_identity_id, protocolRef: hashScientificPromotionProtocolV1(), rootId: history.rootId, rootRef: hashScientificPromotionTransitionV1(history.rootPayload), rootPayload: history.rootPayload };
       await client.query("begin");
-      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, sameProtocolRoot)), /FORBIDDEN_TRANSITION|same protocol|violates/i);
+      await expectPgRejection(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, sameProtocolRoot, rl8c3SupersessionPayload(history.leaf, sameProtocolRoot)), /FORBIDDEN_TRANSITION|same protocol|violates/i);
       await client.query("rollback");
     } finally { client.release(); }
   }, 120_000);
@@ -1046,7 +1082,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     try {
       const history = await createRl8c3Leaf(client, "EXECUTED", "duplicate-successor");
       const successor = await withCommitted(client, () => createFutureProtocolRoot(client, history.fixture, "B_DUPLICATE_SUCCESSOR"));
-      await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, rl8c3SupersessionPayload(history.leaf, successor)));
+      await withCommitted(client, () => callRl8c3Supersession(client, history.fixture, history.leafId, successor, rl8c3SupersessionPayload(history.leaf, successor)));
       await client.query("begin");
       await expectPgRejection(client, () => client.query("insert into investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_transition_identity_id, predecessor_transition_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, canonical_payload) values (extensions.gen_random_uuid(),'CORRUPT_DUPLICATE','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'EXECUTED','INSUFFICIENT_EVIDENCE','SHA-256',$13,'SYNTRAKE_SHA256_V1',$14,'{}'::jsonb)", [history.fixture.tenantId, history.fixture.principalId, history.fixture.tenantMembershipId, history.fixture.researchInvestigationId, history.fixture.researchExperimentId, history.leaf.research_scientific_promotion_protocol_identity_id, history.leaf.protocol_hash_hex, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, history.leafId, history.leaf.transition_hash_hex, scientificPromotionTransitionDomainV1, "E".repeat(64)]), /one_successor|duplicate|violates/i);
       await client.query("rollback");
