@@ -4,10 +4,10 @@ import { KNOWN_DEV_ONLY_EXCEPTIONS, classifyDependencySecurity, renderRawAuditEv
 const lock = JSON.stringify({
   packages: {
     "": { name: "fixture" },
-    "node_modules/@next/eslint-plugin-next": { version: "16.2.6" },
+    "node_modules/@next/eslint-plugin-next": { version: "16.3.8" },
     "node_modules/braces": { version: "3.0.3" },
     "node_modules/chokidar": { version: "3.6.0" },
-    "node_modules/eslint-config-next": { version: "16.2.6" },
+    "node_modules/eslint-config-next": { version: "16.3.8" },
     "node_modules/fast-glob": { version: "3.3.1" },
     "node_modules/micromatch": { version: "4.0.8" },
     "node_modules/tailwindcss": { version: "3.4.17" },

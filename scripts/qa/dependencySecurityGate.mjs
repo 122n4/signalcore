@@ -23,7 +23,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: false,
         range: ">=14.3.0-canary.0",
-        nodes: { "node_modules/@next/eslint-plugin-next": "16.2.6" },
+        nodes: { "node_modules/@next/eslint-plugin-next": "16.3.8" },
         fixAvailable: {
           name: "eslint-config-next",
           version: "14.2.35",
@@ -62,7 +62,7 @@ export const KNOWN_DEV_ONLY_EXCEPTIONS = [
         severity: "high",
         isDirect: true,
         range: ">=14.3.0-canary.0",
-        nodes: { "node_modules/eslint-config-next": "16.2.6" },
+        nodes: { "node_modules/eslint-config-next": "16.3.8" },
         fixAvailable: {
           name: "eslint-config-next",
           version: "14.2.35",
