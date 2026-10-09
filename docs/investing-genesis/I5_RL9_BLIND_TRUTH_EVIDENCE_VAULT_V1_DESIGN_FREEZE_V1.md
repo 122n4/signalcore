@@ -93,12 +93,22 @@ promotionProtocol: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1>
 promotionTransition: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1>
 ```
 
-The referenced transition MUST be an accepted `PROMOTION_ELIGIBLE` transition
-for the same tenant, Investigation and scientific subject.
+The referenced transition MUST be the exact current reconstructed leaf of its
+accepted RL-8 promotion chain, MUST have state `PROMOTION_ELIGIBLE`, and MUST
+belong to the same tenant, Investigation and scientific subject.
 
-If that promotion authority is missing, ambiguous, corrupted, wrong-tenant,
-wrong-Investigation, wrong-subject or already superseded before registration,
-registration fails closed.
+A historical `PROMOTION_ELIGIBLE` transition that already has an accepted
+same-chain successor is stale authority even when the chain was not
+`SUPERSEDED`.
+
+The exact bound promotion leaf is re-proved when evaluation is armed and again
+before `REVEAL_STARTED`. If upstream promotion ceases to be currently eligible
+before reveal claim, the Blind Truth attempt fails closed and no secret is
+opened.
+
+If that promotion authority is missing, ambiguous, corrupted, stale,
+wrong-tenant, wrong-Investigation, wrong-subject or superseded before reveal
+claim, registration/evaluation fails closed.
 
 Once reveal has started, later promotion supersession does not rewrite historical
 Blind Truth evidence. The historical event remains immutable and must be
@@ -459,9 +469,14 @@ Therefore the secret vault maintains a confidential anti-reuse fingerprint:
 HMAC-SHA-256(
   vault_reuse_key,
   "SYNTRAKE:BLIND_TRUTH_REUSE_FINGERPRINT:V1\n"
-  + exact_canonical_holdout_plaintext_bytes
+  + canonical_holdout_truth_bytes
 )
 ```
+
+`canonical_holdout_truth_bytes` normalize the canonical market/time/field/value
+observations and deliberately exclude provider locator, encryption envelope,
+random salt and other storage metadata. Provider relabeling therefore cannot
+turn the same hidden truth into a new V1 holdout.
 
 The HMAC key and fingerprint are operational secret-vault data, not scientific
 identity and MUST NOT appear in public canonical payloads.
@@ -517,6 +532,12 @@ The implementation MUST persist an append-only
 authority is allowed to open secret material.
 
 The reveal claim is the point of no return.
+
+The vault interface itself MUST expose a consume-once operation bound to the
+exact evaluation identity and exact `REVEAL_STARTED` event HashRef. It MUST
+NOT expose a reusable ordinary `get secret bytes` operation to the reveal
+worker. A second consume call must fail inside the vault authority even if a
+caller changes process, request id or application credential.
 
 After one accepted `REVEAL_STARTED` event exists:
 
@@ -665,6 +686,7 @@ WRONG_TENANT
 WRONG_INVESTIGATION
 WRONG_SUBJECT
 WRONG_PROMOTION_STATE
+STALE_PROMOTION_TRANSITION
 SUPERSEDED_PROMOTION_AUTHORITY
 DIVERGENT_EXISTING_IDENTITY
 REGISTRATION_ALREADY_EXISTS
