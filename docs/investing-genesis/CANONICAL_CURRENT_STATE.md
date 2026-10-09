@@ -107,6 +107,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-5 Research Engine V2 Implementation Closure (unnumbered) | `I5_RL5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-6 Metric Registry V2 (unnumbered) | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` |
 | I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure (unnumbered) | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-8 Scientific Promotion State Machine V1 Implementation Closure (unnumbered) | `I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -267,6 +268,18 @@ freeze/master evidence still relies on its narrow classifications.
   RL-7 unindexed foreign-key INFO findings that are non-blocking. RL-8
   promotion, RL-9 Blind Truth, RL-10 orchestration, Paper, Live, suitability
   and Capital Kernel authority remain outside RL-7.
+- I5 RL-8 Scientific Promotion State Machine V1 Implementation Closure:
+  `CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE /
+  UNNUMBERED`. This accepted closure records the deterministic scientific
+  promotion runtime, the two exact RL-8 scientific hash domains, append-only
+  promotion history, atomic Stage-A/closure semantics and cross-protocol
+  supersession/reconstruction authority. Its exact three-file migration set is
+  `APPLIED / POST-APPLY AUDITED` in Supabase project `qdnvbamoamtkujzwrxdb`.
+  Security Advisor has zero RL-8 findings. Performance Advisor reports 18
+  unindexed-foreign-key INFO findings and 16 auth-RLS-initplan WARN findings,
+  recorded as non-blocking performance hardening. RL-9 Blind Truth, RL-10
+  orchestration, RL-11 full I5 rehearsal, Paper, Live, suitability and Capital
+  Kernel authority remain outside RL-8.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -458,7 +471,7 @@ I5 Research Lab Completion Program acceptance evidence:
 
 `I5 RESEARCH LAB COMPLETION PROGRAM = CURRENT_ACCEPTED / UNNUMBERED`.
 
-`I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+`I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
 I5 Research Execution Engine Design Freeze acceptance evidence:
 
@@ -1279,12 +1292,94 @@ Accepted RL-7 invariants:
 
 `I5 RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 
+## I5 RL-8 Scientific Promotion State Machine V1 Implementation Closure (unnumbered)
+
+RL-8 runtime/progression state:
+
+- design evidence: `YES / HISTORICAL CANDIDATE DESIGN SLICE`.
+- persistence design evidence: `YES / HISTORICAL WIP DESIGN SLICE`.
+- implementation: `YES`.
+- Git acceptance: `YES / CURRENT_ACCEPTED`.
+- Production migrations: `APPLIED / POST-APPLY AUDITED`.
+- post-apply audit: `PASS`.
+- migration-history alignment: `PASS`.
+- Git/Production alignment: `PASS`.
+- Security Advisor RL-8 findings: `ZERO`.
+- Performance Advisor RL-8 findings:
+  `18 unindexed_foreign_keys INFO + 16 auth_rls_initplan WARN / NON-BLOCKING`.
+- RL-8 protocol rows after deployment: `0`.
+- RL-8 transition rows after deployment: `0`.
+- scientific row mutation by deployment: `NONE`.
+- financial row mutation by deployment: `NONE`.
+- state: `CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+- permanent A-number: `NONE`.
+
+I5 RL-8 acceptance evidence:
+
+- historical design PR: `#106`;
+- historical design document remains `CANDIDATE / NOT ACCEPTED` as historical slice evidence;
+- RL-8C persistence contract remains `WIP / NOT ACCEPTED` as historical design evidence;
+- final independently audited implementation candidate:
+  `cd0a7aa9c95593aa11c0f3ce459af97d8c7fca42`;
+- implementation PR: `#121`;
+- implementation merge/main anchor:
+  `0ad330bca67a3cfe5fee8de42036f09925f48087`;
+- CI: `#1517 / SUCCESS`;
+- Investing Supabase Reconciliation PG17: `#175 / SUCCESS`;
+- RL-8C3 exact PG17: `26 / 26 PASS`;
+- managed-Supabase disposable preview:
+  `RL-8C1 PASS / RL-8C2 PASS / RL-8C3 PASS`;
+- Supabase Production project: `qdnvbamoamtkujzwrxdb`;
+- accepted Git migration files:
+  `20261004120000 + 20261007120000 + 20261007143000`;
+- Production ledger application:
+  `20261009043031 + 20261009043034 + 20261009043037`;
+- latest applied RL-8 ledger migration:
+  `20261009043037 investing_i5_rl8c3_scientific_promotion_supersession_writer`;
+- Production post-apply owner / ACL / RLS / trigger audit: `PASS`;
+- all frozen RL-8 function identities resolve by exact OID: `PASS`;
+- PUBLIC EXECUTE on audited RL-8 surface: `ZERO`;
+- forbidden named-role EXECUTE: `ZERO`;
+- obsolete three-argument supersession writer overload: `ABSENT`;
+- Security Advisor RL-8 findings: `ZERO`;
+- Performance Advisor RL-8 findings:
+  `18 unindexed_foreign_keys INFO + 16 auth_rls_initplan WARN / NON-BLOCKING`;
+- acceptance implementation status:
+  `CURRENT_ACCEPTED / PRODUCTION GATE PASSED / POST-APPLY AUDITED`.
+
+Accepted RL-8 invariants:
+
+- scientific promotion truth is deterministic and evidence-backed;
+- exactly two RL-8 scientific domains are admitted;
+- `PROMOTION_ELIGIBLE` is scientific governance only;
+- Stage-A closure for PASS/FAIL is atomic and orphan commits are forbidden;
+- insufficient evidence remains explicit and never becomes an implicit PASS;
+- `SUPERSEDED` is immutable V1 chain state with exact successor protocol/root binding;
+- supersession cannot self-reference, dangle or cycle;
+- tenant/principal/membership/Investigation authority is server-derived and fail-closed;
+- persistence is append-only with RLS + FORCE RLS;
+- the mutation surface is restricted to the four accepted writer functions;
+- `investing_app` is not a member of `investing_rl8_writer`;
+- `service_role` is capability, not scientific authority;
+- RL-9, not RL-8, owns Blind Truth / Evidence Vault;
+- RL-10 owns future headless orchestration;
+- RL-11 owns final I5 rehearsal/backend closure;
+- Paper, Live, recommendation, suitability and Capital Kernel authority remain outside RL-8.
+
+`I5 RL-8 SCIENTIFIC PROMOTION STATE MACHINE V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+
 ## Production Supabase Migration State
 
 Production Supabase migration state:
-`RL-7 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`.
+`RL-8 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`.
 
-- Latest applied RL-7 migration:
+- Latest applied RL-8 migration:
+  `20261009043037 investing_i5_rl8c3_scientific_promotion_supersession_writer`.
+- RL-8 migration ledger alignment:
+  `PASS / EXACT THREE-MIGRATION SET`.
+- RL-8 post-apply audit:
+  `PASS`.
+- Prior RL-7 migration anchor:
   `20261002202439 investing_i5_rl7_preproduction_function_search_path`.
 - RL-7 migration ledger alignment:
   `PASS / EXACT FOUR-MIGRATION SET`.
@@ -1382,6 +1477,12 @@ Current production closure is:
 - `RL-7 Git migration correction = 20261001090000 removes redundant row-lock/UPDATE-privilege requirements from the persistence functions while retaining advisory locking, unique-constraint conflict protection, append-only behavior and SECURITY INVOKER semantics`.
 - `RL-7 pre-production security remediation = 20261002202439 fixes function search_path=pg_catalog for the RL-7 append-only trigger and persistence functions without changing persistence logic, authority semantics, grants, RLS, tables or payload contracts`.
 - `RL-7 Production migrations = APPLIED / POST-APPLY AUDITED`.
+- `RL-8 = CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
+- `RL-8 Git migrations = 20261004120000 + 20261007120000 + 20261007143000`.
+- `RL-8 Production ledger migrations = 20261009043031 + 20261009043034 + 20261009043037`.
+- `RL-8 Production migrations = APPLIED / POST-APPLY AUDITED`.
+- `RL-8 Security Advisor findings = ZERO`.
+- `RL-8 Performance Advisor findings = 18 unindexed_foreign_keys INFO + 16 auth_rls_initplan WARN / NON-BLOCKING`.
 - `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 - `RL-5 Production migration = APPLIED`.
 - `RL-5 post-apply audit = PASSED`.
@@ -1391,13 +1492,14 @@ Current production closure is:
 - `RL-6 Production migration = NONE`.
 - `RL-6 Supabase Production mutation = NONE`.
 
-This production state records RL-7 accepted in Git and applied in Production.
-RL-6 is accepted in Git and required no database migration. RL-3D design,
-implementation and its separately authorized Production closure are aligned, and
-RL-7 is now aligned through the exact four-migration set `20260928080318`,
-`20260928090809`, `20261001090000` and `20261002202439`. This state does not
-accept RL-8 promotion,
-RL-9, Blind Truth, Paper, Live, Core or any permanent A-number.
+This production state records RL-8 accepted in Git and applied in Production.
+RL-6 is accepted in Git and required no database migration. RL-3D and RL-7
+remain aligned through their accepted Production closures. RL-8 is now aligned
+through the exact Git migration files `20261004120000`, `20261007120000` and
+`20261007143000`, represented in the Production ledger as `20261009043031`,
+`20261009043034` and `20261009043037`. This state does not accept RL-9 Blind
+Truth, RL-10 orchestration, RL-11 backend closure, Paper, Live, Core or any
+permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -1431,6 +1533,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-5 Research Engine V2 Implementation Closure / unnumbered | YES | YES | RL-5 owner contract + Engine V2 runtime + scientific admission + Validation V2 + V2 goldens + migration + independent implementation audit + real PostgreSQL 17 rehearsal + PR/CI + Vercel + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-5 RESEARCH ENGINE V2 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE | NONE |
 | RL-6 Metric Registry V2 / unnumbered | YES | YES | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` + Metric Registry V2 runtime + certified arithmetic + V2 metric goldens + Validation V2 compatibility + PR/CI + Vercel + independent audit | CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED | CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 | NONE |
 | RL-7 Robustness And Experiment Comparison V1 Implementation Closure / unnumbered | YES | YES | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic comparison runtime + owner-exact hash domains + append-only persistence migrations/functions + runtime/migration tests + PG17 + concrete writer + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED |
+| RL-8 Scientific Promotion State Machine V1 Implementation Closure / unnumbered | YES | YES | `I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic promotion runtime/engine + exact promotion hash domains + append-only C1/C2/C3 persistence + PG17 + managed-Supabase preview + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-8 SCIENTIFIC PROMOTION STATE MACHINE V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED |
 
 RL-1 runtime/progression state:
 
