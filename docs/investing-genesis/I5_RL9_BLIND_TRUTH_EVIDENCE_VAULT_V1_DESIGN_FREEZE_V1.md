@@ -151,6 +151,10 @@ closed with `DIVERGENT_EXISTING_IDENTITY`.
 The pre-registration freeze is immutable and MUST exist before any reveal
 reservation.
 
+The scientific freeze point is the accepted Registration HashRef plus the
+durably active embargo fence. Wall-clock `created_at` is operational evidence
+only and is not the scientific freeze identity.
+
 It binds the exact hypothesis and test configuration required by the Research
 Lab Completion Program.
 
@@ -186,8 +190,22 @@ Where:
   Result and do not require validation-only evidence classes;
 - the Registration HashRef is the exact scientific identity of the frozen
   Blind Truth threshold/criteria set;
-- `evaluatorProfile` freezes engine id, engine version, Metric Registry version
-  and the Blind Truth evaluator behavior version.
+- `evaluatorProfile` freezes engine id, engine version, Metric Registry version,
+  metric-result artifact schema and the Blind Truth evaluator behavior version.
+
+RL-9 V1 admits exactly this evaluator profile:
+
+```text
+engineId = HISTORICAL_EXECUTION_ADAPTER
+engineVersion = ENGINE_V20260926
+metricRegistryVersion = METRIC_REGISTRY_V20260927
+metricResultArtifactSchemaVersion = METRIC_RESULT_SET_V2
+blindTruthEvaluatorBehaviorVersion = BLIND_TRUTH_EVALUATOR_V1
+```
+
+Any other engine, registry or metric-result artifact version is
+`INCOMPATIBLE_ENGINE_VERSION` / `INCOMPATIBLE_METRIC_REGISTRY` and cannot
+produce a scientific Blind Truth result in V1.
 
 Thresholds MUST NOT be selected, changed or reinterpreted after reveal.
 
@@ -667,12 +685,42 @@ They produce `REVEAL_FAILED_CLOSED`.
 The evaluator MUST use the frozen metric set, execution configuration,
 parameters and thresholds.
 
+It MUST produce the accepted `METRIC_RESULT_SET_V2` artifact using
+`METRIC_REGISTRY_V20260927` arithmetic. `observedMetricResults` is the exact
+canonical selected metric-record evidence derived from that artifact; it is not
+caller-supplied metric truth.
+
+Every Blind Truth criterion metric must exist in the frozen MetricRequestSet.
+No observed metric outside the frozen MetricRequestSet is authoritative.
+
 It MUST NOT optimize, refit, search, select a best variant, choose a new
 threshold or add a metric using revealed holdout truth.
 
 Observed metric ordering is deterministic.
 
 Criterion ordering is deterministic.
+
+Overall outcome precedence is exact:
+
+```text
+1. integrity / authority / lineage incompatibility
+   -> no scientific outcome; REVEAL_FAILED_CLOSED
+
+2. any required criterion = FAIL
+   -> FAIL
+
+3. no required FAIL and any required criterion = INSUFFICIENT_EVIDENCE
+   -> INSUFFICIENT_EVIDENCE
+
+4. every required criterion = PASS
+   -> PASS
+```
+
+Optional criteria are diagnostic only and cannot turn a required FAIL into PASS
+or a required insufficient result into PASS.
+
+Malformed metric evidence, wrong registry, wrong numeric kind or criterion drift
+is an integrity failure, not `INSUFFICIENT_EVIDENCE`.
 
 No undocumented composite score may decide the result.
 
