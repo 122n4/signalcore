@@ -54,6 +54,7 @@ const requiredCurrentDocs = [
   "I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md",
   "I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md",
+  "I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
@@ -852,4 +853,42 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toMatch(/`SYNTRAKE:RESEARCH_SPEC:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
     expect(state).toMatch(/`SYNTRAKE:DATASET_SNAPSHOT:V1`\r?\n= `OWNER_PAYLOAD_EXACT`/u);
   });
+
+  it("records accepted RL-9 Blind Truth design freeze without runtime or Production admission", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const contract = read("docs/investing-genesis/I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md");
+    const row = tableRow(state, "RL-9 Blind Truth / Evidence Vault V1 Design Freeze / unnumbered");
+
+    expect(contract).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE / UNNUMBERED");
+    expect(contract).toContain("ebf53e10b136cc1ef5ffbef5f38fd4d15520bf22");
+    expect(contract).toContain("#123");
+    expect(contract).toContain("063a1ca75a70dfc1409adb38c12214e9363b3722");
+    expect(contract).toContain("37963062714 / #1555 / SUCCESS");
+    expect(contract).toContain("113930488107 - SUCCESS");
+    expect(contract).toContain("113930488229 - SUCCESS");
+    expect(contract).toContain("Runtime implementation:\n`NOT IMPLEMENTED BY THIS SLICE`");
+    expect(contract).toContain("Migration:\n`NONE`");
+    expect(contract).toContain("Production mutation:\n`NONE`");
+    expect(contract).toContain("Supabase Production:\n`UNCHANGED`");
+
+    expect(state).toContain("I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze (unnumbered)");
+    expect(state).toContain("I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md");
+    expect(state).toContain("I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze acceptance evidence:");
+    expect(state).toContain("ebf53e10b136cc1ef5ffbef5f38fd4d15520bf22");
+    expect(state).toContain("#123");
+    expect(state).toContain("063a1ca75a70dfc1409adb38c12214e9363b3722");
+    expect(state).toContain("37963062714 / #1555 / SUCCESS");
+    expect(state).toContain("1687 passed / 127 skipped");
+    expect(state).toContain("I5 RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("RL-9 implementation = NOT ACCEPTED / NOT IMPLEMENTED");
+    expect(state).toContain("RL-9 Supabase Production mutation = NONE");
+
+    expect(row).toContain("| NO | YES |");
+    expect(row).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE");
+    expect(row).toContain("| NONE |");
+  });
+
 });
