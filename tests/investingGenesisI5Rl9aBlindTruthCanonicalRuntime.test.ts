@@ -29,6 +29,7 @@ import {
   assertBlindTruthExecutionConfigBindingV1,
   assertBlindTruthEvaluationBindingV1,
   assertBlindTruthMetricRequestSetBindingV1,
+  assertBlindTruthResultBindingV1,
   assertBlindTruthVaultSealBindingV1,
   type BlindTruthCriterionV1,
   type BlindTruthRegistrationV1,
@@ -37,15 +38,16 @@ import {
 } from "../lib/investing/research/blindTruth";
 import { canonicalSha256HexV1, hashRefV1, type HashRefV1 } from "../lib/investing/research/canonical";
 import { hashExecutionConfigV1, hashMetricRequestSetV1, type ExecutionConfigHashPayloadV1, type MetricRequestSetHashPayloadV1 } from "../lib/investing/research/executionMaterials";
+import { metricRegistryV2Requests } from "../lib/investing/research/researchMetrics";
 
 const h = (c: string) => canonicalSha256HexV1(c.repeat(64));
 const ref = (hashDomain: HashRefV1["hashDomain"], c: string): HashRefV1 => hashRefV1({ hashAlgorithm: "SHA-256", hashDomain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(c) });
 const localRef = (hashDomain: string, c: string) => ({ hashAlgorithm: "SHA-256" as const, hashDomain, hashVersion: "SYNTRAKE_SHA256_V1" as const, hashHex: h(c) }) as never;
 
-const metricRequestSet: MetricRequestSetHashPayloadV1 = { schemaVersion: "METRIC_REQUEST_SET_HASH_PAYLOAD_V1", metricRegistryVersion: "METRIC_REGISTRY_V20260927", requests: [{ metricId: "TOTAL_RETURN", metricVersion: "METRIC_V2" }, { metricId: "TRADE_COUNT", metricVersion: "METRIC_V2" }] };
-const executionConfig: ExecutionConfigHashPayloadV1 = { schemaVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1", engineCompatibilityVersion: "ENGINE_V20260926", missingDataPolicy: "MISSING_DATA_POLICY_V1", fxPolicy: "FX_POLICY_V1", costsPolicy: "COSTS_POLICY_V1", slippagePolicy: "SLIPPAGE_POLICY_V1", fillPolicy: "FILL_POLICY_V1", corporateActionPolicy: "CORPORATE_ACTION_POLICY_V1", calendarSessionPolicy: "CALENDAR_SESSION_POLICY_V1", valuationPolicy: "VALUATION_POLICY_V1" };
-const requiredCriterion: BlindTruthCriterionV1 = { criterionId: "TOTAL_RETURN_PASS", criterionVersion: "CRITERION_V1", required: true, metricId: "TOTAL_RETURN", metricVersion: "METRIC_V2", operator: "GTE", threshold: { kind: "RATIO", value: "0.1" } };
-const optionalCriterion: BlindTruthCriterionV1 = { criterionId: "TRADE_COUNT_DIAGNOSTIC", criterionVersion: "CRITERION_V1", required: false, metricId: "TRADE_COUNT", metricVersion: "METRIC_V2", operator: "GTE", threshold: { kind: "INTEGER", value: "10" } };
+const metricRequestSet: MetricRequestSetHashPayloadV1 = { schemaVersion: "METRIC_REQUEST_SET_HASH_PAYLOAD_V1", metricRegistryVersion: "METRIC_REGISTRY_V20260927", requests: [...metricRegistryV2Requests] };
+const executionConfig: ExecutionConfigHashPayloadV1 = { schemaVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1", engineCompatibilityVersion: "ENGINE_V20260926", missingDataPolicy: "MISSING_DATA_STRICT_RESEARCH_V2", fxPolicy: "FX_USD_IDENTITY_V1", costsPolicy: "COMMISSION_FEES_ZERO_V1", slippagePolicy: "SLIPPAGE_ZERO_RESEARCH_V1", fillPolicy: "NEXT_SESSION_OPEN_V1", corporateActionPolicy: "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2", calendarSessionPolicy: "XNYS_OPEN_CLOSE_SESSION_V2", valuationPolicy: "USD_ADJUSTED_CLOSE_MARK_V2" };
+const requiredCriterion: BlindTruthCriterionV1 = { criterionId: "TOTAL_RETURN_PASS", criterionVersion: "CRITERION_V1", required: true, metricId: "TOTAL_RETURN", metricVersion: "METRIC_V2", operator: "GTE", threshold: { kind: "SCALAR", value: { kind: "RATIO", value: "0.1" } } };
+const optionalCriterion: BlindTruthCriterionV1 = { criterionId: "TRADE_COUNT_DIAGNOSTIC", criterionVersion: "CRITERION_V1", required: false, metricId: "TRADE_COUNT", metricVersion: "METRIC_V2", operator: "GTE", threshold: { kind: "SCALAR", value: { kind: "INTEGER", value: "10" } } };
 
 function registration(overrides: Partial<BlindTruthRegistrationV1> = {}): BlindTruthRegistrationV1 {
   return { schemaVersion: "BLIND_TRUTH_REGISTRATION_V1", protocol: hashBlindTruthProtocolV1(), subjectExperiment: ref("SYNTRAKE:EXPERIMENT:V1", "A"), subjectExperimentParameters: ref("SYNTRAKE:EXPERIMENT_PARAMETERS:V1", "B"), subjectResearchIr: ref("SYNTRAKE:RESEARCH_IR:V1", "C"), promotionProtocol: localRef("SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1", "D"), promotionTransition: localRef("SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", "E"), hypothesis: ref("SYNTRAKE:HYPOTHESIS:V1", "F"), metricRequestSet: ref("SYNTRAKE:METRIC_REQUEST_SET:V1", "1"), executionConfig: ref("SYNTRAKE:EXECUTION_CONFIG:V1", "2"), blindTruthCriteria: [optionalCriterion, requiredCriterion], holdoutScope: { schemaVersion: "BLIND_TRUTH_HOLDOUT_SCOPE_V1", providerId: "PROVIDER_V1", providerDatasetId: "DATASET_V1", providerDatasetVersion: "DATASET_VERSION_20261009", markets: ["EURUSD", "BTCUSD"], frequency: "M1", fields: ["close", "open"], coverageStart: "2026-01-01", coverageEnd: "2026-06-30", calendarId: "CALENDAR_24_7_V1", timezone: "UTC" }, evaluatorProfile: blindTruthEvaluatorProfileV1, ...overrides };
@@ -54,7 +56,7 @@ function boundRegistration(): BlindTruthRegistrationV1 { return { ...registratio
 function seal(reg = boundRegistration()) { return { schemaVersion: "BLIND_TRUTH_VAULT_SEAL_V1" as const, protocol: hashBlindTruthProtocolV1(), registration: hashBlindTruthRegistrationV1(reg), holdoutScopeDigest: blindTruthHoldoutScopeDigestV1(reg.holdoutScope), commitmentAlgorithm: "SHA256_DOMAIN_SEPARATED_SALTED_V1" as const, commitmentHash: h("9"), declaredPlaintextByteLength: "42", vaultFormatVersion: "BLIND_TRUTH_VAULT_FORMAT_V1" as const }; }
 function evaluation(reg = boundRegistration(), s = seal(reg)) { return { schemaVersion: "BLIND_TRUTH_EVALUATION_V1" as const, protocol: hashBlindTruthProtocolV1(), registration: hashBlindTruthRegistrationV1(reg), vaultSeal: hashBlindTruthVaultSealV1(s), evaluatorProfile: blindTruthEvaluatorProfileV1 }; }
 const metric = (metricId: "TOTAL_RETURN" | "TRADE_COUNT", status: "AVAILABLE" | "UNAVAILABLE", value: string | null) => ({ metricId, metricVersion: "METRIC_V2", registryVersion: "METRIC_REGISTRY_V20260927", annualizationBasis: "TRADING_SESSIONS_PER_YEAR_252", riskFreeSessionReturn: "0", minimumAcceptableSessionReturn: "0", arithmetic: "EXACT_RATIONAL_WITH_DETERMINISTIC_BIGINT_ROOT_POWER_V1", rounding: "RESEARCH_RATIO_OUTPUT_V1_SCALE_18_ROUND_HALF_EVEN", status, ...(status === "AVAILABLE" ? { value: value! } : { reason: "INSUFFICIENT_OBSERVATIONS" }) });
-function result(reg = boundRegistration()): BlindTruthResultV1 { const s = seal(reg); const e = evaluation(reg, s); const observedMetricResults = [metric("TOTAL_RETURN", "AVAILABLE", "0.2"), metric("TRADE_COUNT", "AVAILABLE", "12")]; const criterionOutcomes = evaluateBlindTruthCriterionOutcomesV1(reg.blindTruthCriteria, observedMetricResults); return { schemaVersion: "BLIND_TRUTH_RESULT_V1", registration: hashBlindTruthRegistrationV1(reg), vaultSeal: hashBlindTruthVaultSealV1(s), evaluation: hashBlindTruthEvaluationV1(e), revealedDatasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "7"), revealedDatasetSeries: [ref("SYNTRAKE:DATASET_SERIES:V1", "8")], observedMetricResults, criterionOutcomes, overallOutcome: blindTruthOverallOutcomeV1(reg.blindTruthCriteria, criterionOutcomes) }; }
+function result(reg = boundRegistration()): BlindTruthResultV1 { const s = seal(reg); const e = evaluation(reg, s); const observedMetricResults = [metric("TOTAL_RETURN", "AVAILABLE", "0.2"), metric("TRADE_COUNT", "AVAILABLE", "12")]; const criterionOutcomes = evaluateBlindTruthCriterionOutcomesV1(reg.blindTruthCriteria, observedMetricResults); return { registration: hashBlindTruthRegistrationV1(reg), vaultSeal: hashBlindTruthVaultSealV1(s), evaluation: hashBlindTruthEvaluationV1(e), revealedDatasetSnapshot: ref("SYNTRAKE:DATASET_SNAPSHOT:V1", "7"), revealedDatasetSeries: [ref("SYNTRAKE:DATASET_SERIES:V1", "8")], observedMetricResults, criterionOutcomes, overallOutcome: blindTruthOverallOutcomeV1(reg.blindTruthCriteria, criterionOutcomes) }; }
 function started(reg = boundRegistration()): BlindTruthRevealResultEventV1 { const s = seal(reg); const e = evaluation(reg, s); return { schemaVersion: "BLIND_TRUTH_REVEAL_RESULT_EVENT_V1", protocol: hashBlindTruthProtocolV1(), registration: hashBlindTruthRegistrationV1(reg), vaultSeal: hashBlindTruthVaultSealV1(s), evaluation: hashBlindTruthEvaluationV1(e), predecessorEvent: null, eventState: "REVEAL_STARTED", reason: null, result: null }; }
 
 describe("I5 RL-9A Blind Truth canonical runtime", () => {
@@ -74,7 +76,10 @@ describe("I5 RL-9A Blind Truth canonical runtime", () => {
     expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [] }))).toThrow("INCOMPATIBLE_CRITERIA");
     expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [{ ...optionalCriterion, criterionId: "SECOND_OPTIONAL" }] }))).toThrow("INCOMPATIBLE_CRITERIA");
     expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [requiredCriterion, requiredCriterion] }))).toThrow(/duplicate/);
-    expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [requiredCriterion, { ...requiredCriterion, threshold: { kind: "RATIO", value: "0.2" } }] }))).toThrow(/duplicate/);
+    expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [requiredCriterion, { ...requiredCriterion, threshold: { kind: "SCALAR", value: { kind: "RATIO", value: "0.2" } } }] }))).toThrow(/duplicate/);
+    expect(canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [{ ...requiredCriterion, operator: "BETWEEN_INCLUSIVE", threshold: { kind: "RANGE", lower: { kind: "RATIO", value: "0.1" }, upper: { kind: "RATIO", value: "0.3" } } }] }))).toBeTruthy();
+    expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [{ ...requiredCriterion, threshold: { kind: "RATIO", value: "0.2" } as never }] }))).toThrow("INCOMPATIBLE_CRITERIA");
+    expect(() => canonicalBlindTruthRegistrationV1(registration({ blindTruthCriteria: [{ ...requiredCriterion, operator: "BETWEEN_INCLUSIVE", threshold: { kind: "RATIO_RANGE", lower: "0.1", upper: "0.2" } as never }] }))).toThrow("INCOMPATIBLE_CRITERIA");
     const key = JSON.stringify(blindTruthOneShotCandidateKeyV1(a));
     expect(key).toContain("SYNTRAKE:EXPERIMENT:V1");
     expect(key).not.toContain("promotion");
@@ -97,6 +102,8 @@ describe("I5 RL-9A Blind Truth canonical runtime", () => {
     expect(() => assertBlindTruthMetricRequestSetBindingV1({ registration: reg, metricRequestSet: { ...metricRequestSet, metricRegistryVersion: "METRIC_REGISTRY_OLD" } })).toThrow("INCOMPATIBLE_METRIC_REGISTRY");
     expect(() => assertBlindTruthExecutionConfigBindingV1({ registration: reg, executionConfig: { ...executionConfig, engineCompatibilityVersion: "ENGINE_OLD" } })).toThrow("INCOMPATIBLE_ENGINE_VERSION");
     expect(() => assertBlindTruthMetricRequestSetBindingV1({ registration: reg, metricRequestSet: { ...metricRequestSet, requests: [{ metricId: "TRADE_COUNT", metricVersion: "METRIC_V2" }] } })).toThrow();
+    expect(() => assertBlindTruthExecutionConfigBindingV1({ registration: reg, executionConfig: { ...executionConfig, missingDataPolicy: "MISSING_DATA_POLICY_V1" } })).toThrow("INCOMPATIBLE_ENGINE_VERSION");
+    expect(() => assertBlindTruthMetricRequestSetBindingV1({ registration: reg, metricRequestSet: { ...metricRequestSet, requests: metricRequestSet.requests.slice(1) } })).toThrow("INCOMPATIBLE_METRIC_REGISTRY");
   });
 
   it("binds seal and evaluation without secret material or duplicated config", () => {
@@ -109,6 +116,8 @@ describe("I5 RL-9A Blind Truth canonical runtime", () => {
     expect(canonicalBlindTruthEvaluationV1(e)).not.toHaveProperty("metricRequestSet");
     expect(() => canonicalBlindTruthVaultSealV1({ ...s, commitmentHash: "abc" as never })).toThrow();
     expect(() => assertBlindTruthEvaluationBindingV1({ evaluation: { ...e, evaluatorProfile: { ...blindTruthEvaluatorProfileV1, engineVersion: "ENGINE_OLD" as never } }, registration: reg, vaultSeal: s })).toThrow();
+    expect(() => canonicalBlindTruthVaultSealV1({ ...s, protocol: localRef("SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1", "3") })).toThrow("INCOMPATIBLE_PROTOCOL_VERSION");
+    expect(() => canonicalBlindTruthEvaluationV1({ ...e, protocol: localRef("SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1", "4") })).toThrow("INCOMPATIBLE_PROTOCOL_VERSION");
   });
 
   it("computes result outcomes with required precedence and Dataset domains", () => {
@@ -121,6 +130,21 @@ describe("I5 RL-9A Blind Truth canonical runtime", () => {
     expect(blindTruthOverallOutcomeV1(reg.blindTruthCriteria, insufficient)).toBe("INSUFFICIENT_EVIDENCE");
     expect(() => canonicalBlindTruthResultV1({ ...pass, revealedDatasetSeries: [ref("SYNTRAKE:DATASET_SERIES:V1", "8"), ref("SYNTRAKE:DATASET_SERIES:V1", "8")] }, reg)).toThrow(/duplicate/);
     expect(() => canonicalBlindTruthResultV1({ ...pass, overallOutcome: "FAIL" }, reg)).toThrow("INCOMPATIBLE_CRITERIA");
+    const s = seal(reg);
+    const e = evaluation(reg, s);
+    expect(() => assertBlindTruthResultBindingV1({ result: pass, registration: reg, vaultSeal: s, evaluation: e })).not.toThrow();
+    expect(() => canonicalBlindTruthResultV1({ ...pass, schemaVersion: "BLIND_TRUTH_RESULT_V1" } as never, reg)).toThrow(/undeclared field schemaVersion/);
+    expect(() => canonicalBlindTruthResultV1({ ...pass, criterionOutcomes: pass.criterionOutcomes.filter((outcome) => outcome.criterionId !== "TOTAL_RETURN_PASS"), overallOutcome: "PASS" }, reg)).toThrow("INCOMPATIBLE_CRITERIA");
+    expect(() => canonicalBlindTruthResultV1({ ...pass, criterionOutcomes: [...pass.criterionOutcomes, { criterionId: "UNKNOWN", criterionVersion: "CRITERION_V1", metricId: "TOTAL_RETURN", metricVersion: "METRIC_V2", status: "PASS", observedMetric: metric("TOTAL_RETURN", "AVAILABLE", "0.2") }] }, reg)).toThrow("INCOMPATIBLE_CRITERIA");
+    const failingMetrics = [metric("TOTAL_RETURN", "AVAILABLE", "0.01"), metric("TRADE_COUNT", "AVAILABLE", "12")];
+    const forgedPass = { ...pass, observedMetricResults: failingMetrics, criterionOutcomes: pass.criterionOutcomes, overallOutcome: "PASS" as const };
+    expect(() => canonicalBlindTruthResultV1(forgedPass, reg)).toThrow("INCOMPATIBLE_CRITERIA");
+    expect(() => canonicalBlindTruthResultV1({ ...pass, criterionOutcomes: pass.criterionOutcomes.map((outcome) => outcome.criterionId === "TOTAL_RETURN_PASS" ? { ...outcome, observedMetric: metric("TOTAL_RETURN", "AVAILABLE", "0.01") } : outcome) }, reg)).toThrow("INCOMPATIBLE_CRITERIA");
+    expect(() => canonicalBlindTruthResultV1({ ...pass, criterionOutcomes: pass.criterionOutcomes.map((outcome) => outcome.criterionId === "TOTAL_RETURN_PASS" ? { ...outcome, status: "INSUFFICIENT_EVIDENCE" as const } : outcome) }, reg)).toThrow("INCOMPATIBLE_CRITERIA");
+    expect(() => canonicalBlindTruthResultV1({ ...pass, registration: localRef("SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1", "A") }, reg)).not.toThrow();
+    expect(() => assertBlindTruthResultBindingV1({ result: { ...pass, registration: localRef("SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1", "A") }, registration: reg, vaultSeal: s, evaluation: e })).toThrow("DIVERGENT_EXISTING_IDENTITY");
+    expect(() => assertBlindTruthResultBindingV1({ result: { ...pass, vaultSeal: localRef("SYNTRAKE:BLIND_TRUTH_VAULT_SEAL:V1", "B") }, registration: reg, vaultSeal: s, evaluation: e })).toThrow("DIVERGENT_EXISTING_IDENTITY");
+    expect(() => assertBlindTruthResultBindingV1({ result: { ...pass, evaluation: localRef("SYNTRAKE:BLIND_TRUTH_EVALUATION:V1", "C") }, registration: reg, vaultSeal: s, evaluation: e })).toThrow("DIVERGENT_EXISTING_IDENTITY");
   });
 
   it("validates reveal event graph and predecessor lineage", () => {
@@ -133,6 +157,10 @@ describe("I5 RL-9A Blind Truth canonical runtime", () => {
     expect(canonicalBlindTruthRevealResultEventV1(failed, start)).toMatchObject({ eventState: "REVEAL_FAILED_CLOSED", result: null });
     expect(() => canonicalBlindTruthRevealResultEventV1(completed)).toThrow("AMBIGUOUS_EVENT_CHAIN");
     expect(() => canonicalBlindTruthRevealResultEventV1({ ...failed, reason: "FREE_FORM" as never }, start)).toThrow("AMBIGUOUS_EVENT_CHAIN");
+    expect(() => canonicalBlindTruthRevealResultEventV1({ ...start, protocol: localRef("SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1", "5") })).toThrow("INCOMPATIBLE_PROTOCOL_VERSION");
+    expect(() => canonicalBlindTruthRevealResultEventV1({ ...completed, result: { ...completed.result!, registration: localRef("SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1", "6") } }, start)).toThrow("DIVERGENT_EXISTING_IDENTITY");
+    expect(() => canonicalBlindTruthRevealResultEventV1({ ...completed, result: { ...completed.result!, vaultSeal: localRef("SYNTRAKE:BLIND_TRUTH_VAULT_SEAL:V1", "7") } }, start)).toThrow("DIVERGENT_EXISTING_IDENTITY");
+    expect(() => canonicalBlindTruthRevealResultEventV1({ ...completed, result: { ...completed.result!, evaluation: localRef("SYNTRAKE:BLIND_TRUTH_EVALUATION:V1", "8") } }, start)).toThrow("DIVERGENT_EXISTING_IDENTITY");
   });
 
   it("keeps RL-9A inside pure runtime scope", () => {
