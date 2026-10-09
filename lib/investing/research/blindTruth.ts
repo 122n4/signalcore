@@ -15,7 +15,8 @@ import {
 } from "./canonical";
 import { assertEngineV2ExecutionConfig, assertEngineV2MetricRequestSet } from "./engineV2ScientificProfile";
 import { hashExecutionConfigV1, hashMetricRequestSetV1, type ExecutionConfigHashPayloadV1, type MetricRequestSetHashPayloadV1 } from "./executionMaterials";
-import { compareRationalV1, decimalStringToRationalV1 } from "./exactRational";
+import { compareRationalV1, decimalStringToRationalV1, renderRatioOutputV1 } from "./exactRational";
+import { canonicalJsonlArtifactBytesV1, type ResearchArtifactDescriptorV1 } from "./resultArtifacts";
 import { assertMetricResultRecordV2 } from "./researchMetrics";
 import { validationAssessmentMetricNumericKindV1, type CanonicalAssessmentNumericV1, type ValidationAssessmentOperatorV1, type ValidationAssessmentThresholdV1 } from "./validationAssessment";
 
@@ -73,6 +74,7 @@ export type BlindTruthRegistrationV1 = Readonly<{ schemaVersion: "BLIND_TRUTH_RE
 export type BlindTruthVaultSealV1 = Readonly<{ schemaVersion: "BLIND_TRUTH_VAULT_SEAL_V1"; protocol: BlindTruthHashRefV1<typeof blindTruthProtocolDomainV1>; registration: BlindTruthHashRefV1<typeof blindTruthRegistrationDomainV1>; holdoutScopeDigest: CanonicalSha256HexV1; commitmentAlgorithm: "SHA256_DOMAIN_SEPARATED_SALTED_V1"; commitmentHash: CanonicalSha256HexV1; declaredPlaintextByteLength: string; vaultFormatVersion: "BLIND_TRUTH_VAULT_FORMAT_V1" }>;
 export type BlindTruthEvaluationV1 = Readonly<{ schemaVersion: "BLIND_TRUTH_EVALUATION_V1"; protocol: BlindTruthHashRefV1<typeof blindTruthProtocolDomainV1>; registration: BlindTruthHashRefV1<typeof blindTruthRegistrationDomainV1>; vaultSeal: BlindTruthHashRefV1<typeof blindTruthVaultSealDomainV1>; evaluatorProfile: BlindTruthEvaluatorProfileV1 }>;
 export type BlindTruthMetricResultRecordV1 = Readonly<Record<string, CanonicalJsonValue>>;
+export type BlindTruthVerifiedMetricResultSetArtifactV1 = Readonly<{ descriptor: ResearchArtifactDescriptorV1; contentBytes: Buffer }>;
 export type BlindTruthCriterionOutcomeV1 = Readonly<{ criterionId: string; criterionVersion: "CRITERION_V1"; metricId: string; metricVersion: "METRIC_V2"; status: BlindTruthOutcomeV1; observedMetric: BlindTruthMetricResultRecordV1 | null }>;
 export type BlindTruthResultV1 = Readonly<{ registration: BlindTruthHashRefV1<typeof blindTruthRegistrationDomainV1>; vaultSeal: BlindTruthHashRefV1<typeof blindTruthVaultSealDomainV1>; evaluation: BlindTruthHashRefV1<typeof blindTruthEvaluationDomainV1>; revealedDatasetSnapshot: HashRefV1; revealedDatasetSeries: readonly HashRefV1[]; observedMetricResults: readonly BlindTruthMetricResultRecordV1[]; criterionOutcomes: readonly BlindTruthCriterionOutcomeV1[]; overallOutcome: BlindTruthOutcomeV1 }>;
 export type BlindTruthRevealResultEventV1 = Readonly<{ schemaVersion: "BLIND_TRUTH_REVEAL_RESULT_EVENT_V1"; protocol: BlindTruthHashRefV1<typeof blindTruthProtocolDomainV1>; registration: BlindTruthHashRefV1<typeof blindTruthRegistrationDomainV1>; vaultSeal: BlindTruthHashRefV1<typeof blindTruthVaultSealDomainV1>; evaluation: BlindTruthHashRefV1<typeof blindTruthEvaluationDomainV1>; predecessorEvent: BlindTruthHashRefV1<typeof blindTruthRevealResultEventDomainV1> | null; eventState: BlindTruthEventStateV1; reason: BlindTruthReasonV1 | null; result: BlindTruthResultV1 | null }>;
@@ -194,6 +196,7 @@ export function canonicalBlindTruthEvaluationV1(input: BlindTruthEvaluationV1): 
   return { schemaVersion: input.schemaVersion, protocol, registration: canonicalLocalRef(input.registration, blindTruthRegistrationDomainV1), vaultSeal: canonicalLocalRef(input.vaultSeal, blindTruthVaultSealDomainV1), evaluatorProfile: canonicalBlindTruthEvaluatorProfileV1(input.evaluatorProfile) };
 }
 export function assertBlindTruthEvaluationBindingV1(input: { evaluation: BlindTruthEvaluationV1; registration: BlindTruthRegistrationV1; vaultSeal: BlindTruthVaultSealV1 }): void {
+  assertBlindTruthVaultSealBindingV1({ vaultSeal: input.vaultSeal, registration: input.registration });
   const evaluation = canonicalBlindTruthEvaluationV1(input.evaluation) as Record<string, CanonicalJsonValue>;
   const registration = canonicalBlindTruthRegistrationV1(input.registration) as Record<string, CanonicalJsonValue>;
   if (!sameRef(evaluation.protocol as BlindTruthHashRefV1, registration.protocol as BlindTruthHashRefV1)) throw new Error("INCOMPATIBLE_PROTOCOL_VERSION");
@@ -242,11 +245,50 @@ export function canonicalBlindTruthResultV1(input: BlindTruthResultV1, registrat
   return { registration: canonicalLocalRef(input.registration, blindTruthRegistrationDomainV1), vaultSeal: canonicalLocalRef(input.vaultSeal, blindTruthVaultSealDomainV1), evaluation: canonicalLocalRef(input.evaluation, blindTruthEvaluationDomainV1), revealedDatasetSnapshot: canonicalGlobalRef(input.revealedDatasetSnapshot, "SYNTRAKE:DATASET_SNAPSHOT:V1"), revealedDatasetSeries: canonicalDatasetSeriesRefs(input.revealedDatasetSeries), observedMetricResults, criterionOutcomes, overallOutcome: input.overallOutcome };
 }
 
-export function assertBlindTruthResultBindingV1(input: { result: BlindTruthResultV1; registration: BlindTruthRegistrationV1; vaultSeal: BlindTruthVaultSealV1; evaluation: BlindTruthEvaluationV1 }): void {
+export function assertBlindTruthResultBindingV1(input: { result: BlindTruthResultV1; registration: BlindTruthRegistrationV1; vaultSeal: BlindTruthVaultSealV1; evaluation: BlindTruthEvaluationV1; verifiedMetricArtifact: BlindTruthVerifiedMetricResultSetArtifactV1 }): void {
+  assertBlindTruthEvaluationBindingV1({ evaluation: input.evaluation, registration: input.registration, vaultSeal: input.vaultSeal });
+  assertBlindTruthResultMetricArtifactBindingV1({ result: input.result, registration: input.registration, verifiedMetricArtifact: input.verifiedMetricArtifact });
   const result = canonicalBlindTruthResultV1(input.result, input.registration) as Record<string, CanonicalJsonValue>;
   if (!sameRef(result.registration as BlindTruthHashRefV1, hashBlindTruthRegistrationV1(input.registration))) throw new Error("DIVERGENT_EXISTING_IDENTITY");
   if (!sameRef(result.vaultSeal as BlindTruthHashRefV1, hashBlindTruthVaultSealV1(input.vaultSeal))) throw new Error("DIVERGENT_EXISTING_IDENTITY");
   if (!sameRef(result.evaluation as BlindTruthHashRefV1, hashBlindTruthEvaluationV1(input.evaluation))) throw new Error("DIVERGENT_EXISTING_IDENTITY");
+}
+
+export function verifyBlindTruthMetricResultSetArtifactV1(input: BlindTruthVerifiedMetricResultSetArtifactV1): BlindTruthMetricResultRecordV1[] {
+  const descriptor = input.descriptor;
+  if (descriptor.artifactSchemaVersion !== "METRIC_RESULT_SET_V2" || descriptor.format !== "CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1") throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
+  const contentSha256 = canonicalSha256HexV1(descriptor.contentSha256);
+  if (sha256HexV1(input.contentBytes) !== contentSha256) throw new Error("METRIC_RESULT_ARTIFACT_INTEGRITY_FAILURE");
+  if (canonicalIntegerV1(descriptor.contentByteLength, { min: "0", allowNegative: false }) !== String(input.contentBytes.byteLength)) throw new Error("METRIC_RESULT_ARTIFACT_INTEGRITY_FAILURE");
+  const records = parseCanonicalJsonlArtifact(input.contentBytes);
+  if (canonicalIntegerV1(descriptor.recordCount, { min: "0", allowNegative: false }) !== String(records.length)) throw new Error("METRIC_RESULT_ARTIFACT_RECORD_COUNT_MISMATCH");
+  const canonicalBytes = canonicalJsonlArtifactBytesV1(records);
+  if (!canonicalBytes.equals(input.contentBytes)) throw new Error("METRIC_RESULT_ARTIFACT_NON_CANONICAL");
+  return [...canonicalObservedMetricResultsV1(records as BlindTruthMetricResultRecordV1[]).values()] as BlindTruthMetricResultRecordV1[];
+}
+
+export function assertBlindTruthResultMetricArtifactBindingV1(input: { result: BlindTruthResultV1; registration: BlindTruthRegistrationV1; verifiedMetricArtifact: BlindTruthVerifiedMetricResultSetArtifactV1 }): void {
+  const verified = verifyBlindTruthMetricResultSetArtifactV1(input.verifiedMetricArtifact);
+  const selected = selectBlindTruthObservedMetricResultsV1(input.registration.blindTruthCriteria, verified);
+  const result = canonicalBlindTruthResultV1(input.result, input.registration) as Record<string, CanonicalJsonValue>;
+  if (canonicalKey(result.observedMetricResults) !== canonicalKey(selected as unknown as CanonicalJsonValue)) throw new Error("METRIC_RESULT_ARTIFACT_INTEGRITY_FAILURE");
+}
+
+export function selectBlindTruthObservedMetricResultsV1(criteria: readonly BlindTruthCriterionV1[], verifiedMetricResults: readonly BlindTruthMetricResultRecordV1[]): BlindTruthMetricResultRecordV1[] {
+  const metrics = canonicalObservedMetricResultsV1(verifiedMetricResults);
+  const selected = canonicalBlindTruthCriteriaV1(criteria).map((criterion) => {
+    const c = criterion as Record<string, CanonicalJsonValue>;
+    const record = metrics.get(`${c.metricId}\n${c.metricVersion}`);
+    if (!record) throw new Error("MISSING_METRIC_RESULT_SET");
+    return record as BlindTruthMetricResultRecordV1;
+  });
+  return [...canonicalObservedMetricResultsV1(selected).values()] as BlindTruthMetricResultRecordV1[];
+}
+
+export function assertBlindTruthCompletedEventBindingV1(input: { event: BlindTruthRevealResultEventV1; predecessor: BlindTruthRevealResultEventV1; registration: BlindTruthRegistrationV1; vaultSeal: BlindTruthVaultSealV1; evaluation: BlindTruthEvaluationV1; verifiedMetricArtifact: BlindTruthVerifiedMetricResultSetArtifactV1 }): void {
+  const event = canonicalBlindTruthRevealResultEventV1(input.event, input.predecessor) as Record<string, CanonicalJsonValue>;
+  if (event.eventState !== "REVEAL_COMPLETED" || input.event.result === null) throw new Error("AMBIGUOUS_EVENT_CHAIN");
+  assertBlindTruthResultBindingV1({ result: input.event.result, registration: input.registration, vaultSeal: input.vaultSeal, evaluation: input.evaluation, verifiedMetricArtifact: input.verifiedMetricArtifact });
 }
 
 
@@ -285,8 +327,9 @@ function canonicalObservedMetricResultsV1(input: readonly BlindTruthMetricResult
 function canonicalBlindTruthCriterionOutcomesV1(input: readonly BlindTruthCriterionOutcomeV1[], criteria?: readonly Record<string, CanonicalJsonValue>[]): CanonicalJsonValue[] { if (!Array.isArray(input) || input.length < 1) throw new Error("INCOMPATIBLE_CRITERIA"); const criterionMap = criteria ? new Map(criteria.map((c) => [`${c.criterionId}\n${c.criterionVersion}`, c])) : null; const normalized = input.map((outcome) => { assertClosed(outcome, ["criterionId", "criterionVersion", "metricId", "metricVersion", "status", "observedMetric"]); if (outcome.criterionVersion !== "CRITERION_V1" || outcome.metricVersion !== "METRIC_V2" || !outcomes.has(outcome.status)) throw new Error("INCOMPATIBLE_CRITERIA"); const criterionId = token(outcome.criterionId, "criterionId"); const metricId = token(outcome.metricId, "metricId"); const criterion = criterionMap?.get(`${criterionId}\n${outcome.criterionVersion}`); if (criterionMap && !criterion) throw new Error("INCOMPATIBLE_CRITERIA"); if (criterion && (criterion.metricId !== metricId || criterion.metricVersion !== outcome.metricVersion)) throw new Error("INCOMPATIBLE_CRITERIA"); const observedMetric = outcome.observedMetric === null ? null : canonicalObservedMetricResultsV1([outcome.observedMetric]).values().next().value as Record<string, CanonicalJsonValue>; return { criterionId, criterionVersion: outcome.criterionVersion, metricId, metricVersion: outcome.metricVersion, status: outcome.status, observedMetric }; }).sort((left, right) => compareStrings(`${left.criterionId}\n${left.criterionVersion}`, `${right.criterionId}\n${right.criterionVersion}`)); rejectDuplicateCanonical(normalized, "criterion outcome"); rejectDuplicateIdentity(normalized, "criterion outcome", "criterionId", "criterionVersion"); return normalized; }
 function compareObservedToCriterion(observed: Record<string, CanonicalJsonValue>, criterion: Record<string, CanonicalJsonValue>): boolean { if (observed.status !== "AVAILABLE" || typeof observed.value !== "string") return false; const threshold = criterion.threshold as Record<string, CanonicalJsonValue>; const kind = validationAssessmentMetricNumericKindV1(criterion.metricId as string); const cmp = (value: string) => compareNumericValues(kind, observed.value as string, value); if (threshold.kind === "SCALAR") { const value = (threshold.value as CanonicalAssessmentNumericV1).value; switch (criterion.operator) { case "LT": return cmp(value) < 0; case "LTE": return cmp(value) <= 0; case "EQ": return cmp(value) === 0; case "GTE": return cmp(value) >= 0; case "GT": return cmp(value) > 0; default: throw new Error("INCOMPATIBLE_CRITERIA"); } } const lower = (threshold.lower as CanonicalAssessmentNumericV1).value; const upper = (threshold.upper as CanonicalAssessmentNumericV1).value; switch (criterion.operator) { case "BETWEEN_INCLUSIVE": return cmp(lower) >= 0 && cmp(upper) <= 0; case "OUTSIDE_EXCLUSIVE": return cmp(lower) < 0 || cmp(upper) > 0; default: throw new Error("INCOMPATIBLE_CRITERIA"); } }
 function canonicalDatasetSeriesRefs(input: readonly HashRefV1[]): HashRefV1[] { if (!Array.isArray(input) || input.length < 1) throw new Error("MALFORMED_HOLDOUT"); const refs = input.map((ref) => canonicalGlobalRef(ref, "SYNTRAKE:DATASET_SERIES:V1")).sort(compareRefs); rejectDuplicateCanonical(refs, "dataset series"); return refs; }
+function parseCanonicalJsonlArtifact(bytes: Buffer): CanonicalJsonValue[] { const text = bytes.toString("utf8"); if (!text.endsWith("\n")) throw new Error("METRIC_RESULT_ARTIFACT_FORMAT_INVALID"); const lines = text.slice(0, -1).split("\n"); if (lines.length === 1 && lines[0] === "") return []; return lines.map((line) => { let value: CanonicalJsonValue; try { value = JSON.parse(line) as CanonicalJsonValue; } catch { throw new Error("METRIC_RESULT_ARTIFACT_JSON_INVALID"); } if (i5ResearchInternalCanonicalJsonBytesV1(value).toString("utf8") !== line) throw new Error("METRIC_RESULT_ARTIFACT_NON_CANONICAL"); return value; }); }
 function canonicalAssessmentNumeric(input: CanonicalAssessmentNumericV1): CanonicalAssessmentNumericV1 { assertClosed(input, ["kind", "value"]); if (input.kind !== "INTEGER" && input.kind !== "RATIO") throw new Error("INCOMPATIBLE_CRITERIA"); return { kind: input.kind, value: input.kind === "INTEGER" ? canonicalIntegerV1(input.value, { allowNegative: true }) : canonicalRatio(input.value) }; }
-function canonicalRatio(value: string): string { canonicalOpaqueStringV1(value, { minBytes: 1, maxBytes: 128 }); decimalStringToRationalV1(value); return value.includes(".") ? value.replace(/(\.\d*?)0+$/u, "$1").replace(/\.$/u, "") : value; }
+function canonicalRatio(value: string): string { canonicalOpaqueStringV1(value, { minBytes: 1, maxBytes: 128 }); const rational = decimalStringToRationalV1(value); if (renderRatioOutputV1(rational) !== value) throw new Error("INCOMPATIBLE_CRITERIA"); return value; }
 function compareNumericValues(kind: "INTEGER" | "RATIO", left: string, right: string): -1 | 0 | 1 { if (kind === "INTEGER") return BigInt(left) === BigInt(right) ? 0 : BigInt(left) < BigInt(right) ? -1 : 1; return compareRationalV1(decimalStringToRationalV1(left), decimalStringToRationalV1(right)); }
 function canonicalGlobalRef(input: HashRefV1, domain: HashRefV1["hashDomain"]): HashRefV1 { const ref = hashRefV1(input); assertHashRefDomainV1(ref, domain); return ref; }
 function canonicalForeignRef<D extends ScientificPromotionHashDomainForBlindTruthV1>(input: Readonly<{ hashAlgorithm: string; hashDomain: string; hashVersion: string; hashHex: string }>, domain: D): BlindTruthForeignPromotionRefV1<D> { assertClosed(input, ["hashAlgorithm", "hashDomain", "hashVersion", "hashHex"]); if (input.hashAlgorithm !== "SHA-256" || input.hashVersion !== "SYNTRAKE_SHA256_V1" || input.hashDomain !== domain) throw new Error("WRONG_HASHREF_DOMAIN"); return { hashAlgorithm: "SHA-256", hashDomain: domain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: canonicalSha256HexV1(input.hashHex) }; }
