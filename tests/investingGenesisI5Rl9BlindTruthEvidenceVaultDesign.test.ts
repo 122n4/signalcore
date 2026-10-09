@@ -8,18 +8,25 @@ const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
 const compact = (value: string) => value.replace(/\s+/g, " ");
 
 describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
-  it("is candidate-only, design-only and anchored after accepted RL-8", () => {
+  it("is current accepted design-only authority anchored after accepted RL-8", () => {
     const contract = read(contractPath);
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(contract).toContain("Canonical predecessor:\n`f06eac41cf3774a198d157b61a830fb492fb6b70`");
     expect(contract).toContain("RL-8 = CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED");
-    expect(contract).toContain("RL-9 acceptance:\n`NOT ACCEPTED`");
+    expect(contract).toContain("CURRENT ACCEPTED DESIGN CONTRACT - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED");
+    expect(contract).toContain("CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE / UNNUMBERED");
+    expect(contract).toContain("RL-9 design acceptance:\n`CURRENT_ACCEPTED`");
+    expect(contract).toContain("ebf53e10b136cc1ef5ffbef5f38fd4d15520bf22");
+    expect(contract).toContain("#123");
+    expect(contract).toContain("063a1ca75a70dfc1409adb38c12214e9363b3722");
+    expect(contract).toContain("37963062714 / #1555 / SUCCESS");
+    expect(contract).toContain("113930488107 - SUCCESS");
+    expect(contract).toContain("113930488229 - SUCCESS");
     expect(contract).toContain("Runtime implementation:\n`NOT IMPLEMENTED BY THIS SLICE`");
     expect(contract).toContain("Migration:\n`NONE`");
     expect(contract).toContain("Production mutation:\n`NONE`");
     expect(contract).toContain("Supabase Production:\n`UNCHANGED`");
-    expect(contract).not.toContain("CURRENT_ACCEPTED / RL-9");
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED");
   });
 
@@ -323,7 +330,8 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "RL-9C dedicated secret vault adapter + anti-reuse boundary",
       "RL-9D one-shot reveal/evaluator integration + real failure/concurrency tests",
       "RL-9E managed-Supabase preview + Production gate + canonical acceptance sync",
-      "RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN = CANDIDATE / NOT ACCEPTED",
+      "RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED",
+      "RL-9 IMPLEMENTATION = NOT ACCEPTED / NOT IMPLEMENTED BY THIS SLICE",
       "RUNTIME = NOT IMPLEMENTED BY THIS SLICE",
       "SUPABASE = UNCHANGED",
       "PRODUCTION = UNCHANGED",
