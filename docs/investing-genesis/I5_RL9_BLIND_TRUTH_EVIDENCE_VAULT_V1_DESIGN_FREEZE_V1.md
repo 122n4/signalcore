@@ -185,6 +185,50 @@ Metrics MUST NOT be added, removed or reordered after reveal.
 
 Experiment parameters MUST NOT be changed after reveal.
 
+### Blind Truth Criterion Identity
+
+Each Blind Truth criterion is a closed canonical record:
+
+```text
+BLIND_TRUTH_CRITERION_V1 {
+  criterionId,
+  criterionVersion,
+  required,
+  metricId,
+  metricVersion,
+  operator,
+  threshold
+}
+```
+
+`criterionVersion` is exactly `CRITERION_V1`.
+
+Criteria are byte-sorted by `criterionId`, then `criterionVersion`.
+Duplicate criterion identities are forbidden.
+
+Allowed operators reuse the accepted deterministic assessment comparison law and
+are exactly:
+
+```text
+LT
+LTE
+EQ
+GTE
+GT
+BETWEEN_INCLUSIVE
+OUTSIDE_EXCLUSIVE
+```
+
+Threshold shape is the same closed scalar/range numeric union already accepted
+for deterministic metric comparison. Metric numeric kind comes from the frozen
+Metric Registry version in `evaluatorProfile`, never from caller declaration.
+
+Blind Truth criteria deliberately omit Validation-only evidence-source,
+fold/phase and evidence-requirement selectors. Holdout evaluation consumes only
+the revealed holdout metric results produced by the frozen evaluator.
+
+An empty criteria set or an all-optional criteria set is invalid.
+
 ## Exact Holdout Scope Identity
 
 The registration contains one closed nested
@@ -252,6 +296,18 @@ commitmentHash
 declaredPlaintextByteLength
 vaultFormatVersion
 ```
+
+`holdoutScopeDigest` is a non-HashRef digest computed exactly as:
+
+```text
+SHA-256(
+  "SYNTRAKE:BLIND_TRUTH_HOLDOUT_SCOPE:V1\n"
+  + canonical_json(BLIND_TRUTH_HOLDOUT_SCOPE_V1)
+)
+```
+
+It exists only to bind the seal to the exact frozen scope and does not create a
+sixth scientific domain.
 
 `commitmentAlgorithm` is exactly:
 
@@ -343,9 +399,18 @@ holdout scope has not already been materialized into an ordinary research cache,
 DatasetSeries/DatasetSnapshot relation, provider preview, AI context or optimizer
 input accessible to the candidate's ordinary Research path.
 
+Registration MUST NOT become authoritative until the embargo fence is durably
+active. From the perspective of every ordinary Research resolver, authoritative
+registration creation and embargo activation are atomic: there is no admitted
+interval in which registration exists but overlapping ordinary reads are still
+allowed.
+
 After registration and before reveal, all Syntrake-controlled ordinary research
-resolvers MUST reject requests whose material overlaps the embargoed holdout
-scope in a way that would expose its truth.
+resolvers MUST reject an ordinary data request when canonical market ids
+intersect, canonical field ids intersect and the requested coverage interval
+overlaps the embargoed interval. This deny rule applies regardless of requested
+frequency and across all provider adapters that map to the same canonical market
+facts. Unknown or ambiguous provider-field mapping fails closed.
 
 Vault ingestion uses the dedicated vault capability, not the ordinary Research
 data-resolver credential.
@@ -400,6 +465,11 @@ HMAC-SHA-256(
 
 The HMAC key and fingerprint are operational secret-vault data, not scientific
 identity and MUST NOT appear in public canonical payloads.
+
+Vault reuse-key rotation MUST preserve historical duplicate detection. Before an
+old reuse key can be retired, the confidential index must be re-keyed or another
+equivalent proof must preserve comparison against every prior sealed plaintext.
+If that continuity cannot be proven, new sealing fails closed.
 
 A plaintext holdout already sealed for another V1 registration is rejected.
 
@@ -605,6 +675,7 @@ FINAL_EVENT_ALREADY_EXISTS
 MISSING_VAULT_CAPABILITY
 VAULT_UNAVAILABLE
 ANTI_REUSE_INDEX_UNAVAILABLE
+ANTI_REUSE_KEY_ROTATION_INCOMPLETE
 HOLDOUT_REUSE_DETECTED
 HOLDOUT_ALREADY_EXPOSED
 EMBARGO_VIOLATION
