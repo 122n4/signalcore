@@ -49,13 +49,16 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
     expect(key[1]).toContain("subject Experiment HashRef");
     expect(key[1]).toContain("subject ExperimentParameters HashRef");
     expect(key[1]).toContain("subject Research IR HashRef");
+    expect(key[1]).not.toContain("Investigation UUID");
     expect(key[1]).not.toContain("promotion Protocol HashRef");
     expect(key[1]).not.toContain("promotion PROMOTION_ELIGIBLE Transition HashRef");
     for (const token of [
       "Exactly one authoritative Blind Truth registration is admitted for this logical candidate key in V1",
+      "Investigation UUID is deliberately NOT part of the one-shot uniqueness key",
+      "Creating a new Investigation for the same exact scientific subject MUST NOT reopen Blind Truth eligibility",
       "The bound RL-8 promotion Protocol/Transition are required eligibility evidence, but they are deliberately NOT part of the one-shot uniqueness key",
       "A later RL-8 methodology/protocol change or re-promotion of the same exact scientific subject MUST NOT reopen Blind Truth eligibility",
-      "Changing a protocol id, promotion transition, random salt, storage locator, encryption key, request id or retry token MUST NOT create a second Blind Truth attempt",
+      "Changing an Investigation UUID, protocol id, promotion transition, random salt, storage locator, encryption key, request id or retry token MUST NOT create a second Blind Truth attempt",
       "A retest of the same exact candidate after seeing holdout truth is forbidden",
       "Concurrent identical registration reuses the same scientific identity",
       "Concurrent or divergent registration for the same logical candidate key fails closed",
@@ -276,6 +279,8 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "This design slice writes no SQL",
       "RLS + FORCE RLS",
       "exactly one registration per logical candidate key",
+      "uniqueness enforced",
+      "across Investigation UUIDs inside one tenant",
       "exactly one seal per registration",
       "exactly one evaluation per registration/seal",
       "exactly one `REVEAL_STARTED` per evaluation",
