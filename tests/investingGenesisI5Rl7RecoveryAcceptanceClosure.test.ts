@@ -92,13 +92,13 @@ describe("I5 RL-7 final canonical acceptance closure", () => {
     expect(migrationB).toContain("RL7_EXPERIMENT_COMPARISON_RESULT_CONFLICT");
   });
 
-  it("keeps the canonical frontier after RL-7 acceptance while preserving downstream boundaries", () => {
+  it("keeps RL-7 accepted while allowing the canonical frontier to advance after RL-8", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
 
     expect(state).toContain("I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure (unnumbered)");
     expect(state).toContain("I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md");
     expect(state).toContain("CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE");
-    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-8_TO_RL-11 / PRODUCT_UI_DEFERRED");
+    expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("Ã¢â‚¬â€");
     expect(state).not.toContain("Ã¢");
     expect(state).not.toContain("Ãƒ");
