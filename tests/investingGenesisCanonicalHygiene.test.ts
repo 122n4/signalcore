@@ -348,7 +348,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("e1721482b0ba2b9a67b3d8751778ba2695e3e751");
     expect(state).toContain("107782658459 - SUCCESS");
     expect(state).toContain("107782658690 - SUCCESS");
-    expect(state).toContain("`RL-7 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`");
+    expect(state).toContain("`RL-8 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`");
     expect(state).toContain("80671f349d38405393476a0978ce6e7f015cfea1");
     expect(state).toContain("#94");
     expect(state).toContain("RL-5 implementation accepted merge/main anchor:");
