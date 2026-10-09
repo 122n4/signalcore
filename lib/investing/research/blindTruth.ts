@@ -20,7 +20,7 @@ import {
   type ExecutionConfigHashPayloadV1,
   type MetricRequestSetHashPayloadV1,
 } from "./executionMaterials";
-import { assertEngineV2ExecutionConfig } from "./engineV2ScientificProfile";
+import { assertEngineV2ExecutionConfig, assertEngineV2MetricRequestSet } from "./engineV2ScientificProfile";
 import { compareRationalV1, decimalStringToRationalV1 } from "./exactRational";
 import { assertMetricResultRecordV2 } from "./researchMetrics";
 import {
@@ -144,6 +144,12 @@ export type BlindTruthCriterionV1 = Readonly<{
   metricVersion: "METRIC_V2";
   operator: ValidationAssessmentOperatorV1;
   threshold: ValidationAssessmentThresholdV1;
+}>;
+
+export type BlindTruthScientificCandidateKeyV1 = Readonly<{
+  subjectExperiment: HashRefV1;
+  subjectExperimentParameters: HashRefV1;
+  subjectResearchIr: HashRefV1;
 }>;
 
 export type BlindTruthRegistrationV1 = Readonly<{
@@ -444,6 +450,15 @@ export function canonicalBlindTruthCriteriaV1(input: readonly BlindTruthCriterio
   return Object.freeze(criteria);
 }
 
+export function blindTruthScientificCandidateKeyV1(input: BlindTruthRegistrationV1): BlindTruthScientificCandidateKeyV1 {
+  const registration = canonicalBlindTruthRegistrationV1(input);
+  return {
+    subjectExperiment: registration.subjectExperiment,
+    subjectExperimentParameters: registration.subjectExperimentParameters,
+    subjectResearchIr: registration.subjectResearchIr,
+  };
+}
+
 export function canonicalBlindTruthRegistrationV1(input: BlindTruthRegistrationV1): BlindTruthRegistrationV1 {
   assertClosedPlainObject(input, registrationKeys, "BlindTruthRegistration");
   if (input.schemaVersion !== "BLIND_TRUTH_REGISTRATION_V1") throw new Error("MALFORMED_HOLDOUT");
@@ -484,6 +499,7 @@ export function assertBlindTruthRegistrationMetricRequestSetV1(input: Readonly<{
   assertClosedPlainObject(input, new Set(["registration", "metricRequestSet"]), "BlindTruthMetricRequestSetBinding");
   const registration = canonicalBlindTruthRegistrationV1(input.registration);
   const payload = canonicalMetricRequestSetHashPayloadV1(input.metricRequestSet) as unknown as MetricRequestSetHashPayloadV1;
+  assertEngineV2MetricRequestSet(input.metricRequestSet);
   if (payload.metricRegistryVersion !== registration.evaluatorProfile.metricRegistryVersion) {
     throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
   }
