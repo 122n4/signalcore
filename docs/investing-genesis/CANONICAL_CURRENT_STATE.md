@@ -108,6 +108,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-6 Metric Registry V2 (unnumbered) | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` |
 | I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure (unnumbered) | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-8 Scientific Promotion State Machine V1 Implementation Closure (unnumbered) | `I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
+| I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze (unnumbered) | `I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -280,6 +281,17 @@ freeze/master evidence still relies on its narrow classifications.
   recorded as non-blocking performance hardening. RL-9 Blind Truth, RL-10
   orchestration, RL-11 full I5 rehearsal, Paper, Live, suitability and Capital
   Kernel authority remain outside RL-8.
+- I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze:
+  `CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE /
+  UNNUMBERED`. This accepted design freezes the one-candidate/one-shot Blind
+  Truth contract, exact pre-registration identity, current RL-8 promotion-leaf
+  reproof, secret-vault capability separation, ordinary data-source embargo,
+  anti-reuse controls, consume-once reveal semantics, deterministic evaluation
+  and the five future RL-9 scientific domains. Those domains remain
+  `DESIGN_FROZEN / NOT_RUNTIME_ADMITTED`; no runtime implementation, migration,
+  Supabase or Production mutation is accepted by this design slice. RL-9
+  implementation therefore remains pending; RL-10, RL-11, Paper, Live,
+  recommendation, suitability and Capital Kernel authority remain outside it.
 - I5 Research Lab Completion Program:
   `CURRENT_ACCEPTED / UNNUMBERED`. This accepted design program defines the
   finite RL-1 through RL-11 backend completion sequence and the final target
@@ -1368,6 +1380,80 @@ Accepted RL-8 invariants:
 
 `I5 RL-8 SCIENTIFIC PROMOTION STATE MACHINE V1 IMPLEMENTATION CLOSURE = CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 
+## I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze (unnumbered)
+
+RL-9 design/progression state:
+
+- design: `YES`.
+- design acceptance: `YES / CURRENT_ACCEPTED`.
+- implementation: `NO / NOT ACCEPTED`.
+- runtime hash-domain admission: `NONE / DESIGN_FROZEN / NOT_RUNTIME_ADMITTED`.
+- migrations: `NONE`.
+- Supabase Production mutation: `NONE`.
+- Production mutation: `NONE`.
+- state: `CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE / UNNUMBERED`.
+- permanent A-number: `NONE`.
+
+I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze acceptance evidence:
+
+- canonical predecessor:
+  `f06eac41cf3774a198d157b61a830fb492fb6b70`;
+- final independently audited technical candidate:
+  `ebf53e10b136cc1ef5ffbef5f38fd4d15520bf22`;
+- PR: `#123`;
+- accepted squash merge / canonical main anchor:
+  `063a1ca75a70dfc1409adb38c12214e9363b3722`;
+- candidate/merge exact file-content equality: `PASS`;
+- CI: `37963062714 / #1555 / SUCCESS`;
+- verify: `113930488107 / SUCCESS`;
+- dependency-audit: `113930488229 / SUCCESS`;
+- full tests: `1687 passed / 127 skipped`;
+- lint: `0 errors / 3 pre-existing warnings`;
+- TypeScript: `PASS`;
+- build: `PASS / CI`;
+- prod dependency audit: `0 vulnerabilities`;
+- Vercel: `SUCCESS`;
+- unresolved review threads: `0`;
+- independent auditor verdict: `PASS`;
+- runtime implementation: `NOT IMPLEMENTED BY THIS SLICE`;
+- migration: `NONE`;
+- Supabase Production: `UNCHANGED`;
+- Production mutation: `NONE`.
+
+Accepted RL-9 design invariants:
+
+- one Blind Truth attempt is keyed by tenant authority plus exact Experiment,
+  ExperimentParameters and Research IR scientific identity;
+- Investigation UUID and RL-8 promotion Protocol/Transition are required
+  authority/lineage evidence but do not reopen one-shot eligibility;
+- the exact current reconstructed RL-8 leaf is re-proved before reveal claim;
+- pre-registration freezes hypothesis, exact holdout scope, parameters, metrics,
+  criteria/thresholds, execution config and evaluator profile;
+- ordinary Syntrake-controlled provider/data paths are embargoed against the
+  holdout before authoritative registration;
+- prior exposure/access-audit uncertainty fails closed;
+- `service_role` alone is not sufficient vault authority;
+- same hidden truth cannot be resealed under a new salt/provider label;
+- anti-reuse continuity must survive reuse-key rotation;
+- `REVEAL_STARTED` is durable before secret read;
+- the secret vault exposes consume-once rather than reusable secret retrieval;
+- crash-after-claim cannot restore reveal eligibility;
+- integrity failures do not become scientific PASS/FAIL;
+- outcome precedence is deterministic;
+- exactly five future RL-9 scientific domains are frozen and not runtime-admitted;
+- Blind Truth PASS is scientific evidence only and does not grant Paper, Live,
+  recommendation, suitability, allocation, broker or Capital Kernel authority.
+
+Implementation sequence remains:
+
+`RL-9A -> RL-9B -> RL-9C -> RL-9D -> RL-9E`.
+
+The Research Lab frontier remains:
+
+`I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED`.
+
+`I5 RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
+
 ## Production Supabase Migration State
 
 Production Supabase migration state:
@@ -1483,6 +1569,10 @@ Current production closure is:
 - `RL-8 Production migrations = APPLIED / POST-APPLY AUDITED`.
 - `RL-8 Security Advisor findings = ZERO`.
 - `RL-8 Performance Advisor findings = 18 unindexed_foreign_keys INFO + 16 auth_rls_initplan WARN / NON-BLOCKING`.
+- `RL-9 Design Freeze = CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE / UNNUMBERED`.
+- `RL-9 implementation = NOT ACCEPTED / NOT IMPLEMENTED`.
+- `RL-9 Production migration = NONE`.
+- `RL-9 Supabase Production mutation = NONE`.
 - `RL-5 = CURRENT_ACCEPTED / RL-5_RESEARCH_ENGINE_V2_IMPLEMENTATION_CLOSURE / UNNUMBERED`.
 - `RL-5 Production migration = APPLIED`.
 - `RL-5 post-apply audit = PASSED`.
@@ -1497,9 +1587,10 @@ RL-6 is accepted in Git and required no database migration. RL-3D and RL-7
 remain aligned through their accepted Production closures. RL-8 is now aligned
 through the exact Git migration files `20261004120000`, `20261007120000` and
 `20261007143000`, represented in the Production ledger as `20261009043031`,
-`20261009043034` and `20261009043037`. This state does not accept RL-9 Blind
-Truth, RL-10 orchestration, RL-11 backend closure, Paper, Live, Core or any
-permanent A-number.
+`20261009043034` and `20261009043037`. RL-9 Blind Truth / Evidence Vault V1
+design is accepted separately with no Production mutation; this Production state
+does not accept RL-9 implementation, RL-10 orchestration, RL-11 backend closure,
+Paper, Live, Core or any permanent A-number.
 
 ## I5 Runtime Presence And Trust State
 
@@ -1534,6 +1625,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-6 Metric Registry V2 / unnumbered | YES | YES | `I5_RL6_METRIC_REGISTRY_V2_OWNER_CONTRACT_V1.md` + Metric Registry V2 runtime + certified arithmetic + V2 metric goldens + Validation V2 compatibility + PR/CI + Vercel + independent audit | CURRENT ACCEPTED OWNER CONTRACT - RL-6 METRIC REGISTRY V2 - UNNUMBERED | CURRENT_ACCEPTED / RL-6_METRIC_REGISTRY_V2 | NONE |
 | RL-7 Robustness And Experiment Comparison V1 Implementation Closure / unnumbered | YES | YES | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic comparison runtime + owner-exact hash domains + append-only persistence migrations/functions + runtime/migration tests + PG17 + concrete writer + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED |
 | RL-8 Scientific Promotion State Machine V1 Implementation Closure / unnumbered | YES | YES | `I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic promotion runtime/engine + exact promotion hash domains + append-only C1/C2/C3 persistence + PG17 + managed-Supabase preview + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-8 SCIENTIFIC PROMOTION STATE MACHINE V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED |
+| RL-9 Blind Truth / Evidence Vault V1 Design Freeze / unnumbered | NO | YES | `I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md` + static design contract tests + independent audit + PR/CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE | NONE |
 
 RL-1 runtime/progression state:
 
