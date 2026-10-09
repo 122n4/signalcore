@@ -625,13 +625,12 @@ begin
        or pg_catalog.has_function_privilege('authenticated', helper.function_identity, 'EXECUTE')
        or pg_catalog.has_function_privilege('service_role', helper.function_identity, 'EXECUTE')
        or pg_catalog.has_function_privilege('investing_app', helper.function_identity, 'EXECUTE')
+       or pg_catalog.to_regprocedure(helper.function_identity) is null
        or exists (
          select 1
          from pg_catalog.pg_proc p
-         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
          cross join lateral pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) acl
-         where n.nspname = 'investing'
-           and pg_catalog.replace(n.nspname || '.' || p.proname || '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')', ' ', '') = helper.function_identity
+         where p.oid = pg_catalog.to_regprocedure(helper.function_identity)
            and acl.grantee = 0
            and acl.privilege_type = 'EXECUTE'
        )
@@ -651,13 +650,12 @@ begin
     where pg_catalog.has_function_privilege('anon', writer.function_identity, 'EXECUTE')
        or pg_catalog.has_function_privilege('authenticated', writer.function_identity, 'EXECUTE')
        or pg_catalog.has_function_privilege('service_role', writer.function_identity, 'EXECUTE')
+       or pg_catalog.to_regprocedure(writer.function_identity) is null
        or exists (
          select 1
          from pg_catalog.pg_proc p
-         join pg_catalog.pg_namespace n on n.oid = p.pronamespace
          cross join lateral pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner))) acl
-         where n.nspname = 'investing'
-           and pg_catalog.replace(n.nspname || '.' || p.proname || '(' || pg_catalog.pg_get_function_identity_arguments(p.oid) || ')', ' ', '') = writer.function_identity
+         where p.oid = pg_catalog.to_regprocedure(writer.function_identity)
            and acl.grantee = 0
            and acl.privilege_type = 'EXECUTE'
        )

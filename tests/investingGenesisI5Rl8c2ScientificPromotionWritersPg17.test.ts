@@ -258,8 +258,12 @@ describe("I5 RL-8C2 scientific promotion writer migration static ownership guard
     expect(normalized).toContain("m.set_option or m.inherit_option");
     expect(normalized).toContain("grantor_r.rolname = 'postgres'");
     expect(normalized).not.toContain("information_schema.routine_privileges");
+    expect(normalized).not.toContain("pg_get_function_identity_arguments");
     expect(normalized).toContain("pg_catalog.has_function_privilege('investing_app','investing.persist_research_scientific_promotion_protocol_v1(text,jsonb)','execute')");
     expect(normalized).toContain("pg_catalog.has_function_privilege('anon', helper.function_identity, 'execute')");
+    expect(normalized).toContain("pg_catalog.to_regprocedure(helper.function_identity) is null");
+    expect(normalized).toContain("where p.oid = pg_catalog.to_regprocedure(helper.function_identity)");
+    expect(normalized).toContain("where p.oid = pg_catalog.to_regprocedure(writer.function_identity)");
     expect(normalized).toContain("pg_catalog.aclexplode(coalesce(p.proacl, pg_catalog.acldefault('f', p.proowner)))");
     expect(normalized).toContain("acl.grantee = 0");
   });
@@ -770,7 +774,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
       `);
       expect(privileges.rows[0]?.ok).toBe(true);
 
-      const functionAcl = await client.query<{ app_writers_ok: boolean; forbidden_writer_execute: boolean; forbidden_helper_execute: boolean; public_writer_execute: boolean; public_helper_execute: boolean }>(`
+      const functionAcl = await client.query<{ all_frozen_identities_resolve: boolean; app_writers_ok: boolean; forbidden_writer_execute: boolean; forbidden_helper_execute: boolean; public_writer_execute: boolean; public_helper_execute: boolean }>(`
         with writer(function_identity) as (
           values
             ('investing.persist_research_scientific_promotion_protocol_v1(text,jsonb)'::text),
@@ -783,16 +787,24 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
             ('investing.rl8c_hashref_equals_current_protocol_v1(jsonb)'::text),
             ('investing.rl8c_resolve_optional_uuid_v1(regclass,text,text,text)'::text),
             ('investing.rl8c_insert_transition_from_payload_v1(text,text,jsonb,uuid,text,uuid,text)'::text)
+        ), frozen_identity(function_identity) as (
+          select function_identity from writer
+          union all
+          select function_identity from helper
+        ), resolved_identity as (
+          select function_identity,
+            to_regprocedure(function_identity) as function_oid
+          from frozen_identity
         ), acl as (
-          select replace(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', ' ', '') as function_identity,
+          select resolved_identity.function_identity,
             x.grantee,
             x.privilege_type
-          from pg_proc p
-          join pg_namespace n on n.oid = p.pronamespace
+          from resolved_identity
+          join pg_proc p on p.oid = resolved_identity.function_oid
           cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) x
-          where n.nspname = 'investing'
         )
         select
+          bool_and(resolved_identity.function_oid is not null) as all_frozen_identities_resolve,
           bool_and(has_function_privilege('investing_app', writer.function_identity, 'EXECUTE')) as app_writers_ok,
           exists (
             select 1 from writer
@@ -810,8 +822,9 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
           exists (select 1 from acl join writer using (function_identity) where acl.grantee = 0 and acl.privilege_type = 'EXECUTE') as public_writer_execute,
           exists (select 1 from acl join helper using (function_identity) where acl.grantee = 0 and acl.privilege_type = 'EXECUTE') as public_helper_execute
         from writer
+        cross join resolved_identity
       `);
-      expect(functionAcl.rows[0]).toEqual({ app_writers_ok: true, forbidden_writer_execute: false, forbidden_helper_execute: false, public_writer_execute: false, public_helper_execute: false });
+      expect(functionAcl.rows[0]).toEqual({ all_frozen_identities_resolve: true, app_writers_ok: true, forbidden_writer_execute: false, forbidden_helper_execute: false, public_writer_execute: false, public_helper_execute: false });
 
       const forbiddenWriters = await client.query<{ count: string }>("select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='investing' and p.proname like 'persist_research_scientific_promotion%'");
       expect(forbiddenWriters.rows[0]?.count).toBe("3");
