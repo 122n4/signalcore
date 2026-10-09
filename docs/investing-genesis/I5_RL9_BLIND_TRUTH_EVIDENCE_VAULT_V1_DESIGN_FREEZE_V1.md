@@ -114,16 +114,19 @@ tenant authority
 + subject Experiment HashRef
 + subject ExperimentParameters HashRef
 + subject Research IR HashRef
-+ promotion Protocol HashRef
-+ promotion PROMOTION_ELIGIBLE Transition HashRef
 ```
 
 Exactly one authoritative Blind Truth registration is admitted for this logical
 candidate key in V1.
 
-Changing a protocol id, random salt, storage locator, encryption key, request id
-or retry token MUST NOT create a second Blind Truth attempt for the same exact
-candidate key.
+The bound RL-8 promotion Protocol/Transition are required eligibility evidence,
+but they are deliberately NOT part of the one-shot uniqueness key. A later RL-8
+methodology/protocol change or re-promotion of the same exact scientific subject
+MUST NOT reopen Blind Truth eligibility.
+
+Changing a protocol id, promotion transition, random salt, storage locator,
+encryption key, request id or retry token MUST NOT create a second Blind Truth
+attempt for the same exact candidate key.
 
 To obtain a new Blind Truth attempt, the scientific candidate must change and
 must pass the accepted upstream promotion path again. A retest of the same exact
@@ -154,7 +157,7 @@ promotionTransition
 hypothesis
 metricRequestSet
 executionConfig
-validationAssessmentProtocol
+blindTruthCriteria
 holdoutScope
 evaluatorProfile
 ```
@@ -166,10 +169,13 @@ Where:
   `HashRef<SYNTRAKE:METRIC_REQUEST_SET:V1>`;
 - `executionConfig` is an exact
   `HashRef<SYNTRAKE:EXECUTION_CONFIG:V1>`;
-- `validationAssessmentProtocol` is an exact
-  `HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1>`;
-- the Assessment Protocol is the exact threshold/criteria identity used by the
-  one-shot evaluation;
+- `blindTruthCriteria` is a byte-sorted, non-empty closed array of exact
+  metric identity + comparator + canonical threshold + required/optional flag;
+- Blind Truth criteria reuse the accepted Metric Registry numeric kinds and
+  deterministic comparison law; they do not reuse a Validation Assessment
+  Result and do not require validation-only evidence classes;
+- the Registration HashRef is the exact scientific identity of the frozen
+  Blind Truth threshold/criteria set;
 - `evaluatorProfile` freezes engine id, engine version, Metric Registry version
   and the Blind Truth evaluator behavior version.
 
@@ -220,9 +226,8 @@ Exact parameters are bound by
 Exact metrics are bound by
 `metricRequestSet: HashRef<SYNTRAKE:METRIC_REQUEST_SET:V1>`.
 
-Exact thresholds are bound by
-`validationAssessmentProtocol:
-HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1>`.
+Exact thresholds are bound by the exact `blindTruthCriteria` serialized inside
+the Registration scientific identity.
 
 There is no duplicate second source of truth for parameters, metrics or
 thresholds.
@@ -325,6 +330,37 @@ It MUST NOT receive:
 - any learned embedding;
 - any AI summary of hidden material.
 
+## Ordinary Data Source Embargo
+
+Vault secrecy is insufficient if the same holdout truth can be fetched through
+an ordinary market-data/provider path.
+
+Therefore V1 requires an internal holdout embargo for the exact public
+`holdoutScope`.
+
+Before registration is admitted, the implementation MUST prove that the exact
+holdout scope has not already been materialized into an ordinary research cache,
+DatasetSeries/DatasetSnapshot relation, provider preview, AI context or optimizer
+input accessible to the candidate's ordinary Research path.
+
+After registration and before reveal, all Syntrake-controlled ordinary research
+resolvers MUST reject requests whose material overlaps the embargoed holdout
+scope in a way that would expose its truth.
+
+Vault ingestion uses the dedicated vault capability, not the ordinary Research
+data-resolver credential.
+
+The implementation MUST maintain append-only access evidence sufficient to prove
+that no Syntrake-controlled pre-reveal ordinary read exposed the holdout.
+"Absence from application logs" alone is not proof.
+
+If prior exposure, embargo violation or access-audit completeness cannot be
+proven, the Blind Truth attempt fails closed with no scientific PASS/FAIL.
+
+RL-9 V1 proves secrecy only across Syntrake-controlled execution and data-access
+paths. It does not claim to prove that a human user could not obtain the same
+public market facts through an external system outside Syntrake.
+
 ## Anti-Leak Logging And Prompt Boundary
 
 Before authorized reveal, secret holdout material MUST NOT be emitted to:
@@ -386,13 +422,13 @@ protocol
 registration
 vaultSeal
 evaluatorProfile
-metricRequestSet
-executionConfig
-validationAssessmentProtocol
 ```
 
 The evaluation identity contains no holdout plaintext and no secret vault
 locator.
+
+The evaluation's `evaluatorProfile` MUST equal the exact profile frozen by the
+registration; it cannot introduce a new engine, registry or behavior version.
 
 One registration + one vault seal has exactly one authoritative evaluation
 identity.
@@ -521,9 +557,6 @@ vaultSeal
 evaluation
 revealedDatasetSnapshot
 revealedDatasetSeries
-metricRegistryVersion
-metricRequestSet
-executionConfig
 observedMetricResults
 criterionOutcomes
 overallOutcome
@@ -573,6 +606,9 @@ MISSING_VAULT_CAPABILITY
 VAULT_UNAVAILABLE
 ANTI_REUSE_INDEX_UNAVAILABLE
 HOLDOUT_REUSE_DETECTED
+HOLDOUT_ALREADY_EXPOSED
+EMBARGO_VIOLATION
+ACCESS_AUDIT_UNAVAILABLE
 MALFORMED_COMMITMENT
 COMMITMENT_MISMATCH
 PLAINTEXT_LENGTH_MISMATCH
@@ -581,7 +617,7 @@ PROVIDER_VERSION_MISMATCH
 MALFORMED_HOLDOUT
 INCOMPATIBLE_ENGINE_VERSION
 INCOMPATIBLE_METRIC_REGISTRY
-INCOMPATIBLE_ASSESSMENT_PROTOCOL
+INCOMPATIBLE_CRITERIA
 WRONG_HASHREF_DOMAIN
 MALFORMED_HASHREF
 AMBIGUOUS_EVENT_CHAIN
@@ -651,7 +687,7 @@ BLIND_TRUTH_REGISTRATION_V1 = {
   hypothesis,
   metricRequestSet,
   executionConfig,
-  validationAssessmentProtocol,
+  blindTruthCriteria,
   holdoutScope,
   evaluatorProfile
 }
@@ -680,10 +716,7 @@ BLIND_TRUTH_EVALUATION_V1 = {
   protocol,
   registration,
   vaultSeal,
-  evaluatorProfile,
-  metricRequestSet,
-  executionConfig,
-  validationAssessmentProtocol
+  evaluatorProfile
 }
 ```
 
@@ -774,6 +807,8 @@ A later implementation cannot be accepted on unit tests alone.
 Acceptance must prove with real integration evidence:
 
 - ordinary research credentials cannot fetch secret holdout material;
+- ordinary provider/data-resolver paths reject the embargoed holdout scope;
+- pre-reveal access evidence proves no prior Syntrake-controlled exposure;
 - `service_role` alone cannot fetch secret holdout material;
 - the dedicated reveal worker can open exactly the authorized sealed object;
 - wrong tenant / Investigation / registration / evaluation cannot open it;
@@ -894,17 +929,19 @@ review must prove:
 2. markets/timeframe/fields/parameters/metrics/threshold identity is exact;
 3. public commitment leaks no hidden truth;
 4. secret vault capability is separated from ordinary research credentials;
-5. `service_role` alone is insufficient to reveal the holdout;
-6. same-candidate retest is impossible;
-7. same-plaintext reseal is blocked by confidential anti-reuse control;
-8. reveal claim is durable before secret read;
-9. a crash after claim cannot produce a second attempt;
-10. event history is append-only and reconstructable;
-11. integrity failures cannot become scientific FAIL/PASS;
-12. five and only five RL-9 scientific domains are frozen;
-13. no runtime hash-domain admission occurs in this design slice;
-14. no SQL, Supabase or Production mutation occurs;
-15. downstream Paper/Live/Core boundaries remain unchanged.
+5. ordinary Syntrake data/provider paths enforce the holdout embargo;
+6. complete pre-reveal access evidence proves no earlier internal exposure;
+7. `service_role` alone is insufficient to reveal the holdout;
+8. same-candidate retest is impossible even after a promotion-protocol change;
+9. same-plaintext reseal is blocked by confidential anti-reuse control;
+10. reveal claim is durable before secret read;
+11. a crash after claim cannot produce a second attempt;
+12. event history is append-only and reconstructable;
+13. integrity failures cannot become scientific FAIL/PASS;
+14. five and only five RL-9 scientific domains are frozen;
+15. no runtime hash-domain admission occurs in this design slice;
+16. no SQL, Supabase or Production mutation occurs;
+17. downstream Paper/Live/Core boundaries remain unchanged.
 
 ## Implementation Sequence After Design Acceptance
 
