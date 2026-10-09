@@ -41,7 +41,9 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
     const contract = compact(read(contractPath));
     for (const token of [
       "Exactly one authoritative Blind Truth registration is admitted for this logical candidate key in V1",
-      "Changing a protocol id, random salt, storage locator, encryption key, request id or retry token MUST NOT create a second Blind Truth attempt",
+      "The bound RL-8 promotion Protocol/Transition are required eligibility evidence, but they are deliberately NOT part of the one-shot uniqueness key",
+      "A later RL-8 methodology/protocol change or re-promotion of the same exact scientific subject MUST NOT reopen Blind Truth eligibility",
+      "Changing a protocol id, promotion transition, random salt, storage locator, encryption key, request id or retry token MUST NOT create a second Blind Truth attempt",
       "A retest of the same exact candidate after seeing holdout truth is forbidden",
       "Concurrent identical registration reuses the same scientific identity",
       "Concurrent or divergent registration for the same logical candidate key fails closed",
@@ -61,8 +63,8 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "coverageEnd",
       "subjectExperimentParameters: HashRef<SYNTRAKE:EXPERIMENT_PARAMETERS:V1>",
       "metricRequestSet: HashRef<SYNTRAKE:METRIC_REQUEST_SET:V1>",
-      "validationAssessmentProtocol:",
-      "HashRef<SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1>",
+      "blindTruthCriteria",
+      "Registration HashRef is the exact scientific identity of the frozen Blind Truth threshold/criteria set",
       "Thresholds MUST NOT be selected, changed or reinterpreted after reveal",
       "Metrics MUST NOT be added, removed or reordered after reveal",
       "Experiment parameters MUST NOT be changed after reveal",
@@ -94,6 +96,23 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "The future implementation MUST prove capability separation at runtime, not only through TypeScript visibility",
       "AI prompts",
       "optimizer callbacks",
+    ]) expect(contract).toContain(token);
+  });
+
+  it("requires a Syntrake-controlled source embargo and does not overclaim human secrecy", () => {
+    const contract = compact(read(contractPath));
+    for (const token of [
+      "Vault secrecy is insufficient if the same holdout truth can be fetched through an ordinary market-data/provider path",
+      "requires an internal holdout embargo for the exact public `holdoutScope`",
+      "has not already been materialized into an ordinary research cache",
+      "all Syntrake-controlled ordinary research resolvers MUST reject requests",
+      "Vault ingestion uses the dedicated vault capability, not the ordinary Research data-resolver credential",
+      "append-only access evidence sufficient to prove",
+      "Absence from application logs",
+      "does not claim to prove that a human user could not obtain the same public market facts",
+      "HOLDOUT_ALREADY_EXPOSED",
+      "EMBARGO_VIOLATION",
+      "ACCESS_AUDIT_UNAVAILABLE",
     ]) expect(contract).toContain(token);
   });
 
@@ -209,6 +228,8 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "exactly one `REVEAL_STARTED` per evaluation",
       "no PUBLIC / anon / authenticated / service_role mutation authority",
       "ordinary research credentials cannot fetch secret holdout material",
+      "ordinary provider/data-resolver paths reject the embargoed holdout scope",
+      "pre-reveal access evidence proves no prior Syntrake-controlled exposure",
       "`service_role` alone cannot fetch secret holdout material",
       "same plaintext reseal is rejected",
       "PostgreSQL 17 persistence rehearsal passes",
