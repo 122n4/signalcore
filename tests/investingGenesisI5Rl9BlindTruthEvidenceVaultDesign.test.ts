@@ -32,13 +32,25 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "promotionProtocol: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1>",
       "promotionTransition: HashRef<SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1>",
       "PROMOTION_ELIGIBLE",
+      "exact current reconstructed leaf",
+      "historical `PROMOTION_ELIGIBLE` transition that already has an accepted",
+      "re-proved when evaluation is armed and again",
+      "STALE_PROMOTION_TRANSITION",
       "SUPERSEDED_PROMOTION_AUTHORITY",
       "Once reveal has started, later promotion supersession does not rewrite historical",
     ]) expect(contract).toContain(token);
   });
 
   it("allows exactly one registration for one exact scientific candidate", () => {
-    const contract = compact(read(contractPath));
+    const raw = read(contractPath);
+    const contract = compact(raw);
+    const key = raw.match(/The V1 logical Blind Truth candidate key is:\n\n```text\n([\s\S]*?)\n```/);
+    if (!key) throw new Error("Blind Truth candidate key not found");
+    expect(key[1]).toContain("subject Experiment HashRef");
+    expect(key[1]).toContain("subject ExperimentParameters HashRef");
+    expect(key[1]).toContain("subject Research IR HashRef");
+    expect(key[1]).not.toContain("promotion Protocol HashRef");
+    expect(key[1]).not.toContain("promotion PROMOTION_ELIGIBLE Transition HashRef");
     for (const token of [
       "Exactly one authoritative Blind Truth registration is admitted for this logical candidate key in V1",
       "The bound RL-8 promotion Protocol/Transition are required eligibility evidence, but they are deliberately NOT part of the one-shot uniqueness key",
@@ -137,6 +149,9 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "HMAC-SHA-256(",
       "vault_reuse_key",
       "SYNTRAKE:BLIND_TRUTH_REUSE_FINGERPRINT:V1",
+      "canonical_holdout_truth_bytes",
+      "deliberately exclude provider locator",
+      "Provider relabeling therefore cannot",
       "same plaintext from being",
       "resealed under a new salt",
       "Vault reuse-key rotation MUST preserve historical duplicate detection",
@@ -155,6 +170,9 @@ describe("I5 RL-9 Blind Truth / Evidence Vault V1 design freeze", () => {
       "One registration + one vault seal has exactly one authoritative evaluation identity",
       "persist an append-only `REVEAL_STARTED` event for the exact evaluation identity before the vault authority is allowed to open secret material",
       "The reveal claim is the point of no return",
+      "consume-once operation bound to the exact evaluation identity",
+      "MUST NOT expose a reusable ordinary `get secret bytes` operation",
+      "A second consume call must fail inside the vault authority",
       "a process crash does not restore eligibility for another reveal",
       "REVEAL_CONSUMED_RESULT_UNAVAILABLE",
       "The system MUST NOT infer from elapsed time that the secret was never observed",
