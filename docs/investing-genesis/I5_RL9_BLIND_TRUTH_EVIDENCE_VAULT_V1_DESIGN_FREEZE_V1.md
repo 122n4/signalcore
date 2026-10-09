@@ -120,7 +120,6 @@ The V1 logical Blind Truth candidate key is:
 
 ```text
 tenant authority
-+ Investigation UUID
 + subject Experiment HashRef
 + subject ExperimentParameters HashRef
 + subject Research IR HashRef
@@ -129,14 +128,20 @@ tenant authority
 Exactly one authoritative Blind Truth registration is admitted for this logical
 candidate key in V1.
 
+The Registration still binds its exact Investigation UUID and the exact current
+RL-8 promotion authority for that Investigation, but Investigation UUID is
+deliberately NOT part of the one-shot uniqueness key. Creating a new
+Investigation for the same exact scientific subject MUST NOT reopen Blind Truth
+eligibility.
+
 The bound RL-8 promotion Protocol/Transition are required eligibility evidence,
 but they are deliberately NOT part of the one-shot uniqueness key. A later RL-8
 methodology/protocol change or re-promotion of the same exact scientific subject
 MUST NOT reopen Blind Truth eligibility.
 
-Changing a protocol id, promotion transition, random salt, storage locator,
-encryption key, request id or retry token MUST NOT create a second Blind Truth
-attempt for the same exact candidate key.
+Changing an Investigation UUID, protocol id, promotion transition, random salt,
+storage locator, encryption key, request id or retry token MUST NOT create a
+second Blind Truth attempt for the same exact candidate key.
 
 To obtain a new Blind Truth attempt, the scientific candidate must change and
 must pass the accepted upstream promotion path again. A retest of the same exact
@@ -927,7 +932,8 @@ At minimum future persistence must prove:
 - RLS + FORCE RLS on RL-9 public metadata relations;
 - no UPDATE/DELETE authority for scientific identities/events;
 - exact database hash recomputation;
-- exactly one registration per logical candidate key;
+- exactly one registration per logical candidate key, with uniqueness enforced
+  across Investigation UUIDs inside one tenant;
 - exactly one seal per registration;
 - exactly one evaluation per registration/seal;
 - exactly one `REVEAL_STARTED` per evaluation;
