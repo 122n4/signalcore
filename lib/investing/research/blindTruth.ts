@@ -276,13 +276,17 @@ export function assertBlindTruthResultMetricArtifactBindingV1(input: { result: B
 
 export function selectBlindTruthObservedMetricResultsV1(criteria: readonly BlindTruthCriterionV1[], verifiedMetricResults: readonly BlindTruthMetricResultRecordV1[]): BlindTruthMetricResultRecordV1[] {
   const metrics = canonicalObservedMetricResultsV1(verifiedMetricResults);
-  const selected = canonicalBlindTruthCriteriaV1(criteria).map((criterion) => {
+  const requiredMetricIdentities = new Set<string>();
+  for (const criterion of canonicalBlindTruthCriteriaV1(criteria)) {
     const c = criterion as Record<string, CanonicalJsonValue>;
-    const record = metrics.get(`${c.metricId}\n${c.metricVersion}`);
+    requiredMetricIdentities.add(`${c.metricId}\n${c.metricVersion}`);
+  }
+  const selected = [...requiredMetricIdentities].sort(compareStrings).map((identity) => {
+    const record = metrics.get(identity);
     if (!record) throw new Error("MISSING_METRIC_RESULT_SET");
     return record as BlindTruthMetricResultRecordV1;
   });
-  return [...canonicalObservedMetricResultsV1(selected).values()] as BlindTruthMetricResultRecordV1[];
+  return selected.sort((left, right) => compareStrings(`${left.metricId}\n${left.metricVersion}`, `${right.metricId}\n${right.metricVersion}`));
 }
 
 export function assertBlindTruthCompletedEventBindingV1(input: { event: BlindTruthRevealResultEventV1; predecessor: BlindTruthRevealResultEventV1; registration: BlindTruthRegistrationV1; vaultSeal: BlindTruthVaultSealV1; evaluation: BlindTruthEvaluationV1; verifiedMetricArtifact: BlindTruthVerifiedMetricResultSetArtifactV1 }): void {
