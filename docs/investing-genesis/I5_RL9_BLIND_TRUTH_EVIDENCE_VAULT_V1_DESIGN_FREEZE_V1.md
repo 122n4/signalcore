@@ -1,9 +1,9 @@
 # I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze
 
-Status: CANDIDATE DESIGN FREEZE - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED
+Status: CURRENT ACCEPTED DESIGN CONTRACT - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED
 
 Classification:
-`CANDIDATE / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE / UNNUMBERED`
+`CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE / UNNUMBERED`
 
 Canonical predecessor:
 `f06eac41cf3774a198d157b61a830fb492fb6b70`
@@ -14,8 +14,35 @@ Current accepted predecessor authority:
 Research Lab frontier:
 `I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED`.
 
-RL-9 acceptance:
-`NOT ACCEPTED`
+RL-9 design acceptance:
+`CURRENT_ACCEPTED`
+
+Final independently audited technical candidate:
+`ebf53e10b136cc1ef5ffbef5f38fd4d15520bf22`
+
+PR:
+`#123`
+
+Accepted squash merge / canonical main anchor:
+`063a1ca75a70dfc1409adb38c12214e9363b3722`
+
+Candidate/merge exact file-content equality:
+`PASS`
+
+CI:
+`37963062714 / #1555 / SUCCESS`
+
+Verify:
+`113930488107 - SUCCESS`
+
+Dependency-audit:
+`113930488229 - SUCCESS`
+
+Vercel:
+`SUCCESS`
+
+Independent auditor verdict:
+`PASS`
 
 Runtime implementation:
 `NOT IMPLEMENTED BY THIS SLICE`
@@ -1108,7 +1135,9 @@ without a separately reviewed design amendment.
 
 ## Final Design-Slice Classification
 
-`RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN = CANDIDATE / NOT ACCEPTED`
+`RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`
+
+`RL-9 IMPLEMENTATION = NOT ACCEPTED / NOT IMPLEMENTED BY THIS SLICE`
 
 `RUNTIME = NOT IMPLEMENTED BY THIS SLICE`
 
