@@ -425,3 +425,5 @@ export {
 } from "./validationAssessment";
 export * from "./scientificPromotion";
 export * from "./scientificPromotionEngine";
+
+export * from "./blindTruth";
