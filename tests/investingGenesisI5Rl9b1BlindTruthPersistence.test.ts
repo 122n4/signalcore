@@ -128,7 +128,8 @@ describe("I5 RL-9B Blind Truth public metadata persistence contract", () => {
     expect(schema).toContain("METRIC_RESULT_SET_V2");
     expect(schema).toContain("rl9b_holdout_scope_valid_v1");
     expect(schema).toContain("providerDatasetVersion");
-    expect(schema).toContain("not in ('','LATEST','CURRENT')");
+    expect(schema).toContain("rl9b_immutable_behavior_token_v1");
+    expect(schema).toContain("lower(p_value) not in ('latest','current','stable','production','default','active','rolling')");
     expect(schema).toContain("rl9b_criteria_valid_v1");
     expect(schema).toContain("bool_or(required_json = 'true'::jsonb)");
     expect(schema).toContain("count(*) = count(distinct criterion_id || E'\\n' || criterion_version)");
@@ -145,6 +146,60 @@ describe("I5 RL-9B Blind Truth public metadata persistence contract", () => {
     expect(writers).toContain("SYNTRAKE:BLIND_TRUTH_HOLDOUT_SCOPE:V1");
     expect(writers).toContain("p_canonical_payload->'evaluatorProfile' <> v_reg.canonical_payload->'evaluatorProfile'");
     expect(writers).toContain("B525A1D24BF0E843F8965915AEA8F0D70400CAD1E7E0E0099617F85521B0FE4C");
+  });
+
+
+  it("freezes final RL-9B SQL validator parity and narrow helper ACLs", () => {
+    for (const helper of [
+      "grant execute on function investing.rl8c_jsonb_has_number_v1(jsonb) to investing_rl9_writer",
+      "grant execute on function investing.rl8c_canonical_jsonb_v1(jsonb) to investing_rl9_writer",
+      "grant execute on function investing.rl8c_sha256_hex_v1(text,jsonb) to investing_rl9_writer",
+      "RL-9B1 postcondition failed: RL-8 canonical helper grants missing",
+      "RL-9B1 postcondition failed: RL-8 helper execute widened",
+    ]) expect(schema).toContain(helper);
+
+    for (const helper of [
+      "revoke all on function investing.rl9b_protocol_payload_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app",
+      "revoke all on function investing.rl9b_registration_payload_valid_v1(jsonb,text,text,text,text,text,text,text,text,text) from public, anon, authenticated, service_role, investing_app",
+      "revoke all on function investing.rl9b_seal_payload_valid_v1(jsonb,text,text) from public, anon, authenticated, service_role, investing_app",
+      "revoke all on function investing.rl9b_evaluation_payload_valid_v1(jsonb,text,text,text) from public, anon, authenticated, service_role, investing_app",
+      "revoke all on function investing.rl9b_event_payload_valid_v1(jsonb,text,text,text,text,text,text,text) from public, anon, authenticated, service_role, investing_app",
+      "grant execute on function investing.rl9b_protocol_payload_valid_v1(jsonb) to investing_rl9_writer",
+      "grant execute on function investing.rl9b_registration_payload_valid_v1(jsonb,text,text,text,text,text,text,text,text,text) to investing_rl9_writer",
+      "grant execute on function investing.rl9b_seal_payload_valid_v1(jsonb,text,text) to investing_rl9_writer",
+      "grant execute on function investing.rl9b_evaluation_payload_valid_v1(jsonb,text,text,text) to investing_rl9_writer",
+      "grant execute on function investing.rl9b_event_payload_valid_v1(jsonb,text,text,text,text,text,text,text) to investing_rl9_writer",
+    ]) expect(schema).toContain(helper);
+
+    expect(schema).toContain("and investing.rl9b_evaluator_profile_valid_v1(p_payload->'evaluatorProfile')");
+    expect(schema).toContain("and investing.rl9b_holdout_scope_valid_v1(p_payload->'holdoutScope')");
+    expect(schema).toContain("and investing.rl9b_criteria_valid_v1(p_payload->'blindTruthCriteria')");
+    expect(schema).not.toContain("jsonb_array_length(p_payload->'blindTruthCriteria') >= 1");
+
+    for (const integerMetric of ["MAX_DRAWDOWN_DURATION", "MAX_DRAWDOWN_RECOVERY", "TRADE_COUNT", "REBALANCE_COUNT"]) {
+      expect(schema).toContain(integerMetric);
+    }
+    for (const ratioMetric of ["ANNUALIZED_VOLATILITY", "AVERAGE_GROSS_EXPOSURE", "BENCHMARK_RELATIVE_RETURN", "CAGR", "CALMAR_RATIO", "DOWNSIDE_DEVIATION", "MAX_DRAWDOWN", "SHARPE_RATIO", "SORTINO_RATIO", "TOTAL_RETURN", "TRACKING_ERROR", "TURNOVER"]) {
+      expect(schema).toContain(ratioMetric);
+    }
+    expect(schema).not.toMatch(/'VOLATILITY'|'SHARPE'|'SORTINO'|'CALMAR'|'WIN_RATE'|'PROFIT_FACTOR'|'EXPECTANCY'|'SAMPLE_COUNT'/);
+    expect(schema).toContain("p_value <> '-0'");
+    expect(schema).toContain("p_value !~ '^-?0[0-9]'");
+    expect(schema).toContain("length(split_part(p_value,'.',2)) <= 18");
+    expect(schema).toContain("p_value !~ '0$'");
+    expect(schema).toContain("(p_value#>>'{lower,value}')::numeric <= (p_value#>>'{upper,value}')::numeric");
+    expect(schema).toContain("criterion_id ~ '^[A-Z][A-Z0-9_]{2,127}$'");
+    expect(schema).toContain("row_number() over (order by (criterion->>'criterionId') collate \"C\", (criterion->>'criterionVersion') collate \"C\")");
+
+    expect(schema).toContain("p_value->>'coverageStart' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'");
+    expect(schema).toContain("to_char(to_date(p_value->>'coverageStart','YYYY-MM-DD'),'YYYY-MM-DD') = p_value->>'coverageStart'");
+    expect(schema).toContain("to_date(p_value->>'coverageStart','YYYY-MM-DD') <= to_date(p_value->>'coverageEnd','YYYY-MM-DD')");
+    expect(schema).toContain("item is normalized");
+    expect(schema).toContain("row_number() over (order by item collate \"C\")");
+    expect(schema).toContain("octet_length(item) <= p_max_bytes");
+    expect(schema).toContain("octet_length(p_value->>'timezone') <= 128");
+    expect(schema).toContain("and (p_value->>'timezone') is normalized");
+    expect(schema).toContain("p_payload->>'declaredPlaintextByteLength' ~ '^([1-9][0-9]*)$'");
   });
 
   it("does not change RL-9 design acceptance or implement secret-vault scope", () => {

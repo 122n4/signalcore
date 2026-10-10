@@ -18,6 +18,8 @@ on:
       - "tests/investingGenesisI5Rl7ExperimentComparisonPg17.test.ts"
       - "tests/investingGenesisI5Rl8c1ScientificPromotionPg17.test.ts"
       - "tests/investingGenesisI5Rl8c2ScientificPromotionWritersPg17.test.ts"
+      - "tests/investingGenesisI5Rl9b1BlindTruthPersistencePg17.test.ts"
+      - "tests/investingGenesisI5Rl9b2BlindTruthWritersPg17.test.ts"
       - "tests/support/investingEngineV2GoldenFixture.ts"
       - "tests/support/investingI5ExperimentScientificFixtures.ts"
       - "lib/investing/research/**"
@@ -105,6 +107,12 @@ jobs:
 
       - name: PostgreSQL 17 RL-8C3 Scientific promotion supersession rehearsal
         run: npx vitest run tests/investingGenesisI5Rl8c3ScientificPromotionSupersessionPg17.test.ts
+
+      - name: PostgreSQL 17 RL-9B1 Blind Truth public metadata rehearsal
+        run: npx vitest run tests/investingGenesisI5Rl9b1BlindTruthPersistencePg17.test.ts
+
+      - name: PostgreSQL 17 RL-9B2 Blind Truth writer rehearsal
+        run: npx vitest run tests/investingGenesisI5Rl9b2BlindTruthWritersPg17.test.ts
 
   investing-cumulative-compatibility-pg17:
     runs-on: ubuntu-latest

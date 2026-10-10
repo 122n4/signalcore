@@ -83,22 +83,27 @@ language sql immutable strict set search_path = pg_catalog as $$
 $$;
 
 
-create or replace function investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value jsonb) returns boolean
+create or replace function investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value jsonb, p_max_bytes integer) returns boolean
 language sql immutable set search_path = pg_catalog as $$
   with items as (
     select value #>> '{}' as item, ordinality
-    from jsonb_array_elements(p_value) with ordinality
-    where jsonb_typeof(p_value) = 'array'
+    from jsonb_array_elements(case when jsonb_typeof(p_value) = 'array' then p_value else '[]'::jsonb end) with ordinality
+  ), ordered_items as (
+    select item, ordinality, row_number() over (order by item collate "C") as sorted_ordinality
+    from items
   )
   select jsonb_typeof(p_value) = 'array'
     and count(*) > 0
     and count(*) = count(distinct item)
-    and bool_and(item is not null and item <> '' and item not in ('LATEST','CURRENT'))
+    and bool_and(item is not null and item <> '' and octet_length(item) <= p_max_bytes and item is normalized)
     and bool_and(ordinality = sorted_ordinality)
-  from (
-    select item, ordinality, row_number() over (order by item) as sorted_ordinality
-    from items
-  ) ordered_items
+  from ordered_items
+$$;
+
+create or replace function investing.rl9b_immutable_behavior_token_v1(p_value text) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  select p_value ~ '^[A-Z0-9_]+$'
+    and lower(p_value) not in ('latest','current','stable','production','default','active','rolling')
 $$;
 
 create or replace function investing.rl9b_evaluator_profile_valid_v1(p_value jsonb) returns boolean
@@ -117,24 +122,38 @@ language sql immutable set search_path = pg_catalog as $$
   select jsonb_typeof(p_value) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['calendarId','coverageEnd','coverageStart','fields','frequency','markets','providerDatasetId','providerDatasetVersion','providerId','schemaVersion','timezone'])
     and p_value->>'schemaVersion' = 'BLIND_TRUTH_HOLDOUT_SCOPE_V1'
-    and coalesce(p_value->>'providerId','') <> ''
-    and coalesce(p_value->>'providerDatasetId','') <> ''
-    and coalesce(p_value->>'providerDatasetVersion','') not in ('','LATEST','CURRENT')
-    and coalesce(p_value->>'frequency','') <> ''
-    and coalesce(p_value->>'calendarId','') <> ''
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerId')
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerDatasetId')
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerDatasetVersion')
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'frequency')
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'calendarId')
     and coalesce(p_value->>'timezone','') <> ''
-    and (p_value->>'coverageStart') <= (p_value->>'coverageEnd')
-    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'markets')
-    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'fields')
+    and octet_length(p_value->>'timezone') <= 128
+    and (p_value->>'timezone') is normalized
+    and p_value->>'coverageStart' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    and p_value->>'coverageEnd' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    and to_char(to_date(p_value->>'coverageStart','YYYY-MM-DD'),'YYYY-MM-DD') = p_value->>'coverageStart'
+    and to_char(to_date(p_value->>'coverageEnd','YYYY-MM-DD'),'YYYY-MM-DD') = p_value->>'coverageEnd'
+    and to_date(p_value->>'coverageStart','YYYY-MM-DD') <= to_date(p_value->>'coverageEnd','YYYY-MM-DD')
+    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'markets', 256)
+    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'fields', 256)
 $$;
 
 create or replace function investing.rl9b_metric_numeric_kind_v1(p_metric_id text) returns text
 language sql immutable set search_path = pg_catalog as $$
   select case
-    when p_metric_id in ('MAX_DRAWDOWN','VOLATILITY','TOTAL_RETURN','CAGR','SHARPE','SORTINO','CALMAR','WIN_RATE','PROFIT_FACTOR','EXPECTANCY') then 'RATIO'
-    when p_metric_id in ('TRADE_COUNT','SAMPLE_COUNT') then 'INTEGER'
+    when p_metric_id in ('MAX_DRAWDOWN_DURATION','MAX_DRAWDOWN_RECOVERY','TRADE_COUNT','REBALANCE_COUNT') then 'INTEGER'
+    when p_metric_id in ('ANNUALIZED_VOLATILITY','AVERAGE_GROSS_EXPOSURE','BENCHMARK_RELATIVE_RETURN','CAGR','CALMAR_RATIO','DOWNSIDE_DEVIATION','MAX_DRAWDOWN','SHARPE_RATIO','SORTINO_RATIO','TOTAL_RETURN','TRACKING_ERROR','TURNOVER') then 'RATIO'
     else null
   end
+$$;
+
+create or replace function investing.rl9b_decimal_canonical_v1(p_value text) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  select p_value ~ '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
+    and p_value <> '-0'
+    and p_value !~ '^-?0[0-9]'
+    and (position('.' in p_value) = 0 or (length(split_part(p_value,'.',2)) <= 18 and p_value !~ '0$'))
 $$;
 
 create or replace function investing.rl9b_numeric_value_valid_v1(p_value jsonb, p_metric_id text) returns boolean
@@ -142,9 +161,11 @@ language sql immutable set search_path = pg_catalog as $$
   select jsonb_typeof(p_value) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value'])
     and p_value->>'kind' = investing.rl9b_metric_numeric_kind_v1(p_metric_id)
-    and case when p_value->>'kind' = 'INTEGER' then p_value->>'value' ~ '^-?(0|[1-9][0-9]*)$' else p_value->>'value' ~ '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$' end
-    and p_value->>'value' !~ '^\+'
-    and p_value->>'value' !~ '^-?0[0-9]'
+    and case
+      when p_value->>'kind' = 'INTEGER' then (p_value->>'value' ~ '^-?(0|[1-9][0-9]*)$' and p_value->>'value' <> '-0')
+      when p_value->>'kind' = 'RATIO' then investing.rl9b_decimal_canonical_v1(p_value->>'value')
+      else false
+    end
 $$;
 
 create or replace function investing.rl9b_threshold_valid_v1(p_value jsonb, p_metric_id text, p_operator text) returns boolean
@@ -161,7 +182,7 @@ language sql immutable set search_path = pg_catalog as $$
       and p_value->>'kind' = 'RANGE'
       and investing.rl9b_numeric_value_valid_v1(p_value->'lower', p_metric_id)
       and investing.rl9b_numeric_value_valid_v1(p_value->'upper', p_metric_id)
-      and (p_value#>>'{lower,value}') <= (p_value#>>'{upper,value}')
+      and (p_value#>>'{lower,value}')::numeric <= (p_value#>>'{upper,value}')::numeric
     else false
   end
 $$;
@@ -181,7 +202,7 @@ language sql immutable set search_path = pg_catalog as $$
       criterion->>'operator' as operator,
       criterion->'threshold' as threshold,
       criterion->'required' as required_json,
-      row_number() over (order by criterion->>'criterionId', criterion->>'criterionVersion') as sorted_ordinality
+      row_number() over (order by (criterion->>'criterionId') collate "C", (criterion->>'criterionVersion') collate "C") as sorted_ordinality
     from criteria
   )
   select jsonb_typeof(p_value) = 'array'
@@ -191,6 +212,7 @@ language sql immutable set search_path = pg_catalog as $$
     and bool_and(ordinality = sorted_ordinality)
     and bool_and(jsonb_typeof(criterion) = 'object')
     and bool_and(investing.rl9b_jsonb_object_has_exact_keys_v1(criterion, array['criterionId','criterionVersion','metricId','metricVersion','operator','required','threshold']))
+    and bool_and(criterion_id ~ '^[A-Z][A-Z0-9_]{2,127}$')
     and bool_and(criterion_version = 'CRITERION_V1')
     and bool_and(metric_version = 'METRIC_V2')
     and bool_and(jsonb_typeof(required_json) = 'boolean')
@@ -228,8 +250,9 @@ create or replace function investing.rl9b_registration_payload_valid_v1(
     and investing.rl9b_hashref_matches_v1(p_payload->'hypothesis','SYNTRAKE:HYPOTHESIS:V1',p_hypothesis_hash)
     and investing.rl9b_hashref_matches_v1(p_payload->'metricRequestSet','SYNTRAKE:METRIC_REQUEST_SET:V1',p_metric_request_set_hash)
     and investing.rl9b_hashref_matches_v1(p_payload->'executionConfig','SYNTRAKE:EXECUTION_CONFIG:V1',p_execution_config_hash)
-    and jsonb_typeof(p_payload->'blindTruthCriteria') = 'array'
-    and jsonb_array_length(p_payload->'blindTruthCriteria') >= 1
+    and investing.rl9b_evaluator_profile_valid_v1(p_payload->'evaluatorProfile')
+    and investing.rl9b_holdout_scope_valid_v1(p_payload->'holdoutScope')
+    and investing.rl9b_criteria_valid_v1(p_payload->'blindTruthCriteria')
 $$;
 
 create or replace function investing.rl9b_seal_payload_valid_v1(p_payload jsonb, p_protocol_hash text, p_registration_hash text) returns boolean
@@ -246,7 +269,7 @@ language sql immutable strict set search_path = pg_catalog as $$
     and p_payload->>'vaultFormatVersion' = 'BLIND_TRUTH_VAULT_FORMAT_V1'
     and p_payload->>'holdoutScopeDigest' ~ '^[0-9A-F]{64}$'
     and p_payload->>'commitmentHash' ~ '^[0-9A-F]{64}$'
-    and p_payload->>'declaredPlaintextByteLength' ~ '^(0|[1-9][0-9]*)$'
+    and p_payload->>'declaredPlaintextByteLength' ~ '^([1-9][0-9]*)$'
 $$;
 
 create or replace function investing.rl9b_evaluation_payload_valid_v1(p_payload jsonb, p_protocol_hash text, p_registration_hash text, p_vault_seal_hash text) returns boolean
@@ -297,10 +320,17 @@ $$;
 revoke all on function investing.rl9b_jsonb_object_has_exact_keys_v1(jsonb,text[]) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_hashref_matches_v1(jsonb,text,text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_reason_allowed_v1(text) from public, anon, authenticated, service_role, investing_app;
-revoke all on function investing.rl9b_text_array_sorted_unique_nonempty_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_protocol_payload_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_registration_payload_valid_v1(jsonb,text,text,text,text,text,text,text,text,text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_seal_payload_valid_v1(jsonb,text,text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_evaluation_payload_valid_v1(jsonb,text,text,text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_event_payload_valid_v1(jsonb,text,text,text,text,text,text,text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_text_array_sorted_unique_nonempty_v1(jsonb,integer) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_immutable_behavior_token_v1(text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_evaluator_profile_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_holdout_scope_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_metric_numeric_kind_v1(text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_decimal_canonical_v1(text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_numeric_value_valid_v1(jsonb,text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_threshold_valid_v1(jsonb,text,text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_criteria_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
@@ -308,10 +338,20 @@ revoke all on function investing.reject_research_blind_truth_update_delete_v1() 
 grant execute on function investing.rl9b_jsonb_object_has_exact_keys_v1(jsonb,text[]) to investing_rl9_writer;
 grant execute on function investing.rl9b_hashref_matches_v1(jsonb,text,text) to investing_rl9_writer;
 grant execute on function investing.rl9b_reason_allowed_v1(text) to investing_rl9_writer;
-grant execute on function investing.rl9b_text_array_sorted_unique_nonempty_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl9b_protocol_payload_valid_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl9b_registration_payload_valid_v1(jsonb,text,text,text,text,text,text,text,text,text) to investing_rl9_writer;
+grant execute on function investing.rl9b_seal_payload_valid_v1(jsonb,text,text) to investing_rl9_writer;
+grant execute on function investing.rl9b_evaluation_payload_valid_v1(jsonb,text,text,text) to investing_rl9_writer;
+grant execute on function investing.rl9b_event_payload_valid_v1(jsonb,text,text,text,text,text,text,text) to investing_rl9_writer;
+grant execute on function investing.rl8c_jsonb_has_number_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl8c_canonical_jsonb_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl8c_sha256_hex_v1(text,jsonb) to investing_rl9_writer;
+grant execute on function investing.rl9b_text_array_sorted_unique_nonempty_v1(jsonb,integer) to investing_rl9_writer;
+grant execute on function investing.rl9b_immutable_behavior_token_v1(text) to investing_rl9_writer;
 grant execute on function investing.rl9b_evaluator_profile_valid_v1(jsonb) to investing_rl9_writer;
 grant execute on function investing.rl9b_holdout_scope_valid_v1(jsonb) to investing_rl9_writer;
 grant execute on function investing.rl9b_metric_numeric_kind_v1(text) to investing_rl9_writer;
+grant execute on function investing.rl9b_decimal_canonical_v1(text) to investing_rl9_writer;
 grant execute on function investing.rl9b_numeric_value_valid_v1(jsonb,text) to investing_rl9_writer;
 grant execute on function investing.rl9b_threshold_valid_v1(jsonb,text,text) to investing_rl9_writer;
 grant execute on function investing.rl9b_criteria_valid_v1(jsonb) to investing_rl9_writer;
@@ -603,6 +643,8 @@ begin
     and c.relforcerowsecurity;
   if v_count <> 5 then raise exception 'RL-9B1 postcondition failed: exact five relations owner/RLS/FORCE mismatch'; end if;
   if pg_catalog.pg_has_role('postgres', 'investing_rl9_writer', 'member') or has_schema_privilege('investing_rl9_writer','investing','CREATE') then raise exception 'RL-9B1 postcondition failed: residual writer bootstrap privilege'; end if;
+  if not has_function_privilege('investing_rl9_writer','investing.rl8c_jsonb_has_number_v1(jsonb)','EXECUTE') or not has_function_privilege('investing_rl9_writer','investing.rl8c_canonical_jsonb_v1(jsonb)','EXECUTE') or not has_function_privilege('investing_rl9_writer','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') then raise exception 'RL-9B1 postcondition failed: RL-8 canonical helper grants missing'; end if;
+  if has_function_privilege('anon','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') or has_function_privilege('authenticated','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') or has_function_privilege('service_role','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') or has_function_privilege('investing_app','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') then raise exception 'RL-9B1 postcondition failed: RL-8 helper execute widened'; end if;
   if exists (select 1 from information_schema.columns where table_schema = 'investing' and table_name like 'research_blind_truth_%' and column_name ~* '(secret|plaintext|ciphertext|credential|locator|hmac|salt|key)') then raise exception 'RL-9B1 postcondition failed: forbidden secret-like public metadata column'; end if;
   if exists (select 1 from information_schema.role_table_grants where table_schema = 'investing' and table_name like 'research_blind_truth_%' and grantee in ('PUBLIC','anon','authenticated','service_role','investing_app') and privilege_type in ('INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER')) then raise exception 'RL-9B1 postcondition failed: forbidden mutation grant'; end if;
   if not exists (select 1 from pg_catalog.pg_indexes where schemaname = 'investing' and indexname = 'research_blind_truth_one_registration_per_candidate_key' and indexdef not like '%research_investigation_id%' and indexdef not like '%promotion_%') then raise exception 'RL-9B1 postcondition failed: one-shot key missing or widened'; end if;
