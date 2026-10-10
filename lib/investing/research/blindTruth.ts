@@ -17,7 +17,7 @@ import { assertEngineV2ExecutionConfig, assertEngineV2MetricRequestSet } from ".
 import { hashExecutionConfigV1, hashMetricRequestSetV1, type ExecutionConfigHashPayloadV1, type MetricRequestSetHashPayloadV1 } from "./executionMaterials";
 import { compareRationalV1, decimalStringToRationalV1, renderRatioOutputV1 } from "./exactRational";
 import { canonicalJsonlArtifactBytesV1, type ResearchArtifactDescriptorV1 } from "./resultArtifacts";
-import { assertMetricResultRecordV2 } from "./researchMetrics";
+import { assertMetricResultRecordV2, metricRegistryV2Requests } from "./researchMetrics";
 import { validationAssessmentMetricNumericKindV1, type CanonicalAssessmentNumericV1, type ValidationAssessmentOperatorV1, type ValidationAssessmentThresholdV1 } from "./validationAssessment";
 
 export const blindTruthProtocolDomainV1 = "SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1" as const;
@@ -264,6 +264,13 @@ export function verifyBlindTruthMetricResultSetArtifactV1(input: BlindTruthVerif
   if (canonicalIntegerV1(descriptor.recordCount, { min: "0", allowNegative: false }) !== String(records.length)) throw new Error("METRIC_RESULT_ARTIFACT_RECORD_COUNT_MISMATCH");
   const canonicalBytes = canonicalJsonlArtifactBytesV1(records);
   if (!canonicalBytes.equals(input.contentBytes)) throw new Error("METRIC_RESULT_ARTIFACT_NON_CANONICAL");
+  if (records.length !== metricRegistryV2Requests.length) throw new Error("METRIC_RESULT_ARTIFACT_RECORD_COUNT_MISMATCH");
+  for (const [index, request] of metricRegistryV2Requests.entries()) {
+    const record = records[index];
+    if (!record || typeof record !== "object" || Array.isArray(record)) throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
+    const metric = record as Record<string, CanonicalJsonValue>;
+    if (metric.metricId !== request.metricId || metric.metricVersion !== request.metricVersion) throw new Error("INCOMPATIBLE_METRIC_REGISTRY");
+  }
   return [...canonicalObservedMetricResultsV1(records as BlindTruthMetricResultRecordV1[]).values()] as BlindTruthMetricResultRecordV1[];
 }
 
