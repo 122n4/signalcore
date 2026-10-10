@@ -33,28 +33,35 @@ grant usage on schema extensions to investing_rl9_writer;
 set local role investing_owner;
 
 create or replace function investing.rl9b_jsonb_object_has_exact_keys_v1(p_value jsonb, p_keys text[]) returns boolean
-language sql immutable strict set search_path = pg_catalog as $$
-  select jsonb_typeof(p_value) = 'object'
+language sql immutable set search_path = pg_catalog as $$
+  select coalesce(
+    jsonb_typeof(p_value) = 'object'
+    and p_keys is not null
     and (select array_agg(k order by k) from jsonb_object_keys(p_value) as k)
-      = (select array_agg(k order by k) from unnest(p_keys) as k)
+      = (select array_agg(k order by k) from unnest(p_keys) as k),
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_hashref_matches_v1(p_ref jsonb, p_domain text, p_hash_hex text) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select p_ref is not null
+  select coalesce(
+    p_ref is not null
     and p_ref <> 'null'::jsonb
     and jsonb_typeof(p_ref) = 'object'
-    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_ref, array['hashAlgorithm','hashDomain','hashHex','hashVersion'])
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_ref, array['hashAlgorithm','hashDomain','hashHex','hashVersion']) is true
     and p_ref->>'hashAlgorithm' = 'SHA-256'
     and p_ref->>'hashDomain' = p_domain
     and p_ref->>'hashVersion' = 'SYNTRAKE_SHA256_V1'
     and p_ref->>'hashHex' = p_hash_hex
-    and p_hash_hex ~ '^[0-9A-F]{64}$'
+    and p_hash_hex ~ '^[0-9A-F]{64}$',
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_reason_allowed_v1(p_reason text) returns boolean
-language sql immutable strict set search_path = pg_catalog as $$
-  select p_reason in (
+language sql immutable set search_path = pg_catalog as $$
+  select coalesce(p_reason in (
     'AUTHORITY_FAILURE','WRONG_TENANT','WRONG_INVESTIGATION','WRONG_SUBJECT','WRONG_PROMOTION_STATE',
     'STALE_PROMOTION_TRANSITION','SUPERSEDED_PROMOTION_AUTHORITY','DIVERGENT_EXISTING_IDENTITY',
     'REGISTRATION_ALREADY_EXISTS','VAULT_SEAL_ALREADY_EXISTS','EVALUATION_ALREADY_EXISTS','REVEAL_ALREADY_STARTED',
@@ -64,22 +71,25 @@ language sql immutable strict set search_path = pg_catalog as $$
     'HOLDOUT_SCOPE_MISMATCH','PROVIDER_VERSION_MISMATCH','MALFORMED_HOLDOUT','INCOMPATIBLE_ENGINE_VERSION',
     'INCOMPATIBLE_METRIC_REGISTRY','INCOMPATIBLE_CRITERIA','WRONG_HASHREF_DOMAIN','MALFORMED_HASHREF',
     'AMBIGUOUS_EVENT_CHAIN'
-  )
+  ), false)
 $$;
 
 create or replace function investing.rl9b_protocol_payload_valid_v1(p_payload jsonb) returns boolean
-language sql immutable strict set search_path = pg_catalog as $$
-  select jsonb_typeof(p_payload) = 'object'
+language sql immutable set search_path = pg_catalog as $$
+  select coalesce(
+    jsonb_typeof(p_payload) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_payload, array[
       'allowedOutcomeVocabulary','commitmentAlgorithm','commitmentDomain','evaluatorBehaviorVersion',
       'eventStateVocabulary','protocolId','reasonVocabulary','reuseFingerprintAlgorithm','schemaVersion'
-    ])
+    ]) is true
     and p_payload->>'schemaVersion' = 'BLIND_TRUTH_PROTOCOL_V1'
     and jsonb_typeof(p_payload->'reasonVocabulary') = 'array'
     and not exists (
-      select 1 from jsonb_array_elements(p_payload->'reasonVocabulary') r
-      where jsonb_typeof(r) <> 'string' or not investing.rl9b_reason_allowed_v1(r #>> '{}')
-    )
+      select 1 from jsonb_array_elements(case when jsonb_typeof(p_payload->'reasonVocabulary') = 'array' then p_payload->'reasonVocabulary' else '[]'::jsonb end) r
+      where jsonb_typeof(r) <> 'string' or investing.rl9b_reason_allowed_v1(r #>> '{}') is not true
+    ),
+    false
+  )
 $$;
 
 
@@ -92,41 +102,52 @@ language sql immutable set search_path = pg_catalog as $$
     select item, ordinality, row_number() over (order by item collate "C") as sorted_ordinality
     from items
   )
-  select jsonb_typeof(p_value) = 'array'
+  select coalesce(
+    jsonb_typeof(p_value) = 'array'
+    and p_max_bytes is not null
     and count(*) > 0
     and count(*) = count(distinct item)
     and bool_and(item is not null and item <> '' and octet_length(item) <= p_max_bytes and item is normalized)
-    and bool_and(ordinality = sorted_ordinality)
+    and bool_and(ordinality = sorted_ordinality),
+    false
+  )
   from ordered_items
 $$;
 
 create or replace function investing.rl9b_immutable_behavior_token_v1(p_value text) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select p_value ~ '^[A-Z0-9_]+$'
-    and lower(p_value) not in ('latest','current','stable','production','default','active','rolling')
+  select coalesce(
+    p_value ~ '^[A-Z0-9_]+$'
+    and lower(p_value) not in ('latest','current','stable','production','default','active','rolling'),
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_evaluator_profile_valid_v1(p_value jsonb) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select jsonb_typeof(p_value) = 'object'
-    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['blindTruthEvaluatorBehaviorVersion','engineId','engineVersion','metricRegistryVersion','metricResultArtifactSchemaVersion'])
+  select coalesce(
+    jsonb_typeof(p_value) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['blindTruthEvaluatorBehaviorVersion','engineId','engineVersion','metricRegistryVersion','metricResultArtifactSchemaVersion']) is true
     and p_value->>'engineId' = 'HISTORICAL_EXECUTION_ADAPTER'
     and p_value->>'engineVersion' = 'ENGINE_V20260926'
     and p_value->>'metricRegistryVersion' = 'METRIC_REGISTRY_V20260927'
     and p_value->>'metricResultArtifactSchemaVersion' = 'METRIC_RESULT_SET_V2'
-    and p_value->>'blindTruthEvaluatorBehaviorVersion' = 'BLIND_TRUTH_EVALUATOR_V1'
+    and p_value->>'blindTruthEvaluatorBehaviorVersion' = 'BLIND_TRUTH_EVALUATOR_V1',
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_holdout_scope_valid_v1(p_value jsonb) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select jsonb_typeof(p_value) = 'object'
-    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['calendarId','coverageEnd','coverageStart','fields','frequency','markets','providerDatasetId','providerDatasetVersion','providerId','schemaVersion','timezone'])
+  select coalesce(
+    jsonb_typeof(p_value) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['calendarId','coverageEnd','coverageStart','fields','frequency','markets','providerDatasetId','providerDatasetVersion','providerId','schemaVersion','timezone']) is true
     and p_value->>'schemaVersion' = 'BLIND_TRUTH_HOLDOUT_SCOPE_V1'
-    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerId')
-    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerDatasetId')
-    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerDatasetVersion')
-    and investing.rl9b_immutable_behavior_token_v1(p_value->>'frequency')
-    and investing.rl9b_immutable_behavior_token_v1(p_value->>'calendarId')
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerId') is true
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerDatasetId') is true
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'providerDatasetVersion') is true
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'frequency') is true
+    and investing.rl9b_immutable_behavior_token_v1(p_value->>'calendarId') is true
     and coalesce(p_value->>'timezone','') <> ''
     and octet_length(p_value->>'timezone') <= 128
     and (p_value->>'timezone') is normalized
@@ -135,8 +156,10 @@ language sql immutable set search_path = pg_catalog as $$
     and to_char(to_date(p_value->>'coverageStart','YYYY-MM-DD'),'YYYY-MM-DD') = p_value->>'coverageStart'
     and to_char(to_date(p_value->>'coverageEnd','YYYY-MM-DD'),'YYYY-MM-DD') = p_value->>'coverageEnd'
     and to_date(p_value->>'coverageStart','YYYY-MM-DD') <= to_date(p_value->>'coverageEnd','YYYY-MM-DD')
-    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'markets', 256)
-    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'fields', 256)
+    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'markets', 256) is true
+    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'fields', 256) is true,
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_metric_numeric_kind_v1(p_metric_id text) returns text
@@ -150,49 +173,57 @@ $$;
 
 create or replace function investing.rl9b_decimal_canonical_v1(p_value text) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select p_value ~ '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
+  select coalesce(
+    p_value ~ '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$'
     and p_value <> '-0'
     and p_value !~ '^-?0[0-9]'
-    and (position('.' in p_value) = 0 or (length(split_part(p_value,'.',2)) <= 18 and p_value !~ '0$'))
+    and (position('.' in p_value) = 0 or (length(split_part(p_value,'.',2)) <= 18 and p_value !~ '0$')),
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_numeric_value_valid_v1(p_value jsonb, p_metric_id text) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select jsonb_typeof(p_value) = 'object'
-    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value'])
+  select coalesce(
+    jsonb_typeof(p_value) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value']) is true
     and p_value->>'kind' = investing.rl9b_metric_numeric_kind_v1(p_metric_id)
     and case
       when p_value->>'kind' = 'INTEGER' then (p_value->>'value' ~ '^-?(0|[1-9][0-9]*)$' and p_value->>'value' <> '-0')
-      when p_value->>'kind' = 'RATIO' then investing.rl9b_decimal_canonical_v1(p_value->>'value')
+      when p_value->>'kind' = 'RATIO' then investing.rl9b_decimal_canonical_v1(p_value->>'value') is true
       else false
-    end
+    end,
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_threshold_valid_v1(p_value jsonb, p_metric_id text, p_operator text) returns boolean
 language sql immutable set search_path = pg_catalog as $$
-  select case
-    when p_operator in ('LT','LTE','EQ','GTE','GT') then
-      jsonb_typeof(p_value) = 'object'
-      and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value'])
-      and p_value->>'kind' = 'SCALAR'
-      and investing.rl9b_numeric_value_valid_v1(p_value->'value', p_metric_id)
-    when p_operator in ('BETWEEN_INCLUSIVE','OUTSIDE_EXCLUSIVE') then
-      jsonb_typeof(p_value) = 'object'
-      and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','lower','upper'])
-      and p_value->>'kind' = 'RANGE'
-      and investing.rl9b_numeric_value_valid_v1(p_value->'lower', p_metric_id)
-      and investing.rl9b_numeric_value_valid_v1(p_value->'upper', p_metric_id)
-      and (p_value#>>'{lower,value}')::numeric <= (p_value#>>'{upper,value}')::numeric
-    else false
-  end
+  select coalesce(
+    case
+      when p_operator in ('LT','LTE','EQ','GTE','GT') then
+        jsonb_typeof(p_value) = 'object'
+        and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value']) is true
+        and p_value->>'kind' = 'SCALAR'
+        and investing.rl9b_numeric_value_valid_v1(p_value->'value', p_metric_id) is true
+      when p_operator in ('BETWEEN_INCLUSIVE','OUTSIDE_EXCLUSIVE') then
+        jsonb_typeof(p_value) = 'object'
+        and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','lower','upper']) is true
+        and p_value->>'kind' = 'RANGE'
+        and investing.rl9b_numeric_value_valid_v1(p_value->'lower', p_metric_id) is true
+        and investing.rl9b_numeric_value_valid_v1(p_value->'upper', p_metric_id) is true
+        and (p_value#>>'{lower,value}')::numeric <= (p_value#>>'{upper,value}')::numeric
+      else false
+    end,
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_criteria_valid_v1(p_value jsonb) returns boolean
 language sql immutable set search_path = pg_catalog as $$
   with criteria as (
     select value as criterion, ordinality
-    from jsonb_array_elements(p_value) with ordinality
-    where jsonb_typeof(p_value) = 'array'
+    from jsonb_array_elements(case when jsonb_typeof(p_value) = 'array' then p_value else '[]'::jsonb end) with ordinality
   ), checked as (
     select criterion, ordinality,
       criterion->>'criterionId' as criterion_id,
@@ -205,20 +236,23 @@ language sql immutable set search_path = pg_catalog as $$
       row_number() over (order by (criterion->>'criterionId') collate "C", (criterion->>'criterionVersion') collate "C") as sorted_ordinality
     from criteria
   )
-  select jsonb_typeof(p_value) = 'array'
+  select coalesce(
+    jsonb_typeof(p_value) = 'array'
     and count(*) > 0
     and bool_or(required_json = 'true'::jsonb)
     and count(*) = count(distinct criterion_id || E'\n' || criterion_version)
     and bool_and(ordinality = sorted_ordinality)
     and bool_and(jsonb_typeof(criterion) = 'object')
-    and bool_and(investing.rl9b_jsonb_object_has_exact_keys_v1(criterion, array['criterionId','criterionVersion','metricId','metricVersion','operator','required','threshold']))
+    and bool_and(investing.rl9b_jsonb_object_has_exact_keys_v1(criterion, array['criterionId','criterionVersion','metricId','metricVersion','operator','required','threshold']) is true)
     and bool_and(criterion_id ~ '^[A-Z][A-Z0-9_]{2,127}$')
     and bool_and(criterion_version = 'CRITERION_V1')
     and bool_and(metric_version = 'METRIC_V2')
     and bool_and(jsonb_typeof(required_json) = 'boolean')
     and bool_and(operator in ('LT','LTE','EQ','GTE','GT','BETWEEN_INCLUSIVE','OUTSIDE_EXCLUSIVE'))
     and bool_and(investing.rl9b_metric_numeric_kind_v1(metric_id) is not null)
-    and bool_and(investing.rl9b_threshold_valid_v1(threshold, metric_id, operator))
+    and bool_and(investing.rl9b_threshold_valid_v1(threshold, metric_id, operator) is true),
+    false
+  )
   from checked
 $$;
 
@@ -233,53 +267,62 @@ create or replace function investing.rl9b_registration_payload_valid_v1(
   p_hypothesis_hash text,
   p_metric_request_set_hash text,
   p_execution_config_hash text
-) returns boolean language sql immutable strict set search_path = pg_catalog as $$
-  select jsonb_typeof(p_payload) = 'object'
+) returns boolean language sql immutable set search_path = pg_catalog as $$
+  select coalesce(
+    jsonb_typeof(p_payload) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_payload, array[
       'blindTruthCriteria','evaluatorProfile','executionConfig','holdoutScope','hypothesis','metricRequestSet',
       'promotionProtocol','promotionTransition','protocol','schemaVersion','subjectExperiment',
       'subjectExperimentParameters','subjectResearchIr'
-    ])
+    ]) is true
     and p_payload->>'schemaVersion' = 'BLIND_TRUTH_REGISTRATION_V1'
-    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'subjectExperiment','SYNTRAKE:EXPERIMENT:V1',p_subject_experiment_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'subjectExperimentParameters','SYNTRAKE:EXPERIMENT_PARAMETERS:V1',p_subject_experiment_parameters_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'subjectResearchIr','SYNTRAKE:RESEARCH_IR:V1',p_subject_research_ir_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'promotionProtocol','SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1',p_promotion_protocol_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'promotionTransition','SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1',p_promotion_transition_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'hypothesis','SYNTRAKE:HYPOTHESIS:V1',p_hypothesis_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'metricRequestSet','SYNTRAKE:METRIC_REQUEST_SET:V1',p_metric_request_set_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'executionConfig','SYNTRAKE:EXECUTION_CONFIG:V1',p_execution_config_hash)
-    and investing.rl9b_evaluator_profile_valid_v1(p_payload->'evaluatorProfile')
-    and investing.rl9b_holdout_scope_valid_v1(p_payload->'holdoutScope')
-    and investing.rl9b_criteria_valid_v1(p_payload->'blindTruthCriteria')
+    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'subjectExperiment','SYNTRAKE:EXPERIMENT:V1',p_subject_experiment_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'subjectExperimentParameters','SYNTRAKE:EXPERIMENT_PARAMETERS:V1',p_subject_experiment_parameters_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'subjectResearchIr','SYNTRAKE:RESEARCH_IR:V1',p_subject_research_ir_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'promotionProtocol','SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1',p_promotion_protocol_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'promotionTransition','SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1',p_promotion_transition_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'hypothesis','SYNTRAKE:HYPOTHESIS:V1',p_hypothesis_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'metricRequestSet','SYNTRAKE:METRIC_REQUEST_SET:V1',p_metric_request_set_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'executionConfig','SYNTRAKE:EXECUTION_CONFIG:V1',p_execution_config_hash) is true
+    and investing.rl9b_evaluator_profile_valid_v1(p_payload->'evaluatorProfile') is true
+    and investing.rl9b_holdout_scope_valid_v1(p_payload->'holdoutScope') is true
+    and investing.rl9b_criteria_valid_v1(p_payload->'blindTruthCriteria') is true,
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_seal_payload_valid_v1(p_payload jsonb, p_protocol_hash text, p_registration_hash text) returns boolean
-language sql immutable strict set search_path = pg_catalog as $$
-  select jsonb_typeof(p_payload) = 'object'
+language sql immutable set search_path = pg_catalog as $$
+  select coalesce(
+    jsonb_typeof(p_payload) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_payload, array[
       'commitmentAlgorithm','commitmentHash','declaredPlaintextByteLength','holdoutScopeDigest',
       'protocol','registration','schemaVersion','vaultFormatVersion'
-    ])
+    ]) is true
     and p_payload->>'schemaVersion' = 'BLIND_TRUTH_VAULT_SEAL_V1'
-    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'registration','SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1',p_registration_hash)
+    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'registration','SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1',p_registration_hash) is true
     and p_payload->>'commitmentAlgorithm' = 'SHA256_DOMAIN_SEPARATED_SALTED_V1'
     and p_payload->>'vaultFormatVersion' = 'BLIND_TRUTH_VAULT_FORMAT_V1'
     and p_payload->>'holdoutScopeDigest' ~ '^[0-9A-F]{64}$'
     and p_payload->>'commitmentHash' ~ '^[0-9A-F]{64}$'
-    and p_payload->>'declaredPlaintextByteLength' ~ '^([1-9][0-9]*)$'
+    and p_payload->>'declaredPlaintextByteLength' ~ '^([1-9][0-9]*)$',
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_evaluation_payload_valid_v1(p_payload jsonb, p_protocol_hash text, p_registration_hash text, p_vault_seal_hash text) returns boolean
-language sql immutable strict set search_path = pg_catalog as $$
-  select jsonb_typeof(p_payload) = 'object'
-    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_payload, array['evaluatorProfile','protocol','registration','schemaVersion','vaultSeal'])
+language sql immutable set search_path = pg_catalog as $$
+  select coalesce(
+    jsonb_typeof(p_payload) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_payload, array['evaluatorProfile','protocol','registration','schemaVersion','vaultSeal']) is true
     and p_payload->>'schemaVersion' = 'BLIND_TRUTH_EVALUATION_V1'
-    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'registration','SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1',p_registration_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'vaultSeal','SYNTRAKE:BLIND_TRUTH_VAULT_SEAL:V1',p_vault_seal_hash)
+    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'registration','SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1',p_registration_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'vaultSeal','SYNTRAKE:BLIND_TRUTH_VAULT_SEAL:V1',p_vault_seal_hash) is true,
+    false
+  )
 $$;
 
 create or replace function investing.rl9b_event_payload_valid_v1(
@@ -292,22 +335,25 @@ create or replace function investing.rl9b_event_payload_valid_v1(
   p_event_state text,
   p_reason text
 ) returns boolean language sql immutable set search_path = pg_catalog as $$
-  select jsonb_typeof(p_payload) = 'object'
+  select coalesce(
+    jsonb_typeof(p_payload) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_payload, array[
       'evaluation','eventState','predecessorEvent','protocol','reason','registration','result','schemaVersion','vaultSeal'
-    ])
+    ]) is true
     and p_payload->>'schemaVersion' = 'BLIND_TRUTH_REVEAL_RESULT_EVENT_V1'
     and p_payload->>'eventState' = p_event_state
-    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'registration','SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1',p_registration_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'vaultSeal','SYNTRAKE:BLIND_TRUTH_VAULT_SEAL:V1',p_vault_seal_hash)
-    and investing.rl9b_hashref_matches_v1(p_payload->'evaluation','SYNTRAKE:BLIND_TRUTH_EVALUATION:V1',p_evaluation_hash)
+    and investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'registration','SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1',p_registration_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'vaultSeal','SYNTRAKE:BLIND_TRUTH_VAULT_SEAL:V1',p_vault_seal_hash) is true
+    and investing.rl9b_hashref_matches_v1(p_payload->'evaluation','SYNTRAKE:BLIND_TRUTH_EVALUATION:V1',p_evaluation_hash) is true
     and case
       when p_event_state = 'REVEAL_STARTED' then p_predecessor_hash is null and p_reason is null and p_payload->'predecessorEvent' = 'null'::jsonb and p_payload->'reason' = 'null'::jsonb and p_payload->'result' = 'null'::jsonb
-      when p_event_state = 'REVEAL_COMPLETED' then p_predecessor_hash is not null and p_reason is null and investing.rl9b_hashref_matches_v1(p_payload->'predecessorEvent','SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1',p_predecessor_hash) and p_payload->'reason' = 'null'::jsonb and p_payload->'result' <> 'null'::jsonb
-      when p_event_state = 'REVEAL_FAILED_CLOSED' then p_predecessor_hash is not null and p_reason is not null and investing.rl9b_reason_allowed_v1(p_reason) and investing.rl9b_hashref_matches_v1(p_payload->'predecessorEvent','SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1',p_predecessor_hash) and p_payload->>'reason' = p_reason and p_payload->'result' = 'null'::jsonb
+      when p_event_state = 'REVEAL_COMPLETED' then p_predecessor_hash is not null and p_reason is null and investing.rl9b_hashref_matches_v1(p_payload->'predecessorEvent','SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1',p_predecessor_hash) is true and p_payload->'reason' = 'null'::jsonb and p_payload->'result' <> 'null'::jsonb
+      when p_event_state = 'REVEAL_FAILED_CLOSED' then p_predecessor_hash is not null and p_reason is not null and investing.rl9b_reason_allowed_v1(p_reason) is true and investing.rl9b_hashref_matches_v1(p_payload->'predecessorEvent','SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1',p_predecessor_hash) is true and p_payload->>'reason' = p_reason and p_payload->'result' = 'null'::jsonb
       else false
-    end
+    end,
+    false
+  )
 $$;
 
 create or replace function investing.reject_research_blind_truth_update_delete_v1() returns trigger
@@ -372,9 +418,9 @@ create table investing.research_blind_truth_protocols_scientific_identities (
   canonical_payload jsonb not null,
   created_at timestamptz not null default transaction_timestamp(),
   constraint research_blind_truth_protocols_payload_check check (
-    investing.rl9b_protocol_payload_valid_v1(canonical_payload)
-    and not investing.rl8c_jsonb_has_number_v1(canonical_payload)
-    and investing.rl8c_sha256_hex_v1(hash_domain, canonical_payload) = hash_hex
+    investing.rl9b_protocol_payload_valid_v1(canonical_payload) is true
+    and investing.rl8c_jsonb_has_number_v1(canonical_payload) is false
+    and (investing.rl8c_sha256_hex_v1(hash_domain, canonical_payload) = hash_hex) is true
   ),
   constraint research_blind_truth_protocols_hash_key unique (hash_algorithm, hash_domain, hash_version, hash_hex),
   constraint research_blind_truth_protocols_identity_hash_key unique (research_blind_truth_protocol_identity_id, hash_hex)
@@ -426,9 +472,9 @@ create table investing.research_blind_truth_registrations_scientific_identities 
   constraint research_blind_truth_registrations_metric_request_set_fk foreign key (metric_request_set_identity_id) references investing.metric_request_sets_scientific_identities (metric_request_set_identity_id),
   constraint research_blind_truth_registrations_execution_config_fk foreign key (execution_config_identity_id) references investing.execution_configs_scientific_identities (execution_config_identity_id),
   constraint research_blind_truth_registrations_payload_check check (
-    investing.rl9b_registration_payload_valid_v1(canonical_payload, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, promotion_protocol_hash_hex, promotion_transition_hash_hex, hypothesis_hash_hex, metric_request_set_hash_hex, execution_config_hash_hex)
-    and not investing.rl8c_jsonb_has_number_v1(canonical_payload)
-    and investing.rl8c_sha256_hex_v1(registration_hash_domain, canonical_payload) = registration_hash_hex
+    investing.rl9b_registration_payload_valid_v1(canonical_payload, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, promotion_protocol_hash_hex, promotion_transition_hash_hex, hypothesis_hash_hex, metric_request_set_hash_hex, execution_config_hash_hex) is true
+    and investing.rl8c_jsonb_has_number_v1(canonical_payload) is false
+    and (investing.rl8c_sha256_hex_v1(registration_hash_domain, canonical_payload) = registration_hash_hex) is true
   ),
   constraint research_blind_truth_registrations_hash_key unique (tenant_id, registration_hash_algorithm, registration_hash_domain, registration_hash_version, registration_hash_hex),
   constraint research_blind_truth_registrations_identity_hash_key unique (research_blind_truth_registration_identity_id, registration_hash_hex)
@@ -460,7 +506,7 @@ create table investing.research_blind_truth_vault_seals_scientific_identities (
   created_at timestamptz not null default transaction_timestamp(),
   constraint research_blind_truth_vault_seals_registration_fk foreign key (registration_identity_id, registration_hash_hex) references investing.research_blind_truth_registrations_scientific_identities (research_blind_truth_registration_identity_id, registration_hash_hex),
   constraint research_blind_truth_vault_seals_protocol_fk foreign key (research_blind_truth_protocol_identity_id, protocol_hash_hex) references investing.research_blind_truth_protocols_scientific_identities (research_blind_truth_protocol_identity_id, hash_hex),
-  constraint research_blind_truth_vault_seals_payload_check check (investing.rl9b_seal_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex) and not investing.rl8c_jsonb_has_number_v1(canonical_payload) and investing.rl8c_sha256_hex_v1(vault_seal_hash_domain, canonical_payload) = vault_seal_hash_hex),
+  constraint research_blind_truth_vault_seals_payload_check check (investing.rl9b_seal_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex) is true and investing.rl8c_jsonb_has_number_v1(canonical_payload) is false and (investing.rl8c_sha256_hex_v1(vault_seal_hash_domain, canonical_payload) = vault_seal_hash_hex) is true),
   constraint research_blind_truth_vault_seals_hash_key unique (tenant_id, vault_seal_hash_algorithm, vault_seal_hash_domain, vault_seal_hash_version, vault_seal_hash_hex),
   constraint research_blind_truth_vault_seals_identity_hash_key unique (research_blind_truth_vault_seal_identity_id, vault_seal_hash_hex)
 );
@@ -492,7 +538,7 @@ create table investing.research_blind_truth_evaluations_scientific_identities (
   constraint research_blind_truth_evaluations_registration_fk foreign key (registration_identity_id, registration_hash_hex) references investing.research_blind_truth_registrations_scientific_identities (research_blind_truth_registration_identity_id, registration_hash_hex),
   constraint research_blind_truth_evaluations_vault_seal_fk foreign key (vault_seal_identity_id, vault_seal_hash_hex) references investing.research_blind_truth_vault_seals_scientific_identities (research_blind_truth_vault_seal_identity_id, vault_seal_hash_hex),
   constraint research_blind_truth_evaluations_protocol_fk foreign key (research_blind_truth_protocol_identity_id, protocol_hash_hex) references investing.research_blind_truth_protocols_scientific_identities (research_blind_truth_protocol_identity_id, hash_hex),
-  constraint research_blind_truth_evaluations_payload_check check (investing.rl9b_evaluation_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex) and not investing.rl8c_jsonb_has_number_v1(canonical_payload) and investing.rl8c_sha256_hex_v1(evaluation_hash_domain, canonical_payload) = evaluation_hash_hex),
+  constraint research_blind_truth_evaluations_payload_check check (investing.rl9b_evaluation_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex) is true and investing.rl8c_jsonb_has_number_v1(canonical_payload) is false and (investing.rl8c_sha256_hex_v1(evaluation_hash_domain, canonical_payload) = evaluation_hash_hex) is true),
   constraint research_blind_truth_evaluations_hash_key unique (tenant_id, evaluation_hash_algorithm, evaluation_hash_domain, evaluation_hash_version, evaluation_hash_hex),
   constraint research_blind_truth_evaluations_identity_hash_key unique (research_blind_truth_evaluation_identity_id, evaluation_hash_hex)
 );
@@ -537,7 +583,7 @@ create table investing.research_blind_truth_reveal_result_events_scientific_iden
     or (event_state = 'REVEAL_COMPLETED' and predecessor_event_identity_id is not null and predecessor_event_hash_hex is not null and reason is null)
     or (event_state = 'REVEAL_FAILED_CLOSED' and predecessor_event_identity_id is not null and predecessor_event_hash_hex is not null and reason is not null and investing.rl9b_reason_allowed_v1(reason))
   ),
-  constraint research_blind_truth_events_payload_check check (investing.rl9b_event_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex, evaluation_hash_hex, predecessor_event_hash_hex, event_state, reason) and not investing.rl8c_jsonb_has_number_v1(canonical_payload) and investing.rl8c_sha256_hex_v1(event_hash_domain, canonical_payload) = event_hash_hex),
+  constraint research_blind_truth_events_payload_check check (investing.rl9b_event_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex, evaluation_hash_hex, predecessor_event_hash_hex, event_state, reason) is true and investing.rl8c_jsonb_has_number_v1(canonical_payload) is false and (investing.rl8c_sha256_hex_v1(event_hash_domain, canonical_payload) = event_hash_hex) is true),
   constraint research_blind_truth_events_hash_key unique (tenant_id, event_hash_algorithm, event_hash_domain, event_hash_version, event_hash_hex),
   constraint research_blind_truth_events_identity_hash_key unique (research_blind_truth_reveal_result_event_identity_id, event_hash_hex)
 );

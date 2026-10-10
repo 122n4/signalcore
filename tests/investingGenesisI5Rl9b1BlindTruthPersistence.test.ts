@@ -202,6 +202,33 @@ describe("I5 RL-9B Blind Truth public metadata persistence contract", () => {
     expect(schema).toContain("p_payload->>'declaredPlaintextByteLength' ~ '^([1-9][0-9]*)$'");
   });
 
+
+  it("closes SQL three-valued logic by making validators total booleans and CHECK predicates strict", () => {
+    expect(schema).not.toMatch(/rl9b_.*returns boolean\s+language sql immutable strict/);
+    expect(schema).toContain("create or replace function investing.rl9b_jsonb_object_has_exact_keys_v1");
+    expect(schema).toContain("select coalesce(");
+    for (const nested of [
+      "investing.rl9b_jsonb_object_has_exact_keys_v1(p_ref, array['hashAlgorithm','hashDomain','hashHex','hashVersion']) is true",
+      "investing.rl9b_immutable_behavior_token_v1(p_value->>'providerId') is true",
+      "investing.rl9b_evaluator_profile_valid_v1(p_payload->'evaluatorProfile') is true",
+      "investing.rl9b_holdout_scope_valid_v1(p_payload->'holdoutScope') is true",
+      "investing.rl9b_criteria_valid_v1(p_payload->'blindTruthCriteria') is true",
+      "investing.rl9b_hashref_matches_v1(p_payload->'protocol','SYNTRAKE:BLIND_TRUTH_PROTOCOL:V1',p_protocol_hash) is true",
+      "investing.rl9b_reason_allowed_v1(p_reason) is true",
+    ]) expect(schema).toContain(nested);
+    for (const check of [
+      "investing.rl9b_protocol_payload_valid_v1(canonical_payload) is true",
+      "investing.rl9b_registration_payload_valid_v1(canonical_payload, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, promotion_protocol_hash_hex, promotion_transition_hash_hex, hypothesis_hash_hex, metric_request_set_hash_hex, execution_config_hash_hex) is true",
+      "investing.rl9b_seal_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex) is true",
+      "investing.rl9b_evaluation_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex) is true",
+      "investing.rl9b_event_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex, evaluation_hash_hex, predecessor_event_hash_hex, event_state, reason) is true",
+      "investing.rl8c_jsonb_has_number_v1(canonical_payload) is false",
+      "(investing.rl8c_sha256_hex_v1(registration_hash_domain, canonical_payload) = registration_hash_hex) is true",
+    ]) expect(schema).toContain(check);
+    expect(schema).toContain("jsonb_array_elements(case when jsonb_typeof(p_value) = 'array' then p_value else '[]'::jsonb end)");
+    expect(schema).toContain("jsonb_array_elements(case when jsonb_typeof(p_payload->'reasonVocabulary') = 'array' then p_payload->'reasonVocabulary' else '[]'::jsonb end)");
+  });
+
   it("does not change RL-9 design acceptance or implement secret-vault scope", () => {
     expect(design).toContain("RL-9B");
     expect(schema).not.toMatch(/vault_locator|provider_credential|hmac_reuse|secret_salt/i);
