@@ -57,6 +57,35 @@ maybeDescribe("I5 RL-9B1 Blind Truth PG17 public metadata schema", () => {
     expect(forbidden.rows).toEqual([]);
   });
 
+  it("installs tenant-scoped non-protocol hash keys and upstream writer policies", async () => {
+    const keys = await pool!.query(`
+      select conname, pg_get_constraintdef(oid, true) as def
+      from pg_constraint
+      where conname in (
+        'research_blind_truth_registrations_hash_key',
+        'research_blind_truth_vault_seals_hash_key',
+        'research_blind_truth_evaluations_hash_key',
+        'research_blind_truth_events_hash_key'
+      )
+      order by conname
+    `);
+    expect(keys.rows).toHaveLength(4);
+    for (const row of keys.rows) expect(String(row.def)).toContain("tenant_id");
+    const policies = await pool!.query(`
+      select policyname from pg_policies
+      where schemaname='investing' and policyname in (
+        'research_experiments_rl9b_writer_select',
+        'research_specs_rl9b_writer_select',
+        'research_ir_rl9b_writer_select',
+        'metric_request_sets_rl9b_writer_select',
+        'execution_configs_rl9b_writer_select',
+        'research_scientific_promotion_protocols_rl9b_writer_select',
+        'research_scientific_promotion_transitions_rl9b_writer_select'
+      )
+    `);
+    expect(policies.rows).toHaveLength(7);
+  });
+
   it("installs one-shot and event uniqueness backstops", async () => {
     const { rows } = await pool!.query(`
       select indexname, indexdef from pg_indexes

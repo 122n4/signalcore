@@ -82,6 +82,124 @@ language sql immutable strict set search_path = pg_catalog as $$
     )
 $$;
 
+
+create or replace function investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value jsonb) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  with items as (
+    select value #>> '{}' as item, ordinality
+    from jsonb_array_elements(p_value) with ordinality
+    where jsonb_typeof(p_value) = 'array'
+  )
+  select jsonb_typeof(p_value) = 'array'
+    and count(*) > 0
+    and count(*) = count(distinct item)
+    and bool_and(item is not null and item <> '' and item not in ('LATEST','CURRENT'))
+    and bool_and(ordinality = sorted_ordinality)
+  from (
+    select item, ordinality, row_number() over (order by item) as sorted_ordinality
+    from items
+  ) ordered_items
+$$;
+
+create or replace function investing.rl9b_evaluator_profile_valid_v1(p_value jsonb) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  select jsonb_typeof(p_value) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['blindTruthEvaluatorBehaviorVersion','engineId','engineVersion','metricRegistryVersion','metricResultArtifactSchemaVersion'])
+    and p_value->>'engineId' = 'HISTORICAL_EXECUTION_ADAPTER'
+    and p_value->>'engineVersion' = 'ENGINE_V20260926'
+    and p_value->>'metricRegistryVersion' = 'METRIC_REGISTRY_V20260927'
+    and p_value->>'metricResultArtifactSchemaVersion' = 'METRIC_RESULT_SET_V2'
+    and p_value->>'blindTruthEvaluatorBehaviorVersion' = 'BLIND_TRUTH_EVALUATOR_V1'
+$$;
+
+create or replace function investing.rl9b_holdout_scope_valid_v1(p_value jsonb) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  select jsonb_typeof(p_value) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['calendarId','coverageEnd','coverageStart','fields','frequency','markets','providerDatasetId','providerDatasetVersion','providerId','schemaVersion','timezone'])
+    and p_value->>'schemaVersion' = 'BLIND_TRUTH_HOLDOUT_SCOPE_V1'
+    and coalesce(p_value->>'providerId','') <> ''
+    and coalesce(p_value->>'providerDatasetId','') <> ''
+    and coalesce(p_value->>'providerDatasetVersion','') not in ('','LATEST','CURRENT')
+    and coalesce(p_value->>'frequency','') <> ''
+    and coalesce(p_value->>'calendarId','') <> ''
+    and coalesce(p_value->>'timezone','') <> ''
+    and (p_value->>'coverageStart') <= (p_value->>'coverageEnd')
+    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'markets')
+    and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'fields')
+$$;
+
+create or replace function investing.rl9b_metric_numeric_kind_v1(p_metric_id text) returns text
+language sql immutable set search_path = pg_catalog as $$
+  select case
+    when p_metric_id in ('MAX_DRAWDOWN','VOLATILITY','TOTAL_RETURN','CAGR','SHARPE','SORTINO','CALMAR','WIN_RATE','PROFIT_FACTOR','EXPECTANCY') then 'RATIO'
+    when p_metric_id in ('TRADE_COUNT','SAMPLE_COUNT') then 'INTEGER'
+    else null
+  end
+$$;
+
+create or replace function investing.rl9b_numeric_value_valid_v1(p_value jsonb, p_metric_id text) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  select jsonb_typeof(p_value) = 'object'
+    and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value'])
+    and p_value->>'kind' = investing.rl9b_metric_numeric_kind_v1(p_metric_id)
+    and case when p_value->>'kind' = 'INTEGER' then p_value->>'value' ~ '^-?(0|[1-9][0-9]*)$' else p_value->>'value' ~ '^-?(0|[1-9][0-9]*)(\.[0-9]+)?$' end
+    and p_value->>'value' !~ '^\+'
+    and p_value->>'value' !~ '^-?0[0-9]'
+$$;
+
+create or replace function investing.rl9b_threshold_valid_v1(p_value jsonb, p_metric_id text, p_operator text) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  select case
+    when p_operator in ('LT','LTE','EQ','GTE','GT') then
+      jsonb_typeof(p_value) = 'object'
+      and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','value'])
+      and p_value->>'kind' = 'SCALAR'
+      and investing.rl9b_numeric_value_valid_v1(p_value->'value', p_metric_id)
+    when p_operator in ('BETWEEN_INCLUSIVE','OUTSIDE_EXCLUSIVE') then
+      jsonb_typeof(p_value) = 'object'
+      and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['kind','lower','upper'])
+      and p_value->>'kind' = 'RANGE'
+      and investing.rl9b_numeric_value_valid_v1(p_value->'lower', p_metric_id)
+      and investing.rl9b_numeric_value_valid_v1(p_value->'upper', p_metric_id)
+      and (p_value#>>'{lower,value}') <= (p_value#>>'{upper,value}')
+    else false
+  end
+$$;
+
+create or replace function investing.rl9b_criteria_valid_v1(p_value jsonb) returns boolean
+language sql immutable set search_path = pg_catalog as $$
+  with criteria as (
+    select value as criterion, ordinality
+    from jsonb_array_elements(p_value) with ordinality
+    where jsonb_typeof(p_value) = 'array'
+  ), checked as (
+    select criterion, ordinality,
+      criterion->>'criterionId' as criterion_id,
+      criterion->>'criterionVersion' as criterion_version,
+      criterion->>'metricId' as metric_id,
+      criterion->>'metricVersion' as metric_version,
+      criterion->>'operator' as operator,
+      criterion->'threshold' as threshold,
+      criterion->'required' as required_json,
+      row_number() over (order by criterion->>'criterionId', criterion->>'criterionVersion') as sorted_ordinality
+    from criteria
+  )
+  select jsonb_typeof(p_value) = 'array'
+    and count(*) > 0
+    and bool_or(required_json = 'true'::jsonb)
+    and count(*) = count(distinct criterion_id || E'\n' || criterion_version)
+    and bool_and(ordinality = sorted_ordinality)
+    and bool_and(jsonb_typeof(criterion) = 'object')
+    and bool_and(investing.rl9b_jsonb_object_has_exact_keys_v1(criterion, array['criterionId','criterionVersion','metricId','metricVersion','operator','required','threshold']))
+    and bool_and(criterion_version = 'CRITERION_V1')
+    and bool_and(metric_version = 'METRIC_V2')
+    and bool_and(jsonb_typeof(required_json) = 'boolean')
+    and bool_and(operator in ('LT','LTE','EQ','GTE','GT','BETWEEN_INCLUSIVE','OUTSIDE_EXCLUSIVE'))
+    and bool_and(investing.rl9b_metric_numeric_kind_v1(metric_id) is not null)
+    and bool_and(investing.rl9b_threshold_valid_v1(threshold, metric_id, operator))
+  from checked
+$$;
+
 create or replace function investing.rl9b_registration_payload_valid_v1(
   p_payload jsonb,
   p_protocol_hash text,
@@ -179,10 +297,24 @@ $$;
 revoke all on function investing.rl9b_jsonb_object_has_exact_keys_v1(jsonb,text[]) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_hashref_matches_v1(jsonb,text,text) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.rl9b_reason_allowed_v1(text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_text_array_sorted_unique_nonempty_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_evaluator_profile_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_holdout_scope_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_metric_numeric_kind_v1(text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_numeric_value_valid_v1(jsonb,text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_threshold_valid_v1(jsonb,text,text) from public, anon, authenticated, service_role, investing_app;
+revoke all on function investing.rl9b_criteria_valid_v1(jsonb) from public, anon, authenticated, service_role, investing_app;
 revoke all on function investing.reject_research_blind_truth_update_delete_v1() from public, anon, authenticated, service_role, investing_app;
 grant execute on function investing.rl9b_jsonb_object_has_exact_keys_v1(jsonb,text[]) to investing_rl9_writer;
 grant execute on function investing.rl9b_hashref_matches_v1(jsonb,text,text) to investing_rl9_writer;
 grant execute on function investing.rl9b_reason_allowed_v1(text) to investing_rl9_writer;
+grant execute on function investing.rl9b_text_array_sorted_unique_nonempty_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl9b_evaluator_profile_valid_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl9b_holdout_scope_valid_v1(jsonb) to investing_rl9_writer;
+grant execute on function investing.rl9b_metric_numeric_kind_v1(text) to investing_rl9_writer;
+grant execute on function investing.rl9b_numeric_value_valid_v1(jsonb,text) to investing_rl9_writer;
+grant execute on function investing.rl9b_threshold_valid_v1(jsonb,text,text) to investing_rl9_writer;
+grant execute on function investing.rl9b_criteria_valid_v1(jsonb) to investing_rl9_writer;
 
 create unique index if not exists research_scientific_promotion_transitions_rl9b_identity_hash_key
   on investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, transition_hash_hex);
@@ -208,6 +340,8 @@ create table investing.research_blind_truth_protocols_scientific_identities (
   constraint research_blind_truth_protocols_identity_hash_key unique (research_blind_truth_protocol_identity_id, hash_hex)
 );
 
+create unique index research_blind_truth_protocols_protocol_id_key on investing.research_blind_truth_protocols_scientific_identities ((canonical_payload->>'protocolId'));
+
 create table investing.research_blind_truth_registrations_scientific_identities (
   research_blind_truth_registration_identity_id uuid primary key default gen_random_uuid(),
   operation text not null check (operation = 'RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1'),
@@ -228,11 +362,12 @@ create table investing.research_blind_truth_registrations_scientific_identities 
   promotion_protocol_hash_hex text not null check (promotion_protocol_hash_hex ~ '^[0-9A-F]{64}$'),
   promotion_transition_identity_id uuid not null,
   promotion_transition_hash_hex text not null check (promotion_transition_hash_hex ~ '^[0-9A-F]{64}$'),
-  research_spec_identity_id uuid,
+  research_spec_identity_id uuid not null,
+  research_ir_identity_id uuid not null,
   hypothesis_hash_hex text not null check (hypothesis_hash_hex ~ '^[0-9A-F]{64}$'),
-  metric_request_set_identity_id uuid,
+  metric_request_set_identity_id uuid not null,
   metric_request_set_hash_hex text not null check (metric_request_set_hash_hex ~ '^[0-9A-F]{64}$'),
-  execution_config_identity_id uuid,
+  execution_config_identity_id uuid not null,
   execution_config_hash_hex text not null check (execution_config_hash_hex ~ '^[0-9A-F]{64}$'),
   registration_hash_algorithm text not null check (registration_hash_algorithm = 'SHA-256'),
   registration_hash_domain text not null check (registration_hash_domain = 'SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1'),
@@ -245,12 +380,17 @@ create table investing.research_blind_truth_registrations_scientific_identities 
   constraint research_blind_truth_registrations_protocol_fk foreign key (research_blind_truth_protocol_identity_id, protocol_hash_hex) references investing.research_blind_truth_protocols_scientific_identities (research_blind_truth_protocol_identity_id, hash_hex),
   constraint research_blind_truth_registrations_promotion_protocol_fk foreign key (promotion_protocol_identity_id, promotion_protocol_hash_hex) references investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, hash_hex),
   constraint research_blind_truth_registrations_promotion_transition_fk foreign key (promotion_transition_identity_id, promotion_transition_hash_hex) references investing.research_scientific_promotion_transitions_scientific_identities (research_scientific_promotion_transition_identity_id, transition_hash_hex),
+  constraint research_blind_truth_registrations_subject_experiment_fk foreign key (research_experiment_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex) references investing.research_experiments (research_experiment_id, research_investigation_id, tenant_id, principal_id, tenant_membership_id, operation_scope, source_context, experiment_hash_hex, experiment_parameters_hash_hex, research_ir_hash_hex),
+  constraint research_blind_truth_registrations_research_spec_fk foreign key (research_spec_identity_id) references investing.research_specs_scientific_identities (research_spec_identity_id),
+  constraint research_blind_truth_registrations_research_ir_fk foreign key (research_ir_identity_id) references investing.research_ir_scientific_identities (research_ir_identity_id),
+  constraint research_blind_truth_registrations_metric_request_set_fk foreign key (metric_request_set_identity_id) references investing.metric_request_sets_scientific_identities (metric_request_set_identity_id),
+  constraint research_blind_truth_registrations_execution_config_fk foreign key (execution_config_identity_id) references investing.execution_configs_scientific_identities (execution_config_identity_id),
   constraint research_blind_truth_registrations_payload_check check (
     investing.rl9b_registration_payload_valid_v1(canonical_payload, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, promotion_protocol_hash_hex, promotion_transition_hash_hex, hypothesis_hash_hex, metric_request_set_hash_hex, execution_config_hash_hex)
     and not investing.rl8c_jsonb_has_number_v1(canonical_payload)
     and investing.rl8c_sha256_hex_v1(registration_hash_domain, canonical_payload) = registration_hash_hex
   ),
-  constraint research_blind_truth_registrations_hash_key unique (registration_hash_algorithm, registration_hash_domain, registration_hash_version, registration_hash_hex),
+  constraint research_blind_truth_registrations_hash_key unique (tenant_id, registration_hash_algorithm, registration_hash_domain, registration_hash_version, registration_hash_hex),
   constraint research_blind_truth_registrations_identity_hash_key unique (research_blind_truth_registration_identity_id, registration_hash_hex)
 );
 
@@ -281,7 +421,7 @@ create table investing.research_blind_truth_vault_seals_scientific_identities (
   constraint research_blind_truth_vault_seals_registration_fk foreign key (registration_identity_id, registration_hash_hex) references investing.research_blind_truth_registrations_scientific_identities (research_blind_truth_registration_identity_id, registration_hash_hex),
   constraint research_blind_truth_vault_seals_protocol_fk foreign key (research_blind_truth_protocol_identity_id, protocol_hash_hex) references investing.research_blind_truth_protocols_scientific_identities (research_blind_truth_protocol_identity_id, hash_hex),
   constraint research_blind_truth_vault_seals_payload_check check (investing.rl9b_seal_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex) and not investing.rl8c_jsonb_has_number_v1(canonical_payload) and investing.rl8c_sha256_hex_v1(vault_seal_hash_domain, canonical_payload) = vault_seal_hash_hex),
-  constraint research_blind_truth_vault_seals_hash_key unique (vault_seal_hash_algorithm, vault_seal_hash_domain, vault_seal_hash_version, vault_seal_hash_hex),
+  constraint research_blind_truth_vault_seals_hash_key unique (tenant_id, vault_seal_hash_algorithm, vault_seal_hash_domain, vault_seal_hash_version, vault_seal_hash_hex),
   constraint research_blind_truth_vault_seals_identity_hash_key unique (research_blind_truth_vault_seal_identity_id, vault_seal_hash_hex)
 );
 create unique index research_blind_truth_one_seal_per_registration_key on investing.research_blind_truth_vault_seals_scientific_identities (registration_identity_id);
@@ -313,7 +453,7 @@ create table investing.research_blind_truth_evaluations_scientific_identities (
   constraint research_blind_truth_evaluations_vault_seal_fk foreign key (vault_seal_identity_id, vault_seal_hash_hex) references investing.research_blind_truth_vault_seals_scientific_identities (research_blind_truth_vault_seal_identity_id, vault_seal_hash_hex),
   constraint research_blind_truth_evaluations_protocol_fk foreign key (research_blind_truth_protocol_identity_id, protocol_hash_hex) references investing.research_blind_truth_protocols_scientific_identities (research_blind_truth_protocol_identity_id, hash_hex),
   constraint research_blind_truth_evaluations_payload_check check (investing.rl9b_evaluation_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex) and not investing.rl8c_jsonb_has_number_v1(canonical_payload) and investing.rl8c_sha256_hex_v1(evaluation_hash_domain, canonical_payload) = evaluation_hash_hex),
-  constraint research_blind_truth_evaluations_hash_key unique (evaluation_hash_algorithm, evaluation_hash_domain, evaluation_hash_version, evaluation_hash_hex),
+  constraint research_blind_truth_evaluations_hash_key unique (tenant_id, evaluation_hash_algorithm, evaluation_hash_domain, evaluation_hash_version, evaluation_hash_hex),
   constraint research_blind_truth_evaluations_identity_hash_key unique (research_blind_truth_evaluation_identity_id, evaluation_hash_hex)
 );
 create unique index research_blind_truth_one_evaluation_per_registration_seal_key on investing.research_blind_truth_evaluations_scientific_identities (registration_identity_id, vault_seal_identity_id);
@@ -350,6 +490,7 @@ create table investing.research_blind_truth_reveal_result_events_scientific_iden
   constraint research_blind_truth_events_registration_fk foreign key (registration_identity_id, registration_hash_hex) references investing.research_blind_truth_registrations_scientific_identities (research_blind_truth_registration_identity_id, registration_hash_hex),
   constraint research_blind_truth_events_seal_fk foreign key (vault_seal_identity_id, vault_seal_hash_hex) references investing.research_blind_truth_vault_seals_scientific_identities (research_blind_truth_vault_seal_identity_id, vault_seal_hash_hex),
   constraint research_blind_truth_events_evaluation_fk foreign key (evaluation_identity_id, evaluation_hash_hex) references investing.research_blind_truth_evaluations_scientific_identities (research_blind_truth_evaluation_identity_id, evaluation_hash_hex),
+  constraint research_blind_truth_events_protocol_fk foreign key (research_blind_truth_protocol_identity_id, protocol_hash_hex) references investing.research_blind_truth_protocols_scientific_identities (research_blind_truth_protocol_identity_id, hash_hex),
   constraint research_blind_truth_events_predecessor_fk foreign key (predecessor_event_identity_id, predecessor_event_hash_hex) references investing.research_blind_truth_reveal_result_events_scientific_identities (research_blind_truth_reveal_result_event_identity_id, event_hash_hex) match simple,
   constraint research_blind_truth_events_graph_check check (
     (event_state = 'REVEAL_STARTED' and predecessor_event_identity_id is null and predecessor_event_hash_hex is null and reason is null)
@@ -357,7 +498,7 @@ create table investing.research_blind_truth_reveal_result_events_scientific_iden
     or (event_state = 'REVEAL_FAILED_CLOSED' and predecessor_event_identity_id is not null and predecessor_event_hash_hex is not null and reason is not null and investing.rl9b_reason_allowed_v1(reason))
   ),
   constraint research_blind_truth_events_payload_check check (investing.rl9b_event_payload_valid_v1(canonical_payload, protocol_hash_hex, registration_hash_hex, vault_seal_hash_hex, evaluation_hash_hex, predecessor_event_hash_hex, event_state, reason) and not investing.rl8c_jsonb_has_number_v1(canonical_payload) and investing.rl8c_sha256_hex_v1(event_hash_domain, canonical_payload) = event_hash_hex),
-  constraint research_blind_truth_events_hash_key unique (event_hash_algorithm, event_hash_domain, event_hash_version, event_hash_hex),
+  constraint research_blind_truth_events_hash_key unique (tenant_id, event_hash_algorithm, event_hash_domain, event_hash_version, event_hash_hex),
   constraint research_blind_truth_events_identity_hash_key unique (research_blind_truth_reveal_result_event_identity_id, event_hash_hex)
 );
 create unique index research_blind_truth_one_reveal_started_per_evaluation_key on investing.research_blind_truth_reveal_result_events_scientific_identities (evaluation_identity_id) where event_state = 'REVEAL_STARTED';
@@ -402,35 +543,43 @@ grant select on investing.tenant_memberships, investing.research_investigations,
 create policy tenant_memberships_rl9b_writer_select on investing.tenant_memberships for select to investing_rl9_writer using (
   current_setting('syntrake.investing.operation', true) in ('RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1','RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1','RESEARCH_BLIND_TRUTH_VAULT_SEAL_CREATE_V1','RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1','RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1','RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1')
   and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
   and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
   and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
   and principal_id::text = current_setting('syntrake.investing.principal_id', true)
-  and role = 'OWNER'
-  and state = 'ACTIVE'
+  and role = 'OWNER' and state = 'ACTIVE'
 );
 create policy research_investigations_rl9b_writer_select on investing.research_investigations for select to investing_rl9_writer using (
   current_setting('syntrake.investing.operation', true) in ('RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1','RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1','RESEARCH_BLIND_TRUTH_VAULT_SEAL_CREATE_V1','RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1','RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1','RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1')
   and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE'
+  and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE'
+  and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH'
   and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)
   and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true)
   and tenant_id::text = current_setting('syntrake.investing.tenant_id', true)
   and principal_id::text = current_setting('syntrake.investing.principal_id', true)
-  and operation_scope = 'TENANT_SCOPE'
-  and source_context = 'PURE_RESEARCH'
+  and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH'
 );
 
-create policy research_blind_truth_protocols_rl9b_writer_select on investing.research_blind_truth_protocols_scientific_identities for select to investing_rl9_writer using (true);
-create policy research_blind_truth_protocols_rl9b_writer_insert on investing.research_blind_truth_protocols_scientific_identities for insert to investing_rl9_writer with check (operation = 'RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1' and capability = 'RESEARCH_MUTATE' and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
-create policy research_blind_truth_registrations_rl9b_writer_select on investing.research_blind_truth_registrations_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
-create policy research_blind_truth_registrations_rl9b_writer_insert on investing.research_blind_truth_registrations_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
-create policy research_blind_truth_vault_seals_rl9b_writer_select on investing.research_blind_truth_vault_seals_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
-create policy research_blind_truth_vault_seals_rl9b_writer_insert on investing.research_blind_truth_vault_seals_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
-create policy research_blind_truth_evaluations_rl9b_writer_select on investing.research_blind_truth_evaluations_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
-create policy research_blind_truth_evaluations_rl9b_writer_insert on investing.research_blind_truth_evaluations_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
-create policy research_blind_truth_events_rl9b_writer_select on investing.research_blind_truth_reveal_result_events_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
-create policy research_blind_truth_events_rl9b_writer_insert on investing.research_blind_truth_reveal_result_events_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true));
+create policy research_experiments_rl9b_writer_select on investing.research_experiments for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) in ('RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1','RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1','RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1') and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
+create policy research_specs_rl9b_writer_select on investing.research_specs_scientific_identities for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
+create policy research_ir_rl9b_writer_select on investing.research_ir_scientific_identities for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
+create policy metric_request_sets_rl9b_writer_select on investing.metric_request_sets_scientific_identities for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
+create policy execution_configs_rl9b_writer_select on investing.execution_configs_scientific_identities for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) = 'RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1' and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
+create policy research_scientific_promotion_protocols_rl9b_writer_select on investing.research_scientific_promotion_protocols_scientific_identities for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) in ('RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1','RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1','RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1') and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and current_setting('syntrake.investing.operation_scope', true) = 'TENANT_SCOPE' and current_setting('syntrake.investing.source_context', true) = 'PURE_RESEARCH' and exists (select 1 from investing.tenant_memberships tm where tm.tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and tm.tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and tm.principal_id::text = current_setting('syntrake.investing.principal_id', true) and tm.role = 'OWNER' and tm.state = 'ACTIVE'));
+create policy research_scientific_promotion_transitions_rl9b_writer_select on investing.research_scientific_promotion_transitions_scientific_identities for select to investing_rl9_writer using (current_setting('syntrake.investing.operation', true) in ('RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1','RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1','RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1') and current_setting('syntrake.investing.capability', true) = 'RESEARCH_MUTATE' and tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true) and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH');
 
-reset role;
+create policy research_blind_truth_protocols_rl9b_writer_select on investing.research_blind_truth_protocols_scientific_identities for select to investing_rl9_writer using (true);
+create policy research_blind_truth_protocols_rl9b_writer_insert on investing.research_blind_truth_protocols_scientific_identities for insert to investing_rl9_writer with check (operation = 'RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1' and capability = 'RESEARCH_MUTATE' and operation_scope = 'TENANT_SCOPE' and source_context = 'PURE_RESEARCH' and hash_hex = 'B525A1D24BF0E843F8965915AEA8F0D70400CAD1E7E0E0099617F85521B0FE4C' and canonical_payload->>'protocolId' = 'BLIND_TRUTH_PROTOCOL_V20261009');
+create policy research_blind_truth_registrations_rl9b_writer_select on investing.research_blind_truth_registrations_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_registrations_rl9b_writer_insert on investing.research_blind_truth_registrations_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_vault_seals_rl9b_writer_select on investing.research_blind_truth_vault_seals_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_vault_seals_rl9b_writer_insert on investing.research_blind_truth_vault_seals_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_evaluations_rl9b_writer_select on investing.research_blind_truth_evaluations_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_evaluations_rl9b_writer_insert on investing.research_blind_truth_evaluations_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_events_rl9b_writer_select on investing.research_blind_truth_reveal_result_events_scientific_identities for select to investing_rl9_writer using (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
+create policy research_blind_truth_events_rl9b_writer_insert on investing.research_blind_truth_reveal_result_events_scientific_identities for insert to investing_rl9_writer with check (tenant_id::text = current_setting('syntrake.investing.tenant_id', true) and principal_id::text = current_setting('syntrake.investing.principal_id', true) and tenant_membership_id::text = current_setting('syntrake.investing.tenant_membership_id', true) and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true));
 
 set local role investing_owner;
 revoke create on schema investing from investing_rl9_writer;
@@ -453,6 +602,7 @@ begin
     and c.relrowsecurity
     and c.relforcerowsecurity;
   if v_count <> 5 then raise exception 'RL-9B1 postcondition failed: exact five relations owner/RLS/FORCE mismatch'; end if;
+  if pg_catalog.pg_has_role('postgres', 'investing_rl9_writer', 'member') or has_schema_privilege('investing_rl9_writer','investing','CREATE') then raise exception 'RL-9B1 postcondition failed: residual writer bootstrap privilege'; end if;
   if exists (select 1 from information_schema.columns where table_schema = 'investing' and table_name like 'research_blind_truth_%' and column_name ~* '(secret|plaintext|ciphertext|credential|locator|hmac|salt|key)') then raise exception 'RL-9B1 postcondition failed: forbidden secret-like public metadata column'; end if;
   if exists (select 1 from information_schema.role_table_grants where table_schema = 'investing' and table_name like 'research_blind_truth_%' and grantee in ('PUBLIC','anon','authenticated','service_role','investing_app') and privilege_type in ('INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER')) then raise exception 'RL-9B1 postcondition failed: forbidden mutation grant'; end if;
   if not exists (select 1 from pg_catalog.pg_indexes where schemaname = 'investing' and indexname = 'research_blind_truth_one_registration_per_candidate_key' and indexdef not like '%research_investigation_id%' and indexdef not like '%promotion_%') then raise exception 'RL-9B1 postcondition failed: one-shot key missing or widened'; end if;

@@ -84,6 +84,11 @@ describe("I5 RL-9B Blind Truth public metadata persistence contract", () => {
     expect(writers).toContain("resulting_state = 'PROMOTION_ELIGIBLE'");
     expect(writers).toContain("STALE_PROMOTION_TRANSITION");
     expect(schema).toContain("research_scientific_promotion_transitions_rl9b_identity_hash_key");
+    expect(schema).toContain("research_specs_rl9b_writer_select");
+    expect(schema).toContain("research_ir_rl9b_writer_select");
+    expect(schema).toContain("metric_request_sets_rl9b_writer_select");
+    expect(schema).toContain("execution_configs_rl9b_writer_select");
+    expect(schema).toContain("research_scientific_promotion_transitions_rl9b_writer_select");
     expect(schema).toContain("research_blind_truth_one_registration_per_candidate_key");
     expect(schema).not.toMatch(/research_blind_truth_one_registration_per_candidate_key[\\s\\S]*research_investigation_id/);
     expect(schema).not.toMatch(/research_blind_truth_one_registration_per_candidate_key[\\s\\S]*promotion_/);
@@ -103,6 +108,43 @@ describe("I5 RL-9B Blind Truth public metadata persistence contract", () => {
     expect(writers).toContain("revoke all on function investing.persist_research_blind_truth_final_event_v1(text,jsonb) from public, anon, authenticated, service_role, investing_app");
     expect(schema).not.toMatch(/grant (insert|update|delete|truncate|references|trigger).*to investing_app/i);
     expect(writers).toContain("p.proconfig @> array['search_path=pg_catalog']");
+  });
+
+
+  it("freezes the corrected RL-9B authority and nested public payload contract", () => {
+    expect(schema).toContain("research_blind_truth_protocols_protocol_id_key");
+    expect(schema).toContain("constraint research_blind_truth_registrations_hash_key unique (tenant_id, registration_hash_algorithm, registration_hash_domain, registration_hash_version, registration_hash_hex)");
+    expect(schema).toContain("constraint research_blind_truth_vault_seals_hash_key unique (tenant_id, vault_seal_hash_algorithm, vault_seal_hash_domain, vault_seal_hash_version, vault_seal_hash_hex)");
+    expect(schema).toContain("constraint research_blind_truth_evaluations_hash_key unique (tenant_id, evaluation_hash_algorithm, evaluation_hash_domain, evaluation_hash_version, evaluation_hash_hex)");
+    expect(schema).toContain("constraint research_blind_truth_events_hash_key unique (tenant_id, event_hash_algorithm, event_hash_domain, event_hash_version, event_hash_hex)");
+    expect(schema).toContain("research_spec_identity_id uuid not null");
+    expect(schema).toContain("research_ir_identity_id uuid not null");
+    expect(schema).toContain("metric_request_set_identity_id uuid not null");
+    expect(schema).toContain("execution_config_identity_id uuid not null");
+    expect(schema).toContain("rl9b_evaluator_profile_valid_v1");
+    expect(schema).toContain("HISTORICAL_EXECUTION_ADAPTER");
+    expect(schema).toContain("ENGINE_V20260926");
+    expect(schema).toContain("METRIC_REGISTRY_V20260927");
+    expect(schema).toContain("METRIC_RESULT_SET_V2");
+    expect(schema).toContain("rl9b_holdout_scope_valid_v1");
+    expect(schema).toContain("providerDatasetVersion");
+    expect(schema).toContain("not in ('','LATEST','CURRENT')");
+    expect(schema).toContain("rl9b_criteria_valid_v1");
+    expect(schema).toContain("bool_or(required_json = 'true'::jsonb)");
+    expect(schema).toContain("count(*) = count(distinct criterion_id || E'\\n' || criterion_version)");
+    expect(writers).toContain("grant investing_rl9_writer to postgres");
+    expect(writers).toContain("set local role investing_rl9_writer");
+    expect(writers).toContain("revoke investing_rl9_writer from postgres");
+    expect(writers).toContain("pg_catalog.pg_get_userbyid(p.proowner) = 'investing_rl9_writer'");
+    expect(writers).toContain("operation_scope', true) <> 'TENANT_SCOPE'");
+    expect(writers).toContain("source_context', true) <> 'PURE_RESEARCH'");
+    expect(writers).toContain("v_existing.principal_id = v_auth.principal_id");
+    expect(writers).toContain("v_existing.research_investigation_id = v_auth.research_investigation_id");
+    expect(writers).toContain("rl9b_copy_registration_authority_v1");
+    expect(writers).toContain("and research_investigation_id::text = current_setting('syntrake.investing.research_investigation_id', true)");
+    expect(writers).toContain("SYNTRAKE:BLIND_TRUTH_HOLDOUT_SCOPE:V1");
+    expect(writers).toContain("p_canonical_payload->'evaluatorProfile' <> v_reg.canonical_payload->'evaluatorProfile'");
+    expect(writers).toContain("B525A1D24BF0E843F8965915AEA8F0D70400CAD1E7E0E0099617F85521B0FE4C");
   });
 
   it("does not change RL-9 design acceptance or implement secret-vault scope", () => {

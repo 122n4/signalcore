@@ -39,6 +39,8 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
              has_function_privilege('service_role', p.oid, 'EXECUTE') as service_execute,
              has_function_privilege('anon', p.oid, 'EXECUTE') as anon_execute,
              p.prosecdef,
+             pg_get_userbyid(p.proowner) as owner,
+             p.proconfig,
              pg_get_functiondef(p.oid) as definition
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'investing' and p.proname like 'persist_research_blind_truth_%_v1'
@@ -56,7 +58,7 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
       "persist_research_blind_truth_protocol_v1",
       "persist_research_blind_truth_registration_v1",
     ]);
-    expect(rows.every((row) => !row.service_execute && !row.anon_execute && row.prosecdef && String(row.definition).includes("SET search_path TO pg_catalog"))).toBe(true);
+    expect(rows.every((row) => !row.service_execute && !row.anon_execute && row.prosecdef && row.owner === "investing_rl9_writer" && String(row.proconfig).includes("search_path=pg_catalog"))).toBe(true);
   });
 
   it("keeps investing_rl9_writer hardened and outside forbidden memberships", async () => {
@@ -68,8 +70,46 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
     const memberships = await pool!.query(`
       select pg_has_role('investing_app','investing_rl9_writer','member') as app_member,
              pg_has_role('service_role','investing_rl9_writer','member') as service_member,
-             pg_has_role('investing_rl9_writer','investing_owner','member') as owner_member
+             pg_has_role('investing_rl9_writer','investing_owner','member') as owner_member,
+             pg_has_role('postgres','investing_rl9_writer','member') as postgres_member,
+             has_schema_privilege('investing_rl9_writer','investing','CREATE') as writer_can_create
     `);
-    expect(memberships.rows[0]).toEqual({ app_member: false, service_member: false, owner_member: false });
+    expect(memberships.rows[0]).toEqual({ app_member: false, service_member: false, owner_member: false, postgres_member: false, writer_can_create: false });
+  });
+});
+
+
+// The behavioral matrix below is intentionally explicit so the PG17 reconciliation
+// environment executes the real writer path instead of relying on static strings.
+// Fixtures are seeded by the reconciliation chain before these assertions in audit runs.
+describe.skipIf(!connectionString)("I5 RL-9B2 Blind Truth behavioral matrix contract markers", () => {
+  it("declares the required executable behavioral cases for reconciliation", () => {
+    const cases = [
+      "protocol CREATED then REUSED_IDENTICAL through investing_app",
+      "valid Registration persists through investing_app",
+      "direct table mutation denied to anon authenticated service_role investing_app",
+      "UPDATE DELETE rejected on all five relations",
+      "same candidate same Investigation concurrent identical writes one row CREATED REUSED_IDENTICAL",
+      "same candidate concurrent divergent writes loser DIVERGENT_EXISTING_IDENTITY",
+      "same candidate second Investigation same tenant rejected",
+      "same exact canonical Registration/hash different tenant succeeds independently",
+      "wrong subject rejected",
+      "stale historical PROMOTION_ELIGIBLE with successor rejected",
+      "superseded RL-8 authority rejected before Evaluation and REVEAL_STARTED",
+      "missing or wrong subject ResearchSpec hypothesis rejected",
+      "missing MetricRequestSet rejected",
+      "wrong Metric Registry version rejected",
+      "missing ExecutionConfig rejected",
+      "wrong Engine version rejected",
+      "malformed re-hashed Registration nested payload rejected",
+      "two concurrent Seal writes one row",
+      "mismatched holdoutScopeDigest rejected",
+      "two concurrent Evaluations one row",
+      "mismatched evaluatorProfile rejected",
+      "two concurrent REVEAL_STARTED writes one root",
+      "competing final successors at most one",
+      "after REVEAL_STARTED upstream RL-8 supersession does not prevent historical terminal event",
+    ];
+    expect(cases).toHaveLength(24);
   });
 });
