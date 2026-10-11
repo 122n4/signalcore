@@ -156,6 +156,7 @@ jobs:
             }
             await client.query("create schema if not exists extensions");
             await client.query("create extension if not exists pgcrypto with schema extensions");
+            await client.query("alter role postgres nosuperuser createdb createrole noreplication nobypassrls");
             await client.end();
           })().catch(async (error) => {
             console.error(error);
@@ -215,6 +216,7 @@ jobs:
             }
             await client.query("create schema if not exists extensions");
             await client.query("create extension if not exists pgcrypto with schema extensions");
+            await client.query("alter role postgres nosuperuser createdb createrole noreplication nobypassrls");
             await client.end();
           })().catch(async (error) => {
             console.error(error);
