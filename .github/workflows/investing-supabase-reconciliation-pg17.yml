@@ -143,7 +143,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Bootstrap Supabase baseline roles
+      - name: Bootstrap Supabase baseline roles and extensions
         run: |
           node <<'NODE'
           const { Client } = require("pg");
@@ -154,6 +154,8 @@ jobs:
             for (const role of roles) {
               await client.query(`do $$ begin if not exists (select 1 from pg_catalog.pg_roles where rolname = '${role}') then create role ${role} nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls; end if; end $$`);
             }
+            await client.query("create schema if not exists extensions");
+            await client.query("create extension if not exists pgcrypto with schema extensions");
             await client.end();
           })().catch(async (error) => {
             console.error(error);
@@ -200,7 +202,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Bootstrap Supabase baseline roles
+      - name: Bootstrap Supabase baseline roles and extensions
         run: |
           node <<'NODE'
           const { Client } = require("pg");
@@ -211,6 +213,8 @@ jobs:
             for (const role of roles) {
               await client.query(`do $$ begin if not exists (select 1 from pg_catalog.pg_roles where rolname = '${role}') then create role ${role} nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls; end if; end $$`);
             }
+            await client.query("create schema if not exists extensions");
+            await client.query("create extension if not exists pgcrypto with schema extensions");
             await client.end();
           })().catch(async (error) => {
             console.error(error);
