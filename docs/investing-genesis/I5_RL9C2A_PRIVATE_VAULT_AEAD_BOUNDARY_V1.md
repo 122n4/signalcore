@@ -69,6 +69,13 @@ audited chunked streaming AEAD format, object manifest, resource ceilings
 and atomic storage protocol before admission. Do not silently truncate
 large holdouts or misrepresent this as a production ingestion engine.
 
+The 96-bit GCM nonce is generated randomly for every envelope. This alone
+is NOT a durable guarantee against same-key nonce reuse across multiple
+workers, process restarts or large volume. A real worker must define key
+usage limits and a fail-closed unique nonce allocation/index or other
+audited anti-collision scheme per encryption key before Production use.
+The envelope cannot be accepted as a complete nonce-safety design.
+
 ## Threat model and hard non-claims
 
 This repository-level code is NOT a physically separated secret capability.
