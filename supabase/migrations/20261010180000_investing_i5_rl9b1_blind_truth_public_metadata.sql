@@ -693,21 +693,14 @@ begin
     and c.relrowsecurity
     and c.relforcerowsecurity;
   if v_count <> 5 then raise exception 'RL-9B1 postcondition failed: exact five relations owner/RLS/FORCE mismatch'; end if;
-  -- pg_has_role(..., 'MEMBER') treats superusers as members of every role.
-  -- Inspect actual membership grants (including transitive paths), not implicit
-  -- administrative capability. This must run before RL-9B2 grants the writer.
+  -- A PostgreSQL CREATEROLE executor receives ADMIN-only membership
+  -- when creating a role. This is not an effective SET/INHERIT grant.
+  -- Refuse every other membership and writer schema CREATE privilege.
   if exists (
-    with recursive granted_roles(roleid) as (
-      select m.roleid
-      from pg_catalog.pg_auth_members m
-      where m.member = 'postgres'::regrole
-      union
-      select m.roleid
-      from pg_catalog.pg_auth_members m
-      join granted_roles g on g.roleid = m.member
-    )
-    select 1 from granted_roles
-    where roleid = 'investing_rl9_writer'::regrole
+    select 1 from pg_catalog.pg_auth_members m
+    where m.roleid = 'investing_rl9_writer'::regrole
+      and (m.member <> 'postgres'::regrole
+           or m.set_option or m.inherit_option or not m.admin_option)
   ) or has_schema_privilege('investing_rl9_writer','investing','CREATE') then
     raise exception 'RL-9B1 postcondition failed: residual writer bootstrap privilege';
   end if;

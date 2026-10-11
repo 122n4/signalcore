@@ -135,7 +135,12 @@ describe("I5 RL-9B Blind Truth public metadata persistence contract", () => {
     expect(schema).toContain("count(*) = count(distinct criterion_id || E'\\n' || criterion_version)");
     expect(writers).toContain("grant investing_rl9_writer to postgres");
     expect(writers).toContain("set local role investing_rl9_writer");
-    expect(writers).toContain("revoke investing_rl9_writer from postgres");
+    expect(writers).toContain("grant investing_rl9_writer to postgres with inherit false, set true");
+    expect(writers).toContain("revoke investing_rl9_writer from postgres granted by postgres");
+    for (const migration of [schema, writers]) {
+      expect(migration).toContain("m.member <> 'postgres'::regrole");
+      expect(migration).toContain("or m.set_option or m.inherit_option or not m.admin_option");
+    }
     expect(writers).toContain("pg_catalog.pg_get_userbyid(p.proowner) = 'investing_rl9_writer'");
     expect(writers).toContain("operation_scope', true) <> 'TENANT_SCOPE'");
     expect(writers).toContain("source_context', true) <> 'PURE_RESEARCH'");

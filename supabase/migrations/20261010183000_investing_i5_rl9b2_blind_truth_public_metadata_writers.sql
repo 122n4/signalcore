@@ -5,7 +5,7 @@ begin
   if current_user <> 'postgres' then raise exception 'RL-9B2 precondition failed: expected postgres, got %', current_user; end if;
 end $$;
 
-grant investing_rl9_writer to postgres;
+grant investing_rl9_writer to postgres with inherit false, set true;
 grant create on schema investing to investing_rl9_writer;
 set local role investing_rl9_writer;
 
@@ -360,24 +360,18 @@ reset role;
 set local role investing_owner;
 revoke create on schema investing from investing_rl9_writer;
 reset role;
-revoke investing_rl9_writer from postgres;
+revoke investing_rl9_writer from postgres granted by postgres;
 
 do $$
 begin
-  -- Verify actual grant paths after REVOKE, not the superuser's implicit
-  -- ability to act as any role (pg_has_role(..., 'MEMBER') is true for superusers).
+  -- A PostgreSQL CREATEROLE executor receives ADMIN-only membership
+  -- when creating a role. This is not an effective SET/INHERIT grant.
+  -- Refuse every other membership and writer schema CREATE privilege.
   if exists (
-    with recursive granted_roles(roleid) as (
-      select m.roleid
-      from pg_catalog.pg_auth_members m
-      where m.member = 'postgres'::regrole
-      union
-      select m.roleid
-      from pg_catalog.pg_auth_members m
-      join granted_roles g on g.roleid = m.member
-    )
-    select 1 from granted_roles
-    where roleid = 'investing_rl9_writer'::regrole
+    select 1 from pg_catalog.pg_auth_members m
+    where m.roleid = 'investing_rl9_writer'::regrole
+      and (m.member <> 'postgres'::regrole
+           or m.set_option or m.inherit_option or not m.admin_option)
   ) or has_schema_privilege('investing_rl9_writer','investing','CREATE') then
     raise exception 'RL-9B2 postcondition failed: residual bootstrap privilege';
   end if;
