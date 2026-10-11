@@ -266,7 +266,7 @@ $$;
 
 create or replace function investing.rl9b_insert_event_v1(p_operation text, p_hash_hex text, p_canonical_payload jsonb)
 returns jsonb language plpgsql set search_path = pg_catalog as $$
-declare v_reg record; v_seal record; v_eval record; v_pred record; v_existing record; v_id uuid; v_state text; v_computed_hash text;
+declare v_reg record; v_seal record; v_eval record; v_pred investing.research_blind_truth_reveal_result_events_scientific_identities%rowtype; v_existing record; v_id uuid; v_state text; v_computed_hash text;
 begin
   v_computed_hash := investing.rl8c_sha256_hex_v1('SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1', p_canonical_payload);
   if v_computed_hash <> p_hash_hex then raise exception 'MALFORMED_HASHREF'; end if;

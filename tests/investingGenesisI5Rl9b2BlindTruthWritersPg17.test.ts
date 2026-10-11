@@ -469,11 +469,19 @@ async function createAcceptedRl8PromotionLeaf(client: PoolClient, fx: Rl9Behavio
 
 async function insertRl8Successor(client: PoolClient, fx: Rl9BehaviorFixture): Promise<void> {
   await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1", true);
-  const current = await client.query<{ id: string; hash: string }>("select research_scientific_promotion_transition_identity_id::text as id, transition_hash_hex as hash from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and transition_hash_hex=$2", [fx.tenantId, fx.promotionTransition.hashHex]);
+  const current = await client.query<{ id: string; hash: string }>("select research_scientific_promotion_transition_identity_id::text as id, transition_hash_hex as hash from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and research_investigation_id=$2 and transition_hash_hex=$3", [fx.tenantId, fx.investigationId, fx.promotionTransition.hashHex]);
+  expect(current.rows).toHaveLength(1);
   expect(current.rows[0]!.hash).toBe(fx.promotionTransition.hashHex);
-  const predecessor = fx.promotionTransition;
-  const successor: ScientificPromotionTransitionV1 = { ...rl8StageATransition(fx), predecessorState: "PROMOTION_ELIGIBLE", resultingState: "VALIDATION_PASSED", predecessorTransition: predecessor };
-  await client.query("select investing.rl8c_insert_transition_from_payload_v1('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',$1,$2::jsonb,$3,$4,null,null)", [hashScientificPromotionTransitionV1(successor).hashHex, JSON.stringify(successor), current.rows[0]!.id, current.rows[0]!.hash]);
+  const stageA: ScientificPromotionTransitionV1 = { ...rl8StageATransition(fx), predecessorState: "PROMOTION_ELIGIBLE", resultingState: "VALIDATION_PASSED", predecessorTransition: fx.promotionTransition };
+  const closure = rl8ClosureTransition(stageA);
+  // The RL-8C2 writer inserts Stage A and its required PROMOTION_ELIGIBLE
+  // closure atomically; never bypass the deferred closure integrity trigger.
+  const persisted = await client.query<{ result: { status: string; closureTransitionIdentityId: string } }>(
+    "select investing.persist_research_scientific_promotion_evaluation_plan_v1($1::uuid,$2::text,$3::jsonb,$4::text,$5::jsonb) as result",
+    [current.rows[0]!.id, hashScientificPromotionTransitionV1(stageA).hashHex, JSON.stringify(stageA), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)],
+  );
+  expect(persisted.rows[0]!.result.status).toBe("CREATED");
+  expect(persisted.rows[0]!.result.closureTransitionIdentityId).toMatch(/^[0-9a-f-]{36}$/i);
   await client.query("reset role");
 }
 
@@ -791,9 +799,13 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
         registration_hash_hex: fx.registrationHash,
       });
 
-      const secondInvestigation = await seedRl9BehaviorFixture(client, "behavior-second-investigation", { tenantId: fx.tenantId, principalId: fx.principalId, membershipId: fx.membershipId, subjectExperiment: fx.subjectExperiment, subjectExperimentParameters: fx.subjectExperimentParameters, subjectResearchIr: fx.subjectResearchIr, hypothesis: fx.hypothesis, scienceKey: fx.scienceKey, reuseAuthority: true });
+      // A different investigation in the same tenant cannot replay the current
+      // registration without its own subject/promotion evidence. Do not duplicate
+      // globally unique scientific rows merely to manufacture a hash collision.
+      const secondInvestigation: Rl9BehaviorFixture = { ...fx, investigationId: await uuid(client), idempotencyRecordId: await uuid(client) };
+      await seedAuthority(client, secondInvestigation, "behavior-second-investigation", true);
       expect(secondInvestigation.registrationHash).toBe(fx.registrationHash);
-      await expectWriterStatus(client, secondInvestigation, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", secondInvestigation.registrationHash, secondInvestigation.registrationPayload, "DIVERGENT_EXISTING_IDENTITY", true);
+      await expectPgRejection(client, () => callBlindTruthWriter(client, secondInvestigation, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", secondInvestigation.registrationHash, secondInvestigation.registrationPayload, true), /WRONG_SUBJECT/);
       const sameTenantHashCount = await client.query<{ count: number }>(`select count(*)::int as count from investing.research_blind_truth_registrations_scientific_identities where tenant_id=$1 and registration_hash_hex=$2`, [fx.tenantId, fx.registrationHash]);
       expect(sameTenantHashCount.rows[0]!.count).toBe(1);
 
