@@ -109,6 +109,7 @@ R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> R6 -> R7
 | I5 RL-7 Robustness And Experiment Comparison V1 Implementation Closure (unnumbered) | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-8 Scientific Promotion State Machine V1 Implementation Closure (unnumbered) | `I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` |
 | I5 RL-9 Blind Truth / Evidence Vault V1 Design Freeze (unnumbered) | `I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md` |
+| I5 RL-9B Public Metadata Persistence post-apply acceptance candidate (unnumbered) | `I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md` |
 | I5 Research Lab completion program (unnumbered) | `I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md` |
 
 `I4C_RECONCILIATION.md` remains required historical lineage because accepted I4
@@ -1454,15 +1455,41 @@ The Research Lab frontier remains:
 
 `I5 RL-9 BLIND TRUTH / EVIDENCE VAULT V1 DESIGN FREEZE = CURRENT_ACCEPTED / DESIGN_FREEZE / UNNUMBERED`.
 
+## I5 RL-9B Public Metadata Persistence — Post-Apply Acceptance Candidate
+
+- Proposed state: `POSTAPPLY_AUDIT_PASS / CANONICAL_ACCEPTANCE_PENDING`.
+- This is a narrow RL-9B1/RL-9B2 persistence candidate, not acceptance of
+  the whole RL-9; the earlier RL-9 design-only statements above remain historical.
+- Implementation PR: `#126`; candidate
+  `6164a2db3981cdac5d908396a67d9349a170f315`; exact merge SHA
+  `5f03088afb73b8014e2beb8664816563ade7b364`.
+- Supabase Production: `110` aligned migrations; RL-9B1 `20261010180000`
+  and RL-9B2 `20261010183000` applied.
+- Independent read-only post-apply audit: `PASS`; five owned RLS/FORCE RLS
+  tables, six restricted writers, five one-shot indexes and append-only triggers.
+- Behavior/isolation: `PASS` in isolated PostgreSQL 17 CI; not exercised
+  with synthetic records in Production.
+- Production RL-9B Performance Advisor debt: `20 unindexed_foreign_keys INFO`
+  and `8 auth_rls_initplan WARN`; no hidden claim of zero debt.
+- Owner of proposed acceptance record and detailed evidence:
+  `I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md`.
+- RL-9C Secret Vault, RL-9D evaluator/reveal and RL-9E closure remain deferred.
+- This PR is documentation-only; `CURRENT_ACCEPTED` is not yet effective.
+
 ## Production Supabase Migration State
 
 Production Supabase migration state:
-`RL-8 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`.
+`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CANONICAL ACCEPTANCE PENDING`.
 
-- Latest applied RL-8 migration:
-  `20261009043037 investing_i5_rl8c3_scientific_promotion_supersession_writer`.
-- RL-8 migration ledger alignment:
-  `PASS / EXACT THREE-MIGRATION SET`.
+- Latest applied RL-9B migration:
+  `20261010183000 investing_i5_rl9b2_blind_truth_public_metadata_writers`.
+- RL-9B migration ledger alignment: `PASS / TWO EXACT GIT VERSIONS`.
+- Latest applied RL-8 migration (current reconciled version):
+  `20261007143000 investing_i5_rl8c3_scientific_promotion_supersession_writer`.
+- RL-8 ledger alignment: `PASS / RECONCILED 2026-10-11`.
+- Original RL-8 Production application versions
+  `20261009043031 / 20261009043034 / 20261009043037` remain
+  historical evidence only; no RL-8 SQL was reexecuted on reconciliation.
 - RL-8 post-apply audit:
   `PASS`.
 - Prior RL-7 migration anchor:
