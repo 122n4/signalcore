@@ -1,0 +1,32 @@
+name: RL-9C2B2B Linux UID Separation Rehearsal
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "scripts/investing/rl9c2b2bUnixIdentityProbe.mjs"
+      - ".github/workflows/rl9c2b2b-linux-uid-isolation.yml"
+  pull_request:
+    paths:
+      - "scripts/investing/rl9c2b2bUnixIdentityProbe.mjs"
+      - ".github/workflows/rl9c2b2b-linux-uid-isolation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  linux-uid-denial:
+    # Never run a privileged probe from a forked PR. No Vault secrets supplied.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify Linux UID denial with synthetic object only
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -n "$(command -v node)" scripts/investing/rl9c2b2bUnixIdentityProbe.mjs
