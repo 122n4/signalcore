@@ -578,7 +578,17 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
       select pg_has_role('investing_app','investing_rl9_writer','member') as app_member,
              pg_has_role('service_role','investing_rl9_writer','member') as service_member,
              pg_has_role('investing_rl9_writer','investing_owner','member') as owner_member,
-             pg_has_role('postgres','investing_rl9_writer','member') as postgres_member,
+             exists (
+               with recursive granted_roles(roleid) as (
+                 select m.roleid from pg_catalog.pg_auth_members m
+                 where m.member = 'postgres'::regrole
+                 union
+                 select m.roleid from pg_catalog.pg_auth_members m
+                 join granted_roles g on g.roleid = m.member
+               )
+               select 1 from granted_roles
+               where roleid = 'investing_rl9_writer'::regrole
+             ) as postgres_member,
              has_schema_privilege('investing_rl9_writer','investing','CREATE') as writer_can_create
     `);
     expect(memberships.rows[0]).toEqual({ app_member: false, service_member: false, owner_member: false, postgres_member: false, writer_can_create: false });

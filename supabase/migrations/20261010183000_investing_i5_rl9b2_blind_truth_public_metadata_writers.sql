@@ -359,7 +359,23 @@ revoke investing_rl9_writer from postgres;
 
 do $$
 begin
-  if pg_catalog.pg_has_role('postgres','investing_rl9_writer','member') or has_schema_privilege('investing_rl9_writer','investing','CREATE') then raise exception 'RL-9B2 postcondition failed: residual bootstrap privilege'; end if;
+  -- Verify actual grant paths after REVOKE, not the superuser's implicit
+  -- ability to act as any role (pg_has_role(..., 'MEMBER') is true for superusers).
+  if exists (
+    with recursive granted_roles(roleid) as (
+      select m.roleid
+      from pg_catalog.pg_auth_members m
+      where m.member = 'postgres'::regrole
+      union
+      select m.roleid
+      from pg_catalog.pg_auth_members m
+      join granted_roles g on g.roleid = m.member
+    )
+    select 1 from granted_roles
+    where roleid = 'investing_rl9_writer'::regrole
+  ) or has_schema_privilege('investing_rl9_writer','investing','CREATE') then
+    raise exception 'RL-9B2 postcondition failed: residual bootstrap privilege';
+  end if;
 end $$;
 
 commit;
