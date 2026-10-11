@@ -468,10 +468,13 @@ async function createAcceptedRl8PromotionLeaf(client: PoolClient, fx: Rl9Behavio
 }
 
 async function insertRl8Successor(client: PoolClient, fx: Rl9BehaviorFixture): Promise<void> {
-  await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1", true);
+  // Inspect the persisted predecessor as the PG17 administrator. The app role
+  // cannot use this direct SELECT as evidence; the writer authenticates itself.
+  await client.query("reset role");
   const current = await client.query<{ id: string; hash: string }>("select research_scientific_promotion_transition_identity_id::text as id, transition_hash_hex as hash from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and research_investigation_id=$2 and transition_hash_hex=$3", [fx.tenantId, fx.investigationId, fx.promotionTransition.hashHex]);
   expect(current.rows).toHaveLength(1);
   expect(current.rows[0]!.hash).toBe(fx.promotionTransition.hashHex);
+  await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1", true);
   const stageA: ScientificPromotionTransitionV1 = { ...rl8StageATransition(fx), predecessorState: "PROMOTION_ELIGIBLE", resultingState: "VALIDATION_PASSED", predecessorTransition: fx.promotionTransition };
   const closure = rl8ClosureTransition(stageA);
   // The RL-8C2 writer inserts Stage A and its required PROMOTION_ELIGIBLE
@@ -508,6 +511,9 @@ async function createCommittedRegistrationFixture(suffix: string): Promise<Rl9Be
   try {
     await client.query("begin");
     const fx = await seedRl9BehaviorFixture(client, suffix);
+    // Force the deferred RL-8 closure check before changing to RL-9 authority.
+    await client.query("commit");
+    await client.query("begin");
     await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1", "persist_research_blind_truth_protocol_v1", protocolHash, protocolPayload, true);
     await client.query("commit");
     return fx;
@@ -524,6 +530,9 @@ async function createCommittedRl9Chain(suffix: string): Promise<Rl9BehaviorFixtu
   try {
     await client.query("begin");
     const fx = await seedRl9BehaviorFixture(client, suffix);
+    // Force the deferred RL-8 closure check before changing to RL-9 authority.
+    await client.query("commit");
+    await client.query("begin");
     await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1", "persist_research_blind_truth_protocol_v1", protocolHash, protocolPayload, true);
     await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", fx.registrationHash, fx.registrationPayload, true);
     await client.query("commit");
@@ -919,6 +928,8 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
     try {
       await client.query("begin");
       const registrationFx = await seedRl9BehaviorFixture(client, "concurrent-registration");
+      await client.query("commit");
+      await client.query("begin");
       await callBlindTruthWriter(client, registrationFx, "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1", "persist_research_blind_truth_protocol_v1", protocolHash, protocolPayload, true);
       await client.query("commit");
 
