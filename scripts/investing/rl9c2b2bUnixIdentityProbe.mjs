@@ -11,7 +11,6 @@ import { join } from 'node:path';
 
 const PRIVATE_MARKER = 'SYNTRAKE_RL9C2B2B_SYNTHETIC_NONREAL_OBJECT_V1\n';
 const RESTRICTED_ENV = /^(?:SUPABASE_|NEXT_|NEXT_PUBLIC_|DATABASE_URL$|CLERK_|STRIPE_|PGPASSWORD$|ALPACA_|TRADING_|INVESTING_)/u;
-const DENIED_CODES = new Set(['EACCES', 'EPERM']);
 function fail() { throw new Error('RL9C2B2B_ISOLATION_PROOF_FAILED'); }
 
 // The unprivileged child receives audited fixed code via argv, rather than
