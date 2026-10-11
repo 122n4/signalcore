@@ -688,7 +688,24 @@ begin
     and c.relrowsecurity
     and c.relforcerowsecurity;
   if v_count <> 5 then raise exception 'RL-9B1 postcondition failed: exact five relations owner/RLS/FORCE mismatch'; end if;
-  if pg_catalog.pg_has_role('postgres', 'investing_rl9_writer', 'member') or has_schema_privilege('investing_rl9_writer','investing','CREATE') then raise exception 'RL-9B1 postcondition failed: residual writer bootstrap privilege'; end if;
+  -- pg_has_role(..., 'MEMBER') treats superusers as members of every role.
+  -- Inspect actual membership grants (including transitive paths), not implicit
+  -- administrative capability. This must run before RL-9B2 grants the writer.
+  if exists (
+    with recursive granted_roles(roleid) as (
+      select m.roleid
+      from pg_catalog.pg_auth_members m
+      where m.member = 'postgres'::regrole
+      union
+      select m.roleid
+      from pg_catalog.pg_auth_members m
+      join granted_roles g on g.roleid = m.member
+    )
+    select 1 from granted_roles
+    where roleid = 'investing_rl9_writer'::regrole
+  ) or has_schema_privilege('investing_rl9_writer','investing','CREATE') then
+    raise exception 'RL-9B1 postcondition failed: residual writer bootstrap privilege';
+  end if;
   if not has_function_privilege('investing_rl9_writer','investing.rl8c_jsonb_has_number_v1(jsonb)','EXECUTE') or not has_function_privilege('investing_rl9_writer','investing.rl8c_canonical_jsonb_v1(jsonb)','EXECUTE') or not has_function_privilege('investing_rl9_writer','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') then raise exception 'RL-9B1 postcondition failed: RL-8 canonical helper grants missing'; end if;
   if has_function_privilege('anon','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') or has_function_privilege('authenticated','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') or has_function_privilege('service_role','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') or has_function_privilege('investing_app','investing.rl8c_sha256_hex_v1(text,jsonb)','EXECUTE') then raise exception 'RL-9B1 postcondition failed: RL-8 helper execute widened'; end if;
   if exists (select 1 from information_schema.columns where table_schema = 'investing' and table_name like 'research_blind_truth_%' and column_name ~* '(secret|plaintext|ciphertext|credential|locator|hmac|salt|key)') then raise exception 'RL-9B1 postcondition failed: forbidden secret-like public metadata column'; end if;

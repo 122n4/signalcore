@@ -104,4 +104,47 @@ maybeDescribe("I5 RL-9B1 Blind Truth PG17 public metadata schema", () => {
     expect(oneShot).not.toContain("research_investigation_id");
     expect(oneShot).not.toContain("promotion_");
   });
+
+  it("detects actual direct and transitive writer grants without confusing superuser authority", async () => {
+    const client = await pool!.connect();
+    const membershipSql = `
+      with recursive granted_roles(roleid) as (
+        select m.roleid
+        from pg_catalog.pg_auth_members m
+        where m.member = 'postgres'::regrole
+        union
+        select m.roleid
+        from pg_catalog.pg_auth_members m
+        join granted_roles g on g.roleid = m.member
+      )
+      select exists (
+        select 1 from granted_roles where roleid = 'investing_rl9_writer'::regrole
+      ) as has_explicit_membership
+    `;
+    let transactionOpen = false;
+    try {
+      expect((await client.query(membershipSql)).rows[0].has_explicit_membership).toBe(false);
+
+      await client.query("begin");
+      transactionOpen = true;
+      await client.query("grant investing_rl9_writer to postgres");
+      expect((await client.query(membershipSql)).rows[0].has_explicit_membership).toBe(true);
+      await client.query("rollback");
+      transactionOpen = false;
+
+      await client.query("begin");
+      transactionOpen = true;
+      await client.query("create role rl9b_pg17_writer_membership_bridge nologin");
+      await client.query("grant investing_rl9_writer to rl9b_pg17_writer_membership_bridge");
+      await client.query("grant rl9b_pg17_writer_membership_bridge to postgres");
+      expect((await client.query(membershipSql)).rows[0].has_explicit_membership).toBe(true);
+      await client.query("rollback");
+      transactionOpen = false;
+
+      expect((await client.query(membershipSql)).rows[0].has_explicit_membership).toBe(false);
+    } finally {
+      if (transactionOpen) await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
+  });
 });
