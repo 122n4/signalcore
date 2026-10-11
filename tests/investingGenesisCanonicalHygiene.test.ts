@@ -635,12 +635,11 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(record).toContain("8 auth_rls_initplan WARN");
     expect(record).toContain("RL-9C, RL-9D and RL-9E remain required");
     expect(record).toContain("The acceptance classification becomes operative only when the exact");
-    expect(record).toContain("RL-9C, RL-9D and RL-9E remain required");
     expect(record).toContain("38154751510 / SUCCESS");
     const row = tableRow(state, "RL-9B Blind Truth Public Metadata Persistence / unnumbered");
     expect(row).toContain("| YES | YES |");
     expect(row).toContain("CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE");
-    expect(row).toContain("PERFORMANCE DEBT / RL-9C-D-E NOT COMPLETE");
+    expect(row).toContain("NONE IN RL-9B / RL-9C-D-E OUT OF SCOPE / PERFORMANCE DEBT RECORDED");
     expect(state).toContain("dpl_4Qh8begVhubhfUtP2TFKTEp6U26N / READY");
     expect(state).not.toContain("## I5 RL-9B Public Metadata Persistence — Post-Apply Acceptance Candidate");
   });
