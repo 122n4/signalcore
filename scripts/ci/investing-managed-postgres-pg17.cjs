@@ -18,10 +18,12 @@ const root = path.resolve(__dirname, "../..");
 const migrations = fs.readdirSync(path.join(root, "supabase/migrations"))
   .filter(name => name.endsWith(".sql") &&
     name >= "20260825120000_investing_genesis_i2_authority_materialization.sql" &&
-    name <= "20261010183000_investing_i5_rl9b2_blind_truth_public_metadata_writers.sql")
+    name.includes("investing"))
   .sort();
 assert.ok(migrations.length >= 34, "incomplete Genesis baseline");
-assert.equal(migrations[migrations.length-1], "20261010183000_investing_i5_rl9b2_blind_truth_public_metadata_writers.sql");
+assert.ok(migrations.includes("20261010183000_investing_i5_rl9b2_blind_truth_public_metadata_writers.sql"), "RL-9B2 missing");
+// No upper-bound date: new Investing Core/Research Lab migrations automatically
+// join the managed-role replay gate. Trading migrations stay independent.
 async function main() {
   const bootstrapUrl = process.env.PG17_BOOTSTRAP_ADMIN_URL;
 assert.ok(bootstrapUrl, "missing privileged CI bootstrap URL");

@@ -30,6 +30,7 @@ on:
       - "docs/investing-genesis/SUPABASE_RECONCILIATION_CANDIDATE_20260915.md"
       - ".github/workflows/investing-supabase-reconciliation-pg17.yml"
       - "scripts/ci/investing-managed-postgres-pg17.cjs"
+      - "tests/investingManagedRolePg17Gate.test.ts"
 
 jobs:
   investing-pg17-reconciliation:
