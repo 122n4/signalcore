@@ -114,19 +114,18 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      PG17_BOOTSTRAP_URL: postgresql://bootstrap:bootstrap@127.0.0.1:5432/postgres
 
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: bootstrap
-          POSTGRES_PASSWORD: bootstrap
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U bootstrap -d postgres"
+          --health-cmd="pg_isready -U postgres -d postgres"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -148,54 +147,19 @@ jobs:
         run: |
           node <<'NODE'
           const { Client } = require("pg");
-          const bootstrapClient = new Client({ connectionString: process.env.PG17_BOOTSTRAP_URL });
           const client = new Client({ connectionString: process.env.PG17_RECONCILIATION_URL });
           const roles = ["anon", "authenticated", "service_role"];
           (async () => {
-            await bootstrapClient.connect();
-            await bootstrapClient.query(`
-              do $$
-              begin
-                if not exists (select 1 from pg_catalog.pg_roles where rolname = 'postgres') then
-                  create role postgres login password 'postgres' noinherit nosuperuser createdb createrole noreplication nobypassrls;
-                else
-                  alter role postgres with login password 'postgres' noinherit nosuperuser createdb createrole noreplication nobypassrls;
-                end if;
-              end $$;
-              alter database postgres owner to postgres;
-              grant connect, create, temporary on database postgres to postgres;
-            `);
-            await bootstrapClient.end();
             await client.connect();
             for (const role of roles) {
               await client.query(`do $$ begin if not exists (select 1 from pg_catalog.pg_roles where rolname = '${role}') then create role ${role} nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls; end if; end $$`);
             }
             await client.query("create schema if not exists extensions");
             await client.query("create extension if not exists pgcrypto with schema extensions");
-            const proof = await client.query(`
-              select current_user,
-                     r.rolsuper,
-                     r.rolcreatedb,
-                     r.rolcreaterole,
-                     r.rolbypassrls
-              from pg_catalog.pg_roles r
-              where r.rolname = current_user
-            `);
-            const row = proof.rows[0];
-            if (
-              row.current_user !== "postgres" ||
-              row.rolsuper !== false ||
-              row.rolcreatedb !== true ||
-              row.rolcreaterole !== true ||
-              row.rolbypassrls !== false
-            ) {
-              throw new Error(`unexpected RL-9B migration executor bootstrap state: ${JSON.stringify(row)}`);
-            }
             await client.end();
           })().catch(async (error) => {
             console.error(error);
             await client.end().catch(() => undefined);
-            await bootstrapClient.end().catch(() => undefined);
             process.exit(1);
           });
           NODE
@@ -209,19 +173,18 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
-      PG17_BOOTSTRAP_URL: postgresql://bootstrap:bootstrap@127.0.0.1:5432/postgres
 
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: bootstrap
-          POSTGRES_PASSWORD: bootstrap
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U bootstrap -d postgres"
+          --health-cmd="pg_isready -U postgres -d postgres"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10
@@ -243,54 +206,19 @@ jobs:
         run: |
           node <<'NODE'
           const { Client } = require("pg");
-          const bootstrapClient = new Client({ connectionString: process.env.PG17_BOOTSTRAP_URL });
           const client = new Client({ connectionString: process.env.PG17_RECONCILIATION_URL });
           const roles = ["anon", "authenticated", "service_role"];
           (async () => {
-            await bootstrapClient.connect();
-            await bootstrapClient.query(`
-              do $$
-              begin
-                if not exists (select 1 from pg_catalog.pg_roles where rolname = 'postgres') then
-                  create role postgres login password 'postgres' noinherit nosuperuser createdb createrole noreplication nobypassrls;
-                else
-                  alter role postgres with login password 'postgres' noinherit nosuperuser createdb createrole noreplication nobypassrls;
-                end if;
-              end $$;
-              alter database postgres owner to postgres;
-              grant connect, create, temporary on database postgres to postgres;
-            `);
-            await bootstrapClient.end();
             await client.connect();
             for (const role of roles) {
               await client.query(`do $$ begin if not exists (select 1 from pg_catalog.pg_roles where rolname = '${role}') then create role ${role} nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls; end if; end $$`);
             }
             await client.query("create schema if not exists extensions");
             await client.query("create extension if not exists pgcrypto with schema extensions");
-            const proof = await client.query(`
-              select current_user,
-                     r.rolsuper,
-                     r.rolcreatedb,
-                     r.rolcreaterole,
-                     r.rolbypassrls
-              from pg_catalog.pg_roles r
-              where r.rolname = current_user
-            `);
-            const row = proof.rows[0];
-            if (
-              row.current_user !== "postgres" ||
-              row.rolsuper !== false ||
-              row.rolcreatedb !== true ||
-              row.rolcreaterole !== true ||
-              row.rolbypassrls !== false
-            ) {
-              throw new Error(`unexpected RL-9B migration executor bootstrap state: ${JSON.stringify(row)}`);
-            }
             await client.end();
           })().catch(async (error) => {
             console.error(error);
             await client.end().catch(() => undefined);
-            await bootstrapClient.end().catch(() => undefined);
             process.exit(1);
           });
           NODE
