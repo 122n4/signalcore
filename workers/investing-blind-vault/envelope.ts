@@ -45,9 +45,10 @@ export function encryptBlindTruthVaultEnvelopeV1(input: Readonly<{
 }>): BlindTruthVaultEncryptedEnvelopeV1 {
   exactFields(input, ["vaultEncryptionKey", "keyVersion", "binding", "exactCanonicalPlaintextBytes"], "MALFORMED_HOLDOUT");
   const key = validateSecretKey(input.vaultEncryptionKey);
+  let plaintext: Buffer | undefined;
   try {
     const aad = authenticatedContext(input.binding, input.keyVersion);
-    const plaintext = validatedPlaintext(input.exactCanonicalPlaintextBytes);
+    plaintext = validatedPlaintext(input.exactCanonicalPlaintextBytes);
     const nonce = randomBytes(NONCE_SIZE);
     const cipher = createCipheriv("aes-256-gcm", key, nonce, { authTagLength: TAG_SIZE });
     cipher.setAAD(aad, { plaintextLength: plaintext.length });
@@ -61,9 +62,11 @@ export function encryptBlindTruthVaultEnvelopeV1(input: Readonly<{
       ciphertextBase64: ciphertext.toString("base64"),
       tagHex: tag.toString("hex").toUpperCase(),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "AUTHORITY_FAILURE") throw error;
     throw new Error("MALFORMED_HOLDOUT");
   } finally {
+    plaintext?.fill(0);
     key.fill(0);
   }
 }
@@ -81,6 +84,8 @@ export function decryptBlindTruthVaultEnvelopeV1(input: Readonly<{
 }>): Buffer {
   exactFields(input, ["vaultEncryptionKey", "expectedKeyVersion", "expectedBinding", "envelope"], "MALFORMED_HOLDOUT");
   const key = validateSecretKey(input.vaultEncryptionKey);
+  let tentativePlaintext: Buffer | undefined;
+  let finalPlaintext: Buffer | undefined;
   try {
     const envelope = input.envelope;
     exactFields(envelope, ["schemaVersion", "algorithm", "keyVersion", "nonceHex", "ciphertextBase64", "tagHex"], "MALFORMED_HOLDOUT");
@@ -102,12 +107,16 @@ export function decryptBlindTruthVaultEnvelopeV1(input: Readonly<{
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(envelope.nonceHex, "hex"), { authTagLength: TAG_SIZE });
     decipher.setAAD(aad, { plaintextLength: ciphertext.length });
     decipher.setAuthTag(Buffer.from(envelope.tagHex, "hex"));
-    const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    return plaintext;
+    tentativePlaintext = decipher.update(ciphertext);
+    finalPlaintext = decipher.final();
+    const verifiedPlaintext = Buffer.concat([tentativePlaintext, finalPlaintext]);
+    return verifiedPlaintext;
   } catch (error) {
     if (error instanceof Error && error.message === "AUTHORITY_FAILURE") throw error;
     throw new Error("MALFORMED_HOLDOUT");
   } finally {
+    tentativePlaintext?.fill(0);
+    finalPlaintext?.fill(0);
     key.fill(0);
   }
 }
@@ -145,5 +154,6 @@ function validatedPlaintext(input: unknown): Buffer {
 function exactFields(input: unknown, fields: readonly string[], failureCode: "MALFORMED_HOLDOUT" | "AUTHORITY_FAILURE"): void {
   if (input === null || typeof input !== "object" || Array.isArray(input)) throw new Error(failureCode);
   const found = Object.keys(input).sort();
-  if (found.length !== fields.length || fields.some((name, i) => found[i] !== [...fields].sort()[i])) throw new Error(failureCode);
+  const expected = [...fields].sort();
+  if (found.length !== expected.length || expected.some((name, i) => found[i] !== name)) throw new Error(failureCode);
 }
