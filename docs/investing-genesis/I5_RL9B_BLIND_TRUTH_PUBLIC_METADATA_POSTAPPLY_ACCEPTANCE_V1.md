@@ -17,9 +17,9 @@ Permanent A-number: `NOT ASSIGNED`
 
 This record accepts RL-9B1 public metadata persistence and RL-9B2
 controlled writers **only**, effective after the independently reviewed
-final canonical acceptance sync is merged to protected main. It does not accept the entire RL-9
-Blind Truth / Evidence Vault, and does not supersede the accepted RL-9
-Design Freeze. `CORE != LAB`; `LAB != PAPER`; `INVESTING != TRADING`.
+final canonical acceptance sync is merged to protected main. It does not
+accept the entire RL-9 Blind Truth / Evidence Vault, and does not
+supersede the accepted RL-9 Design Freeze. `CORE != LAB`; `LAB != PAPER`; `INVESTING != TRADING`.
 
 No secret holdout, independent Secret Vault, consume-once read, confidential
 anti-reuse, end-to-end embargo or deterministic reveal evaluator is delivered
