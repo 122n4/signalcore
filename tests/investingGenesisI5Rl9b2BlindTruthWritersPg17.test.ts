@@ -285,7 +285,7 @@ async function seedRl9BehaviorFixture(client: PoolClient, suffix: string, overri
     subjectExperimentParameters: overrides.subjectExperimentParameters ?? hashRef("SYNTRAKE:EXPERIMENT_PARAMETERS:V1", `${suffix}:parameters`),
     subjectResearchIr: overrides.subjectResearchIr ?? hashRef("SYNTRAKE:RESEARCH_IR:V1", `${suffix}:ir`),
     promotionProtocol: hashScientificPromotionProtocolV1(),
-    promotionTransition: overrides.promotionTransition ?? hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${suffix}:promotion-placeholder`) }) as unknown as ReturnType<typeof hashScientificPromotionTransitionV1>,
+    promotionTransition: overrides.promotionTransition ?? (undefined as never),
     hypothesis: overrides.hypothesis ?? hashRef("SYNTRAKE:HYPOTHESIS:V1", `${suffix}:hypothesis`),
     metricRequestSet: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:METRIC_REQUEST_SET:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hashMetricRequestSetV1(metricRequestSetPayload) }),
     executionConfig: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:EXECUTION_CONFIG:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hashExecutionConfigV1(executionConfigPayload) }),
@@ -293,6 +293,9 @@ async function seedRl9BehaviorFixture(client: PoolClient, suffix: string, overri
     registrationHash: "",
     scienceKey: overrides.scienceKey ?? suffix,
   };
+  // Construct the real eligible transition hash from the RL-8 scientific contract.
+  // It is persisted and checked by createAcceptedRl8PromotionLeaf below.
+  fx.promotionTransition = hashScientificPromotionTransitionV1(rl8ClosureTransition(rl8StageATransition(fx)));
   fx.registrationPayload = registrationPayloadFor(fx);
   fx.registrationHash = hashRegistrationPayload(fx.registrationPayload);
   await seedAuthority(client, fx, suffix, overrides.reuseAuthority === true);
@@ -450,7 +453,8 @@ async function createAcceptedRl8PromotionLeaf(client: PoolClient, fx: Rl9Behavio
 async function insertRl8Successor(client: PoolClient, fx: Rl9BehaviorFixture): Promise<void> {
   await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1", true);
   const current = await client.query<{ id: string; hash: string }>("select research_scientific_promotion_transition_identity_id::text as id, transition_hash_hex as hash from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and transition_hash_hex=$2", [fx.tenantId, fx.promotionTransition.hashHex]);
-  const predecessor = hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: current.rows[0]!.hash as never }) as unknown as ReturnType<typeof hashScientificPromotionTransitionV1>;
+  expect(current.rows[0]!.hash).toBe(fx.promotionTransition.hashHex);
+  const predecessor = fx.promotionTransition;
   const successor: ScientificPromotionTransitionV1 = { ...rl8StageATransition(fx), predecessorState: "PROMOTION_ELIGIBLE", resultingState: "VALIDATION_PASSED", predecessorTransition: predecessor };
   await client.query("select investing.rl8c_insert_transition_from_payload_v1('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',$1,$2::jsonb,$3,$4,null,null)", [hashScientificPromotionTransitionV1(successor).hashHex, JSON.stringify(successor), current.rows[0]!.id, current.rows[0]!.hash]);
   await client.query("reset role");
