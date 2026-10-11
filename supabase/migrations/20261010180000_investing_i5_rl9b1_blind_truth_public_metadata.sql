@@ -138,8 +138,9 @@ language sql immutable set search_path = pg_catalog as $$
 $$;
 
 create or replace function investing.rl9b_holdout_scope_valid_v1(p_value jsonb) returns boolean
-language sql immutable set search_path = pg_catalog as $$
-  select coalesce(
+language plpgsql immutable set search_path = pg_catalog as $
+begin
+  return coalesce(
     jsonb_typeof(p_value) = 'object'
     and investing.rl9b_jsonb_object_has_exact_keys_v1(p_value, array['calendarId','coverageEnd','coverageStart','fields','frequency','markets','providerDatasetId','providerDatasetVersion','providerId','schemaVersion','timezone']) is true
     and p_value->>'schemaVersion' = 'BLIND_TRUTH_HOLDOUT_SCOPE_V1'
@@ -159,8 +160,12 @@ language sql immutable set search_path = pg_catalog as $$
     and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'markets', 256) is true
     and investing.rl9b_text_array_sorted_unique_nonempty_v1(p_value->'fields', 256) is true,
     false
-  )
-$$;
+  );
+exception
+  when datetime_field_overflow or invalid_datetime_format then
+    return false;
+end;
+$;
 
 create or replace function investing.rl9b_metric_numeric_kind_v1(p_metric_id text) returns text
 language sql immutable set search_path = pg_catalog as $$

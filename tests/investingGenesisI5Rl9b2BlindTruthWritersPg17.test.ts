@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
@@ -152,7 +153,7 @@ const rl9Tables = [
   "research_blind_truth_reveal_result_events_scientific_identities",
 ] as const;
 
-const h = (seed: string) => canonicalSha256HexV1(seed.repeat(64).slice(0, 64));
+const h = (seed: string) => canonicalSha256HexV1(createHash("sha256").update(seed, "utf8").digest("hex").toUpperCase());
 const hashRef = (hashDomain: HashRefV1["hashDomain"], seed: string): HashRefV1 => hashRefV1({ hashAlgorithm: "SHA-256", hashDomain, hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(seed) });
 const metricRequestSetPayload: MetricRequestSetHashPayloadV1 = { schemaVersion: "METRIC_REQUEST_SET_HASH_PAYLOAD_V1", metricRegistryVersion: "METRIC_REGISTRY_V20260927", requests: [...metricRegistryV2Requests] };
 const executionConfigPayload: ExecutionConfigHashPayloadV1 = { schemaVersion: "EXECUTION_CONFIG_HASH_PAYLOAD_V1", engineCompatibilityVersion: "ENGINE_V20260926", missingDataPolicy: "MISSING_DATA_STRICT_RESEARCH_V2", fxPolicy: "FX_USD_IDENTITY_V1", costsPolicy: "COMMISSION_FEES_ZERO_V1", slippagePolicy: "SLIPPAGE_ZERO_RESEARCH_V1", fillPolicy: "NEXT_SESSION_OPEN_V1", corporateActionPolicy: "SYNTHETIC_ADJUSTED_OHLC_PROVIDER_V2", calendarSessionPolicy: "XNYS_OPEN_CLOSE_SESSION_V2", valuationPolicy: "USD_ADJUSTED_CLOSE_MARK_V2" };
@@ -621,12 +622,19 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
         setAppAuthority(first, "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1"),
         setAppAuthority(second, "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1"),
       ]);
-      const [left, right] = await Promise.all([
-        first.query(`select investing.persist_research_blind_truth_protocol_v1($1::text, $2::jsonb) as result`, [protocolHash, JSON.stringify(protocolPayload)]),
-        second.query(`select investing.persist_research_blind_truth_protocol_v1($1::text, $2::jsonb) as result`, [protocolHash, JSON.stringify(protocolPayload)]),
-      ]);
+      // Demonstrate contention on the writer's transaction-scoped advisory lock
+      // without awaiting two transactions that cannot both finish before commit.
+      const left = await first.query(`select investing.persist_research_blind_truth_protocol_v1($1::text, $2::jsonb) as result`, [protocolHash, JSON.stringify(protocolPayload)]);
+      const contention = await second.query(
+        "select pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended('RL9B_PROTOCOL:' || $1::text, 0)) as acquired",
+        [protocolHash],
+      );
+      expect(contention.rows[0].acquired).toBe(false);
+      const secondPending = second.query(`select investing.persist_research_blind_truth_protocol_v1($1::text, $2::jsonb) as result`, [protocolHash, JSON.stringify(protocolPayload)]);
+      await first.query("commit");
+      const right = await secondPending;
+      await second.query("commit");
       expect([left.rows[0].result.status, right.rows[0].result.status].sort()).toEqual(["REUSED_IDENTICAL", "REUSED_IDENTICAL"]);
-      await Promise.all([first.query("commit"), second.query("commit")]);
       const count = await pool!.query(`select count(*)::int as count from investing.research_blind_truth_protocols_scientific_identities where hash_hex = $1`, [protocolHash]);
       expect(count.rows[0].count).toBe(1);
     } catch (error) {
