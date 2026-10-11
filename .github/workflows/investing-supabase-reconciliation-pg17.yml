@@ -162,6 +162,7 @@ jobs:
                   alter role postgres with login password 'postgres' noinherit nosuperuser createdb createrole noreplication nobypassrls;
                 end if;
               end $$;
+              alter database postgres owner to postgres;
               grant connect, create, temporary on database postgres to postgres;
             `);
             await bootstrapClient.end();
@@ -256,6 +257,7 @@ jobs:
                   alter role postgres with login password 'postgres' noinherit nosuperuser createdb createrole noreplication nobypassrls;
                 end if;
               end $$;
+              alter database postgres owner to postgres;
               grant connect, create, temporary on database postgres to postgres;
             `);
             await bootstrapClient.end();
