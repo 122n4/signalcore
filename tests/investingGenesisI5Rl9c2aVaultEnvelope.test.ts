@@ -106,7 +106,7 @@ describe("I5 RL-9C2A sealed worker envelope (NOT a deployed isolated vault)", ()
     expect(() => seal(key, Buffer.alloc(0))).toThrow("MALFORMED_HOLDOUT");
     expect(() => seal(key, "secret" as never)).toThrow("MALFORMED_HOLDOUT");
     expect(() => seal(key, Buffer.alloc(8 * 1024 * 1024 + 1))).toThrow("MALFORMED_HOLDOUT");
-    expect(() => seal(key, plaintext).toString()).not.toContain("123.45");
+    expect(JSON.stringify(seal(key, plaintext))).not.toContain("123.45");
   });
 
   it("keeps the worker-only code unreachable through ordinary Research exports", () => {
