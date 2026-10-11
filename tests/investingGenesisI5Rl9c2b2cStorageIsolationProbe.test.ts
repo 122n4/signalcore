@@ -29,6 +29,17 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
     expect(calls).toEqual([own,target]);
     expect(out.evidence).toBe('PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT');
   });
+  it('uses apikey only for modern sb_secret keys; legacy JWT credentials may use Bearer',async()=>{
+    const modern = 'sb_secret_'+'SYNTHETIC_NONREAL_0123456789012345';
+    const seen:any[]=[];
+    const result=await proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:modern,fetcher:async(url:string,opts:any)=>{
+      seen.push({url,headers:opts.headers});return response(url===own?200:403);
+    }});
+    expect(result.status).toBe('PASS');
+    expect(seen).toHaveLength(2);
+    for(const req of seen){expect(req.headers.apikey).toBe(modern);expect(req.headers).not.toHaveProperty('authorization');}
+    expect(JSON.stringify(result)).not.toContain(modern);
+  });
   it('proves anonymous is denied on same Vault object',async()=>{
     const out=await proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,fetcher:async (url:string,opts:any)=>{
       expect(url).toBe(target);expect(opts.headers).not.toHaveProperty('authorization');return response(401);

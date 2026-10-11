@@ -43,7 +43,11 @@ async function requestStatus(url,key,fetcher,readBody=false){
   const timer=setTimeout(()=>controller.abort(),8000);
   try {
     const headers={ 'accept': readBody?'application/octet-stream':'application/json' };
-    if(key){headers.apikey=key;headers.authorization=`Bearer ${key}`;}
+    if(key){
+      headers.apikey=key;
+      // Supabase modern sb_secret keys are API keys, NOT JWT bearer tokens.
+      if(!key.startsWith('sb_secret_')) headers.authorization=`Bearer ${key}`;
+    }
     const response=await fetcher(url,{method:'GET',headers,signal:controller.signal,redirect:'manual',cache:'no-store'});
     if(!response||!Number.isInteger(response.status))blocked();
     if(!readBody){try{await response.body?.cancel?.()}catch{} return {status:response.status};}
@@ -55,8 +59,11 @@ async function requestStatus(url,key,fetcher,readBody=false){
     return {status:response.status,content:Buffer.concat(chunks,size)};
   }catch{blocked();}finally{clearTimeout(timer);}
 }
-/** Evaluator is intentionally injectable for offline negative-vector tests. */
-export async function proveCanaryPhase({phase,config,credential,fetcher=fetch}){
+/**
+ * Evaluator is intentionally injectable for offline negative-vector tests.
+ * @param {{phase:string, config:{primaryProjectRef:string,vaultProjectRef:string,bucket:string,objectPath:string}, credential?:string, fetcher?:(url:string,options:RequestInit)=>Promise<Response>}} options
+ */
+export async function proveCanaryPhase({phase,config,credential=undefined,fetcher=fetch}){
   if(!PHASES.has(phase)||typeof fetcher!=='function')blocked();
   const c=validateCanaryConfig(config);
   if(phase==='ANONYMOUS_DENIAL'){if(credential!==undefined)blocked();}
