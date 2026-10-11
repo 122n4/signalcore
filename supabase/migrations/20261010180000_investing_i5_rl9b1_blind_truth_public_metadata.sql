@@ -138,7 +138,7 @@ language sql immutable set search_path = pg_catalog as $$
 $$;
 
 create or replace function investing.rl9b_holdout_scope_valid_v1(p_value jsonb) returns boolean
-language plpgsql immutable set search_path = pg_catalog as $
+language plpgsql immutable set search_path = pg_catalog as $$
 begin
   return coalesce(
     jsonb_typeof(p_value) = 'object'
@@ -165,7 +165,7 @@ exception
   when datetime_field_overflow or invalid_datetime_format then
     return false;
 end;
-$;
+$$;
 
 create or replace function investing.rl9b_metric_numeric_kind_v1(p_metric_id text) returns text
 language sql immutable set search_path = pg_catalog as $$
