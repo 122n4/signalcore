@@ -15,6 +15,26 @@ const BUCKET = /^[a-z][a-z0-9-]{2,62}$/u;
 const PATH = /^rl9c2b2c-isolation-canary-v1\/[a-f0-9]{32}\.txt$/u;
 const PHASES = new Set(['VAULT_POSITIVE', 'PRIMARY_DENIAL', 'ANONYMOUS_DENIAL']);
 const MAX_CANARY_BYTES = 1024;
+const SECRET_KEY = /^sb_secret_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
+const PUBLISHABLE_KEY = /^sb_publishable_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
+const JWT_PART = /^[A-Za-z0-9_-]+$/u;
+function legacyJwtRole(key, expectedRole) {
+  const parts = key.split('.');
+  if (parts.length !== 3 || parts.some(x => !JWT_PART.test(x))) blocked();
+  try {
+    const raw = Buffer.from(parts[1], 'base64url');
+    if (raw.length > 1024 || raw.toString('base64url') !== parts[1]) blocked();
+    const claims = JSON.parse(raw.toString('utf8'));
+    if (!claims || typeof claims !== 'object' || claims.role !== expectedRole) blocked();
+  } catch { blocked(); }
+}
+function validateKeyRole(key, role) {
+  if (typeof key !== 'string' || key.length < 20 || key.length > 4096 || /\s/u.test(key)) blocked();
+  if (key.startsWith('sb_')) {
+    if (!(role === 'service_role' ? SECRET_KEY : PUBLISHABLE_KEY).test(key)) blocked();
+  } else legacyJwtRole(key, role);
+}
+
 function blocked(){ throw new Error('RL9C2B2C_BLOCKED'); }
 function keysExact(obj, expected){
   if(!obj || typeof obj !== 'object' || Array.isArray(obj)) blocked();
@@ -66,13 +86,19 @@ async function requestStatus(url,key,fetcher,readBody=false){
 }
 /**
  * Evaluator is intentionally injectable for offline negative-vector tests.
- * @param {{phase:string, config:{primaryProjectRef:string,vaultProjectRef:string,bucket:string,objectPath:string}, credential?:string, fetcher?:(url:string,options:RequestInit)=>Promise<Response>}} options
+ * @param {{phase:string, config:{primaryProjectRef:string,vaultProjectRef:string,bucket:string,objectPath:string}, credential?:string, publicKey?:string, fetcher?:(url:string,options:RequestInit)=>Promise<Response>}} options
  */
-export async function proveCanaryPhase({phase,config,credential=undefined,fetcher=fetch}){
+export async function proveCanaryPhase({phase,config,credential=undefined,publicKey=undefined,fetcher=fetch}){
   if(!PHASES.has(phase)||typeof fetcher!=='function')blocked();
   const c=validateCanaryConfig(config);
-  if(phase==='ANONYMOUS_DENIAL'){if(credential!==undefined)blocked();}
-  else if(typeof credential!=='string'||credential.length<20||credential.length>4096||/[\s\r\n]/u.test(credential))blocked();
+  if(phase==='ANONYMOUS_DENIAL'){
+    // Missing apikey may produce gateway 401 even for a public Storage bucket.
+    if(credential!==undefined)blocked();
+    validateKeyRole(publicKey,'anon');
+  } else {
+    if(publicKey!==undefined)blocked();
+    validateKeyRole(credential,'service_role');
+  }
   const subjectDigest=canarySubjectDigest(c);
   const url=storageUrl(c.vaultProjectRef,c);
   let evidence;
@@ -89,7 +115,7 @@ export async function proveCanaryPhase({phase,config,credential=undefined,fetche
     if(denied.status!==401&&denied.status!==403)blocked();
     evidence='PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT';
   }else{
-    const denied=await requestStatus(url,undefined,fetcher);
+    const denied=await requestStatus(url,publicKey,fetcher);
     if(denied.status!==401&&denied.status!==403)blocked();
     evidence='ANONYMOUS_DENIED_BY_VAULT';
   }
@@ -111,7 +137,8 @@ export async function runProbeCli({env=process.env,fetcher=fetch}={}){
   const phase=env.SYNTRAKE_VAULT_C2C_PHASE;
   const config=JSON.parse(privateFile(env.SYNTRAKE_VAULT_C2C_CONFIG_FILE));
   const credential=phase==='ANONYMOUS_DENIAL'?undefined:privateFile(env.SYNTRAKE_VAULT_C2C_CREDENTIAL_FILE).replace(/\r?\n$/u,'');
-  const report=await proveCanaryPhase({phase,config,credential,fetcher});
+  const publicKey=phase==='ANONYMOUS_DENIAL'?privateFile(env.SYNTRAKE_VAULT_C2C_PUBLIC_KEY_FILE).replace(/\r?\n$/u,''):undefined;
+  const report=await proveCanaryPhase({phase,config,credential,publicKey,fetcher});
   process.stdout.write(JSON.stringify(report)+'\n');
 }
 if(process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href){
