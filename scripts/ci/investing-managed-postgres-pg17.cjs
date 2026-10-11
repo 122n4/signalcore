@@ -42,6 +42,10 @@ const bootstrap = new Client({connectionString:bootstrapUrl});
       await bootstrap.query("create role " + role + " nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls");
     }
     await bootstrap.query("create role postgres login password 'postgres' inherit nosuperuser createdb createrole noreplication nobypassrls");
+    // Managed Supabase postgres inherits pg_read_all_data; the accepted I2
+    // Ledger prestate requires schema USAGE while remaining non-superuser.
+    // This is administrative replay authority, never app/writer authority.
+    await bootstrap.query("grant pg_read_all_data to postgres");
     await bootstrap.query("alter database postgres owner to postgres");
     await bootstrap.query("create schema extensions authorization postgres");
     await bootstrap.query("create extension pgcrypto with schema extensions");
@@ -52,6 +56,8 @@ const bootstrap = new Client({connectionString:bootstrapUrl});
   try {
     const role = await client.query("select current_user, rolsuper, rolcreatedb, rolcreaterole from pg_roles where rolname=current_user");
     assert.deepEqual(role.rows[0], {current_user:"postgres", rolsuper:false, rolcreatedb:true, rolcreaterole:true});
+    const dataRole = await client.query("select pg_has_role('postgres','pg_read_all_data','USAGE') as has_read_all_data");
+    assert.equal(dataRole.rows[0].has_read_all_data,true,"managed schema USAGE capability missing");
     for (const name of migrations) {
       const sql = fs.readFileSync(path.join(root,"supabase/migrations",name),"utf8");
       assert.ok(sql.startsWith("begin;") && sql.trimEnd().endsWith("commit;"),"migration must be transactional "+name);
