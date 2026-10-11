@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { canarySubjectDigest, proveCanaryPhase, validateCanaryConfig, SYNTHETIC_MARKER } from '../scripts/investing/rl9c2b2cStorageIsolationProbe.mjs';
+import { chmodSync, linkSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { canarySubjectDigest, proveCanaryPhase, readPrivateMount, validateCanaryConfig, SYNTHETIC_MARKER } from '../scripts/investing/rl9c2b2cStorageIsolationProbe.mjs';
 
 const primary = 'a'.repeat(20), vault = 'b'.repeat(20);
 const config = {primaryProjectRef: primary, vaultProjectRef: vault, bucket: 'vault-private-canary', objectPath: 'rl9c2b2c-isolation-canary-v1/'+'c'.repeat(32)+'.txt'};
@@ -103,6 +106,26 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
     const getter={...config};Object.defineProperty(getter,'bucket',{get(){throw Error('secret leak!');},enumerable:true});
     const symbol={...config,[Symbol('bad')]:'value'};
     for(const v of [poison,getter,symbol,{...config,extra:'x'}])expect(()=>validateCanaryConfig(v)).toThrow('RL9C2B2C_BLOCKED');
+  });
+  it('reads only secure owner-controlled credential mounts via pinned descriptor',()=>{
+    if(process.platform!=='linux')return;
+    const dir=mkdtempSync(join(homedir(),'.syntrake-c2c-private-test-'));
+    const file=join(dir,'secret-key'),link=join(dir,'symlink-key'),hard=join(dir,'hardlinked-key');
+    try {
+      chmodSync(dir,0o700);
+      writeFileSync(file,cred,{mode:0o600});
+      expect(readPrivateMount(file)).toBe(cred);
+      chmodSync(file,0o644);
+      expect(()=>readPrivateMount(file)).toThrow('RL9C2B2C_BLOCKED');
+      chmodSync(file,0o600);
+      symlinkSync(file,link);
+      expect(()=>readPrivateMount(link)).toThrow('RL9C2B2C_BLOCKED');
+      linkSync(file,hard);
+      expect(()=>readPrivateMount(file)).toThrow('RL9C2B2C_BLOCKED');
+      unlinkSync(hard);
+      chmodSync(dir,0o777);
+      expect(()=>readPrivateMount(file)).toThrow('RL9C2B2C_BLOCKED');
+    } finally { rmSync(dir,{recursive:true,force:true}); }
   });
   it('rejects anonymous credentials and incorrect/unsafe credential formats',async()=>{
     await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,credential:cred,fetcher:async()=>response(401)})).rejects.toThrow('RL9C2B2C_BLOCKED');

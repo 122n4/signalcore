@@ -4,8 +4,8 @@
  * Read-only: never creates buckets or objects and never accepts real holdout locators.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, lstatSync, realpathSync } from 'node:fs';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { openSync, closeSync, fstatSync, readSync, lstatSync, constants } from 'node:fs';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const SYNTHETIC_MARKER = 'SYNTRAKE:RL9C2B2C:SYNTHETIC_CANARY_V1\n';
@@ -122,11 +122,36 @@ export async function proveCanaryPhase({phase,config,credential=undefined,public
   // Report contains no credential, bucket name, endpoint, private locator, or response body.
   return Object.freeze({kind:KIND,phase,status:'PASS',subjectDigest,evidence});
 }
-function privateFile(filename){
-  if(typeof filename!=='string'||!isAbsolute(filename))blocked();
-  const pathname=resolve(filename);const cwd=resolve(process.cwd());
-  if(pathname===cwd||pathname.startsWith(cwd+sep)||process.platform==='win32'||typeof process.getuid!=='function')blocked();
-  try{const st=lstatSync(pathname);if(!st.isFile()||st.isSymbolicLink()||st.uid!==process.getuid()||(st.mode&0o077)!==0)blocked();if(realpathSync(pathname)!==pathname)blocked();return readFileSync(pathname,'utf8');}catch{blocked();}
+/**
+ * Read a private operator mount through a single pinned file descriptor.
+ * Block world/group-writable parent directories, path symlinks, hard links,
+ * non-regular files, oversized inputs and time-of-check/path-switch races.
+ */
+export function readPrivateMount(filename){
+  if(typeof filename!=='string'||!isAbsolute(filename)||
+      process.platform!=='linux'||typeof process.getuid!=='function')blocked();
+  const pathname=resolve(filename),cwd=resolve(process.cwd());
+  if(pathname===cwd||pathname.startsWith(cwd+sep))blocked();
+  let fd;
+  try {
+    // Walk each parent, forbidding attacker-writable/symlink path components.
+    for(let dir=dirname(pathname);;){
+      const st=lstatSync(dir);
+      if(!st.isDirectory()||st.isSymbolicLink()||(st.mode&0o022)!==0||
+          (st.uid!==0&&st.uid!==process.getuid()))blocked();
+      const next=dirname(dir);
+      if(next===dir)break;
+      dir=next;
+    }
+    fd=openSync(pathname,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+    const st=fstatSync(fd);
+    if(!st.isFile()||st.nlink!==1||st.uid!==process.getuid()||
+        (st.mode&0o077)!==0||st.size<1||st.size>8192)blocked();
+    const buffer=Buffer.alloc(st.size+1);
+    const amount=readSync(fd,buffer,0,buffer.length,0);
+    if(amount!==st.size||fstatSync(fd).size!==st.size)blocked();
+    return buffer.subarray(0,amount).toString('utf8');
+  }catch{blocked();}finally{if(fd!==undefined){try{closeSync(fd)}catch{}}}
 }
 function assertCleanProcessEnvironment(env){
   if(Object.entries(env).some(([key,value])=>value && /^(SUPABASE_|DATABASE_URL$|PGPASSWORD$|CLERK_|STRIPE_|NEXT_PUBLIC_|INVESTING_|TRADING_)/u.test(key)))blocked();
@@ -135,9 +160,9 @@ export async function runProbeCli({env=process.env,fetcher=fetch}={}){
   assertCleanProcessEnvironment(env);
   if(process.argv.length!==2)blocked();
   const phase=env.SYNTRAKE_VAULT_C2C_PHASE;
-  const config=JSON.parse(privateFile(env.SYNTRAKE_VAULT_C2C_CONFIG_FILE));
-  const credential=phase==='ANONYMOUS_DENIAL'?undefined:privateFile(env.SYNTRAKE_VAULT_C2C_CREDENTIAL_FILE).replace(/\r?\n$/u,'');
-  const publicKey=phase==='ANONYMOUS_DENIAL'?privateFile(env.SYNTRAKE_VAULT_C2C_PUBLIC_KEY_FILE).replace(/\r?\n$/u,''):undefined;
+  const config=JSON.parse(readPrivateMount(env.SYNTRAKE_VAULT_C2C_CONFIG_FILE));
+  const credential=phase==='ANONYMOUS_DENIAL'?undefined:readPrivateMount(env.SYNTRAKE_VAULT_C2C_CREDENTIAL_FILE).replace(/\r?\n$/u,'');
+  const publicKey=phase==='ANONYMOUS_DENIAL'?readPrivateMount(env.SYNTRAKE_VAULT_C2C_PUBLIC_KEY_FILE).replace(/\r?\n$/u,''):undefined;
   const report=await proveCanaryPhase({phase,config,credential,publicKey,fetcher});
   process.stdout.write(JSON.stringify(report)+'\n');
 }
