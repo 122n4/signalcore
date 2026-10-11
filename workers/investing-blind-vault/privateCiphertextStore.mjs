@@ -14,7 +14,6 @@ const HEX_64 = /^[0-9A-F]{64}$/u;
 const HEX_24 = /^[0-9A-F]{24}$/u;
 const HEX_32 = /^[0-9A-F]{32}$/u;
 const VERSION = /^[A-Z][A-Z0-9_]{0,63}$/u;
-const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const FILE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0);
 const DIR_FLAGS = constants.O_RDONLY | (constants.O_DIRECTORY || 0) | (constants.O_NOFOLLOW || 0);
 
@@ -59,8 +58,7 @@ function validateEnvelope(value) {
     typeof value.nonceHex !== 'string' || !HEX_24.test(value.nonceHex) ||
     typeof value.tagHex !== 'string' || !HEX_32.test(value.tagHex) ||
     typeof value.ciphertextBase64 !== 'string' || value.ciphertextBase64.length === 0 ||
-    value.ciphertextBase64.length > Math.ceil(MAX_CIPHERTEXT_BYTES / 3) * 4 ||
-    !BASE64.test(value.ciphertextBase64)) fail('MALFORMED_HOLDOUT');
+    value.ciphertextBase64.length > Math.ceil(MAX_CIPHERTEXT_BYTES / 3) * 4) fail('MALFORMED_HOLDOUT');
   const decoded = Buffer.from(value.ciphertextBase64, 'base64');
   if (!decoded.length || decoded.length > MAX_CIPHERTEXT_BYTES || decoded.toString('base64') !== value.ciphertextBase64) fail('MALFORMED_HOLDOUT');
   // Structural validation only: GCM authenticity requires a future key-owning worker.
