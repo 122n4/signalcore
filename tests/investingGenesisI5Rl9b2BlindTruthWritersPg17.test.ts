@@ -222,7 +222,7 @@ function registrationPayloadFor(fx: Rl9BehaviorFixture, overrides: Partial<Blind
     hypothesis: fx.hypothesis,
     metricRequestSet: fx.metricRequestSet,
     executionConfig: fx.executionConfig,
-    blindTruthCriteria: [optionalCriterion, requiredCriterion],
+    blindTruthCriteria: [requiredCriterion, optionalCriterion],
     holdoutScope: { schemaVersion: "BLIND_TRUTH_HOLDOUT_SCOPE_V1", providerId: "PROVIDER_V1", providerDatasetId: "DATASET_V1", providerDatasetVersion: "DATASET_VERSION_20261009", markets: ["BTCUSD", "EURUSD"], frequency: "M1", fields: ["close", "open"], coverageStart: "2026-01-01", coverageEnd: "2026-06-30", calendarId: "CALENDAR_24_7_V1", timezone: "UTC" },
     evaluatorProfile: blindTruthEvaluatorProfileV1,
     ...overrides,
