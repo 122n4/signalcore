@@ -1,9 +1,13 @@
 "use strict";
 // Full-chain PostgreSQL 17 rehearsal under a Supabase-like (non-superuser,
 // CREATEROLE) migration executor. CI-only: never run against a live database.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- CI-only CommonJS runner
 const fs = require("node:fs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- CI-only CommonJS runner
 const path = require("node:path");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- CI-only CommonJS runner
 const assert = require("node:assert/strict");
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- CI-only CommonJS runner
 const { Client } = require("pg");
 const url = process.env.PG17_MANAGED_RECONCILIATION_URL;
 assert.equal(process.env.GITHUB_ACTIONS, "true", "CI only");
