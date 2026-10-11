@@ -832,7 +832,17 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
       const malformedRegistrationCanonical = canonicalBlindTruthRegistrationV1(fx.registrationPayload) as unknown as Record<string, unknown>;
       const malformedRegistrationPayload = { ...malformedRegistrationCanonical, evaluatorProfile: { ...(malformedRegistrationCanonical.evaluatorProfile as Record<string, unknown>), engineVersion: "ENGINE_OLD" } };
       const malformedRegistrationHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1", malformedRegistrationPayload);
-      await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", malformedRegistrationHash, malformedRegistrationPayload, true), /INCOMPATIBLE_ENGINE_VERSION|MALFORMED_HASHREF/);
+      // Existing one-shot identity rejects divergent payloads via a non-mutating
+      // status. It is not a SQL exception and must not be asserted as one.
+      await expectWriterStatus(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", malformedRegistrationHash, malformedRegistrationPayload, "DIVERGENT_EXISTING_IDENTITY", true);
+
+      // A fresh candidate reaches the database CHECK instead of hiding malformed
+      // input behind the existing one-shot collision.
+      const invalidOnly = await seedRl9BehaviorFixture(client, "behavior-invalid-registration");
+      const invalidCanonical = canonicalBlindTruthRegistrationV1(invalidOnly.registrationPayload) as unknown as Record<string, unknown>;
+      const invalidPayload = { ...invalidCanonical, evaluatorProfile: { ...(invalidCanonical.evaluatorProfile as Record<string, unknown>), engineVersion: "ENGINE_OLD" } };
+      const invalidHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1", invalidPayload);
+      await expectPgRejection(client, () => callBlindTruthWriter(client, invalidOnly, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", invalidHash, invalidPayload, true), /research_blind_truth_registrations_payload_check/);
 
       const sealPayload = makeVaultSeal(fx.registrationPayload);
       const sealCanonical = canonicalBlindTruthVaultSealV1(sealPayload);
