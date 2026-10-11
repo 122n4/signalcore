@@ -137,11 +137,10 @@ insufficient. This narrowly accepted status is supported cumulatively by:
 No synthetic tenant behavior or secret-vault semantics are attributed
 to the Production catalog inspection.
 
-This final-status document is proposed on an isolated candidate branch.
-`CURRENT_ACCEPTED` becomes operative only when the candidate passes its
-own exact-SHA review/CI and is separately authorized and merged into main.
-Until then, the main predecessor's `CANONICAL_ACCEPTANCE_PENDING` remains
-authoritative.
+The acceptance classification becomes operative only when the exact
+final-status candidate passes its own independent review/CI and is separately
+authorized and merged into main. Prior to that gate, the accepted predecessor
+and its `CANONICAL_ACCEPTANCE_PENDING` status remain authoritative.
 
 This acceptance adds no new SQL, DDL/DML, financial state, research execution,
 secret vault, read model, Paper, Live or Trading authority. RL-9 remains
