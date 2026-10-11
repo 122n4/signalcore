@@ -1,19 +1,23 @@
 # I5 RL-9B Blind Truth Public Metadata Persistence — Post-Apply Acceptance V1
 
-Status: `CANDIDATE / POSTAPPLY_AUDIT_PASS / CANONICAL_ACCEPTANCE_PENDING`
+Status: CURRENT ACCEPTED OWNER CONTRACT — RL-9B PUBLIC METADATA PERSISTENCE — UNNUMBERED
 
-Proposed, not yet effective:
+Classification:
 `CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE / UNNUMBERED`
 
-Canonical accepted predecessor SHA:
+Canonical predecessor for final acceptance sync:
+`2fa7ccc50b37566a239392c71195dd6ff123841d`
+
+Original RL-9B implementation merge anchor:
 `5f03088afb73b8014e2beb8664816563ade7b364`
 
 Permanent A-number: `NOT ASSIGNED`
 
 ## Scope
 
-This record proposes acceptance of RL-9B1 public metadata persistence and
-RL-9B2 controlled writers **only**. It does not accept the entire RL-9
+This record accepts RL-9B1 public metadata persistence and RL-9B2
+controlled writers **only**, effective after the independently reviewed
+final canonical acceptance sync is merged to protected main. It does not accept the entire RL-9
 Blind Truth / Evidence Vault, and does not supersede the accepted RL-9
 Design Freeze. `CORE != LAB`; `LAB != PAPER`; `INVESTING != TRADING`.
 
@@ -39,14 +43,27 @@ PASS grants capital, Paper, Live, suitability or broker authority.
   blob `16d1aab1c503ad3b84926993a48c932ba91c6a4a`.
 - Candidate CI `38146993231 / SUCCESS`, PostgreSQL 17
   `38146993163 / SUCCESS` (five successful jobs).
-- Merged-main CI `38148175195 / SUCCESS`.
+- Merged-main implementation CI `38148175195 / SUCCESS`.
+- Post-apply acceptance-evidence PR `#127`: candidate
+  `27134592cb721b1ffa4e0ed45c8a53d2d6d936a7`,
+  squash merge/main `2fa7ccc50b37566a239392c71195dd6ff123841d`.
+- PR #127 candidate and squash merge Git trees: `EQUAL`.
+- PR #127 candidate CI `38154330626 / SUCCESS` (verify,
+  dependency-audit).
+- PR #127 post-merge CI `38154751510 / SUCCESS` (verify,
+  dependency-audit).
+- Final independent post-merge read-only GitHub/Supabase/Vercel gate:
+  `PASS / 2026-10-11`.
 - Managed-Supabase disposable preview: both migrations `PASS`; branch
   deleted after verification.
 - Supabase CLI `2.120.0` dry-run: `PASS`, exactly two pending migrations.
 - CLI Production push: `PASS`, applied exact original versions;
   post-apply CLI dry-run: `PASS`, none pending.
-- Vercel Production on merge SHA: `READY`; that is deployment evidence,
-  not evidence of Supabase migration application.
+- Vercel Production on implementation merge SHA: `READY`.
+- Vercel Production on PR #127 merge SHA
+  `2fa7ccc50b37566a239392c71195dd6ff123841d`:
+  `dpl_4Qh8begVhubhfUtP2TFKTEp6U26N / READY`.
+  Vercel deployment evidence is not proof of Supabase SQL application.
 
 ## Independently verified Production state — 2026-10-11
 
@@ -104,16 +121,30 @@ The stored RL-8 SQL was independently checked byte-for-byte against Git
 before reconciliation. SQL was not replayed. The old timestamps remain
 historical application evidence, not current ledger identifiers.
 
-## Acceptance gate — PENDING
+## Canonical acceptance basis
 
-This is a **candidate**, not a declaration of `CURRENT_ACCEPTED`.
-Reviewer must verify the exact candidate SHA and predecessor, the
-documentation-only diff, tests/CI, the 110-entry Production ledger,
-security/RLS/ACL evidence, open performance debt and boundaries.
+A merge alone, green CI alone and Production application alone were
+insufficient. This narrowly accepted status is supported cumulatively by:
 
-Git merge alone, green CI alone or migration application alone
-cannot grant acceptance. If contradictory evidence appears, `BLOCKED`.
-No merge, DDL/DML, data mutation or deployment is authorized by
-this documentation candidate.
+- independently audited RL-9B implementation and exact candidate/merge tree;
+- GitHub CI, five PostgreSQL 17 jobs, managed-Supabase preview;
+- owner-authorized CLI Production application preserving two original versions;
+- independent post-apply structural catalog/RLS/ACL/role/one-shot audit;
+- independent PR #127 candidate and post-merge CI, exact tree equality,
+  Vercel deployment readiness and remote migration-ledger verification;
+- recorded Production testing limitations and outstanding advisor debt.
 
-`RL-9B = POSTAPPLY_AUDIT_PASS / READY_FOR_CANONICAL_ACCEPTANCE_REVIEW`.
+No synthetic tenant behavior or secret-vault semantics are attributed
+to the Production catalog inspection.
+
+This final-status document is proposed on an isolated candidate branch.
+`CURRENT_ACCEPTED` becomes operative only when the candidate passes its
+own exact-SHA review/CI and is separately authorized and merged into main.
+Until then, the main predecessor's `CANONICAL_ACCEPTANCE_PENDING` remains
+authoritative.
+
+This acceptance adds no new SQL, DDL/DML, financial state, research execution,
+secret vault, read model, Paper, Live or Trading authority. RL-9 remains
+`IN_PROGRESS`, with RL-9C next.
+
+`RL-9B = CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE / UNNUMBERED`.
