@@ -878,6 +878,59 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
       const divergentStartedHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1", divergentStartedPayload);
       await expectWriterStatus(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", divergentStartedHash, divergentStartedPayload, "DIVERGENT_EXISTING_IDENTITY", false);
 
+      // RL-9B has no vault consumption or verified evaluator evidence.
+      // A matching SHA-256 is not evidence that a scientific result is true.
+      const unverifiedCompleted = {
+        ...(startedCanonical as Record<string, unknown>),
+        eventState: "REVEAL_COMPLETED",
+        predecessorEvent: hashBlindTruthRevealResultEventV1(startedPayload),
+        result: true,
+      };
+      const unverifiedCompletedHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1", unverifiedCompleted);
+      await expectPgRejection(
+        client,
+        () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1", "persist_research_blind_truth_final_event_v1", unverifiedCompletedHash, unverifiedCompleted, false),
+        /REVEAL_COMPLETED_EVIDENCE_UNAVAILABLE/,
+      );
+
+      const forgedScientificResult = {
+        registration: hashBlindTruthRegistrationV1(fx.registrationPayload),
+        vaultSeal: hashBlindTruthVaultSealV1(sealPayload),
+        evaluation: hashBlindTruthEvaluationV1(evaluationPayload),
+        revealedDatasetSnapshot: hashRef("SYNTRAKE:DATASET_SNAPSHOT:V1", "unverified-dataset"),
+        revealedDatasetSeries: [hashRef("SYNTRAKE:DATASET_SERIES:V1", "unverified-series")],
+        observedMetricResults: [],
+        criterionOutcomes: [],
+        overallOutcome: "PASS",
+      };
+      const unverifiedObject = { ...unverifiedCompleted, result: forgedScientificResult };
+      const unverifiedObjectHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1", unverifiedObject);
+      await expectPgRejection(
+        client,
+        () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1", "persist_research_blind_truth_final_event_v1", unverifiedObjectHash, unverifiedObject, false),
+        /REVEAL_COMPLETED_EVIDENCE_UNAVAILABLE/,
+      );
+
+      // Exercise the actual table CHECK even as the PG17 administrative role,
+      // so a future direct write cannot bypass the fail-closed writer guard.
+      await client.query("reset role");
+      await expectPgRejection(client, () => client.query(
+        `insert into investing.research_blind_truth_reveal_result_events_scientific_identities
+         (operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id,
+          research_experiment_id, research_blind_truth_protocol_identity_id, protocol_hash_hex, registration_identity_id, registration_hash_hex,
+          vault_seal_identity_id, vault_seal_hash_hex, evaluation_identity_id, evaluation_hash_hex, predecessor_event_identity_id,
+          predecessor_event_hash_hex, event_state, reason, event_hash_algorithm, event_hash_domain, event_hash_version, event_hash_hex, canonical_payload)
+         select 'RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1', s.capability, s.operation_scope, s.source_context,
+                s.tenant_id, s.principal_id, s.tenant_membership_id, s.research_investigation_id, s.research_experiment_id,
+                s.research_blind_truth_protocol_identity_id, s.protocol_hash_hex, s.registration_identity_id, s.registration_hash_hex,
+                s.vault_seal_identity_id, s.vault_seal_hash_hex, s.evaluation_identity_id, s.evaluation_hash_hex,
+                s.research_blind_truth_reveal_result_event_identity_id, s.event_hash_hex, 'REVEAL_COMPLETED', null,
+                'SHA-256', 'SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1', 'SYNTRAKE_SHA256_V1', $2::text, $3::jsonb
+         from investing.research_blind_truth_reveal_result_events_scientific_identities s
+         where s.event_hash_hex=$1`,
+        [startedHash, unverifiedObjectHash, JSON.stringify(unverifiedObject)],
+      ), /research_blind_truth_events_payload_check/);
+
       await insertRl8Successor(client, fx);
       await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1", "persist_research_blind_truth_evaluation_v1", evaluationHash, evaluationCanonical, false), /STALE_PROMOTION_TRANSITION/);
       await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", startedHash, startedCanonical, false), /STALE_PROMOTION_TRANSITION|DIVERGENT_EXISTING_IDENTITY/);

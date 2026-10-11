@@ -353,7 +353,7 @@ create or replace function investing.rl9b_event_payload_valid_v1(
     and investing.rl9b_hashref_matches_v1(p_payload->'evaluation','SYNTRAKE:BLIND_TRUTH_EVALUATION:V1',p_evaluation_hash) is true
     and case
       when p_event_state = 'REVEAL_STARTED' then p_predecessor_hash is null and p_reason is null and p_payload->'predecessorEvent' = 'null'::jsonb and p_payload->'reason' = 'null'::jsonb and p_payload->'result' = 'null'::jsonb
-      when p_event_state = 'REVEAL_COMPLETED' then p_predecessor_hash is not null and p_reason is null and investing.rl9b_hashref_matches_v1(p_payload->'predecessorEvent','SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1',p_predecessor_hash) is true and p_payload->'reason' = 'null'::jsonb and p_payload->'result' <> 'null'::jsonb
+      when p_event_state = 'REVEAL_COMPLETED' then false -- RL-9B has no verified vault/evaluator evidence; fail closed until a separately audited implementation
       when p_event_state = 'REVEAL_FAILED_CLOSED' then p_predecessor_hash is not null and p_reason is not null and investing.rl9b_reason_allowed_v1(p_reason) is true and investing.rl9b_hashref_matches_v1(p_payload->'predecessorEvent','SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1',p_predecessor_hash) is true and p_payload->>'reason' = p_reason and p_payload->'result' = 'null'::jsonb
       else false
     end,

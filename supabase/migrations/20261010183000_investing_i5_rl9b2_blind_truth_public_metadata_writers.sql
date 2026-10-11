@@ -310,7 +310,12 @@ create or replace function investing.persist_research_blind_truth_final_event_v1
 returns jsonb language plpgsql security definer set search_path = pg_catalog as $$
 begin
   perform 1 from investing.rl9b_assert_writer_authority_v1('RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1');
-  if p_canonical_payload->>'eventState' not in ('REVEAL_COMPLETED','REVEAL_FAILED_CLOSED') then raise exception 'AMBIGUOUS_EVENT_CHAIN'; end if;
+  if p_canonical_payload->>'eventState' = 'REVEAL_COMPLETED' then
+    -- RL-9B implements public metadata, not consume-once vault verification or
+    -- the deterministic evaluator. No scientific PASS/FAIL may be asserted here.
+    raise exception 'REVEAL_COMPLETED_EVIDENCE_UNAVAILABLE';
+  end if;
+  if p_canonical_payload->>'eventState' is distinct from 'REVEAL_FAILED_CLOSED' then raise exception 'AMBIGUOUS_EVENT_CHAIN'; end if;
   return investing.rl9b_insert_event_v1('RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1', p_hash_hex, p_canonical_payload);
 end;
 $$;
