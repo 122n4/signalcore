@@ -55,6 +55,7 @@ const requiredCurrentDocs = [
   "I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md",
   "I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md",
+  "I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md",
   "I5_RESEARCH_LAB_COMPLETION_PROGRAM_V1.md",
 ] as const;
 
@@ -349,7 +350,8 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("e1721482b0ba2b9a67b3d8751778ba2695e3e751");
     expect(state).toContain("107782658459 - SUCCESS");
     expect(state).toContain("107782658690 - SUCCESS");
-    expect(state).toContain("`RL-8 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`");
+    expect(state).toContain("`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CANONICAL ACCEPTANCE PENDING`");
+    expect(state).toContain("`PASS / RECONCILED 2026-10-11`");
     expect(state).toContain("80671f349d38405393476a0978ce6e7f015cfea1");
     expect(state).toContain("#94");
     expect(state).toContain("RL-5 implementation accepted merge/main anchor:");
@@ -603,7 +605,8 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
-    expect(state).toContain("Production Supabase migration state:\n`RL-8 PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED`.");
+    expect(state).toContain("Production Supabase migration state:\n`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CANONICAL ACCEPTANCE PENDING`.");
+    expect(state).toContain("`20261010183000 investing_i5_rl9b2_blind_truth_public_metadata_writers`");
     expect(state).toContain("RL-6 Production migration = NONE");
     expect(state).toContain("RL-6 Supabase Production mutation = NONE");
     expect(state).toContain("RL-6 is accepted in Git and required no database migration");
@@ -614,6 +617,24 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(row).toContain("| NONE |");
   });
 
+  it("records RL-9B post-apply evidence without claiming full Blind Truth acceptance", () => {
+    const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
+    const record = read("docs/investing-genesis/I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md");
+
+    expect(state).toContain("I5 RL-9B Public Metadata Persistence — Post-Apply Acceptance Candidate");
+    expect(state).toContain("I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md");
+    expect(state).toContain("POSTAPPLY_AUDIT_PASS / CANONICAL_ACCEPTANCE_PENDING");
+    expect(state).toContain("20261010180000");
+    expect(state).toContain("20261010183000");
+    expect(record).toContain("CANDIDATE / POSTAPPLY_AUDIT_PASS / CANONICAL_ACCEPTANCE_PENDING");
+    expect(record).toContain("5f03088afb73b8014e2beb8664816563ade7b364");
+    expect(record).toContain("6164a2db3981cdac5d908396a67d9349a170f315");
+    expect(record).toContain("Five scientific identity tables");
+    expect(record).toContain("20 unindexed_foreign_keys INFO");
+    expect(record).toContain("8 auth_rls_initplan WARN");
+    expect(record).toContain("RL-9C, RL-9D and RL-9E remain required");
+    expect(record).toContain("This is a **candidate**, not a declaration");
+  });
   it("records A5 accepted trust recovery without claiming global recovery", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
     const a5 = tableRow(state, "I5-A5 Research IR runtime/owner contract");
