@@ -108,34 +108,80 @@ jobs:
       - name: PostgreSQL 17 RL-8C3 Scientific promotion supersession rehearsal
         run: npx vitest run tests/investingGenesisI5Rl8c3ScientificPromotionSupersessionPg17.test.ts
 
-      - name: Create isolated RL-9B PostgreSQL 17 databases
-        run: |
-          node <<'NODE'
-          const { Client } = require("pg");
-          const client = new Client({ connectionString: "postgresql://postgres:postgres@127.0.0.1:5432/postgres" });
-          const databases = ["rl9b1_reconciliation", "rl9b2_reconciliation"];
-          (async () => {
-            await client.connect();
-            for (const database of databases) {
-              await client.query(`drop database if exists ${database} with (force)`);
-              await client.query(`create database ${database}`);
-            }
-            await client.end();
-          })().catch(async (error) => {
-            console.error(error);
-            await client.end().catch(() => undefined);
-            process.exit(1);
-          });
-          NODE
+  investing-rl9b1-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
 
       - name: PostgreSQL 17 RL-9B1 Blind Truth public metadata rehearsal
-        env:
-          PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/rl9b1_reconciliation
         run: npx vitest run tests/investingGenesisI5Rl9b1BlindTruthPersistencePg17.test.ts
 
-      - name: PostgreSQL 17 RL-9B2 Blind Truth writer rehearsal
+  investing-rl9b2-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    services:
+      postgres:
+        image: postgres:17
         env:
-          PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/rl9b2_reconciliation
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: PostgreSQL 17 RL-9B2 Blind Truth writer rehearsal
         run: npx vitest run tests/investingGenesisI5Rl9b2BlindTruthWritersPg17.test.ts
 
   investing-cumulative-compatibility-pg17:
