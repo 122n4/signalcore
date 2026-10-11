@@ -108,10 +108,34 @@ jobs:
       - name: PostgreSQL 17 RL-8C3 Scientific promotion supersession rehearsal
         run: npx vitest run tests/investingGenesisI5Rl8c3ScientificPromotionSupersessionPg17.test.ts
 
+      - name: Create isolated RL-9B PostgreSQL 17 databases
+        run: |
+          node <<'NODE'
+          const { Client } = require("pg");
+          const client = new Client({ connectionString: "postgresql://postgres:postgres@127.0.0.1:5432/postgres" });
+          const databases = ["rl9b1_reconciliation", "rl9b2_reconciliation"];
+          (async () => {
+            await client.connect();
+            for (const database of databases) {
+              await client.query(`drop database if exists ${database} with (force)`);
+              await client.query(`create database ${database}`);
+            }
+            await client.end();
+          })().catch(async (error) => {
+            console.error(error);
+            await client.end().catch(() => undefined);
+            process.exit(1);
+          });
+          NODE
+
       - name: PostgreSQL 17 RL-9B1 Blind Truth public metadata rehearsal
+        env:
+          PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/rl9b1_reconciliation
         run: npx vitest run tests/investingGenesisI5Rl9b1BlindTruthPersistencePg17.test.ts
 
       - name: PostgreSQL 17 RL-9B2 Blind Truth writer rehearsal
+        env:
+          PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/rl9b2_reconciliation
         run: npx vitest run tests/investingGenesisI5Rl9b2BlindTruthWritersPg17.test.ts
 
   investing-cumulative-compatibility-pg17:
