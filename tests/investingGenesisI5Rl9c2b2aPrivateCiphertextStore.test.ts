@@ -21,7 +21,7 @@ function withRoot(fn: (root: string) => void) {
   fs.chmodSync(root, 0o700);
   try { fn(root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
-function store(root: string, env = environment) {
+function store(root: string, env: Record<string, string> = environment) {
   return createSyntheticPrivateCiphertextStoreV1({ rootDirectory: root, storageMode: 'ISOLATED_REHEARSAL_V1', environment: env });
 }
 
