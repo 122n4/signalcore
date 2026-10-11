@@ -1457,7 +1457,7 @@ The Research Lab frontier remains:
 
 ## I5 RL-9B Public Metadata Persistence — Accepted Slice (unnumbered)
 
-- proposed/effective on separately reviewed and merged acceptance-sync candidate:
+- accepted status, effective only after the exact-SHA final-sync gate and merge:
   `CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE / UNNUMBERED`;
 - acceptance is narrow to RL-9B1/RL-9B2 persistence, not the whole RL-9;
   the design-freeze-only snapshot above is historical, not current
@@ -1473,7 +1473,7 @@ The Research Lab frontier remains:
   with synthetic records in Production.
 - Production RL-9B Performance Advisor debt: `20 unindexed_foreign_keys INFO`
   and `8 auth_rls_initplan WARN`; no hidden claim of zero debt.
-- Owner of proposed acceptance record and detailed evidence:
+- Acceptance evidence and scoped owner contract:
   `I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md`.
 - RL-9C Secret Vault, RL-9D evaluator/reveal and RL-9E closure remain deferred.
 - Post-apply evidence PR `#127`: squash merge
@@ -1483,8 +1483,6 @@ The Research Lab frontier remains:
 - Vercel Production SHA `2fa7ccc50b37566a239392c71195dd6ff123841d`:
   `dpl_4Qh8begVhubhfUtP2TFKTEp6U26N / READY`.
 - Final independent technical gate: `PASS / 2026-10-11`.
-- Owner contract:
-  `I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md`.
 - No new runtime, migration, financial state or broader Lab authority is
   granted by this final documentation and tests acceptance sync.
 - This status becomes canonical only after the final acceptance-sync PR
@@ -1670,7 +1668,7 @@ Physical canonical lineage is not the same fact as a dedicated owner contract.
 | RL-7 Robustness And Experiment Comparison V1 Implementation Closure / unnumbered | YES | YES | `I5_RL7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic comparison runtime + owner-exact hash domains + append-only persistence migrations/functions + runtime/migration tests + PG17 + concrete writer + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-7 ROBUSTNESS AND EXPERIMENT COMPARISON V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-7_ROBUSTNESS_EXPERIMENT_COMPARISON_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED |
 | RL-8 Scientific Promotion State Machine V1 Implementation Closure / unnumbered | YES | YES | `I5_RL8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE_OWNER_CONTRACT_V1.md` + deterministic promotion runtime/engine + exact promotion hash domains + append-only C1/C2/C3 persistence + PG17 + managed-Supabase preview + Production post-apply audit | CURRENT ACCEPTED OWNER CONTRACT - RL-8 SCIENTIFIC PROMOTION STATE MACHINE V1 IMPLEMENTATION CLOSURE - UNNUMBERED | CURRENT_ACCEPTED / RL-8_SCIENTIFIC_PROMOTION_STATE_MACHINE_V1_IMPLEMENTATION_CLOSURE | PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED |
 | RL-9 Blind Truth / Evidence Vault V1 Design Freeze / unnumbered | NO | YES | `I5_RL9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE_V1.md` + static design contract tests + independent audit + PR/CI + Vercel | CURRENT ACCEPTED DESIGN CONTRACT - RL-9 BLIND TRUTH / EVIDENCE VAULT V1 - UNNUMBERED | CURRENT_ACCEPTED / RL-9_BLIND_TRUTH_EVIDENCE_VAULT_V1_DESIGN_FREEZE | NONE |
-| RL-9B Blind Truth Public Metadata Persistence / unnumbered | YES | YES | `I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md` + B1/B2 SQL + PG17 managed-role/tenant tests + managed preview + 110-version Production ledger + independent RLS/ACL audit + PR #127 CI/Vercel | CURRENT ACCEPTED OWNER CONTRACT - RL-9B PUBLIC METADATA PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE | PERFORMANCE DEBT / RL-9C-D-E NOT COMPLETE |
+| RL-9B Blind Truth Public Metadata Persistence / unnumbered | YES | YES | `I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md` + B1/B2 SQL + PG17 managed-role/tenant tests + managed preview + 110-version Production ledger + independent RLS/ACL audit + PR #127 CI/Vercel | CURRENT ACCEPTED OWNER CONTRACT - RL-9B PUBLIC METADATA PERSISTENCE - UNNUMBERED | CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE | NONE IN RL-9B / RL-9C-D-E OUT OF SCOPE / PERFORMANCE DEBT RECORDED |
 
 RL-1 runtime/progression state:
 
