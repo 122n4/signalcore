@@ -6,7 +6,13 @@ begin
 end $$;
 
 grant investing_rl9_writer to postgres with inherit false, set true;
+
+-- Same managed-Postgres authority sequence as accepted RL-8C2:
+-- the schema owner grants temporary DDL, not the non-owner migration executor.
+set local role investing_owner;
 grant create on schema investing to investing_rl9_writer;
+reset role;
+
 set local role investing_rl9_writer;
 
 create or replace function investing.rl9b_assert_writer_authority_v1(p_expected_operation text)
