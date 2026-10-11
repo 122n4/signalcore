@@ -350,7 +350,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("e1721482b0ba2b9a67b3d8751778ba2695e3e751");
     expect(state).toContain("107782658459 - SUCCESS");
     expect(state).toContain("107782658690 - SUCCESS");
-    expect(state).toContain("`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CANONICAL ACCEPTANCE PENDING`");
+    expect(state).toContain("`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CURRENT_ACCEPTED`");
     expect(state).toContain("`PASS / RECONCILED 2026-10-11`");
     expect(state).toContain("80671f349d38405393476a0978ce6e7f015cfea1");
     expect(state).toContain("#94");
@@ -605,7 +605,7 @@ describe("Investing Genesis canonical hygiene", () => {
     expect(state).toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-9_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toContain("I5 RESEARCH LAB = IN_PROGRESS / RL-6_TO_RL-11 / PRODUCT_UI_DEFERRED");
     expect(state).not.toMatch(/^`I5 RESEARCH LAB = BACKEND_COMPLETE \/ PRODUCT_UI_DEFERRED`/mu);
-    expect(state).toContain("Production Supabase migration state:\n`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CANONICAL ACCEPTANCE PENDING`.");
+    expect(state).toContain("Production Supabase migration state:\n`RL-9B PRODUCTION MIGRATIONS APPLIED / POST-APPLY AUDITED / CURRENT_ACCEPTED`.");
     expect(state).toContain("`20261010183000 investing_i5_rl9b2_blind_truth_public_metadata_writers`");
     expect(state).toContain("RL-6 Production migration = NONE");
     expect(state).toContain("RL-6 Supabase Production mutation = NONE");
@@ -621,19 +621,28 @@ describe("Investing Genesis canonical hygiene", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
     const record = read("docs/investing-genesis/I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md");
 
-    expect(state).toContain("I5 RL-9B Public Metadata Persistence — Post-Apply Acceptance Candidate");
+    expect(state).toContain("I5 RL-9B Public Metadata Persistence — Accepted Slice (unnumbered)");
     expect(state).toContain("I5_RL9B_BLIND_TRUTH_PUBLIC_METADATA_POSTAPPLY_ACCEPTANCE_V1.md");
-    expect(state).toContain("POSTAPPLY_AUDIT_PASS / CANONICAL_ACCEPTANCE_PENDING");
+    expect(state).toContain("CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE / UNNUMBERED");
     expect(state).toContain("20261010180000");
     expect(state).toContain("20261010183000");
-    expect(record).toContain("CANDIDATE / POSTAPPLY_AUDIT_PASS / CANONICAL_ACCEPTANCE_PENDING");
+    expect(record).toContain("Status: CURRENT ACCEPTED OWNER CONTRACT — RL-9B PUBLIC METADATA PERSISTENCE — UNNUMBERED");
+    expect(record).toContain("Classification:\n`CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE / UNNUMBERED`");
     expect(record).toContain("5f03088afb73b8014e2beb8664816563ade7b364");
     expect(record).toContain("6164a2db3981cdac5d908396a67d9349a170f315");
     expect(record).toContain("Five scientific identity tables");
     expect(record).toContain("20 unindexed_foreign_keys INFO");
     expect(record).toContain("8 auth_rls_initplan WARN");
     expect(record).toContain("RL-9C, RL-9D and RL-9E remain required");
-    expect(record).toContain("This is a **candidate**, not a declaration");
+    expect(record).toContain("The acceptance classification becomes operative only when the exact");
+    expect(record).toContain("RL-9C, RL-9D and RL-9E remain required");
+    expect(record).toContain("38154751510 / SUCCESS");
+    const row = tableRow(state, "RL-9B Blind Truth Public Metadata Persistence / unnumbered");
+    expect(row).toContain("| YES | YES |");
+    expect(row).toContain("CURRENT_ACCEPTED / RL-9B_BLIND_TRUTH_PUBLIC_METADATA_PERSISTENCE");
+    expect(row).toContain("PERFORMANCE DEBT / RL-9C-D-E NOT COMPLETE");
+    expect(state).toContain("dpl_4Qh8begVhubhfUtP2TFKTEp6U26N / READY");
+    expect(state).not.toContain("## I5 RL-9B Public Metadata Persistence — Post-Apply Acceptance Candidate");
   });
   it("records A5 accepted trust recovery without claiming global recovery", () => {
     const state = read("docs/investing-genesis/CANONICAL_CURRENT_STATE.md");
