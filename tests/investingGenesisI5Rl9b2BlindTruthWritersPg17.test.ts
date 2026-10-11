@@ -23,6 +23,17 @@ import {
 import { canonicalSha256HexV1, hashRefV1, type HashRefV1 } from "../lib/investing/research/canonical";
 import { hashExecutionConfigV1, hashMetricRequestSetV1, type ExecutionConfigHashPayloadV1, type MetricRequestSetHashPayloadV1 } from "../lib/investing/research/executionMaterials";
 import { metricRegistryV2Requests } from "../lib/investing/research/researchMetrics";
+import {
+  canonicalScientificPromotionProtocolV1,
+  gateEvidenceForScientificPromotionV1,
+  hashScientificPromotionProtocolV1,
+  hashScientificPromotionTransitionV1,
+  scientificPromotionGateVocabularyV1,
+  type ScientificPromotionEvidenceSnapshotV1,
+  type ScientificPromotionGateOutcomeV1,
+  type ScientificPromotionSubjectV1,
+  type ScientificPromotionTransitionV1,
+} from "../lib/investing/research/scientificPromotion";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -102,13 +113,24 @@ type Rl9BehaviorFixture = {
   membershipId: string;
   investigationId: string;
   idempotencyRecordId: string;
+  baselineExperimentId: string;
   researchExperimentId: string;
   researchSpecRevisionId: string;
+  runInputIdentityId: string;
+  resultIdentityId: string;
+  evidenceObjectIdentityId: string;
+  validationProtocolIdentityId: string;
+  validationResultIdentityId: string;
+  validationAssessmentProtocolIdentityId: string;
+  validationAssessmentResultIdentityId: string;
+  comparisonProtocolIdentityId: string;
+  comparisonResultIdentityId: string;
+  rootTransitionIdentityId?: string;
   subjectExperiment: HashRefV1;
   subjectExperimentParameters: HashRefV1;
   subjectResearchIr: HashRefV1;
-  promotionProtocol: ReturnType<typeof hashRefV1>;
-  promotionTransition: ReturnType<typeof hashRefV1>;
+  promotionProtocol: ReturnType<typeof hashScientificPromotionProtocolV1>;
+  promotionTransition: ReturnType<typeof hashScientificPromotionTransitionV1>;
   hypothesis: HashRefV1;
   metricRequestSet: HashRefV1;
   executionConfig: HashRefV1;
@@ -119,6 +141,7 @@ type Rl9BehaviorFixture = {
   sealIdentityId?: string;
   evaluationIdentityId?: string;
   startedIdentityId?: string;
+  scienceKey: string;
 };
 
 const rl9Tables = [
@@ -245,24 +268,122 @@ async function seedRl9BehaviorFixture(client: PoolClient, suffix: string, overri
     membershipId: overrides.membershipId ?? await uuid(client),
     investigationId: overrides.investigationId ?? await uuid(client),
     idempotencyRecordId: overrides.idempotencyRecordId ?? await uuid(client),
+    baselineExperimentId: overrides.baselineExperimentId ?? await uuid(client),
     researchExperimentId: overrides.researchExperimentId ?? await uuid(client),
     researchSpecRevisionId: overrides.researchSpecRevisionId ?? await uuid(client),
+    runInputIdentityId: overrides.runInputIdentityId ?? await uuid(client),
+    resultIdentityId: overrides.resultIdentityId ?? await uuid(client),
+    evidenceObjectIdentityId: overrides.evidenceObjectIdentityId ?? await uuid(client),
+    validationProtocolIdentityId: overrides.validationProtocolIdentityId ?? await uuid(client),
+    validationResultIdentityId: overrides.validationResultIdentityId ?? await uuid(client),
+    validationAssessmentProtocolIdentityId: overrides.validationAssessmentProtocolIdentityId ?? await uuid(client),
+    validationAssessmentResultIdentityId: overrides.validationAssessmentResultIdentityId ?? await uuid(client),
+    comparisonProtocolIdentityId: overrides.comparisonProtocolIdentityId ?? await uuid(client),
+    comparisonResultIdentityId: overrides.comparisonResultIdentityId ?? await uuid(client),
     subjectExperiment: overrides.subjectExperiment ?? hashRef("SYNTRAKE:EXPERIMENT:V1", `${suffix}:experiment`),
     subjectExperimentParameters: overrides.subjectExperimentParameters ?? hashRef("SYNTRAKE:EXPERIMENT_PARAMETERS:V1", `${suffix}:parameters`),
     subjectResearchIr: overrides.subjectResearchIr ?? hashRef("SYNTRAKE:RESEARCH_IR:V1", `${suffix}:ir`),
-    promotionProtocol: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: "122F57C9D0CEE90AF122C949D34C4862364BDD6C5DF1ACD87799F1110B7E124C" }),
-    promotionTransition: overrides.promotionTransition ?? hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${suffix}:promotion`) }),
+    promotionProtocol: hashScientificPromotionProtocolV1(),
+    promotionTransition: overrides.promotionTransition ?? hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${suffix}:promotion-placeholder`) }) as unknown as ReturnType<typeof hashScientificPromotionTransitionV1>,
     hypothesis: overrides.hypothesis ?? hashRef("SYNTRAKE:HYPOTHESIS:V1", `${suffix}:hypothesis`),
     metricRequestSet: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:METRIC_REQUEST_SET:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hashMetricRequestSetV1(metricRequestSetPayload) }),
     executionConfig: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:EXECUTION_CONFIG:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: hashExecutionConfigV1(executionConfigPayload) }),
     registrationPayload: undefined as never,
     registrationHash: "",
+    scienceKey: overrides.scienceKey ?? suffix,
   };
   fx.registrationPayload = registrationPayloadFor(fx);
   fx.registrationHash = hashRegistrationPayload(fx.registrationPayload);
   await seedAuthority(client, fx, suffix, overrides.reuseAuthority === true);
   await seedMinimalResearchRows(client, fx, suffix);
   return fx;
+}
+
+
+function promotionSubject(fx: Rl9BehaviorFixture): ScientificPromotionSubjectV1 {
+  return {
+    subjectExperiment: fx.subjectExperiment,
+    subjectExperimentParameters: fx.subjectExperimentParameters,
+    subjectResearchIr: fx.subjectResearchIr,
+  };
+}
+
+function rootEvidence(fx: Rl9BehaviorFixture): ScientificPromotionEvidenceSnapshotV1 {
+  return {
+    runInput: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RUN_INPUT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:run-input`) }),
+    result: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESULT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:result`) }),
+    evidenceObject: null,
+    validationProtocol: null,
+    validationResult: null,
+    validationAssessmentProtocol: null,
+    validationAssessmentResult: null,
+    robustnessComparisonProtocol: null,
+    robustnessComparisonResult: null,
+  };
+}
+
+function fullEvidence(fx: Rl9BehaviorFixture): ScientificPromotionEvidenceSnapshotV1 {
+  return {
+    ...rootEvidence(fx),
+    evidenceObject: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:EVIDENCE_OBJECT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:evidence`) }),
+    validationProtocol: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:VALIDATION_PROTOCOL:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:validation-protocol`) }),
+    validationResult: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:VALIDATION_RESULT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:validation-result`) }),
+    validationAssessmentProtocol: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:assessment-protocol`) }),
+    validationAssessmentResult: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:assessment-result`) }),
+    robustnessComparisonProtocol: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:EXPERIMENT_COMPARISON_PROTOCOL:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:comparison-protocol`) }),
+    robustnessComparisonResult: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:EXPERIMENT_COMPARISON_RESULT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: h(`${fx.scienceKey}:comparison-result`) }),
+  };
+}
+
+function rl8RootTransition(fx: Rl9BehaviorFixture): ScientificPromotionTransitionV1 {
+  return {
+    schemaVersion: "SCIENTIFIC_PROMOTION_TRANSITION_V1",
+    protocol: hashScientificPromotionProtocolV1(),
+    subject: promotionSubject(fx),
+    predecessorTransition: null,
+    predecessorState: "DRAFT_RESEARCH",
+    resultingState: "EXECUTED",
+    evidenceSnapshot: rootEvidence(fx),
+    gateOutcomes: [],
+    transitionReasons: [],
+    supersedes: null,
+    rejectedTransition: null,
+    supersededByChain: null,
+  };
+}
+
+function passingGateOutcomes(fx: Rl9BehaviorFixture): ScientificPromotionGateOutcomeV1[] {
+  const evidenceSnapshot = fullEvidence(fx);
+  const subject = promotionSubject(fx);
+  return scientificPromotionGateVocabularyV1.map((gateId) => ({
+    gateId,
+    status: "PASS",
+    reasons: [],
+    evidence: gateEvidenceForScientificPromotionV1({ protocol: hashScientificPromotionProtocolV1(), subject, evidenceSnapshot, gateId }),
+  }));
+}
+
+function rl8StageATransition(fx: Rl9BehaviorFixture): ScientificPromotionTransitionV1 {
+  const root = rl8RootTransition(fx);
+  return {
+    ...root,
+    predecessorState: "EXECUTED",
+    resultingState: "VALIDATION_PASSED",
+    predecessorTransition: hashScientificPromotionTransitionV1(root),
+    evidenceSnapshot: fullEvidence(fx),
+    gateOutcomes: passingGateOutcomes(fx),
+  };
+}
+
+function rl8ClosureTransition(stageA: ScientificPromotionTransitionV1): ScientificPromotionTransitionV1 {
+  return {
+    ...stageA,
+    predecessorState: "VALIDATION_PASSED",
+    resultingState: "PROMOTION_ELIGIBLE",
+    predecessorTransition: hashScientificPromotionTransitionV1(stageA),
+    transitionReasons: [],
+    rejectedTransition: null,
+  };
 }
 
 async function seedMinimalResearchRows(client: PoolClient, fx: Rl9BehaviorFixture, suffix: string): Promise<void> {
@@ -275,20 +396,68 @@ async function seedMinimalResearchRows(client: PoolClient, fx: Rl9BehaviorFixtur
   await client.query(`insert into investing.research_material_roots (material_root_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id, operation_scope, source_context, material_kind, created_by_operation) values ($1,$4,$5,$6,'USER_PRINCIPAL',($6::uuid)::text,$7,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC','RESEARCH_SPEC_REVISION_CREATE_V1'),($2,$4,$5,$6,'USER_PRINCIPAL',($6::uuid)::text,$7,'TENANT_SCOPE','PURE_RESEARCH','DRAFT','RESEARCH_DRAFT_REVISION_CREATE_V1'),($3,$4,$5,$6,'USER_PRINCIPAL',($6::uuid)::text,$7,'TENANT_SCOPE','PURE_RESEARCH','HYPOTHESIS','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1')`, [specRoot, draftRoot, hypothesisRoot, fx.investigationId, fx.tenantId, fx.principalId, fx.membershipId]);
   await client.query(`insert into investing.research_material_revisions (material_revision_id, material_root_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id, operation_scope, operation, capability, source_context, material_kind, revision_number, payload_schema_version, canonical_payload, material_hash, material_request_hash, idempotency_record_id, idempotency_key, correlation_id) values ($1,$2,$5,$6,$7,'USER_PRINCIPAL',($7::uuid)::text,$8,'TENANT_SCOPE','RESEARCH_DRAFT_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','DRAFT',1,'RESEARCH_DRAFT_HASH_PAYLOAD_V1','{"schemaVersion":"RESEARCH_DRAFT_HASH_PAYLOAD_V1"}'::jsonb,$9,$9,$11,$12,$13),($3,$4,$5,$6,$7,'USER_PRINCIPAL',($7::uuid)::text,$8,'TENANT_SCOPE','RESEARCH_HYPOTHESIS_REVISION_CREATE_V1','RESEARCH_MUTATE','PURE_RESEARCH','HYPOTHESIS',1,'HYPOTHESIS_HASH_PAYLOAD_V1','{"schemaVersion":"HYPOTHESIS_HASH_PAYLOAD_V1"}'::jsonb,$10,$10,$11,$12,$13)`, [draftRevision, draftRoot, hypothesisRevision, hypothesisRoot, fx.investigationId, fx.tenantId, fx.principalId, fx.membershipId, sourceDraftHash, fx.hypothesis.hashHex, fx.idempotencyRecordId, `rl9b-${suffix}-investigation-idem`, `rl9b-${suffix}-corr`]);
   await client.query(`insert into investing.research_spec_revisions (research_spec_revision_id, material_root_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id, operation_scope, source_context, operation, capability, revision_number, source_draft_revision_id, source_draft_material_hash, hypothesis_revision_id, hypothesis_material_hash, candidate_schema_version, candidate_status, canonical_candidate, material_request_hash, idempotency_record_id, idempotency_key, correlation_id) values ($1,$2,$3,$4,$5,'USER_PRINCIPAL',($5::uuid)::text,$6,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_SPEC_REVISION_CREATE_V1','RESEARCH_MUTATE',1,$7,$8,$9,$10,'RESEARCH_SPEC_CANDIDATE_V1','CANDIDATE_ONLY',$11::jsonb,$12,$13,$14,$15)`, [fx.researchSpecRevisionId, specRoot, fx.investigationId, fx.tenantId, fx.principalId, fx.membershipId, draftRevision, sourceDraftHash, hypothesisRevision, fx.hypothesis.hashHex, JSON.stringify({ schemaVersion: "RESEARCH_SPEC_CANDIDATE_V1", status: "CANDIDATE_ONLY", sourceDraft: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESEARCH_DRAFT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: sourceDraftHash }), hypothesisBinding: { kind: "EXPLICIT_HYPOTHESIS", hypothesis: fx.hypothesis } }), h(`${suffix}:spec-request`), fx.idempotencyRecordId, `rl9b-${suffix}-investigation-idem`, `rl9b-${suffix}-corr`]);
-  await client.query(`insert into investing.research_experiments (research_experiment_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id, operation_scope, source_context, operation, capability, relation, parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex, experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex, experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id) values ($1,$2,$3,$4,'USER_PRINCIPAL',($4::uuid)::text,$5,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_BASELINE_CREATE_V1','RESEARCH_MUTATE','BASELINE',null,$6,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$7,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$8,'SHA-256','SYNTRAKE:EXPERIMENT_PARAMETERS:V1','SYNTRAKE_SHA256_V1',$9,$10,$11,$12,$13)`, [fx.researchExperimentId, fx.investigationId, fx.tenantId, fx.principalId, fx.membershipId, fx.researchSpecRevisionId, fx.subjectResearchIr.hashHex, fx.subjectExperiment.hashHex, fx.subjectExperimentParameters.hashHex, h(`${suffix}:experiment-request`), fx.idempotencyRecordId, `rl9b-${suffix}-investigation-idem`, `rl9b-${suffix}-corr`]);
+  await client.query(`insert into investing.research_experiments (research_experiment_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id, operation_scope, source_context, operation, capability, relation, parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex, experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id) values ($1,$2,$3,$4,'USER_PRINCIPAL',($4::uuid)::text,$5,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_BASELINE_CREATE_V1','RESEARCH_MUTATE','BASELINE',null,$6,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$7,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$8,$9,$10,$11,$12)`, [fx.baselineExperimentId, fx.investigationId, fx.tenantId, fx.principalId, fx.membershipId, fx.researchSpecRevisionId, fx.subjectResearchIr.hashHex, h(`${suffix}:baseline-experiment`), h(`${suffix}:baseline-request`), fx.idempotencyRecordId, `rl9b-${suffix}-investigation-idem`, `rl9b-${suffix}-corr`]);
+  await client.query(`insert into investing.research_experiments (research_experiment_id, research_investigation_id, tenant_id, principal_id, actor_kind, actor_id, tenant_membership_id, operation_scope, source_context, operation, capability, relation, parent_experiment_id, research_spec_revision_id, research_ir_hash_algorithm, research_ir_hash_domain, research_ir_hash_version, research_ir_hash_hex, experiment_hash_algorithm, experiment_hash_domain, experiment_hash_version, experiment_hash_hex, experiment_parameters_hash_algorithm, experiment_parameters_hash_domain, experiment_parameters_hash_version, experiment_parameters_hash_hex, material_request_hash, idempotency_record_id, idempotency_key, correlation_id) values ($1,$2,$3,$4,'USER_PRINCIPAL',($4::uuid)::text,$5,'TENANT_SCOPE','PURE_RESEARCH','RESEARCH_EXPERIMENT_VARIANT_CREATE_V1','RESEARCH_MUTATE','VARIANT',$6,$7,'SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$8,'SHA-256','SYNTRAKE:EXPERIMENT:V1','SYNTRAKE_SHA256_V1',$9,'SHA-256','SYNTRAKE:EXPERIMENT_PARAMETERS:V1','SYNTRAKE_SHA256_V1',$10,$11,$12,$13,$14)`, [fx.researchExperimentId, fx.investigationId, fx.tenantId, fx.principalId, fx.membershipId, fx.baselineExperimentId, fx.researchSpecRevisionId, fx.subjectResearchIr.hashHex, fx.subjectExperiment.hashHex, fx.subjectExperimentParameters.hashHex, h(`${suffix}:variant-request`), fx.idempotencyRecordId, `rl9b-${suffix}-investigation-idem`, `rl9b-${suffix}-corr`]);
   await client.query(`insert into investing.research_specs_scientific_identities (research_spec_identity_id, tenant_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, research_spec_revision_id, source_draft_hash_hex, hypothesis_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (extensions.gen_random_uuid(),$1,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$4,$5,$6,'SHA-256','SYNTRAKE:RESEARCH_SPEC:V1','SYNTRAKE_SHA256_V1',$7,$8::jsonb)`, [fx.tenantId, fx.principalId, fx.membershipId, fx.researchSpecRevisionId, sourceDraftHash, fx.hypothesis.hashHex, h(`${suffix}:research-spec`), JSON.stringify({ schemaVersion: "RESEARCH_SPEC_HASH_PAYLOAD_V1", sourceDraft: hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:RESEARCH_DRAFT:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: sourceDraftHash }), hypothesisBinding: { kind: "EXPLICIT_HYPOTHESIS", hypothesis: fx.hypothesis } })]);
   await client.query(`insert into investing.research_ir_scientific_identities (research_ir_identity_id, tenant_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (extensions.gen_random_uuid(),$1,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:RESEARCH_IR:V1','SYNTRAKE_SHA256_V1',$4,'{"schemaVersion":"RESEARCH_IR_HASH_PAYLOAD_V1"}'::jsonb)`, [fx.tenantId, fx.principalId, fx.membershipId, fx.subjectResearchIr.hashHex]);
   await client.query(`insert into investing.metric_request_sets_scientific_identities (metric_request_set_identity_id, tenant_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, metric_registry_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (extensions.gen_random_uuid(),$1,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','METRIC_REGISTRY_V20260927','SHA-256','SYNTRAKE:METRIC_REQUEST_SET:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)`, [fx.tenantId, fx.principalId, fx.membershipId, fx.metricRequestSet.hashHex, JSON.stringify(metricRequestSetPayload)]);
   await client.query(`insert into investing.execution_configs_scientific_identities (execution_config_identity_id, tenant_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, engine_compatibility_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (extensions.gen_random_uuid(),$1,$2,$3,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','ENGINE_V20260926','SHA-256','SYNTRAKE:EXECUTION_CONFIG:V1','SYNTRAKE_SHA256_V1',$4,$5::jsonb)`, [fx.tenantId, fx.principalId, fx.membershipId, fx.executionConfig.hashHex, JSON.stringify(executionConfigPayload)]);
-  await client.query(`insert into investing.research_scientific_promotion_protocols_scientific_identities (research_scientific_promotion_protocol_identity_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values (extensions.gen_random_uuid(),'RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:SCIENTIFIC_PROMOTION_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$1,'{"schemaVersion":"SCIENTIFIC_PROMOTION_PROTOCOL_V1","protocolId":"SCIENTIFIC_PROMOTION_PROTOCOL_V20261002"}'::jsonb) on conflict do nothing`, [fx.promotionProtocol.hashHex]);
-  const protocolId = (await client.query<{ id: string }>("select research_scientific_promotion_protocol_identity_id::text as id from investing.research_scientific_promotion_protocols_scientific_identities where hash_hex=$1", [fx.promotionProtocol.hashHex])).rows[0]!.id;
-  fx.protocolIdentityId = protocolId;
-  await client.query(`insert into investing.research_scientific_promotion_transitions_scientific_identities (operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, canonical_payload) values ('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'VALIDATION_PASSED','PROMOTION_ELIGIBLE','SHA-256','SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1','SYNTRAKE_SHA256_V1',$11,$12::jsonb)`, [fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.researchExperimentId, protocolId, fx.promotionProtocol.hashHex, fx.subjectExperiment.hashHex, fx.subjectExperimentParameters.hashHex, fx.subjectResearchIr.hashHex, fx.promotionTransition.hashHex, JSON.stringify({ resultingState: "PROMOTION_ELIGIBLE", subject: { subjectExperiment: fx.subjectExperiment, subjectExperimentParameters: fx.subjectExperimentParameters, subjectResearchIr: fx.subjectResearchIr }, protocol: fx.promotionProtocol })]);
+  await seedRl8OperationalEvidence(client, fx, suffix);
+  await createAcceptedRl8PromotionLeaf(client, fx);
 }
 
-async function insertRl8Successor(client: PoolClient, fx: Rl9BehaviorFixture, suffix: string): Promise<void> {
-  const predecessor = await client.query<{ id: string }>("select research_scientific_promotion_transition_identity_id::text as id from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and transition_hash_hex=$2", [fx.tenantId, fx.promotionTransition.hashHex]);
-  await client.query(`insert into investing.research_scientific_promotion_transitions_scientific_identities (operation, capability, operation_scope, source_context, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_scientific_promotion_protocol_identity_id, protocol_hash_hex, subject_experiment_hash_hex, subject_experiment_parameters_hash_hex, subject_research_ir_hash_hex, predecessor_transition_identity_id, predecessor_transition_hash_hex, predecessor_state, resulting_state, transition_hash_algorithm, transition_hash_domain, transition_hash_version, transition_hash_hex, canonical_payload) values ('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PROMOTION_ELIGIBLE','VALIDATION_PASSED','SHA-256','SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1','SYNTRAKE_SHA256_V1',$13,$14::jsonb)`, [fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.researchExperimentId, fx.protocolIdentityId, fx.promotionProtocol.hashHex, fx.subjectExperiment.hashHex, fx.subjectExperimentParameters.hashHex, fx.subjectResearchIr.hashHex, predecessor.rows[0]!.id, fx.promotionTransition.hashHex, h(`${suffix}:successor`), JSON.stringify({ resultingState: "VALIDATION_PASSED" })]);
+async function seedRl8OperationalEvidence(client: PoolClient, fx: Rl9BehaviorFixture, suffix: string): Promise<void> {
+  const root = rootEvidence(fx);
+  const full = fullEvidence(fx);
+  await client.query(`insert into investing.run_inputs_scientific_identities (run_input_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id, operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex, metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11,'METRIC_REGISTRY_V20260927',$12,'ENGINE_V20260926',$13,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$14,$15::jsonb)`, [fx.runInputIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.researchExperimentId, fx.researchSpecRevisionId, h(`${suffix}:research-spec`), fx.subjectResearchIr.hashHex, fx.subjectExperiment.hashHex, h(`${suffix}:dataset`), fx.metricRequestSet.hashHex, fx.executionConfig.hashHex, root.runInput!.hashHex, JSON.stringify({ schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1", researchSourceContext: "PURE_RESEARCH", metricRegistryVersion: "METRIC_REGISTRY_V20260927", engineVersion: "ENGINE_V20260926", researchSpec: hashRef("SYNTRAKE:RESEARCH_SPEC:V1", `${suffix}:research-spec`), researchIr: fx.subjectResearchIr, experiment: fx.subjectExperiment, datasetSnapshot: hashRef("SYNTRAKE:DATASET_SNAPSHOT:V1", `${suffix}:dataset`), metricRequestSet: fx.metricRequestSet, executionConfig: fx.executionConfig })]);
+  const trace = await uuid(client); const valuation = await uuid(client); const metrics = await uuid(client);
+  for (const [id, kind, schema] of [[trace, "EXECUTION_TRACE", "EXECUTION_TRACE_V1"], [valuation, "VALUATION_SERIES", "VALUATION_SERIES_V1"], [metrics, "METRIC_RESULT_SET", "METRIC_RESULT_SET_V1"]]) {
+    const content = `${JSON.stringify({ suffix, kind })}\n`;
+    await client.query(`insert into investing.research_result_artifacts (artifact_id, tenant_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content) values ($1,$2,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,'CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',upper(encode(extensions.digest(convert_to($7,'UTF8'),'sha256'),'hex')),octet_length(convert_to($7,'UTF8')),1,convert_to($7,'UTF8'))`, [id, fx.tenantId, fx.principalId, fx.membershipId, kind, schema, content]);
+  }
+  await client.query(`insert into investing.research_results_scientific_identities (result_identity_id, tenant_id, principal_id, tenant_membership_id, run_input_identity_id, execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, operation, capability, operation_scope, source_context, engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260926','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$9,'{"schemaVersion":"RESULT_HASH_PAYLOAD_V1"}'::jsonb)`, [fx.resultIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.runInputIdentityId, trace, valuation, metrics, root.result!.hashHex]);
+  await client.query(`insert into investing.research_evidence_objects_scientific_identities (evidence_identity_id, tenant_id, principal_id, tenant_membership_id, run_input_identity_id, result_identity_id, descriptor_schema_version, descriptor_kind, descriptor_artifact_schema_version, descriptor_format, content, content_sha256, content_byte_length, hash_algorithm, hash_domain, hash_version, hash_hex, operation, capability, operation_scope, source_context) values ($1,$2,$3,$4,$5,$6,'EVIDENCE_CONTENT_DESCRIPTOR_V1','RESEARCH_EXECUTION_EVIDENCE','RESEARCH_EXECUTION_EVIDENCE_V1','CANONICAL_JSON_UTF8_V1',convert_to($7,'UTF8'),upper(encode(extensions.digest(convert_to($7,'UTF8'),'sha256'),'hex')),octet_length(convert_to($7,'UTF8')),'SHA-256','SYNTRAKE:EVIDENCE_OBJECT:V1','SYNTRAKE_SHA256_V1',$8,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH')`, [fx.evidenceObjectIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.runInputIdentityId, fx.resultIdentityId, JSON.stringify({ suffix, kind: "evidence" }), full.evidenceObject!.hashHex]);
+  await client.query(`insert into investing.research_validation_protocols_scientific_identities (research_validation_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$7,'{"schemaVersion":"TEST_VALIDATION_PROTOCOL"}'::jsonb)`, [fx.validationProtocolIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.researchExperimentId, full.validationProtocol!.hashHex]);
+  await client.query(`insert into investing.research_validation_results_scientific_identities (research_validation_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'RESEARCH_VALIDATION_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_RESULT:V1','SYNTRAKE_SHA256_V1',$8,'{"schemaVersion":"TEST_VALIDATION_RESULT"}'::jsonb)`, [fx.validationResultIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.validationProtocolIdentityId, fx.researchExperimentId, full.validationResult!.hashHex]);
+  await client.query(`insert into investing.research_validation_assessment_protocols_scientific_identities (research_validation_assessment_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, validation_protocol_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, assessment_methodology, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'METRIC_REGISTRY_V20260927','VALIDATION_ASSESSMENT_METHODOLOGY_V20260929','RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$11,$12::jsonb)`, [fx.validationAssessmentProtocolIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.validationProtocolIdentityId, fx.researchExperimentId, full.validationProtocol!.hashHex, fx.subjectExperiment.hashHex, fx.subjectResearchIr.hashHex, full.validationAssessmentProtocol!.hashHex, JSON.stringify({ schemaVersion: "VALIDATION_ASSESSMENT_PROTOCOL_V1", assessmentMethodology: "VALIDATION_ASSESSMENT_METHODOLOGY_V20260929", validationProtocol: full.validationProtocol, subjectExperiment: fx.subjectExperiment, subjectResearchIr: fx.subjectResearchIr, metricRegistryVersion: "METRIC_REGISTRY_V20260927", criteria: [], requiredEvidenceRequirements: [], missingEvidenceSemantics: "REQUIRED_EVIDENCE_MISSING_IS_INSUFFICIENT_EVIDENCE_V1", aggregationRule: "ALL_REQUIRED_CRITERIA_PASS_V1" })]);
+  await client.query(`insert into investing.research_validation_assessment_results_scientific_identities (research_validation_assessment_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, assessment_protocol_hash_hex, validation_protocol_hash_hex, validation_result_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, outcome, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'METRIC_REGISTRY_V20260927','PASS','RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1','SYNTRAKE_SHA256_V1',$15,$16::jsonb)`, [fx.validationAssessmentResultIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.validationProtocolIdentityId, fx.researchExperimentId, fx.validationAssessmentProtocolIdentityId, fx.validationResultIdentityId, full.validationAssessmentProtocol!.hashHex, full.validationProtocol!.hashHex, full.validationResult!.hashHex, fx.subjectExperiment.hashHex, fx.subjectResearchIr.hashHex, full.validationAssessmentResult!.hashHex, JSON.stringify({ schemaVersion: "VALIDATION_ASSESSMENT_RESULT_V1", assessmentProtocol: full.validationAssessmentProtocol, validationProtocol: full.validationProtocol, validationResult: full.validationResult, subjectExperiment: fx.subjectExperiment, subjectResearchIr: fx.subjectResearchIr, metricRegistryVersion: "METRIC_REGISTRY_V20260927", consumedEvidence: [], criterionOutcomes: [], outcome: "PASS" })]);
+  await client.query(`insert into investing.research_experiment_comparison_protocols_scientific_identities (research_experiment_comparison_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, hash_hex, logical_comparison_key, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'{"schemaVersion":"TEST_COMPARISON_PROTOCOL"}'::jsonb)`, [fx.comparisonProtocolIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, full.robustnessComparisonProtocol!.hashHex, h(`${suffix}:comparison-logical-key`)]);
+  await client.query(`insert into investing.research_experiment_comparison_results_scientific_identities (research_experiment_comparison_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_comparison_protocol_identity_id, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'{"schemaVersion":"TEST_COMPARISON_RESULT"}'::jsonb)`, [fx.comparisonResultIdentityId, fx.tenantId, fx.principalId, fx.membershipId, fx.investigationId, fx.comparisonProtocolIdentityId, full.robustnessComparisonResult!.hashHex]);
+}
+
+async function createAcceptedRl8PromotionLeaf(client: PoolClient, fx: Rl9BehaviorFixture): Promise<void> {
+  await client.query("reset role");
+  await client.query("set local role investing_app");
+  await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1", true);
+  const protocol = await client.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [hashScientificPromotionProtocolV1().hashHex, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
+  fx.protocolIdentityId = protocol.rows[0]!.result.researchScientificPromotionProtocolIdentityId;
+  await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1", true);
+  const root = rl8RootTransition(fx);
+  const rootResult = await client.query<{ result: { researchScientificPromotionTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(root).hashHex, JSON.stringify(root)]);
+  fx.rootTransitionIdentityId = rootResult.rows[0]!.result.researchScientificPromotionTransitionIdentityId;
+  await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1", true);
+  const stageA = rl8StageATransition(fx);
+  const closure = rl8ClosureTransition(stageA);
+  const evaluation = await client.query<{ result: { closureTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_evaluation_plan_v1($1,$2,$3::jsonb,$4,$5::jsonb) as result", [fx.rootTransitionIdentityId, hashScientificPromotionTransitionV1(stageA).hashHex, JSON.stringify(stageA), hashScientificPromotionTransitionV1(closure).hashHex, JSON.stringify(closure)]);
+  fx.promotionTransition = hashScientificPromotionTransitionV1(closure) as never;
+  expect(evaluation.rows[0]!.result.closureTransitionIdentityId).toMatch(/^[0-9a-f-]{36}$/i);
+  await client.query("reset role");
+  fx.registrationPayload = registrationPayloadFor(fx);
+  fx.registrationHash = hashRegistrationPayload(fx.registrationPayload);
+}
+
+async function insertRl8Successor(client: PoolClient, fx: Rl9BehaviorFixture): Promise<void> {
+  await setRl9Authority(client, fx, "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1", true);
+  const current = await client.query<{ id: string; hash: string }>("select research_scientific_promotion_transition_identity_id::text as id, transition_hash_hex as hash from investing.research_scientific_promotion_transitions_scientific_identities where tenant_id=$1 and transition_hash_hex=$2", [fx.tenantId, fx.promotionTransition.hashHex]);
+  const predecessor = hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:SCIENTIFIC_PROMOTION_TRANSITION:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex: current.rows[0]!.hash as never }) as unknown as ReturnType<typeof hashScientificPromotionTransitionV1>;
+  const successor: ScientificPromotionTransitionV1 = { ...rl8StageATransition(fx), predecessorState: "PROMOTION_ELIGIBLE", resultingState: "VALIDATION_PASSED", predecessorTransition: predecessor };
+  await client.query("select investing.rl8c_insert_transition_from_payload_v1('RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1',$1,$2::jsonb,$3,$4,null,null)", [hashScientificPromotionTransitionV1(successor).hashHex, JSON.stringify(successor), current.rows[0]!.id, current.rows[0]!.hash]);
+  await client.query("reset role");
+}
+
+async function sqlDomainHash(client: PoolClient, domain: string, payload: unknown): Promise<string> {
+  const result = await client.query<{ hash: string }>("select investing.rl8c_sha256_hex_v1($1, $2::jsonb) as hash", [domain, JSON.stringify(payload)]);
+  return result.rows[0]!.hash;
 }
 
 async function seedPersistedRl9Chain(client: PoolClient, suffix: string): Promise<Rl9BehaviorFixture & { registrationIdentityId: string; sealIdentityId: string; evaluationIdentityId: string; startedIdentityId: string; protocolIdentityId: string }> {
@@ -583,15 +752,27 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
         registration_hash_hex: fx.registrationHash,
       });
 
-      const secondInvestigation = await seedRl9BehaviorFixture(client, "behavior-second-investigation", { tenantId: fx.tenantId, principalId: fx.principalId, membershipId: fx.membershipId, subjectExperiment: fx.subjectExperiment, subjectExperimentParameters: fx.subjectExperimentParameters, subjectResearchIr: fx.subjectResearchIr, reuseAuthority: true });
+      const secondInvestigation = await seedRl9BehaviorFixture(client, "behavior-second-investigation", { tenantId: fx.tenantId, principalId: fx.principalId, membershipId: fx.membershipId, subjectExperiment: fx.subjectExperiment, subjectExperimentParameters: fx.subjectExperimentParameters, subjectResearchIr: fx.subjectResearchIr, hypothesis: fx.hypothesis, scienceKey: fx.scienceKey, reuseAuthority: true });
+      expect(secondInvestigation.registrationHash).toBe(fx.registrationHash);
       await expectWriterStatus(client, secondInvestigation, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", secondInvestigation.registrationHash, secondInvestigation.registrationPayload, "DIVERGENT_EXISTING_IDENTITY", true);
+      const sameTenantHashCount = await client.query<{ count: number }>(`select count(*)::int as count from investing.research_blind_truth_registrations_scientific_identities where tenant_id=$1 and registration_hash_hex=$2`, [fx.tenantId, fx.registrationHash]);
+      expect(sameTenantHashCount.rows[0]!.count).toBe(1);
 
-      const crossTenant = await seedRl9BehaviorFixture(client, "behavior-cross-tenant", { subjectExperiment: fx.subjectExperiment, subjectExperimentParameters: fx.subjectExperimentParameters, subjectResearchIr: fx.subjectResearchIr });
+      const crossTenant = await seedRl9BehaviorFixture(client, "behavior-cross-tenant", { subjectExperiment: fx.subjectExperiment, subjectExperimentParameters: fx.subjectExperimentParameters, subjectResearchIr: fx.subjectResearchIr, hypothesis: fx.hypothesis, scienceKey: fx.scienceKey });
+      expect(crossTenant.registrationHash).toBe(fx.registrationHash);
       const crossTenantResult = await callBlindTruthWriter(client, crossTenant, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", crossTenant.registrationHash, crossTenant.registrationPayload, true);
       expect(crossTenantResult.status).toBe("CREATED");
+      const crossTenantHashCount = await client.query<{ count: number }>(`select count(*)::int as count from investing.research_blind_truth_registrations_scientific_identities where registration_hash_hex=$1`, [fx.registrationHash]);
+      expect(crossTenantHashCount.rows[0]!.count).toBe(2);
 
-      const malformedRegistration = { ...fx.registrationPayload, evaluatorProfile: { ...fx.registrationPayload.evaluatorProfile, engineVersion: "ENGINE_OLD" } } as unknown as BlindTruthRegistrationV1;
-      await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", hashRegistrationPayload(malformedRegistration), canonicalBlindTruthRegistrationV1(malformedRegistration), true), /INCOMPATIBLE_ENGINE_VERSION|MALFORMED_HASHREF/);
+      const staleRegistration = await seedRl9BehaviorFixture(client, "behavior-stale-registration");
+      await insertRl8Successor(client, staleRegistration);
+      await expectPgRejection(client, () => callBlindTruthWriter(client, staleRegistration, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", staleRegistration.registrationHash, staleRegistration.registrationPayload, true), /STALE_PROMOTION_TRANSITION/);
+
+      const malformedRegistrationCanonical = canonicalBlindTruthRegistrationV1(fx.registrationPayload) as unknown as Record<string, unknown>;
+      const malformedRegistrationPayload = { ...malformedRegistrationCanonical, evaluatorProfile: { ...(malformedRegistrationCanonical.evaluatorProfile as Record<string, unknown>), engineVersion: "ENGINE_OLD" } };
+      const malformedRegistrationHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REGISTRATION:V1", malformedRegistrationPayload);
+      await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1", "persist_research_blind_truth_registration_v1", malformedRegistrationHash, malformedRegistrationPayload, true), /INCOMPATIBLE_ENGINE_VERSION|MALFORMED_HASHREF/);
 
       const sealPayload = makeVaultSeal(fx.registrationPayload);
       const sealCanonical = canonicalBlindTruthVaultSealV1(sealPayload);
@@ -611,7 +792,10 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
       const evaluationCreated = await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1", "persist_research_blind_truth_evaluation_v1", evaluationHash, evaluationCanonical, false);
       expect(evaluationCreated.status).toBe("CREATED");
       await expectWriterStatus(client, fx, "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1", "persist_research_blind_truth_evaluation_v1", evaluationHash, evaluationCanonical, "REUSED_IDENTICAL", false);
-      await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1", "persist_research_blind_truth_evaluation_v1", hashBlindTruthEvaluationV1({ ...evaluationPayload, evaluatorProfile: { ...blindTruthEvaluatorProfileV1, engineVersion: "ENGINE_OLD" as never } }).hashHex, canonicalBlindTruthEvaluationV1({ ...evaluationPayload, evaluatorProfile: { ...blindTruthEvaluatorProfileV1, engineVersion: "ENGINE_OLD" as never } }), false), /INCOMPATIBLE_ENGINE_VERSION/);
+      const malformedEvaluationCanonical = canonicalBlindTruthEvaluationV1(evaluationPayload) as unknown as Record<string, unknown>;
+      const malformedEvaluationPayload = { ...malformedEvaluationCanonical, evaluatorProfile: { ...(malformedEvaluationCanonical.evaluatorProfile as Record<string, unknown>), engineVersion: "ENGINE_OLD" } };
+      const malformedEvaluationHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_EVALUATION:V1", malformedEvaluationPayload);
+      await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1", "persist_research_blind_truth_evaluation_v1", malformedEvaluationHash, malformedEvaluationPayload, false), /INCOMPATIBLE_ENGINE_VERSION/);
 
       const startedPayload = makeRevealStarted(fx.registrationPayload, sealPayload, evaluationPayload);
       const startedCanonical = canonicalBlindTruthRevealResultEventV1(startedPayload);
@@ -620,9 +804,11 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
       const startedCreated = await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", startedHash, startedCanonical, false);
       expect(startedCreated.status).toBe("CREATED");
       await expectWriterStatus(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", startedHash, startedCanonical, "REUSED_IDENTICAL", false);
-      await expectWriterStatus(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", hashBlindTruthRevealResultEventV1({ ...startedPayload, reason: "VAULT_UNAVAILABLE" as never }).hashHex, { ...(startedCanonical as Record<string, unknown>), reason: "VAULT_UNAVAILABLE" }, "DIVERGENT_EXISTING_IDENTITY", false);
+      const divergentStartedPayload = { ...(startedCanonical as Record<string, unknown>), reason: "VAULT_UNAVAILABLE" };
+      const divergentStartedHash = await sqlDomainHash(client, "SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1", divergentStartedPayload);
+      await expectWriterStatus(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", divergentStartedHash, divergentStartedPayload, "DIVERGENT_EXISTING_IDENTITY", false);
 
-      await insertRl8Successor(client, fx, "behavior-main-successor");
+      await insertRl8Successor(client, fx);
       await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1", "persist_research_blind_truth_evaluation_v1", evaluationHash, evaluationCanonical, false), /STALE_PROMOTION_TRANSITION/);
       await expectPgRejection(client, () => callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1", "persist_research_blind_truth_reveal_started_v1", startedHash, startedCanonical, false), /STALE_PROMOTION_TRANSITION|DIVERGENT_EXISTING_IDENTITY/);
 
