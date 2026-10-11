@@ -71,7 +71,7 @@ async function requestStatus(url,key,fetcher,readBody=false){
     if(key){
       headers.apikey=key;
       // Supabase modern sb_secret keys are API keys, NOT JWT bearer tokens.
-      if(!key.startsWith('sb_secret_')) headers.authorization=`Bearer ${key}`;
+      if(!key.startsWith('sb_secret_') && !key.startsWith('sb_publishable_')) headers.authorization=`Bearer ${key}`;
     }
     const response=await fetcher(url,{method:'GET',headers,signal:controller.signal,redirect:'manual',cache:'no-store'});
     if(!response||!Number.isInteger(response.status))blocked();

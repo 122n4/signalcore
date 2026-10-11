@@ -20,7 +20,8 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
     }});
     expect(result).toEqual({kind:'SYNTRAKE_RL9C2B2C_ISOLATION_CANARY_V1',phase:'VAULT_POSITIVE',status:'PASS',subjectDigest:canarySubjectDigest(config),evidence:'PRIVATE_CANARY_CONFIRMED'});
     expect(seen.map(s=>s.url)).toEqual([target]);
-    expect(seen[0].opts.headers.authorization).toBe(`Bearer ${cred}`);
+    expect(seen[0].opts.headers.apikey).toBe(cred);
+    expect(seen[0].opts.headers).not.toHaveProperty('authorization');
     expect(seen[0].opts.redirect).toBe('manual');
     expect(JSON.stringify(result)).not.toContain(cred);
     expect(JSON.stringify(result)).not.toContain(config.objectPath);
