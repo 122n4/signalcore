@@ -74,6 +74,9 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
       expect(()=>validateCanaryConfig(bad)).toThrow('RL9C2B2C_BLOCKED');
     }
   });
+  it('binds the subject digest to the primary project identity as well as Vault and canary',()=>{
+    expect(canarySubjectDigest(config)).not.toBe(canarySubjectDigest({...config,primaryProjectRef:'d'.repeat(20)}));
+  });
   it('rejects inherited serializers, symbols, getters and extra fields',()=>{
     const poison=Object.assign(Object.create({toJSON:()=>({public:true})}),config);
     const getter={...config};Object.defineProperty(getter,'bucket',{get(){throw Error('secret leak!');},enumerable:true});

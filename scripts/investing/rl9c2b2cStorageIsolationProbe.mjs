@@ -21,21 +21,26 @@ function keysExact(obj, expected){
   const keys=Object.keys(obj).sort();
   if(keys.length!==expected.length || keys.some((k,i)=>k!==[...expected].sort()[i])) blocked();
 }
-export function validateCanaryConfig(config){
-  keysExact(config,['primaryProjectRef','vaultProjectRef','bucket','objectPath']);
-  if(typeof config.primaryProjectRef!=='string'||!REF.test(config.primaryProjectRef)||
-    typeof config.vaultProjectRef!=='string'||!REF.test(config.vaultProjectRef)||
-    config.primaryProjectRef===config.vaultProjectRef||
-    typeof config.bucket!=='string'||!BUCKET.test(config.bucket)||
-    typeof config.objectPath!=='string'||!PATH.test(config.objectPath))blocked();
-  // JSON-only snapshots: no inherited methods, getters, or unexpected symbols.
-  if(Object.getPrototypeOf(config)!==Object.prototype||Reflect.ownKeys(config).length!==4||
-    Object.values(Object.getOwnPropertyDescriptors(config)).some(d=>!('value' in d)||!d.enumerable))blocked();
-  return Object.freeze({...config});
+export function validateCanaryConfig(input){
+  try {
+    const fields=['primaryProjectRef','vaultProjectRef','bucket','objectPath'];
+    keysExact(input,fields);
+    // Inspect DESCRIPTORS before ever reading values, spreading, or serializing.
+    if(Object.getPrototypeOf(input)!==Object.prototype||Reflect.ownKeys(input).length!==4)blocked();
+    const descriptors=Object.getOwnPropertyDescriptors(input);
+    if(fields.some(k=>!descriptors[k]||!descriptors[k].enumerable||!('value' in descriptors[k])))blocked();
+    const config=Object.freeze(Object.fromEntries(fields.map(k=>[k,descriptors[k].value])));
+    if(typeof config.primaryProjectRef!=='string'||!REF.test(config.primaryProjectRef)||
+      typeof config.vaultProjectRef!=='string'||!REF.test(config.vaultProjectRef)||
+      config.primaryProjectRef===config.vaultProjectRef||
+      typeof config.bucket!=='string'||!BUCKET.test(config.bucket)||
+      typeof config.objectPath!=='string'||!PATH.test(config.objectPath))blocked();
+    return config;
+  } catch { blocked(); }
 }
 export function canarySubjectDigest(config){
   const c=validateCanaryConfig(config);
-  return createHash('sha256').update(['SYNTRAKE:RL9C2B2C:CANARY_SUBJECT:V1',c.vaultProjectRef,c.bucket,c.objectPath,SYNTHETIC_MARKER].join('\n'),'utf8').digest('hex');
+  return createHash('sha256').update(['SYNTRAKE:RL9C2B2C:CANARY_SUBJECT:V1',c.primaryProjectRef,c.vaultProjectRef,c.bucket,c.objectPath,SYNTHETIC_MARKER].join('\n'),'utf8').digest('hex');
 }
 function storageUrl(ref,c){return `https://${ref}.supabase.co/storage/v1/object/authenticated/${encodeURIComponent(c.bucket)}/${c.objectPath}`;}
 async function requestStatus(url,key,fetcher,readBody=false){
