@@ -71,6 +71,24 @@ describe.skipIf(process.platform === 'win32')('RL-9C2B2A synthetic-only private 
     expect(fs.readdirSync(path.join(root, 'nonce-reservations'))).toHaveLength(0);
   }));
 
+  it('rejects inherited toJSON, hidden properties, and accessor payloads before any persistence', () => withRoot(root => {
+    const s = store(root);
+    const valid = validEnvelope();
+    const poisoned = Object.assign(Object.create({ toJSON: () => ({ PLAINTEXT_LEAKED: 'synthetic-secret-injection' }) }), valid);
+    const accessor = { ...valid };
+    Object.defineProperty(accessor, 'ciphertextBase64', {
+      enumerable: true, get() { throw new Error('SENSITIVE_INPUT_MUST_NOT_LEAK'); },
+    });
+    const hidden = { ...valid };
+    Object.defineProperty(hidden, 'toJSON', { enumerable: false, value() { return { unsafe: true }; } });
+    const symbol = { ...valid, [Symbol('hidden')]: 'extra' };
+    for (const envelope of [poisoned, accessor, hidden, symbol]) {
+      expect(() => s.stageSyntheticEnvelopeV1({ classification: 'SYNTHETIC_TEST_VECTOR', envelope })).toThrow('MALFORMED_HOLDOUT');
+    }
+    expect(fs.readdirSync(path.join(root, 'objects'))).toHaveLength(0);
+    expect(fs.readdirSync(path.join(root, 'nonce-reservations'))).toHaveLength(0);
+  }));
+
   it('blocks non-synthetic classification and refuses ordinary runtime credentials', () => withRoot(root => {
     const s = store(root);
     expect(() => s.stageSyntheticEnvelopeV1({ classification: 'REAL', envelope: validEnvelope() })).toThrow('MISSING_VAULT_CAPABILITY');

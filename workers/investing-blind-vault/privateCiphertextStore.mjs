@@ -18,11 +18,21 @@ const FILE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (
 const DIR_FLAGS = constants.O_RDONLY | (constants.O_DIRECTORY || 0) | (constants.O_NOFOLLOW || 0);
 
 function fail(code = 'VAULT_UNAVAILABLE') { throw new Error(code); }
-function exactFields(obj, fields) {
+function closedDataSnapshot(obj, fields) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) fail('MALFORMED_HOLDOUT');
-  const got = Object.keys(obj).sort();
-  const expected = [...fields].sort();
-  if (got.length !== expected.length || got.some((key, idx) => key !== expected[idx])) fail('MALFORMED_HOLDOUT');
+  try {
+    const prototype = Object.getPrototypeOf(obj);
+    if (prototype !== Object.prototype && prototype !== null) fail('MALFORMED_HOLDOUT');
+    const keys = Reflect.ownKeys(obj);
+    if (keys.length !== fields.length || keys.some(key => typeof key !== 'string' || !fields.includes(key))) fail('MALFORMED_HOLDOUT');
+    const snapshot = Object.create(null);
+    for (const name of fields) {
+      const descriptor = Object.getOwnPropertyDescriptor(obj, name);
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) fail('MALFORMED_HOLDOUT');
+      snapshot[name] = descriptor.value;
+    }
+    return Object.freeze(snapshot);
+  } catch { fail('MALFORMED_HOLDOUT'); }
 }
 function isSecureDirectory(dir) {
   const st = lstatSync(dir);
@@ -52,7 +62,8 @@ function writeExclusiveDurably(path, payload) {
   finally { if (fd !== undefined) closeSync(fd); }
 }
 function validateEnvelope(value) {
-  exactFields(value, ['schemaVersion', 'algorithm', 'keyVersion', 'nonceHex', 'ciphertextBase64', 'tagHex']);
+  value = closedDataSnapshot(value, ['schemaVersion', 'algorithm', 'keyVersion', 'nonceHex', 'ciphertextBase64', 'tagHex']);
+
   if (value.schemaVersion !== 'BLIND_TRUTH_VAULT_ENVELOPE_V1' || value.algorithm !== 'AES_256_GCM' ||
     typeof value.keyVersion !== 'string' || !VERSION.test(value.keyVersion) ||
     typeof value.nonceHex !== 'string' || !HEX_24.test(value.nonceHex) ||
@@ -62,11 +73,12 @@ function validateEnvelope(value) {
   const decoded = Buffer.from(value.ciphertextBase64, 'base64');
   if (!decoded.length || decoded.length > MAX_CIPHERTEXT_BYTES || decoded.toString('base64') !== value.ciphertextBase64) fail('MALFORMED_HOLDOUT');
   // Structural validation only: GCM authenticity requires a future key-owning worker.
+  return value;
 }
 
 /** Synthetic test and rehearsal only. No keys, secrets or real holdouts admitted. */
 export function createSyntheticPrivateCiphertextStoreV1(config) {
-  exactFields(config, ['environment', 'rootDirectory', 'storageMode']);
+  config = closedDataSnapshot(config, ['environment', 'rootDirectory', 'storageMode']);
   assertIsolatedVaultEnvironmentV1(config.environment);
   if (config.storageMode !== REQUIRED_ENV ||
       config.environment.SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE !== REQUIRED_ENV ||
@@ -83,13 +95,13 @@ export function createSyntheticPrivateCiphertextStoreV1(config) {
   return Object.freeze({
     /** No read, list, preview, open, reveal, consume or public locator service. */
     stageSyntheticEnvelopeV1(input) {
-      exactFields(input, ['classification', 'envelope']);
+      input = closedDataSnapshot(input, ['classification', 'envelope']);
       if (input.classification !== 'SYNTHETIC_TEST_VECTOR') fail('MISSING_VAULT_CAPABILITY');
-      validateEnvelope(input.envelope);
+      const envelope = validateEnvelope(input.envelope);
       // Revalidate directory protection before each local staging operation.
       try { isSecureDirectory(root); isSecureDirectory(objects); isSecureDirectory(nonceIndex); } catch { fail(); }
       const nonceKey = createHash('sha256').update('SYNTRAKE:PRIVATE_VAULT_NONCE_RESERVATION:V1\n')
-        .update(input.envelope.keyVersion).update('\n').update(input.envelope.nonceHex).digest('hex').toUpperCase();
+        .update(envelope.keyVersion).update('\n').update(envelope.nonceHex).digest('hex').toUpperCase();
       const reservation = join(nonceIndex, `${nonceKey}.reserved`);
       // A reserved nonce remains burned after any later failure or crash.
       // This is a rehearsal index, NOT a multi-host KMS-backed nonce allocation proof.
@@ -99,7 +111,7 @@ export function createSyntheticPrivateCiphertextStoreV1(config) {
       if (!HEX_64.test(locator)) fail();
       const final = join(objects, `${locator}.sealed`);
       const pending = join(objects, `.${locator}.pending`);
-      const serialized = Buffer.from(JSON.stringify(input.envelope) + '\n', 'utf8');
+      const serialized = Buffer.from(JSON.stringify(envelope) + '\n', 'utf8');
       try {
         writeExclusiveDurably(pending, serialized);
         // POSIX hardlink creation is atomic and fails rather than replacing an existing object.
