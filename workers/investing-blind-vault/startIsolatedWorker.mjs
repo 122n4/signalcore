@@ -26,7 +26,10 @@ function privateFile(path, { key = false } = {}) {
   } catch { blocked(); }
 }
 
-/** A runnable process boundary, not an operational Vault. Loopback-only until audited network deployment. */
+/**
+ * A runnable process boundary, not an operational Vault. Loopback-only until audited network deployment.
+ * @param {Record<string, string | undefined>} [environment]
+ */
 export async function startIsolatedVaultWorkerV1(environment = process.env) {
   assertIsolatedVaultEnvironmentV1(environment);
   const allowed = [
