@@ -233,17 +233,18 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       PG17_MANAGED_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      PG17_BOOTSTRAP_ADMIN_URL: postgresql://bootstrap_admin:bootstrap@127.0.0.1:5432/postgres
     services:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: bootstrap_admin
+          POSTGRES_PASSWORD: bootstrap
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-cmd="pg_isready -U bootstrap_admin -d postgres"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=10

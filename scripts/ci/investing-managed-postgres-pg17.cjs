@@ -23,20 +23,29 @@ const migrations = fs.readdirSync(path.join(root, "supabase/migrations"))
 assert.ok(migrations.length >= 34, "incomplete Genesis baseline");
 assert.equal(migrations[migrations.length-1], "20261010183000_investing_i5_rl9b2_blind_truth_public_metadata_writers.sql");
 async function main() {
-  const bootstrap = new Client({connectionString:url});
+  const bootstrapUrl = process.env.PG17_BOOTSTRAP_ADMIN_URL;
+assert.ok(bootstrapUrl, "missing privileged CI bootstrap URL");
+const adminTarget = new URL(bootstrapUrl);
+assert.equal(adminTarget.hostname, "127.0.0.1");
+assert.equal(adminTarget.port, "5432");
+assert.equal(adminTarget.pathname, "/postgres");
+assert.equal(adminTarget.username, "bootstrap_admin");
+const bootstrap = new Client({connectionString:bootstrapUrl});
   await bootstrap.connect();
   try {
     const pre = await bootstrap.query("select current_user, rolsuper from pg_roles where rolname = current_user");
-    assert.equal(pre.rows[0].current_user, "postgres");
+    assert.equal(pre.rows[0].current_user, "bootstrap_admin");
     assert.equal(pre.rows[0].rolsuper, true, "initial Docker role must be superuser");
     const schema = await bootstrap.query("select exists(select 1 from pg_namespace where nspname='investing') as present");
     assert.equal(schema.rows[0].present, false, "disposable database must be pristine");
     for (const role of ["anon","authenticated","service_role"]) {
       await bootstrap.query("create role " + role + " nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls");
     }
-    await bootstrap.query("create schema extensions");
+    await bootstrap.query("create role postgres login password 'postgres' inherit nosuperuser createdb createrole noreplication nobypassrls");
+    await bootstrap.query("alter database postgres owner to postgres");
+    await bootstrap.query("create schema extensions authorization postgres");
     await bootstrap.query("create extension pgcrypto with schema extensions");
-    await bootstrap.query("alter role postgres nosuperuser createdb createrole");
+    // All migrations connect as non-superuser postgres. Bootstrap admin is never reused.
   } finally { await bootstrap.end(); }
   const client = new Client({connectionString:url});
   await client.connect();
