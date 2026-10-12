@@ -92,7 +92,7 @@ function closedRecord(raw: unknown, fields: readonly string[]): Record<string, u
 
 function boundedText(value: unknown, max = 256): string {
   if (typeof value !== "string" || value.length === 0 ||
-      Buffer.byteLength(value, "utf8") > max || value !== value.normalize("NFC") ||
+      new TextEncoder().encode(value).length > max || value !== value.normalize("NFC") ||
       /[\u0000-\u001F\u007F]/u.test(value)) throw Error("INVALID");
   return value;
 }
@@ -188,7 +188,7 @@ export function resolveCoreMarketIdentityCandidateV1(raw: unknown): CoreMarketId
     request = closedRecord(raw, REQUEST_KEYS);
     series = parseSeries(request.series);
     asOf = utcTimestamp(request.asOf);
-    if (series.coverageEnd > asOf.slice(0, 10)) throw Error("INVALID");
+    // Date-only observations have no validated intraday publication time.\n    // Same-day asOf cannot prove even a completed daily close.\n    if (series.coverageEnd >= asOf.slice(0, 10)) throw Error("INVALID");
   } catch {
     return result("INVALID_REQUEST");
   }
