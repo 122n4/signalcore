@@ -1159,12 +1159,8 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
         ).status).toBe("REUSED_IDENTICAL");
       }
       // A new test worker instance may never regain the burned envelope.
-      expect(()=>createVerifiedSyntheticBurnConsumerV1(workerConfig)
-        .consumeSignedSyntheticBurnOnceV1(token)).toThrow("VAULT_UNAVAILABLE");
-      expect(()=>consumer.consumeSignedSyntheticBurnOnceV1({
-        ...token,claims:{...claims,burnReservationId:
-          "99999999-9999-4999-8999-999999999999"},
-      })).toThrow("AUTHORITY_FAILURE");
+      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
+        .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
       expect(fs.readdirSync(path.join(root,"synthetic-evaluation-claims")))
         .toEqual([evaluationHash+".claimed"]);
       const events=await pool!.query<{event_state:string}>(
@@ -1833,8 +1829,12 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
         expect(opened.equals(fictional)).toBe(true);
       }finally{opened.fill(0);}
       await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_BURNED/);
-      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
-        .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
+      expect(()=>createVerifiedSyntheticBurnConsumerV1(workerConfig)
+        .consumeSignedSyntheticBurnOnceV1(token)).toThrow("VAULT_UNAVAILABLE");
+      expect(()=>consumer.consumeSignedSyntheticBurnOnceV1({
+        ...token,claims:{...claims,burnReservationId:
+          "99999999-9999-4999-8999-999999999999"},
+      })).toThrow("AUTHORITY_FAILURE");
       const terminal=await pool!.query<{n:number}>(
         "select count(*)::int as n from "+
         "investing.research_blind_truth_reveal_result_events_scientific_identities "+
