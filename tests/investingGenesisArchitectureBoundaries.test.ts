@@ -16,7 +16,10 @@ const investingOwnedRoots = [
 ];
 
 const approvedNeutralInternalRootsOrFiles: string[] = [
-  // intentionally empty in I0
+  // RL-9C3B2B7B candidate: one import-free Core market identity contract,
+  // NEVER a directory grant. Original I0 neutral policy remains baseline
+  // until this exact-file exception is independently accepted.
+  path.join("lib", "market", "identityCandidateEvidence.ts"),
 ];
 
 const approvedInvestingConsumers: string[] = [
@@ -1158,7 +1161,47 @@ describe("Investing Genesis architecture boundaries", () => {
     );
   });
 
-  it("blocks Investing to arbitrary internal shared files because I0 neutral allowlist is empty", () => {
+  it("allows ONLY B7B Core market identity contract, not siblings or transitive imports", () => {
+    expect(approvedNeutralInternalRootsOrFiles).toEqual([
+      path.join("lib","market","identityCandidateEvidence.ts"),
+    ]);
+    const allowed = [
+      source("lib/investing/research/b7b-bridge.ts",
+        'import { candidate } from "lib/market/identityCandidateEvidence"; export const x=candidate;'),
+      source("lib/market/identityCandidateEvidence.ts","export const candidate=1;"),
+    ];
+    expect(analyzeArchitectureGraph(allowed)).toEqual([]);
+
+    expectViolation([
+      source("lib/investing/research/market-bypass.ts",
+        'import data from "lib/market/marketClient"; export const x=data;'),
+      source("lib/market/marketClient.ts","export const data=1;"),
+    ],"INVESTING_OUTBOUND_INTERNAL_DEPENDENCY_NOT_APPROVED",[
+      "lib/investing/research/market-bypass.ts","lib/market/marketClient.ts",
+    ]);
+
+    expectViolation([
+      source("lib/investing/research/trading-bridge.ts",
+        'import { bridge } from "lib/market/identityCandidateEvidence";'),
+      source("lib/market/identityCandidateEvidence.ts",
+        'import t from "lib/trading/state"; export const bridge=t;'),
+      source("lib/trading/state.ts","export default 1;"),
+    ],"INVESTING_OUTBOUND_INTERNAL_DEPENDENCY_NOT_APPROVED",[
+      "lib/investing/research/trading-bridge.ts",
+      "lib/market/identityCandidateEvidence.ts",
+      "lib/trading/state.ts",
+    ]);
+
+    expectViolation([
+      source("lib/market/identityCandidateEvidence.ts",
+        'import account from "lib/investing/account"; export const x=account;'),
+      source("lib/investing/account.ts","export default 1;"),
+    ],"EXTERNAL_SOURCE_REACHES_INVESTING",[
+      "lib/market/identityCandidateEvidence.ts","lib/investing/account.ts",
+    ]);
+  });
+
+  it("blocks Investing to arbitrary internal shared files under narrowly scoped B7B exception", () => {
     expectViolation(
       [
         source("lib/investing/service.ts", 'import helper from "lib/shared/helper";'),
