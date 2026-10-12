@@ -1557,7 +1557,7 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     "20261012213000_investing_i5_rl9c2b2f_pg17_consume_burn_reservation.sql");
   const burnTable="investing.research_blind_truth_consume_reservations_v1";
   const burnFn="investing.rl9c2b2f_reserve_committed_reveal_burn_v1";
-  type EventFixture={fx:Rl9BehaviorFixture; startedHash:string; evalHash:string};
+  type EventFixture={fx:Rl9BehaviorFixture; startedHash:string; evalHash:string; seal:BlindTruthVaultSealV1};
 
   beforeAll(async()=>{
     pool=new Pool({connectionString,max:8});
@@ -1566,7 +1566,7 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
   },180_000);
   afterAll(async()=>{await pool?.end();pool=null;});
 
-  async function eventFixture(suffix:string):Promise<EventFixture>{
+  async function eventFixture(suffix:string,fictional?:Buffer):Promise<EventFixture>{
     const client=await pool!.connect();
     try{
       await client.query("begin");
@@ -1580,7 +1580,15 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
         "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
         "persist_research_blind_truth_registration_v1",fx.registrationHash,
         fx.registrationPayload,false);
-      const seal=makeVaultSeal(fx.registrationPayload);
+      const seal:BlindTruthVaultSealV1=fictional?{
+        ...makeVaultSeal(fx.registrationPayload),
+        commitmentHash:canonicalSha256HexV1(
+          deriveBlindTruthHoldoutCommitmentV1({
+            secretSalt:Buffer.alloc(32,0x69),
+            exactCanonicalHoldoutPlaintextBytes:fictional,
+          })),
+        declaredPlaintextByteLength:String(fictional.length),
+      }:makeVaultSeal(fx.registrationPayload);
       await callBlindTruthWriter(client,fx,
         "RESEARCH_BLIND_TRUTH_VAULT_SEAL_CREATE_V1",
         "persist_research_blind_truth_vault_seal_v1",
@@ -1598,7 +1606,7 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
         "persist_research_blind_truth_reveal_started_v1",
         startedHash,canonicalBlindTruthRevealResultEventV1(started),false);
       await client.query("commit");
-      return {fx,startedHash,evalHash};
+      return {fx,startedHash,evalHash,seal};
     } catch(e){await client.query("rollback").catch(()=>undefined);throw e;}
     finally{client.release();}
   }
@@ -1720,6 +1728,79 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     }catch(e){await client.query("rollback").catch(()=>undefined);throw e;}
     finally{client.release();}
     await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_TERMINAL/);
+  },120_000);
+
+
+  it("requires COMMITTED PG burn before synthetic ciphertext open, with both ledgers non-replayable",async()=>{
+    if(process.platform==="win32")return;
+    const fictional=Buffer.from('{"syntheticOnly":true,"close":"111.11"}');
+    const f=await eventFixture("two-ledger-integration",fictional);
+    // The test harness is privileged. No application can call this SQL
+    // function, and neither the PG burn nor the filesystem claim is a Vault
+    // secret-release permission or operational external authority.
+    expect(await reserve(f)).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+    const joined=await pool!.query<{event_state:string;reservation_state:string}>(
+      "select e.event_state,r.reservation_state "+
+      "from "+burnTable+" r join "+
+      "investing.research_blind_truth_reveal_result_events_scientific_identities e "+
+      "on e.research_blind_truth_reveal_result_event_identity_id=r.started_event_identity_id "+
+      "and e.event_hash_hex=r.started_event_hash_hex "+
+      "where r.tenant_id=$1 and r.evaluation_hash_hex=$2",
+      [f.fx.tenantId,f.evalHash]);
+    expect(joined.rows).toEqual([{
+      event_state:"REVEAL_STARTED",reservation_state:"BURNED_NOT_AUTHORIZED",
+    }]);
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),"syntrake-b2f-dual-burn-"));
+    fs.chmodSync(root,0o700);
+    try{
+      const config={environment:{
+        SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",
+        SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:"ISOLATED_REHEARSAL_V1",
+      },rootDirectory:root,storageMode:"ISOLATED_REHEARSAL_V1"};
+      const binding={
+        tenantId:f.fx.tenantId,registrationHashHex:f.fx.registrationHash,
+        holdoutScopeDigestHex:blindTruthHoldoutScopeDigestV1(
+          f.fx.registrationPayload.holdoutScope),
+        commitmentHashHex:f.seal.commitmentHash,
+      };
+      const key=Buffer.alloc(32,0x55);
+      const envelope=encryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,keyVersion:"SYNTHETIC_K1",
+        binding,exactCanonicalPlaintextBytes:fictional,
+      });
+      const staged=createSyntheticPrivateCiphertextStoreV1(config)
+        .stageSyntheticEnvelopeV1({classification:"SYNTHETIC_TEST_VECTOR",envelope});
+      const request={
+        classification:"SYNTHETIC_TEST_VECTOR",
+        privateObjectLocator:staged.privateObjectLocator,
+        evaluationHashHex:f.evalHash,revealStartedEventHashHex:f.startedHash,
+      };
+      const consumed=createSyntheticVaultConsumeOnceRehearsalV1(config)
+        .consumeSyntheticSealedEnvelopeOnceV1(request);
+      expect(consumed.status).toBe("SYNTHETIC_CONSUMED_ONCE");
+      const opened=decryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,expectedKeyVersion:"SYNTHETIC_K1",
+        expectedBinding:binding,envelope:consumed.envelope,
+      });
+      try{
+        verifyBlindTruthHoldoutCommitmentV1({
+          secretSalt:Buffer.alloc(32,0x69),
+          exactCanonicalHoldoutPlaintextBytes:opened,
+          publicCommitmentHash:f.seal.commitmentHash,
+          declaredPlaintextByteLength:f.seal.declaredPlaintextByteLength,
+        });
+        expect(opened.equals(fictional)).toBe(true);
+      }finally{opened.fill(0);}
+      await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_BURNED/);
+      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
+        .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
+      const terminal=await pool!.query<{n:number}>(
+        "select count(*)::int as n from "+
+        "investing.research_blind_truth_reveal_result_events_scientific_identities "+
+        "where evaluation_hash_hex=$1 and event_state='REVEAL_COMPLETED'",
+        [f.evalHash]);
+      expect(terminal.rows).toEqual([{n:0}]);
+    }finally{fictional.fill(0);fs.rmSync(root,{recursive:true,force:true});}
   },120_000);
 
   it("FORCE RLS blocks cross-tenant read under forged GUC scope and append-only UPDATE/DELETE",async()=>{
