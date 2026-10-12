@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -163,6 +165,55 @@ describe.skipIf(process.platform==="win32")("RL-9C2B2E synthetic filesystem seal
     expect(()=>claim.consumeSyntheticSealedEnvelopeOnceV1(claimInput))
       .toThrow("VAULT_UNAVAILABLE");
   }));
+
+  it("allows exactly one of two independent OS processes to burn the same synthetic claim",async()=>{
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),"syntrake-vault-process-race-"));
+    fs.chmodSync(root,0o700);
+    try{
+      const {claimInput}=stage(root);
+      const moduleUrl=pathToFileURL(path.join(process.cwd(),
+        "workers/investing-blind-vault/privateSyntheticConsumeOnce.mjs")).href;
+      const script=[
+        "const {createSyntheticVaultConsumeOnceRehearsalV1:make}=await import(process.argv[1]);",
+        "const config={environment:{SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1',",
+        "SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:'ISOLATED_REHEARSAL_V1'},",
+        "rootDirectory:process.argv[2],storageMode:'ISOLATED_REHEARSAL_V1'};",
+        "const input={classification:'SYNTHETIC_TEST_VECTOR',",
+        "privateObjectLocator:process.argv[3],evaluationHashHex:process.argv[4],",
+        "revealStartedEventHashHex:process.argv[5]};",
+        "try{make(config).consumeSyntheticSealedEnvelopeOnceV1(input);",
+        "process.stdout.write('WON\\n');}",
+        "catch(error){if(error?.message!=='VAULT_UNAVAILABLE')process.exit(2);",
+        "process.stdout.write('BLOCKED\\n');}",
+      ].join(" ");
+      async function launch():Promise<string>{
+        return new Promise((resolve,reject)=>{
+          const child=spawn(process.execPath,[
+            "--input-type=module","--eval",script,
+            moduleUrl,root,claimInput.privateObjectLocator,
+            claimInput.evaluationHashHex,claimInput.revealStartedEventHashHex,
+          ],{stdio:["ignore","pipe","pipe"]});
+          let output="";
+          child.stdout.on("data",(chunk:Buffer)=>{output+=chunk.toString("utf8");});
+          // Deliberately never capture or expose stderr: no vault material
+          // or dynamic error payload belongs in a test report.
+          child.stderr.resume();
+          child.once("error",reject);
+          child.once("close",code=>{
+            if(code!==0)reject(Error("SYNTHETIC_PROCESS_RACE_FAILED"));
+            else resolve(output.trim());
+          });
+        });
+      }
+      const outcomes=(await Promise.all([launch(),launch()])).sort();
+      expect(outcomes).toEqual(["BLOCKED","WON"]);
+      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1({
+        environment:env,rootDirectory:root,storageMode:mode,
+      }).consumeSyntheticSealedEnvelopeOnceV1(claimInput)).toThrow("VAULT_UNAVAILABLE");
+    }finally{
+      fs.rmSync(root,{recursive:true,force:true});
+    }
+  },20_000);
 
   it("rejects forged REAL mode, malformed hashes, getters and inherited authority",()=>inRoot(root=>{
     const {claim,claimInput}=stage(root);
