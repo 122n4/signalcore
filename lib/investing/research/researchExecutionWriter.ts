@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadOrdinaryResearchDatasetSeriesMaterialV1 } from "./ordinaryResearchDatasetMaterialRead";
+
 import { randomUUID } from "node:crypto";
 import {
   isAuthorizedResearchExecutionContext,
@@ -246,7 +248,7 @@ async function loadAndVerifyMaterials(prepared: PreparedExecution, provider: Res
   for (const series of prepared.datasetSeries) {
     const hashHex = hashDatasetSeriesV1(series);
     if (!snapshotRefs.has(hashHex)) return { ok: false as const, code: "DATASET_MATERIAL_SCHEMA_INVALID" as const };
-    const bytes = await provider.loadSeriesContent(hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:DATASET_SERIES:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex }));
+    const bytes = await loadOrdinaryResearchDatasetSeriesMaterialV1(provider, series, hashRefV1({ hashAlgorithm: "SHA-256", hashDomain: "SYNTRAKE:DATASET_SERIES:V1", hashVersion: "SYNTRAKE_SHA256_V1", hashHex }));
     if (!bytes) return { ok: false as const, code: "DATASET_MATERIAL_NOT_FOUND" as const };
     try {
       verified.push(prepared.runInput.engineVersion === "ENGINE_V20260926" ? verifyDatasetSeriesMaterialV2(series, bytes) : verifyDatasetSeriesMaterialV1(series, bytes));

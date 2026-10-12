@@ -27,6 +27,8 @@ function source(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
+const readSeam = "lib/investing/research/ordinaryResearchDatasetMaterialRead.ts";
+
 const writerPaths = [
   "lib/investing/research/researchExecutionWriter.ts",
   "lib/investing/research/validationExecutionWriter.ts",
@@ -38,7 +40,7 @@ describe("RL-9C3B2B0: Investing Research read-surface inventory (non-authorizing
       const matches = source(file).match(/\bprovider\.loadSeriesContent\s*\(/gu) ?? [];
       return Array.from({ length: matches.length }, () => file);
     });
-    expect(directReads).toEqual([...writerPaths]);
+    expect(directReads).toEqual([readSeam]);
   });
 
   it("pins the current hash-only provider interface as a known embargo gap", () => {
@@ -52,9 +54,12 @@ describe("RL-9C3B2B0: Investing Research read-surface inventory (non-authorizing
   it("pins both real execution writers behind the material-provider interface", () => {
     for (const writer of writerPaths) {
       const text = source(writer);
-      expect(text).toContain("provider.loadSeriesContent(");
+      expect(text).toContain("loadOrdinaryResearchDatasetSeriesMaterialV1(provider, series,");
+      expect(text).not.toContain("provider.loadSeriesContent(");
       expect(text).toContain("datasetMaterialProvider: ResearchDatasetMaterialProviderV1");
     }
+    expect(source(readSeam)).toContain("provider.loadSeriesContent(ref)");
+    expect(source(readSeam)).toContain("hashDatasetSeriesV1(series)");
     expect(source(writerPaths[0])).toContain("loadAndVerifyMaterials(");
     expect(source(writerPaths[1])).toContain("buildValidationRunInput(");
   });

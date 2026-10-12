@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadOrdinaryResearchDatasetSeriesMaterialV1 } from "./ordinaryResearchDatasetMaterialRead";
+
 import { randomUUID } from "node:crypto";
 import {
   isAuthorizedResearchValidationChildExecutionContext,
@@ -412,7 +414,7 @@ async function buildValidationRunInput(
   const slices = [];
   for (const series of prepared.sourceDatasetSeries) {
     const ref = hashRef("SYNTRAKE:DATASET_SERIES:V1", hashDatasetSeriesV1(series));
-    const bytes = await provider.loadSeriesContent(ref);
+    const bytes = await loadOrdinaryResearchDatasetSeriesMaterialV1(provider, series, ref);
     if (!bytes) return { ok: false as const, code: "DATASET_MATERIAL_NOT_FOUND" as const };
     sourceMaterials.push(bytes);
     slices.push(prepared.protocol.engineVersion === "ENGINE_V20260926"
