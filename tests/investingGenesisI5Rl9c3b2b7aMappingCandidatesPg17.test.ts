@@ -109,8 +109,20 @@ pg("RL-9C3B2B7A: immutable cross-tenant mapping candidates are NEVER a read gran
       {role_name:"anon",rd:false,wr:false,call:false},
       {role_name:"authenticated",rd:false,wr:false,call:false},
       {role_name:"service_role",rd:false,wr:false,call:false},
-      {role_name:"investing_rl9_writer",rd:true,wr:false,call:false},
+      // Function owner retains implicit EXECUTE, but this role has NOLOGIN.
+      {role_name:"investing_rl9_writer",rd:true,wr:false,call:true},
     ]);
+  });
+
+  it("proves the SECURITY DEFINER owner is NOLOGIN and not inheritable by the app",async()=>{
+    const r=await db!.query(
+      "select rolname,rolcanlogin,rolbypassrls from pg_catalog.pg_roles "+
+      "where rolname='investing_rl9_writer'");
+    expect(r.rows).toEqual([{rolname:"investing_rl9_writer",
+      rolcanlogin:false,rolbypassrls:false}]);
+    const gr=await db!.query(
+      "select pg_catalog.pg_has_role('investing_app','investing_rl9_writer','MEMBER') as member");
+    expect(gr.rows).toEqual([{member:false}]);
   });
 
   it("records MAPPING_UNAVAILABLE but externally returns only UNPROVEN",async()=>{
