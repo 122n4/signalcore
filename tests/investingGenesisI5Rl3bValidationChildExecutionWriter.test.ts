@@ -20,13 +20,37 @@ import {
   type ValidationProtocolCandidateV1,
   type ValidationProtocolHashPayloadV1,
 } from "../lib/investing/research";
-import { createValidationProtocolCommandV1, executeValidationChildCommandV1 } from "../lib/investing/research/validationExecutionService";
+import { createValidationProtocolCommandV1 } from "../lib/investing/research/validationExecutionService";
+import { resolveAuthorizedResearchValidationChildExecutionContext } from "../lib/investing/authority/context";
+import { executeValidationChildV1 } from "../lib/investing/research/validationExecutionWriter";
 import { executionConfigV1, metricRequestSetV1, ref } from "./support/investingI5DatasetRunScientificFixtures";
 import { i5BaselineCandidateV1, i5ExperimentBaseResearchIrV1 } from "./support/investingI5ExperimentScientificFixtures";
 
 vi.mock("server-only", () => ({}));
 vi.mock("../lib/investing/authority/clerk", () => ({ resolveVerifiedClerkIdentity: vi.fn() }));
 vi.mock("../lib/investing/authority/transport", () => ({ getInvestingAuthorityDatabase: vi.fn() }));
+
+
+/**
+ * Legacy synthetic scientific writer rehearsal, deliberately separate from
+ * the protected production-facing Validation command.
+ */
+async function executeScientificValidationFixtureV1(input:{
+  researchInvestigationId:string; researchValidationProtocolIdentityId:string;
+  foldOrdinal:string; phase:"TRAINING"|"EVALUATION"; correlationId:string;
+  datasetMaterialProvider:Parameters<typeof executeValidationChildV1>[0]["datasetMaterialProvider"];
+}) {
+  const authority=await resolveAuthorizedResearchValidationChildExecutionContext({
+    researchInvestigationId:input.researchInvestigationId,
+    researchValidationProtocolIdentityId:input.researchValidationProtocolIdentityId,
+    foldOrdinal:input.foldOrdinal,phase:input.phase,correlationId:input.correlationId,
+  });
+  if(authority.ok !== true) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
+  return executeValidationChildV1({
+    authorizedContext:authority.context,
+    datasetMaterialProvider:input.datasetMaterialProvider,
+  },getInvestingAuthorityDatabase());
+}
 
 const ids = {
   principal: "11111111-1111-4111-8111-111111113b10",
@@ -368,7 +392,7 @@ describe("I5 RL-3B Validation child writer/service integration", () => {
     expect(replayedProtocol.researchValidationProtocolIdentityId).toBe(created.researchValidationProtocolIdentityId);
     expect(store.protocols).toHaveLength(1);
 
-    const first = await executeValidationChildCommandV1({
+    const first = await executeScientificValidationFixtureV1({
       researchInvestigationId: ids.investigation,
       researchValidationProtocolIdentityId: created.researchValidationProtocolIdentityId,
       foldOrdinal: "0",
@@ -393,7 +417,7 @@ describe("I5 RL-3B Validation child writer/service integration", () => {
     expect(store.identities.get(key("SYNTRAKE:DATASET_SNAPSHOT:V1", hashDatasetSnapshotV1(snapshotFor(slices.map((slice) => slice.series)))))).toBeDefined();
     expect(provider.calls).toEqual(store.candidate.sourceDatasetSeriesPayloads.map((payload) => hashDatasetSeriesV1(payload)));
 
-    const second = await executeValidationChildCommandV1({
+    const second = await executeScientificValidationFixtureV1({
       researchInvestigationId: ids.investigation,
       researchValidationProtocolIdentityId: created.researchValidationProtocolIdentityId,
       foldOrdinal: "0",
@@ -425,7 +449,7 @@ describe("I5 RL-3B Validation child writer/service integration", () => {
     });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    const first = await executeValidationChildCommandV1({
+    const first = await executeScientificValidationFixtureV1({
       researchInvestigationId: ids.investigation,
       researchValidationProtocolIdentityId: created.researchValidationProtocolIdentityId,
       foldOrdinal: "0",
@@ -437,7 +461,7 @@ describe("I5 RL-3B Validation child writer/service integration", () => {
     if (!first.ok) return;
     store.results[0]!.payload = { ...(store.results[0]!.payload as Record<string, unknown>), engineVersion: "ENGINE_V20260918_TAMPERED" };
 
-    const replay = await executeValidationChildCommandV1({
+    const replay = await executeScientificValidationFixtureV1({
       researchInvestigationId: ids.investigation,
       researchValidationProtocolIdentityId: created.researchValidationProtocolIdentityId,
       foldOrdinal: "0",
