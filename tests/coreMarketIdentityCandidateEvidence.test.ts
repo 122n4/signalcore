@@ -52,8 +52,9 @@ describe("Core market identity candidate evidence V1 — no Lab dependencies or 
   });
 
   it("rejects future-known information rather than applying look-ahead",()=>{
+    // A date-only daily observation has no proven intraday publication time.
     expect(resolve(args({asOf:"2025-06-30T23:59:59.999Z"})))
-      .toEqual(unproven("EVIDENCE_FUTURE_KNOWLEDGE"));
+      .toEqual(unproven("INVALID_REQUEST"));
     expect(resolve(args({candidates:[{...candidate,knownAt:"2025-07-02T00:00:00.000Z"}]})))
       .toEqual(unproven("EVIDENCE_FUTURE_KNOWLEDGE"));
   });
@@ -111,6 +112,13 @@ describe("Core market identity candidate evidence V1 — no Lab dependencies or 
       "2025-07-01T00:00:60.000Z","2025-07-01T00:00:00.000+00:00"])
       expect(resolve(args({asOf:timestamp}))).toEqual(unproven("INVALID_REQUEST"));
     expect(resolve(args({series:{...series,coverageEnd:"2025-02-28"}})).reason)
+      .toBe("CANDIDATE_UNVERIFIED");
+  });
+
+  it("requires asOf strictly after the coverageEnd civil day, even at 23:59 UTC",()=>{
+    const result=resolve(args({asOf:"2025-06-30T23:59:59.999Z"}));
+    expect(result).toEqual(unproven("INVALID_REQUEST"));
+    expect(resolve(args({asOf:"2025-07-01T00:00:00.000Z"})).reason)
       .toBe("CANDIDATE_UNVERIFIED");
   });
 
