@@ -1628,9 +1628,8 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
           options.evalHash??f.evalHash,
           options.startedHash??f.startedHash,
         ]);
-      options.commit===false
-        ? await client.query("rollback")
-        : await client.query("commit");
+      if(options.commit===false) await client.query("rollback");
+      else await client.query("commit");
       return r.rows[0]!.decision;
     } catch(e){await client.query("rollback").catch(()=>undefined);throw e;}
     finally{client.release();}
