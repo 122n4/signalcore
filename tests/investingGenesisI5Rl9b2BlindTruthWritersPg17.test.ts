@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createVerifiedSyntheticBurnConsumerV1, syntheticBurnAttestationSigningBytesV1 } from "../workers/investing-blind-vault/privateSignedSyntheticBurnConsumer.mjs";
 import os from "node:os";
 import { createSyntheticPrivateCiphertextStoreV1 } from "../workers/investing-blind-vault/privateCiphertextStore.mjs";
 import { createSyntheticVaultConsumeOnceRehearsalV1 } from "../workers/investing-blind-vault/privateSyntheticConsumeOnce.mjs";
@@ -1158,8 +1159,12 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
         ).status).toBe("REUSED_IDENTICAL");
       }
       // A new test worker instance may never regain the burned envelope.
-      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
-        .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
+      expect(()=>createVerifiedSyntheticBurnConsumerV1(workerConfig)
+        .consumeSignedSyntheticBurnOnceV1(token)).toThrow("VAULT_UNAVAILABLE");
+      expect(()=>consumer.consumeSignedSyntheticBurnOnceV1({
+        ...token,claims:{...claims,burnReservationId:
+          "99999999-9999-4999-8999-999999999999"},
+      })).toThrow("AUTHORITY_FAILURE");
       expect(fs.readdirSync(path.join(root,"synthetic-evaluation-claims")))
         .toEqual([evaluationHash+".claimed"]);
       const events=await pool!.query<{event_state:string}>(
@@ -1741,17 +1746,29 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     // function, and neither the PG burn nor the filesystem claim is a Vault
     // secret-release permission or operational external authority.
     expect(await reserve(f)).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
-    const joined=await pool!.query<{event_state:string;reservation_state:string}>(
-      "select e.event_state,r.reservation_state "+
+    const joined=await pool!.query<{
+      event_state:string;reservation_state:string;reservation_id:string;
+      tenant_id:string;registration_hash_hex:string;event_hash_hex:string;
+      evaluation_hash_hex:string;
+    }>(
+      "select e.event_state,r.reservation_state,r.reservation_id::text,"+
+      "r.tenant_id::text,e.registration_hash_hex,e.event_hash_hex,"+
+      "r.evaluation_hash_hex "+
       "from "+burnTable+" r join "+
       "investing.research_blind_truth_reveal_result_events_scientific_identities e "+
       "on e.research_blind_truth_reveal_result_event_identity_id=r.started_event_identity_id "+
       "and e.event_hash_hex=r.started_event_hash_hex "+
       "where r.tenant_id=$1 and r.evaluation_hash_hex=$2",
       [f.fx.tenantId,f.evalHash]);
-    expect(joined.rows).toEqual([{
+    expect(joined.rows).toHaveLength(1);
+    const persistedBurn=joined.rows[0]!;
+    expect(persistedBurn).toMatchObject({
       event_state:"REVEAL_STARTED",reservation_state:"BURNED_NOT_AUTHORIZED",
-    }]);
+      tenant_id:f.fx.tenantId,registration_hash_hex:f.fx.registrationHash,
+      evaluation_hash_hex:f.evalHash,event_hash_hex:f.startedHash,
+    });
+    expect(persistedBurn.reservation_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u);
     const root=fs.mkdtempSync(path.join(os.tmpdir(),"syntrake-b2f-dual-burn-"));
     fs.chmodSync(root,0o700);
     try{
@@ -1772,13 +1789,35 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
       });
       const staged=createSyntheticPrivateCiphertextStoreV1(config)
         .stageSyntheticEnvelopeV1({classification:"SYNTHETIC_TEST_VECTOR",envelope});
-      const request={
-        classification:"SYNTHETIC_TEST_VECTOR",
+      // SYNTHETIC TRUST ISSUER: ONLY AFTER verifying an actually
+      // committed DB event+burn do disposable tests sign a one-shot claim.
+      // The private issuer key never enters the isolated consumer.
+      const {privateKey,publicKey}=generateKeyPairSync("ed25519");
+      const publicDer=publicKey.export({format:"der",type:"spki"}) as Buffer;
+      const trustedKeySha=createHash("sha256").update(publicDer)
+        .digest("hex").toUpperCase();
+      const now=Date.now();
+      const claims={
+        schemaVersion:"RL9_SYNTHETIC_COMMITTED_BURN_ATTESTATION_V1",
+        audience:"ISOLATED_VAULT_SYNTHETIC_TEST_ONLY",
+        tenantId:persistedBurn.tenant_id,
+        registrationHashHex:persistedBurn.registration_hash_hex,
+        evaluationHashHex:persistedBurn.evaluation_hash_hex,
+        revealStartedEventHashHex:persistedBurn.event_hash_hex,
+        burnReservationId:persistedBurn.reservation_id,
+        burnState:persistedBurn.reservation_state,
         privateObjectLocator:staged.privateObjectLocator,
-        evaluationHashHex:f.evalHash,revealStartedEventHashHex:f.startedHash,
+        issuedAtMs:now-1000,expiresAtMs:now+30000,
       };
-      const consumed=createSyntheticVaultConsumeOnceRehearsalV1(config)
-        .consumeSyntheticSealedEnvelopeOnceV1(request);
+      const token={claims,signatureBase64:sign(null,
+        syntheticBurnAttestationSigningBytesV1(claims),privateKey).toString("base64")};
+      const workerConfig={
+        syntheticStoreConfig:config,
+        trustedSignerPublicKeyDer:publicDer,
+        trustedSignerPublicKeySha256Hex:trustedKeySha,
+      };
+      const consumer=createVerifiedSyntheticBurnConsumerV1(workerConfig);
+      const consumed=consumer.consumeSignedSyntheticBurnOnceV1(token);
       expect(consumed.status).toBe("SYNTHETIC_CONSUMED_ONCE");
       const opened=decryptBlindTruthVaultEnvelopeV1({
         vaultEncryptionKey:key,expectedKeyVersion:"SYNTHETIC_K1",
