@@ -1544,3 +1544,288 @@ maybeDescribe("RL-9C3B2B5 real registration-versus-denial race", () => {
     await race(false);
   },120_000);
 });
+
+/**
+ * RL-9C2B2F. Independent disposable SQL burn rehearsal AFTER the B2/C3
+ * migration suites. Uses the same genuine RL-8/9 fixture builders; no
+ * PostgreSQL production write or real Vault credential is exercised.
+ */
+maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
+  const mappingMigration=path.join(repoRoot,"supabase","migrations",
+    "20261012200000_investing_i5_rl9c3b2b7a_mapping_candidate_evidence.sql");
+  const burnMigration=path.join(repoRoot,"supabase","migrations",
+    "20261012213000_investing_i5_rl9c2b2f_pg17_consume_burn_reservation.sql");
+  const burnTable="investing.research_blind_truth_consume_reservations_v1";
+  const burnFn="investing.rl9c2b2f_reserve_committed_reveal_burn_v1";
+  type EventFixture={fx:Rl9BehaviorFixture; startedHash:string; evalHash:string; seal:BlindTruthVaultSealV1};
+
+  beforeAll(async()=>{
+    pool=new Pool({connectionString,max:8});
+    await pool.query(fs.readFileSync(mappingMigration,"utf8"));
+    await pool.query(fs.readFileSync(burnMigration,"utf8"));
+  },180_000);
+  afterAll(async()=>{await pool?.end();pool=null;});
+
+  async function eventFixture(suffix:string,fictional?:Buffer):Promise<EventFixture>{
+    const client=await pool!.connect();
+    try{
+      await client.query("begin");
+      const fx=await seedRl9BehaviorFixture(client,"b2f-"+suffix);
+      // RL-8 deferred closure must COMMIT before RL-9 writers use promotion.
+      await client.query("commit");
+      await client.query("begin");
+      await callBlindTruthWriter(client,fx,
+        "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1",
+        "persist_research_blind_truth_protocol_v1",protocolHash,protocolPayload,true);
+      // Public registration admission remains LOCKED. The disposable
+      // admin alone can seed this synthetic scientific fixture.
+      await callBlindTruthWriter(client,fx,
+        "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+        "persist_research_blind_truth_registration_v1",fx.registrationHash,
+        fx.registrationPayload,false);
+      const seal:BlindTruthVaultSealV1=fictional?{
+        ...makeVaultSeal(fx.registrationPayload),
+        commitmentHash:canonicalSha256HexV1(
+          deriveBlindTruthHoldoutCommitmentV1({
+            secretSalt:Buffer.alloc(32,0x69),
+            exactCanonicalHoldoutPlaintextBytes:fictional,
+          })),
+        declaredPlaintextByteLength:String(fictional.length),
+      }:makeVaultSeal(fx.registrationPayload);
+      await callBlindTruthWriter(client,fx,
+        "RESEARCH_BLIND_TRUTH_VAULT_SEAL_CREATE_V1",
+        "persist_research_blind_truth_vault_seal_v1",
+        hashBlindTruthVaultSealV1(seal).hashHex,canonicalBlindTruthVaultSealV1(seal),false);
+      const evaluation=makeEvaluation(fx.registrationPayload,seal);
+      const evalHash=hashBlindTruthEvaluationV1(evaluation).hashHex;
+      await callBlindTruthWriter(client,fx,
+        "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1",
+        "persist_research_blind_truth_evaluation_v1",
+        evalHash,canonicalBlindTruthEvaluationV1(evaluation),false);
+      const started=makeRevealStarted(fx.registrationPayload,seal,evaluation);
+      const startedHash=hashBlindTruthRevealResultEventV1(started).hashHex;
+      await callBlindTruthWriter(client,fx,
+        "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1",
+        "persist_research_blind_truth_reveal_started_v1",
+        startedHash,canonicalBlindTruthRevealResultEventV1(started),false);
+      await client.query("commit");
+      return {fx,startedHash,evalHash,seal};
+    } catch(e){await client.query("rollback").catch(()=>undefined);throw e;}
+    finally{client.release();}
+  }
+
+  async function reserve(f:EventFixture,options:{
+    commit?:boolean;evalHash?:string;startedHash?:string;
+  }={}):Promise<string>{
+    const client=await pool!.connect();
+    try {
+      await client.query("begin");
+      await setRl9Authority(client,f.fx,
+        "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1",false);
+      await client.query("set local role investing_rl9_writer");
+      const r=await client.query<{decision:string}>(
+        "select "+burnFn+"($1,$2) as decision",[
+          options.evalHash??f.evalHash,
+          options.startedHash??f.startedHash,
+        ]);
+      if(options.commit===false) await client.query("rollback");
+      else await client.query("commit");
+      return r.rows[0]!.decision;
+    } catch(e){await client.query("rollback").catch(()=>undefined);throw e;}
+    finally{client.release();}
+  }
+
+  it("keeps the new writer private, NOLOGIN, FORCE-RLS, and registration locked",async()=>{
+    const r=await pool!.query(
+      "select has_function_privilege('investing_app','"+burnFn+"(text,text)','EXECUTE') as app,"+
+      "has_function_privilege('service_role','"+burnFn+"(text,text)','EXECUTE') as service,"+
+      "has_function_privilege('anon','"+burnFn+"(text,text)','EXECUTE') as anon,"+
+      "has_function_privilege('authenticated','"+burnFn+"(text,text)','EXECUTE') as auth,"+
+      "has_function_privilege('investing_app','investing.persist_research_blind_truth_registration_v1(text,jsonb)','EXECUTE') as admission,"+
+      "has_table_privilege('investing_app','"+burnTable+"','SELECT') as rd");
+    expect(r.rows).toEqual([{app:false,service:false,anon:false,
+      auth:false,admission:false,rd:false}]);
+    const acl=await pool!.query(
+      "select relrowsecurity as rls,relforcerowsecurity as forced,"+
+      "pg_get_userbyid(relowner) as owner from pg_class where oid='"+burnTable+"'::regclass");
+    expect(acl.rows).toEqual([{rls:true,forced:true,owner:"investing_owner"}]);
+  });
+
+  it("requires an actual COMMITTED started event, burns exactly once and never returns ALLOW",async()=>{
+    const f=await eventFixture("durable-success");
+    const decision=await reserve(f);
+    expect(decision).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+    expect(JSON.stringify(decision)).not.toContain("ALLOW");
+    const count=await pool!.query(
+      "select reservation_state,started_event_hash_hex,evaluation_hash_hex "+
+      "from "+burnTable+" where tenant_id=$1 and evaluation_hash_hex=$2",
+      [f.fx.tenantId,f.evalHash]);
+    expect(count.rows).toEqual([{reservation_state:"BURNED_NOT_AUTHORIZED",
+      started_event_hash_hex:f.startedHash,evaluation_hash_hex:f.evalHash}]);
+    await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_BURNED/);
+    expect((await pool!.query("select count(*)::int as n from "+burnTable+
+      " where evaluation_hash_hex=$1",[f.evalHash])).rows).toEqual([{n:1}]);
+  },120_000);
+
+  it("never treats an uncommitted burn as durable; only COMMIT persists it",async()=>{
+    const f=await eventFixture("abort");
+    expect(await reserve(f,{commit:false}))
+      .toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+    const none=await pool!.query("select count(*)::int as n from "+burnTable+
+      " where evaluation_hash_hex=$1",[f.evalHash]);
+    expect(none.rows).toEqual([{n:0}]);
+    expect(await reserve(f)).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+  },120_000);
+
+  it("rejects missing event and mismatched evaluation/hash without changing the ledger",async()=>{
+    const f=await eventFixture("wrong-hashes");
+    for(const v of [
+      {evalHash:"F".repeat(64)},
+      {startedHash:"E".repeat(64)},
+      {evalHash:"nothex"},
+      {startedHash:"invalid"},
+    ])await expect(reserve(f,v)).rejects.toThrow(
+      /RL9C2B2F_UNPROVEN_CONTEXT|RL9C2B2F_COMMITTED_STARTED_EVENT_NOT_PROVEN/);
+    expect((await pool!.query("select count(*)::int as n from "+burnTable+
+      " where evaluation_hash_hex=$1",[f.evalHash])).rows).toEqual([{n:0}]);
+  },120_000);
+
+  it("serializes two independent PostgreSQL connections competing for one event",async()=>{
+    const f=await eventFixture("racing");
+    const results=await Promise.allSettled([reserve(f),reserve(f)]);
+    const ok=results.filter(v=>v.status==="fulfilled");
+    const blocked=results.filter(v=>v.status==="rejected");
+    expect(ok).toHaveLength(1);
+    expect(blocked).toHaveLength(1);
+    expect(ok[0]).toMatchObject({status:"fulfilled",
+      value:"BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED"});
+    expect(String((blocked[0] as PromiseRejectedResult).reason))
+      .toMatch(/RL9C2B2F_ALREADY_BURNED/);
+    expect((await pool!.query("select count(*)::int as n from "+burnTable+
+      " where evaluation_hash_hex=$1",[f.evalHash])).rows).toEqual([{n:1}]);
+  },120_000);
+
+  it("refuses new burn after committed terminal fail-closed event",async()=>{
+    const f=await eventFixture("terminal");
+    const client=await pool!.connect();
+    try{
+      await client.query("begin");
+      const orig=await client.query<{canonical_payload:unknown}>(
+        "select canonical_payload from "+
+        "investing.research_blind_truth_reveal_result_events_scientific_identities "+
+        "where event_hash_hex=$1",[f.startedHash]);
+      expect(orig.rows).toHaveLength(1);
+      const start=orig.rows[0]!.canonical_payload as BlindTruthRevealResultEventV1;
+      const terminal:BlindTruthRevealResultEventV1={
+        ...start,predecessorEvent:{
+          hashAlgorithm:"SHA-256",hashDomain:"SYNTRAKE:BLIND_TRUTH_REVEAL_RESULT_EVENT:V1",
+          hashVersion:"SYNTRAKE_SHA256_V1",hashHex:canonicalSha256HexV1(f.startedHash)},
+        eventState:"REVEAL_FAILED_CLOSED",reason:"ACCESS_AUDIT_UNAVAILABLE",
+      };
+      await callBlindTruthWriter(client,f.fx,"RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1",
+        "persist_research_blind_truth_final_event_v1",
+        hashBlindTruthRevealResultEventV1(terminal,start).hashHex,
+        canonicalBlindTruthRevealResultEventV1(terminal,start),false);
+      await client.query("commit");
+    }catch(e){await client.query("rollback").catch(()=>undefined);throw e;}
+    finally{client.release();}
+    await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_TERMINAL/);
+  },120_000);
+
+
+  it("requires COMMITTED PG burn before synthetic ciphertext open, with both ledgers non-replayable",async()=>{
+    if(process.platform==="win32")return;
+    const fictional=Buffer.from('{"syntheticOnly":true,"close":"111.11"}');
+    const f=await eventFixture("two-ledger-integration",fictional);
+    // The test harness is privileged. No application can call this SQL
+    // function, and neither the PG burn nor the filesystem claim is a Vault
+    // secret-release permission or operational external authority.
+    expect(await reserve(f)).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+    const joined=await pool!.query<{event_state:string;reservation_state:string}>(
+      "select e.event_state,r.reservation_state "+
+      "from "+burnTable+" r join "+
+      "investing.research_blind_truth_reveal_result_events_scientific_identities e "+
+      "on e.research_blind_truth_reveal_result_event_identity_id=r.started_event_identity_id "+
+      "and e.event_hash_hex=r.started_event_hash_hex "+
+      "where r.tenant_id=$1 and r.evaluation_hash_hex=$2",
+      [f.fx.tenantId,f.evalHash]);
+    expect(joined.rows).toEqual([{
+      event_state:"REVEAL_STARTED",reservation_state:"BURNED_NOT_AUTHORIZED",
+    }]);
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),"syntrake-b2f-dual-burn-"));
+    fs.chmodSync(root,0o700);
+    try{
+      const config={environment:{
+        SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",
+        SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:"ISOLATED_REHEARSAL_V1",
+      },rootDirectory:root,storageMode:"ISOLATED_REHEARSAL_V1"};
+      const binding={
+        tenantId:f.fx.tenantId,registrationHashHex:f.fx.registrationHash,
+        holdoutScopeDigestHex:blindTruthHoldoutScopeDigestV1(
+          f.fx.registrationPayload.holdoutScope),
+        commitmentHashHex:f.seal.commitmentHash,
+      };
+      const key=Buffer.alloc(32,0x55);
+      const envelope=encryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,keyVersion:"SYNTHETIC_K1",
+        binding,exactCanonicalPlaintextBytes:fictional,
+      });
+      const staged=createSyntheticPrivateCiphertextStoreV1(config)
+        .stageSyntheticEnvelopeV1({classification:"SYNTHETIC_TEST_VECTOR",envelope});
+      const request={
+        classification:"SYNTHETIC_TEST_VECTOR",
+        privateObjectLocator:staged.privateObjectLocator,
+        evaluationHashHex:f.evalHash,revealStartedEventHashHex:f.startedHash,
+      };
+      const consumed=createSyntheticVaultConsumeOnceRehearsalV1(config)
+        .consumeSyntheticSealedEnvelopeOnceV1(request);
+      expect(consumed.status).toBe("SYNTHETIC_CONSUMED_ONCE");
+      const opened=decryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,expectedKeyVersion:"SYNTHETIC_K1",
+        expectedBinding:binding,envelope:consumed.envelope,
+      });
+      try{
+        verifyBlindTruthHoldoutCommitmentV1({
+          secretSalt:Buffer.alloc(32,0x69),
+          exactCanonicalHoldoutPlaintextBytes:opened,
+          publicCommitmentHash:f.seal.commitmentHash,
+          declaredPlaintextByteLength:f.seal.declaredPlaintextByteLength,
+        });
+        expect(opened.equals(fictional)).toBe(true);
+      }finally{opened.fill(0);}
+      await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_BURNED/);
+      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
+        .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
+      const terminal=await pool!.query<{n:number}>(
+        "select count(*)::int as n from "+
+        "investing.research_blind_truth_reveal_result_events_scientific_identities "+
+        "where evaluation_hash_hex=$1 and event_state='REVEAL_COMPLETED'",
+        [f.evalHash]);
+      expect(terminal.rows).toEqual([{n:0}]);
+    }finally{fictional.fill(0);fs.rmSync(root,{recursive:true,force:true});}
+  },120_000);
+
+  it("FORCE RLS blocks cross-tenant read under forged GUC scope and append-only UPDATE/DELETE",async()=>{
+    const a=await eventFixture("tenant-one");
+    const b=await eventFixture("tenant-two");
+    await reserve(a);await reserve(b);
+    const client=await pool!.connect();
+    try{
+      await client.query("begin");
+      await setRl9Authority(client,a.fx,
+        "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1",false);
+      await client.query("set local role investing_rl9_writer");
+      const visible=await client.query<{tenant_id:string}>(
+        "select tenant_id::text from "+burnTable);
+      expect(visible.rows).toEqual([{tenant_id:a.fx.tenantId}]);
+      await client.query("reset role");
+      await expectPgRejection(client,
+        ()=>client.query("update "+burnTable+" set reservation_state=reservation_state"),
+        /append-only/);
+      await expectPgRejection(client,
+        ()=>client.query("delete from "+burnTable),
+        /append-only/);
+      await client.query("rollback");
+    }finally{await client.query("rollback").catch(()=>undefined);client.release();}
+  },120_000);
+});
