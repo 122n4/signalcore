@@ -62,8 +62,11 @@ function closedDataRecord(raw: unknown, keys: readonly string[]): Record<string,
 
 function canonicalMapping(raw: unknown): DatasetSeriesCanonicalMappingV1 {
   const record = closedDataRecord(raw, mappingKeys);
-  const get = (key: typeof mappingKeys[number]): string =>
-    canonicalTextV1(record[key], { minBytes: 1, maxBytes: 256 });
+  const get = (key: typeof mappingKeys[number]): string => {
+    const value = record[key];
+    if (typeof value !== "string") throw Error("INVALID");
+    return canonicalTextV1(value, { minBytes: 1, maxBytes: 256 });
+  };
   return Object.freeze({
     providerDatasetId: get("providerDatasetId"),
     providerDatasetVersion: get("providerDatasetVersion"),
