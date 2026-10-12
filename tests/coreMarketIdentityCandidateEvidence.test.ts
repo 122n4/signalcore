@@ -53,7 +53,7 @@ describe("Core market identity candidate evidence V1 — no Lab dependencies or 
 
   it("rejects future-known information rather than applying look-ahead",()=>{
     expect(resolve(args({asOf:"2025-06-30T23:59:59.999Z"})))
-      .toEqual(unproven("INVALID_REQUEST")); // observations span to asOf day but knowledge is future
+      .toEqual(unproven("EVIDENCE_FUTURE_KNOWLEDGE"));
     expect(resolve(args({candidates:[{...candidate,knownAt:"2025-07-02T00:00:00.000Z"}]})))
       .toEqual(unproven("EVIDENCE_FUTURE_KNOWLEDGE"));
   });
