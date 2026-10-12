@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   createSyntheticPrivateCiphertextStoreV1,
