@@ -21,7 +21,7 @@ import {
   type ValidationProtocolHashPayloadV1,
 } from "../lib/investing/research";
 import { createValidationProtocolCommandV1 } from "../lib/investing/research/validationExecutionService";
-import { resolveAuthorizedResearchValidationChildExecutionContext } from "../lib/investing/authority/context";
+import { resolveAuthorizedResearchValidationChildExecutionContext, isAuthorizedResearchValidationChildExecutionContext } from "../lib/investing/authority/context";
 import { executeValidationChildV1 } from "../lib/investing/research/validationExecutionWriter";
 import { executionConfigV1, metricRequestSetV1, ref } from "./support/investingI5DatasetRunScientificFixtures";
 import { i5BaselineCandidateV1, i5ExperimentBaseResearchIrV1 } from "./support/investingI5ExperimentScientificFixtures";
@@ -45,7 +45,7 @@ async function executeScientificValidationFixtureV1(input:{
     researchValidationProtocolIdentityId:input.researchValidationProtocolIdentityId,
     foldOrdinal:input.foldOrdinal,phase:input.phase,correlationId:input.correlationId,
   });
-  if(authority.ok !== true) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
+  if(authority.ok !== true || !isAuthorizedResearchValidationChildExecutionContext(authority.context)) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
   return executeValidationChildV1({
     authorizedContext:authority.context,
     datasetMaterialProvider:input.datasetMaterialProvider,
