@@ -26,7 +26,8 @@ import {
 } from "../lib/investing/research";
 import { resolveAuthorizedResearchMaterialRevisionCreateContext } from "../lib/investing/authority/context";
 import { createScientificRunInputV1 } from "../lib/investing/research/runInputScientificWriter";
-import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
+import { resolveAuthorizedResearchExecutionContext } from "../lib/investing/authority/context";
+import { executeResearchRunV1 } from "../lib/investing/research/researchExecutionWriter";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import { scientificRunInputCandidateV1 } from "./support/investingI5DatasetRunScientificFixtures";
 import { canonicalResearchSpecCandidatePayloadV1 } from "../lib/investing/research/semantic";
@@ -34,6 +35,29 @@ import { canonicalResearchSpecCandidatePayloadV1 } from "../lib/investing/resear
 vi.mock("server-only", () => ({}));
 vi.mock("../lib/investing/authority/clerk", () => ({ resolveVerifiedClerkIdentity: vi.fn() }));
 vi.mock("../lib/investing/authority/transport", () => ({ getInvestingAuthorityDatabase: vi.fn() }));
+
+
+/**
+ * Disposable scientific writer rehearsal ONLY: the public command has a
+ * mandatory embargo-denial boundary and cannot accept arbitrary providers.
+ * These fixtures exercise the lower-level scientific writer with synthetic
+ * bytes under real resolved tenant authority, not a production read grant.
+ */
+async function executeScientificResearchFixtureV1(input: {
+  researchInvestigationId: string; runInputIdentityId: string; correlationId: string;
+  datasetMaterialProvider: Parameters<typeof executeResearchRunV1>[0]["datasetMaterialProvider"];
+}) {
+  const authority=await resolveAuthorizedResearchExecutionContext({
+    researchInvestigationId:input.researchInvestigationId,
+    runInputIdentityId:input.runInputIdentityId,
+    correlationId:input.correlationId,
+  });
+  if (authority.ok !== true) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
+  return executeResearchRunV1({
+    authorizedContext:authority.context,
+    datasetMaterialProvider:input.datasetMaterialProvider,
+  },getInvestingAuthorityDatabase());
+}
 
 const repoRoot = path.resolve(__dirname, "..");
 const connectionString = process.env.PG17_RECONCILIATION_URL ?? "";
@@ -634,7 +658,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const provider = { loadSeriesContent: async (seriesRef: { hashHex: string }) => materialBytes.get(seriesRef.hashHex) ?? null };
     const beforeMissingRuns = await client.query<{ count: string }>("select count(*) from investing.research_execution_runs where run_input_identity_id = $1", [ids.executableRunInputIdentity]);
     const missingRoleProofStart = appRoleProofs.length;
-    const missing = await executeResearchRunCommandV1({
+    const missing = await executeScientificResearchFixtureV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.executableRunInputIdentity,
       correlationId: "corr-pg17-exec-missing",
@@ -645,13 +669,13 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     const afterMissingRuns = await client.query<{ count: string }>("select count(*) from investing.research_execution_runs where run_input_identity_id = $1", [ids.executableRunInputIdentity]);
     expect(afterMissingRuns.rows[0]!.count).toBe(beforeMissingRuns.rows[0]!.count);
     const executionRoleProofStart = appRoleProofs.length;
-    const firstExecution = await executeResearchRunCommandV1({
+    const firstExecution = await executeScientificResearchFixtureV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.executableRunInputIdentity,
       correlationId: "corr-pg17-exec-first",
       datasetMaterialProvider: provider,
     });
-    const secondExecution = await executeResearchRunCommandV1({
+    const secondExecution = await executeScientificResearchFixtureV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.executableRunInputIdentity,
       correlationId: "corr-pg17-exec-second",
@@ -723,7 +747,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       [hashDatasetSeriesV1(conflictExecutable.bbb.series), conflictExecutable.bbb.bytes],
     ]);
     const conflictRoleProofStart = appRoleProofs.length;
-    const conflictResult = await executeResearchRunCommandV1({
+    const conflictResult = await executeScientificResearchFixtureV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.conflictRunInputIdentity,
       correlationId: "corr-pg17-exec-conflict",
@@ -780,7 +804,7 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
       [hashDatasetSeriesV1(evidenceConflictExecutable.bbb.series), evidenceConflictExecutable.bbb.bytes],
     ]);
     const evidenceConflictRoleProofStart = appRoleProofs.length;
-    const evidenceConflictResult = await executeResearchRunCommandV1({
+    const evidenceConflictResult = await executeScientificResearchFixtureV1({
       researchInvestigationId: ids.investigation,
       runInputIdentityId: ids.evidenceConflictRunInputIdentity,
       correlationId: "corr-pg17-evidence-conflict",
