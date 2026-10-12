@@ -1297,3 +1297,106 @@ maybeDescribe("RL-9C3B2B4 real persisted fence negative/positive classification"
     }]);
   });
 });
+
+
+/**
+ * RL-9C3B2B5: real PG17 concurrent registration vs denied reader.
+ * The registration inserts a VALID science-backed row+fence in a transaction,
+ * then holds the actual advisory lock while the denied preflight tries to run.
+ *
+ * An uncommitted fence cannot be assumed visible. The preflight must wait,
+ * then classify only the COMMITTED fence state. Denial is unconditional.
+ */
+maybeDescribe("RL-9C3B2B5 real registration-versus-denial race", () => {
+  const deniedFn="investing.rl9c3b2b4_record_persisted_fence_preflight_v1";
+  const journal="investing.research_blind_truth_denied_read_attempts_v1";
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString, max: 6 });
+    const proof=await pool.query(
+      "select to_regprocedure('"+deniedFn+"(text,text[],text[],date,date)') is not null as installed");
+    expect(proof.rows).toEqual([{installed:true}]);
+  });
+  afterAll(async()=>{await pool?.end();pool=null;});
+
+  async function setDeniedReaderContext(client:PoolClient, fx:Rl9BehaviorFixture) {
+    await client.query("set local role investing_app");
+    const scope:Record<string,string>={
+      tenant_id:fx.tenantId,principal_id:fx.principalId,
+      tenant_membership_id:fx.membershipId,
+      research_investigation_id:fx.investigationId,
+      actor_kind:"USER_PRINCIPAL",
+      operation:"RESEARCH_EXECUTION_RUN_V1",
+      capability:"RESEARCH_EXECUTE",
+      operation_scope:"TENANT_SCOPE",
+      source_context:"PURE_RESEARCH",
+    };
+    for(const [key,value] of Object.entries(scope))
+      await client.query("select set_config($1,$2,true)",["syntrake.investing."+key,value]);
+  }
+
+  async function race(commitRegistration:boolean) {
+    const suffix=commitRegistration?"b5-registration-commits":"b5-registration-rolls-back";
+    const fx=await createCommittedRegistrationFixture(suffix);
+    const registration=await pool!.connect();
+    const reader=await pool!.connect();
+    const seriesHash=commitRegistration?"B".repeat(64):"C".repeat(64);
+    const holdout=fx.registrationPayload.holdoutScope;
+    let pending:Promise<unknown>|null=null;
+    let released=false;
+    try {
+      await registration.query("begin");
+      const created=await callBlindTruthWriter(
+        registration,fx,"RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+        "persist_research_blind_truth_registration_v1",
+        fx.registrationHash,fx.registrationPayload,false,
+      );
+      expect(created.status).toBe("CREATED");
+      const uncommitted=await pool!.query(
+        "select count(*)::int as n from investing.research_blind_truth_embargo_fences_v1 "+
+        "where tenant_id=$1 and registration_hash_hex=$2",[fx.tenantId,fx.registrationHash]);
+      expect(uncommitted.rows).toEqual([{n:0}]);
+
+      await reader.query("begin");
+      await setDeniedReaderContext(reader,fx);
+      await reader.query("set local statement_timeout = '10000ms'");
+      let completed=false;
+      const work=reader.query<{decision:string}>(
+        "select "+deniedFn+"($1,$2::text[],$3::text[],$4::date,$5::date) as decision",
+        [seriesHash,[holdout.markets[0]!],[holdout.fields[0]!],
+          holdout.coverageStart,holdout.coverageEnd],
+      ).then(result=>{completed=true;return result;});
+      pending=work;
+      await new Promise(resolve=>setTimeout(resolve,150));
+      expect(completed).toBe(false); // server waits for genuine registration lock
+
+      await registration.query(commitRegistration?"commit":"rollback");
+      released=true;
+      const verdict=await work;
+      expect(verdict.rows).toEqual([{decision:"UNPROVEN_NOT_AUTHORIZED"}]);
+      await reader.query("commit");
+      const audit=await pool!.query(
+        "select preflight_observation, decision from "+journal+
+        " where series_hash_hex=$1",[seriesHash]);
+      expect(audit.rows).toEqual([{
+        decision:"UNPROVEN_NOT_AUTHORIZED",
+        preflight_observation:commitRegistration
+          ?"CLAIMED_SCOPE_INTERSECTS_VISIBLE_FENCE"
+          :"NO_OVERLAP_IN_VISIBLE_FENCES_NOT_AUTHORIZATION",
+      }]);
+    }finally{
+      if(!released)await registration.query("rollback").catch(()=>undefined);
+      if(pending)await pending.catch(()=>undefined);
+      await reader.query("rollback").catch(()=>undefined);
+      registration.release();reader.release();
+    }
+  }
+
+  it("waits for a valid registration commit and then observes the newly durable fence",async()=>{
+    await race(true);
+  },120_000);
+
+  it("waits for registration rollback and still refuses to authorize the read",async()=>{
+    await race(false);
+  },120_000);
+});
