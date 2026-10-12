@@ -64,15 +64,19 @@ describe("RL-9C3B2B0: Investing Research read-surface inventory (non-authorizing
     expect(source(writerPaths[1])).toContain("buildValidationRunInput(");
   });
 
-  it("pins service-level provider injection as an unproven authority boundary", () => {
+  it("pins BOTH public services to mandatory denial-only provider wiring", () => {
     const services = [
       "lib/investing/research/researchExecutionService.ts",
       "lib/investing/research/validationExecutionService.ts",
     ];
     for (const service of services) {
       const text = source(service);
-      expect(text).toContain("datasetMaterialProvider: ResearchDatasetMaterialProviderV1;");
-      expect(text).toContain("datasetMaterialProvider: input.datasetMaterialProvider");
+      // A Regression here would reopen arbitrary caller-provider bypass.
+      expect(text).not.toContain("datasetMaterialProvider: ResearchDatasetMaterialProviderV1;");
+      expect(text).not.toContain("datasetMaterialProvider: input.datasetMaterialProvider");
+      expect(text).toContain("Reflect.ownKeys(input)");
+      expect(text).toContain("createDeniedAndJournaledResearchMaterialProviderV1(");
+      expect(text).toContain("getInvestingAuthorityDatabase()");
     }
   });
 

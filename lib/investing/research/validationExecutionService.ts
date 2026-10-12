@@ -12,7 +12,8 @@ import {
   type CreateValidationProtocolV1Result,
   type ExecuteValidationChildV1Result,
 } from "./validationExecutionWriter";
-import type { ResearchDatasetMaterialProviderV1 } from "./datasetMaterial";
+import { createDeniedAndJournaledResearchMaterialProviderV1 } from "./deniedAndJournaledResearchMaterialProvider";
+import { getInvestingAuthorityDatabase } from "../authority/transport";
 import type { ValidationProtocolCandidateV1 } from "./validationProtocol";
 
 export type CreateValidationProtocolCommandV1 = Readonly<{
@@ -28,7 +29,6 @@ export type ExecuteValidationChildCommandV1 = Readonly<{
   foldOrdinal: string;
   phase: "TRAINING" | "EVALUATION";
   correlationId: string;
-  datasetMaterialProvider: ResearchDatasetMaterialProviderV1;
 }>;
 
 export async function createValidationProtocolCommandV1(
@@ -50,6 +50,16 @@ export async function createValidationProtocolCommandV1(
 export async function executeValidationChildCommandV1(
   input: ExecuteValidationChildCommandV1,
 ): Promise<ExecuteValidationChildV1Result> {
+  // No injected material resolver, tenant authority or hidden bypass on the
+  // production-facing Validation command.
+  if (input === null || typeof input !== "object" ||
+      Object.getPrototypeOf(input) !== Object.prototype ||
+      Reflect.ownKeys(input).some((key) =>
+        typeof key !== "string" || ![
+          "researchInvestigationId", "researchValidationProtocolIdentityId",
+          "foldOrdinal", "phase", "correlationId",
+        ].includes(key))
+  ) return { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" };
   const authority = await resolveAuthorizedResearchValidationChildExecutionContext({
     researchInvestigationId: input.researchInvestigationId,
     researchValidationProtocolIdentityId: input.researchValidationProtocolIdentityId,
@@ -61,6 +71,8 @@ export async function executeValidationChildCommandV1(
   if (!isAuthorizedResearchValidationChildExecutionContext(authority.context)) return { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" };
   return executeValidationChildV1({
     authorizedContext: authority.context,
-    datasetMaterialProvider: input.datasetMaterialProvider,
+    datasetMaterialProvider: createDeniedAndJournaledResearchMaterialProviderV1(
+      authority.context, getInvestingAuthorityDatabase(),
+    ),
   });
 }

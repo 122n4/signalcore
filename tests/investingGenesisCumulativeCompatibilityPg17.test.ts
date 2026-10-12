@@ -50,7 +50,8 @@ import {
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
-import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
+import { resolveAuthorizedResearchExecutionContext, isAuthorizedResearchExecutionContext } from "../lib/investing/authority/context";
+import { executeResearchRunV1 } from "../lib/investing/research/researchExecutionWriter";
 import {
   createAndActivateInvestingPlanRevisionForAccountV1,
   initializeInvestingPlanForAccountV1,
@@ -59,6 +60,29 @@ import {
   initializePlanV1,
   type PlanContentV1,
 } from "../lib/investing/plan/writer";
+
+
+/**
+ * Disposable scientific writer rehearsal ONLY: the public command has a
+ * mandatory embargo-denial boundary and cannot accept arbitrary providers.
+ * These fixtures exercise the lower-level scientific writer with synthetic
+ * bytes under real resolved tenant authority, not a production read grant.
+ */
+async function executeScientificResearchFixtureV1(input: {
+  researchInvestigationId: string; runInputIdentityId: string; correlationId: string;
+  datasetMaterialProvider: Parameters<typeof executeResearchRunV1>[0]["datasetMaterialProvider"];
+}) {
+  const authority=await resolveAuthorizedResearchExecutionContext({
+    researchInvestigationId:input.researchInvestigationId,
+    runInputIdentityId:input.runInputIdentityId,
+    correlationId:input.correlationId,
+  });
+  if (authority.ok !== true || !isAuthorizedResearchExecutionContext(authority.context)) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
+  return executeResearchRunV1({
+    authorizedContext:authority.context,
+    datasetMaterialProvider:input.datasetMaterialProvider,
+  },getInvestingAuthorityDatabase());
+}
 
 const repoRoot = path.resolve(__dirname, "..");
 const connectionString = process.env.PG17_CUMULATIVE_COMPATIBILITY_URL ?? "";
@@ -1435,7 +1459,7 @@ afterAll(async () => {
       [hashDatasetSeriesV1(executableRunInput.fixture.aaa.series), executableRunInput.fixture.aaa.bytes],
       [hashDatasetSeriesV1(executableRunInput.fixture.bbb.series), executableRunInput.fixture.bbb.bytes],
     ]);
-    const researchExecution = await executeResearchRunCommandV1({
+    const researchExecution = await executeScientificResearchFixtureV1({
       researchInvestigationId: investigation.investigationId,
       runInputIdentityId: executableRunInput.runInputIdentityId,
       correlationId: "corr-cumulative-i5-execution-01",
