@@ -1039,3 +1039,173 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
   }, 120_000);
 
 });
+
+
+/**
+ * RL-9C3B2A rehearsal intentionally reuses the exact accepted RL-9B2/RL-8
+ * scientific fixtures instead of fabricating an invalid registration row.
+ * The FIRST suite above remains unchanged and runs against its accepted B2
+ * boundary; this suite runs afterwards in the disposable PG17 container.
+ * NEVER point this test at production: it truncates synthetic fixture rows.
+ */
+maybeDescribe("RL-9C3B2A real positive registration/fence transaction", () => {
+  const lockMigration = path.join(repoRoot, "supabase", "migrations",
+    "20261012173000_investing_i5_rl9c3b1_registration_admission_lock.sql");
+  const fenceMigration = path.join(repoRoot, "supabase", "migrations",
+    "20261012180000_investing_i5_rl9c3b2a_embargo_fence_foundation.sql");
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString, max: 8 });
+    const client = await pool.connect();
+    try {
+      const existing = await client.query<{ n: number }>(
+        "select count(*)::int as n from investing.research_blind_truth_registrations_scientific_identities"
+      );
+      expect(existing.rows[0]!.n).toBeGreaterThan(0);
+      // Install the prior C3B1 lock before evaluating C3B2A preconditions.
+      await client.query(fs.readFileSync(lockMigration, "utf8"));
+      // Existing B2 public registrations have no historical embargo/access
+      // audit: C3B2A MUST refuse a silent after-the-fact backfill.
+      let rejected: unknown = null;
+      try {
+        await client.query(fs.readFileSync(fenceMigration, "utf8"));
+      } catch (error) {
+        rejected = error;
+      }
+      expect(String(rejected)).toMatch(/RL9C3B2A_EXISTING_REGISTRATION_UNAUDITED/);
+      await client.query("rollback");
+      // Only isolated B2 synthetic fixture metadata may be cleared;
+      // C3B2A must be installed against a clean registration frontier.
+      await client.query(
+        "truncate investing.research_blind_truth_reveal_result_events_scientific_identities, " +
+        "investing.research_blind_truth_evaluations_scientific_identities, " +
+        "investing.research_blind_truth_vault_seals_scientific_identities, " +
+        "investing.research_blind_truth_registrations_scientific_identities"
+      );
+      await client.query(fs.readFileSync(fenceMigration, "utf8"));
+      const counts = await client.query<{ registrations: number; fences: number }>(
+        "select (select count(*)::int from investing.research_blind_truth_registrations_scientific_identities) as registrations, " +
+        "(select count(*)::int from investing.research_blind_truth_embargo_fences_v1) as fences"
+      );
+      expect(counts.rows[0]).toEqual({ registrations: 0, fences: 0 });
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }, 180_000);
+
+  afterAll(async () => {
+    await pool?.end();
+    pool = null;
+  });
+
+  it("registers one valid promoted candidate and inserts its exact canonical embargo fence in the same transaction", async () => {
+    const client = await pool!.connect();
+    try {
+      await client.query("begin");
+      const fx = await seedRl9BehaviorFixture(client, "c3b2a-positive-atomic");
+      await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1",
+        "persist_research_blind_truth_protocol_v1", protocolHash, protocolPayload, true);
+      const actual = await callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+        "persist_research_blind_truth_registration_v1", fx.registrationHash, fx.registrationPayload, false);
+      expect(actual.status).toBe("CREATED");
+      const row = await client.query<{
+        tenant_id: string; registration_hash_hex: string;
+        scope_hash_hex: string; canonical_holdout_scope: unknown;
+      }>(
+        "select tenant_id::text, registration_hash_hex, scope_hash_hex, canonical_holdout_scope " +
+        "from investing.research_blind_truth_embargo_fences_v1 where registration_identity_id=$1::uuid",
+        [actual.researchBlindTruthRegistrationIdentityId]
+      );
+      expect(row.rows).toHaveLength(1);
+      expect(row.rows[0]!.tenant_id).toBe(fx.tenantId);
+      expect(row.rows[0]!.registration_hash_hex).toBe(fx.registrationHash);
+      expect(row.rows[0]!.scope_hash_hex).toBe(blindTruthHoldoutScopeDigestV1(fx.registrationPayload.holdoutScope));
+      expect(row.rows[0]!.canonical_holdout_scope).toEqual(fx.registrationPayload.holdoutScope);
+      await client.query("rollback");
+
+      const absent = await pool!.query<{ registrations: number; fences: number }>(
+        "select (select count(*)::int from investing.research_blind_truth_registrations_scientific_identities where registration_hash_hex=$1) as registrations, " +
+        "(select count(*)::int from investing.research_blind_truth_embargo_fences_v1 where registration_hash_hex=$1) as fences",
+        [fx.registrationHash]
+      );
+      expect(absent.rows[0]).toEqual({ registrations: 0, fences: 0 });
+    } catch (error) {
+      await client.query("rollback").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }, 120_000);
+
+  it("rejects an unavailable fence writer and rolls back the registration instead of committing a naked row", async () => {
+    const fx = await createCommittedRegistrationFixture("c3b2a-fenced-insert-denied");
+    const client = await pool!.connect();
+    try {
+      await client.query("begin");
+      await client.query("set local role investing_owner");
+      await client.query("revoke insert on investing.research_blind_truth_embargo_fences_v1 from investing_rl9_writer");
+      await client.query("reset role");
+      await expect(
+        callBlindTruthWriter(client, fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+          "persist_research_blind_truth_registration_v1", fx.registrationHash, fx.registrationPayload, false)
+      ).rejects.toMatchObject({ code: "42501" });
+      await client.query("rollback"); // restores the grant and aborts registration
+      const rows = await pool!.query<{ registrations: number; fences: number }>(
+        "select (select count(*)::int from investing.research_blind_truth_registrations_scientific_identities where registration_hash_hex=$1) as registrations, " +
+        "(select count(*)::int from investing.research_blind_truth_embargo_fences_v1 where registration_hash_hex=$1) as fences",
+        [fx.registrationHash]
+      );
+      expect(rows.rows[0]).toEqual({ registrations: 0, fences: 0 });
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
+  }, 120_000);
+
+  it("serializes two actual committed registration attempts into one registration AND one embargo fence", async () => {
+    const fx = await createCommittedRegistrationFixture("c3b2a-concurrent-writer");
+    const [a, b] = await runConcurrentWriters(fx, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+      "persist_research_blind_truth_registration_v1", fx.registrationHash, fx.registrationPayload, false);
+    expect([a.status, b.status].sort()).toEqual(["CREATED", "REUSED_IDENTICAL"]);
+    const result = await pool!.query<{ registrations: number; fences: number }>(
+      "select (select count(*)::int from investing.research_blind_truth_registrations_scientific_identities where tenant_id=$1 and registration_hash_hex=$2) as registrations, " +
+      "(select count(*)::int from investing.research_blind_truth_embargo_fences_v1 where tenant_id=$1 and registration_hash_hex=$2) as fences",
+      [fx.tenantId, fx.registrationHash]
+    );
+    expect(result.rows[0]).toEqual({ registrations: 1, fences: 1 });
+  }, 120_000);
+
+  it("writer RLS sees only its own tenant fence after two independently committed registrations", async () => {
+    const a = await createCommittedRegistrationFixture("c3b2a-tenant-a");
+    const b = await createCommittedRegistrationFixture("c3b2a-tenant-b");
+    await runWriterInCommittedTransaction(a, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+      "persist_research_blind_truth_registration_v1", a.registrationHash, a.registrationPayload, false);
+    await runWriterInCommittedTransaction(b, "RESEARCH_BLIND_TRUTH_REGISTRATION_CREATE_V1",
+      "persist_research_blind_truth_registration_v1", b.registrationHash, b.registrationPayload, false);
+    const client=await pool!.connect();
+    try {
+      for(const fx of [a,b]){
+        await client.query("begin");
+        await client.query("set local role investing_rl9_writer");
+        await client.query(
+          "select set_config('syntrake.investing.tenant_id',$1,true), " +
+          "set_config('syntrake.investing.principal_id',$2,true), " +
+          "set_config('syntrake.investing.tenant_membership_id',$3,true), " +
+          "set_config('syntrake.investing.research_investigation_id',$4,true)",
+          [fx.tenantId,fx.principalId,fx.membershipId,fx.investigationId]
+        );
+        const visible=await client.query<{ tenant_id: string }>(
+          "select tenant_id::text from investing.research_blind_truth_embargo_fences_v1"
+        );
+        expect(visible.rows).toEqual([{tenant_id:fx.tenantId}]);
+        await client.query("rollback");
+      }
+    } finally {
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
+    }
+  }, 120_000);
+});
