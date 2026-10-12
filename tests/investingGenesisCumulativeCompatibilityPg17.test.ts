@@ -50,7 +50,7 @@ import {
   type RunInputHashPayloadV1,
 } from "../lib/investing/research";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
-import { resolveAuthorizedResearchExecutionContext } from "../lib/investing/authority/context";
+import { resolveAuthorizedResearchExecutionContext, isAuthorizedResearchExecutionContext } from "../lib/investing/authority/context";
 import { executeResearchRunV1 } from "../lib/investing/research/researchExecutionWriter";
 import {
   createAndActivateInvestingPlanRevisionForAccountV1,
@@ -77,7 +77,7 @@ async function executeScientificResearchFixtureV1(input: {
     runInputIdentityId:input.runInputIdentityId,
     correlationId:input.correlationId,
   });
-  if (authority.ok !== true) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
+  if (authority.ok !== true || !isAuthorizedResearchExecutionContext(authority.context)) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
   return executeResearchRunV1({
     authorizedContext:authority.context,
     datasetMaterialProvider:input.datasetMaterialProvider,
