@@ -302,6 +302,8 @@ class FakeClient implements InvestingAuthorityTransactionClient {
     }
     if (sql.startsWith("select set_config(")) return this.rows<Row>([]);
     if (sql.startsWith("select current_setting(")) return this.rows<Row>([{} as Row]);
+    // RL-2 fixture predates the RL-9 public Passport RLS migration.
+    if (sql.includes("from pg_catalog.pg_policies")) return this.rows<Row>([{ready:false} as Row]);
     if (sql === "select current_user, current_role") {
       return this.rows<Row>([{ current_user: "investing_app", current_role: "investing_app" } as Row]);
     }
