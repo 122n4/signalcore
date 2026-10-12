@@ -1,4 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { readBlindTruthPassportProjectionV1 } from "../lib/investing/research/blindTruthPassportProjection";
 import { createVerifiedSyntheticBurnConsumerV1, syntheticBurnAttestationSigningBytesV1 } from "../workers/investing-blind-vault/privateSignedSyntheticBurnConsumer.mjs";
 import os from "node:os";
 import { createSyntheticPrivateCiphertextStoreV1 } from "../workers/investing-blind-vault/privateCiphertextStore.mjs";
@@ -1556,6 +1557,8 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     "20261012200000_investing_i5_rl9c3b2b7a_mapping_candidate_evidence.sql");
   const burnMigration=path.join(repoRoot,"supabase","migrations",
     "20261012213000_investing_i5_rl9c2b2f_pg17_consume_burn_reservation.sql");
+  const passportMigration=path.join(repoRoot,"supabase","migrations",
+    "20261012220000_investing_i5_rl9d_public_passport_read_policies.sql");
   const burnTable="investing.research_blind_truth_consume_reservations_v1";
   const burnFn="investing.rl9c2b2f_reserve_committed_reveal_burn_v1";
   type EventFixture={fx:Rl9BehaviorFixture; startedHash:string; evalHash:string; seal:BlindTruthVaultSealV1};
@@ -1564,6 +1567,7 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     pool=new Pool({connectionString,max:8});
     await pool.query(fs.readFileSync(mappingMigration,"utf8"));
     await pool.query(fs.readFileSync(burnMigration,"utf8"));
+    await pool.query(fs.readFileSync(passportMigration,"utf8"));
   },180_000);
   afterAll(async()=>{await pool?.end();pool=null;});
 
@@ -1842,6 +1846,67 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
         [f.evalHash]);
       expect(terminal.rows).toEqual([{n:0}]);
     }finally{fictional.fill(0);fs.rmSync(root,{recursive:true,force:true});}
+  },120_000);
+
+
+  it("reads actual committed RL9B public Passport states through investing_app RLS, never secret data",async()=>{
+    const a=await eventFixture("passport-owner-a");
+    const b=await eventFixture("passport-owner-b");
+    const client=await pool!.connect();
+    try {
+      await client.query("begin isolation level repeatable read read only");
+      await client.query("set local role investing_app");
+      const values:Record<string,string>={
+        tenant_id:a.fx.tenantId,principal_id:a.fx.principalId,
+        tenant_membership_id:a.fx.membershipId,
+        research_investigation_id:a.fx.investigationId,
+        operation:"RESEARCH_PASSPORT_READ_V1",capability:"RESEARCH_READ",
+        operation_scope:"TENANT_SCOPE",source_context:"PURE_RESEARCH",
+      };
+      for(const [key,value] of Object.entries(values))
+        await client.query("select set_config($1,$2,true)",
+          ["syntrake.investing."+key,value]);
+      const context={
+        operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
+        tenantId:a.fx.tenantId,principalId:a.fx.principalId,
+        tenantMembershipId:a.fx.membershipId,
+        researchInvestigationId:a.fx.investigationId,
+      } as Parameters<typeof readBlindTruthPassportProjectionV1>[1];
+      const result=await readBlindTruthPassportProjectionV1(
+        client as unknown as Parameters<typeof readBlindTruthPassportProjectionV1>[0],
+        context);
+      expect(result.ok).toBe(true);
+      if(result.ok===false)throw Error("PASSPORT_UNAVAILABLE");
+      expect(result.projection.availability).toBe("PUBLIC_METADATA_ONLY");
+      expect(result.projection.episodes).toHaveLength(1);
+      expect(result.projection.episodes[0]).toMatchObject({
+        registration:a.fx.registrationHash,state:"REVEAL_CONSUMED_RESULT_UNAVAILABLE",
+        latestEvent:a.startedHash,overallOutcome:null,reason:null,
+      });
+      const serialized=JSON.stringify(result);
+      expect(serialized).not.toContain(b.fx.registrationHash);
+      for(const forbidden of ["ciphertext","secretSalt","privateObjectLocator",
+        "decryptionKey","observedMetricResults"])expect(serialized).not.toContain(forbidden);
+      await client.query("rollback");
+
+      // Same raw connection and role cannot read any tenant's RL-9 metadata
+      // if operation/capability are not exact Passport-scoped authority.
+      await client.query("begin isolation level repeatable read read only");
+      await client.query("set local role investing_app");
+      for(const [key,value] of Object.entries({
+        ...values,operation:"RESEARCH_EXECUTION_RUN_V1",
+      }))await client.query("select set_config($1,$2,true)",
+        ["syntrake.investing."+key,value]);
+      const denied=await client.query<{n:number}>(
+        "select count(*)::integer as n from "+
+        "investing.research_blind_truth_registrations_scientific_identities "+
+        "where tenant_id=$1",[a.fx.tenantId]);
+      expect(denied.rows).toEqual([{n:0}]);
+      await client.query("rollback");
+    }finally{
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
+    }
   },120_000);
 
   it("FORCE RLS blocks cross-tenant read under forged GUC scope and append-only UPDATE/DELETE",async()=>{
