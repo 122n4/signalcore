@@ -1062,6 +1062,8 @@ maybeDescribe("RL-9C3B2A real positive registration/fence transaction", () => {
         "select count(*)::int as n from investing.research_blind_truth_registrations_scientific_identities"
       );
       expect(existing.rows[0]!.n).toBeGreaterThan(0);
+      // Install the prior C3B1 lock before evaluating C3B2A preconditions.
+      await client.query(fs.readFileSync(lockMigration, "utf8"));
       // Existing B2 public registrations have no historical embargo/access
       // audit: C3B2A MUST refuse a silent after-the-fact backfill.
       let rejected: unknown = null;
@@ -1080,7 +1082,6 @@ maybeDescribe("RL-9C3B2A real positive registration/fence transaction", () => {
         "investing.research_blind_truth_vault_seals_scientific_identities, " +
         "investing.research_blind_truth_registrations_scientific_identities"
       );
-      await client.query(fs.readFileSync(lockMigration, "utf8"));
       await client.query(fs.readFileSync(fenceMigration, "utf8"));
       const counts = await client.query<{ registrations: number; fences: number }>(
         "select (select count(*)::int from investing.research_blind_truth_registrations_scientific_identities) as registrations, " +
