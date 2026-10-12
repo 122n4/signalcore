@@ -16,6 +16,14 @@ The Core resolver enforces strict UTC timestamps and Gregorian date validation (
 
 No live provider adapter has yet independently verified the candidate; a SHA hash cannot prove historical factual accuracy, corporate-action semantics, survivorship or authentic source identity. The B7A PostgreSQL candidate table retains only `UNVERIFIED` rows and has no writer or promotion mechanism. This Core pure resolver does not read or write Supabase, nor does it invent market movements or timestamps.
 
+## Exact-file architectural exception (candidate, not accepted I0 revision)
+
+The I0 constitution originally has an empty neutral-internal allowlist. An actual Research→Core shared-data import was rejected by the existing `INVESTING_OUTBOUND_INTERNAL_DEPENDENCY_NOT_APPROVED` CI gate. Rather than bypassing the graph or expanding the whole `lib/market` directory, this candidate proposes precisely **one neutral file**:
+
+`lib/market/identityCandidateEvidence.ts`
+
+The file has no imports. `tests/investingGenesisArchitectureBoundaries.test.ts` must explicitly prove that Investing may consume this one pure contract while imports to `lib/market/marketClient.ts`, all Trading imports, transitive Core→Trading paths and Core→Investing reverse dependencies remain **BLOCKED**. It is a narrowly reviewed material change from the **accepted I0 default of no neutral imports**; the I0 constitution is preserved as historical baseline and the current candidate does not become accepted by CI alone. If the independent audit rejects this exception, the candidate is BLOCKED and must not merge.
+
 ## Lab consumes Core; Core does not consume Lab
 
 `lib/investing/research/coreMarketIdentityEmbargoEvidence.ts` projects an ordinary research DatasetSeries into the Core resolver; only if the Core evidence is fully matched does it feed the resulting **unverified** canonical market/field candidate to the existing research holdout-intersection prefilter. A possible overlap may conservatively return `DENY`; disjoint, missing, future, malformed or ambiguous conditions return `UNPROVEN`. No scenario produces `ALLOW` or loads material bytes. The cross-provider and frequency case is explicitly tested.
