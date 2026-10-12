@@ -97,19 +97,19 @@ begin
 
   -- FORCE RLS on the fence STILL applies to the SECURITY DEFINER writer.
   -- An empty RLS-visible set is UNKNOWN, never proof that no holdout exists.
-  select pg_catalog.exists(
+  select exists(
     select 1 from investing.research_blind_truth_embargo_fences_v1 f
     where f.tenant_id = v_tenant::uuid
       and f.canonical_holdout_scope->>'coverageStart'
           <= pg_catalog.to_char(p_coverage_end,'YYYY-MM-DD')
       and f.canonical_holdout_scope->>'coverageEnd'
           >= pg_catalog.to_char(p_coverage_start,'YYYY-MM-DD')
-      and pg_catalog.exists (
+      and exists (
         select 1 from pg_catalog.jsonb_array_elements_text(
           f.canonical_holdout_scope->'markets') m(value)
         where m.value = any(p_claimed_canonical_markets)
       )
-      and pg_catalog.exists (
+      and exists (
         select 1 from pg_catalog.jsonb_array_elements_text(
           f.canonical_holdout_scope->'fields') fld(value)
         where fld.value = any(p_claimed_canonical_fields)
@@ -161,7 +161,7 @@ begin
     or pg_catalog.has_table_privilege('investing_app',
        'investing.research_blind_truth_denied_read_attempts_v1','SELECT')
     or pg_catalog.has_schema_privilege('investing_rl9_writer','investing','CREATE')
-    or pg_catalog.exists (
+    or exists (
       select 1 from pg_catalog.pg_auth_members m
       where m.member='postgres'::regrole
         and m.roleid in ('investing_owner'::regrole,'investing_rl9_writer'::regrole)
