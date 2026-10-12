@@ -50,12 +50,23 @@ actual ordinary-app SQLSTATE 42501 denials, scope hash CHECK, lack of
 confidential payload columns and no residual role grants. The existing managed-role,
 RL-9B1/B2, cumulative and full Genesis PG17 gates must also pass.
 
-**This first foundation does NOT yet prove the positive atomic registration+fence
-flow on a valid scientific promotion fixture**; it still requires an actual
-positive and rollback/concurrent-writer PG17 rehearsal, with a fully valid
-scientific registration, before that invariant is accepted. Such testing may
-reveal corrections needed in the migration. It is NOT sufficient to reason only
-from the existence of an AFTER INSERT trigger.
+An additional real PostgreSQL 17 rehearsal now lives inside the accepted
+RL-9B2 writer test file as a **separate, after-the-baseline suite**. It reuses
+real persisted eligible RL-8 promotion fixtures, and requires:
+- refusal to install the new migration over historical RL-9B registration rows
+  whose past embargo/access exposure cannot be reconstructed;
+- successful valid scientific writer registration and exact same-transaction
+  canonical scope/digest fence insertion, plus rollback of both identities;
+- induced fence insertion failure that rolls back the scientific registration
+  without a naked row;
+- separate competing committed writers producing exactly one registration and
+  one durable fence;
+- two tenants with actual committed fences and RLS denying cross-tenant reads.
+
+**These are candidate tests, not accepted evidence until the exact SHA has
+passed the full PostgreSQL 17 runs.** No real holdouts or private truth are
+used. All table cleanup occurs exclusively in disposable PostgreSQL 17
+test databases; no customer or production state is touched.
 
 More fundamentally, a persisted fence is NOT an operational embargo. The same
 accepted contract also requires:
