@@ -1209,3 +1209,91 @@ maybeDescribe("RL-9C3B2A real positive registration/fence transaction", () => {
     }
   }, 120_000);
 });
+
+
+/**
+ * RL-9C3B2B4: inspect a REAL committed scientific registration + matching
+ * persisted fence, from the existing accepted V1 scientific fixtures above.
+ * The denied preflight MUST return the SAME result for matching/nonmatching.
+ * This is NOT a general read authorization or complete prior-access proof.
+ */
+maybeDescribe("RL-9C3B2B4 real persisted fence negative/positive classification", () => {
+  const denialMigration = path.join(repoRoot,"supabase","migrations",
+    "20261012183000_investing_i5_rl9c3b2b2_denied_read_journal.sql");
+  const preflightMigration = path.join(repoRoot,"supabase","migrations",
+    "20261012190000_investing_i5_rl9c3b2b4_persisted_fence_deny_preflight.sql");
+  type FixtureFence = {
+    tenant_id: string; principal_id: string; tenant_membership_id: string;
+    research_investigation_id: string;
+    canonical_holdout_scope: { markets: string[]; fields: string[];
+      coverageStart: string; coverageEnd: string };
+  };
+  let fixtureFence: FixtureFence;
+
+  beforeAll(async () => {
+    pool = new Pool({ connectionString, max: 4 });
+    const existing=await pool.query<FixtureFence>(
+      "select tenant_id::text, principal_id::text, tenant_membership_id::text, "+
+      "research_investigation_id::text,canonical_holdout_scope "+
+      "from investing.research_blind_truth_embargo_fences_v1 order by created_at limit 1");
+    expect(existing.rows).toHaveLength(1);
+    fixtureFence=existing.rows[0]!;
+    expect(fixtureFence.canonical_holdout_scope.markets.length).toBeGreaterThan(0);
+    expect(fixtureFence.canonical_holdout_scope.fields.length).toBeGreaterThan(0);
+    await pool.query(fs.readFileSync(denialMigration,"utf8"));
+    await pool.query(fs.readFileSync(preflightMigration,"utf8"));
+  }, 180_000);
+
+  afterAll(async () => { await pool?.end(); pool=null; });
+
+  async function probe(market: string) {
+    const client=await pool!.connect();
+    try {
+      await client.query("begin");
+      await client.query("set local role investing_app");
+      const ctx: Record<string,string> = {
+        tenant_id: fixtureFence.tenant_id,
+        principal_id: fixtureFence.principal_id,
+        tenant_membership_id: fixtureFence.tenant_membership_id,
+        research_investigation_id: fixtureFence.research_investigation_id,
+        actor_kind: "USER_PRINCIPAL", operation: "RESEARCH_EXECUTION_RUN_V1",
+        capability: "RESEARCH_EXECUTE", operation_scope: "TENANT_SCOPE",
+        source_context: "PURE_RESEARCH",
+      };
+      for(const [key,value] of Object.entries(ctx))
+        await client.query("select set_config($1,$2,true)",["syntrake.investing."+key,value]);
+      const rows=await client.query<{decision:string}>(
+        "select investing.rl9c3b2b4_record_persisted_fence_preflight_v1"+
+        "($1,$2::text[],$3::text[],$4::date,$5::date) as decision",[
+          "D".repeat(64),[market],
+          [fixtureFence.canonical_holdout_scope.fields[0]!],
+          fixtureFence.canonical_holdout_scope.coverageStart,
+          fixtureFence.canonical_holdout_scope.coverageEnd,
+        ]);
+      await client.query("commit");
+      return rows.rows[0]!.decision;
+    } finally {
+      await client.query("rollback").catch(()=>undefined);client.release();
+    }
+  }
+
+  it("labels a real same-tenant matching fence internally while returning only UNPROVEN",async()=>{
+    const response=await probe(fixtureFence.canonical_holdout_scope.markets[0]!);
+    expect(response).toBe("UNPROVEN_NOT_AUTHORIZED");
+    const row=await pool!.query(
+      "select preflight_observation from investing.research_blind_truth_denied_read_attempts_v1 "+
+      "where series_hash_hex=$1 order by recorded_at desc limit 1",["D".repeat(64)]);
+    expect(row.rows).toEqual([{preflight_observation:"CLAIMED_SCOPE_INTERSECTS_VISIBLE_FENCE"}]);
+  });
+
+  it("never authorizes a different market despite no visible intersection",async()=>{
+    const response=await probe("B4_DISJOINT_MARKET_FIXTURE");
+    expect(response).toBe("UNPROVEN_NOT_AUTHORIZED");
+    const row=await pool!.query(
+      "select preflight_observation from investing.research_blind_truth_denied_read_attempts_v1 "+
+      "where series_hash_hex=$1 order by recorded_at desc limit 1",["D".repeat(64)]);
+    expect(row.rows).toEqual([{
+      preflight_observation:"NO_OVERLAP_IN_VISIBLE_FENCES_NOT_AUTHORIZATION",
+    }]);
+  });
+});
