@@ -138,11 +138,11 @@ runPg("RL-9C3B2A: PostgreSQL 17 embargo fence foundation (NOT full resolver gate
       await client.query("rollback");
       await client.query("begin");
       await client.query("set local role investing_app");
-      await expect(client.query("select * from ${fence}")).rejects.toMatchObject({code:"42501"});
+      await expect(client.query(`select * from ${fence}`)).rejects.toMatchObject({code:"42501"});
       await client.query("rollback");
       await client.query("begin");
       await client.query("set local role investing_app");
-      await expect(client.query("insert into ${fence} default values")).rejects.toMatchObject({code:"42501"});
+      await expect(client.query(`insert into ${fence} default values`)).rejects.toMatchObject({code:"42501"});
       await client.query("rollback");
     } finally {
       await client.query("rollback").catch(()=>undefined);
@@ -155,10 +155,10 @@ runPg("RL-9C3B2A: PostgreSQL 17 embargo fence foundation (NOT full resolver gate
     try {
       await client.query("begin");
       await client.query("set local role investing_rl9_writer");
-      const missing=await client.query("select count(*)::int as n from ${fence}");
+      const missing=await client.query(`select count(*)::int as n from ${fence}`);
       expect(missing.rows[0].n).toBe(0);
       await client.query("select set_config('syntrake.investing.tenant_id','11111111-1111-4111-8111-111111111111',true)");
-      const unrelated=await client.query("select count(*)::int as n from ${fence}");
+      const unrelated=await client.query(`select count(*)::int as n from ${fence}`);
       expect(unrelated.rows[0].n).toBe(0);
       await client.query("rollback");
     } finally {
