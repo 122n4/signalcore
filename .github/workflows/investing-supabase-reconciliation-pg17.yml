@@ -20,6 +20,7 @@ on:
       - "tests/investingGenesisI5Rl8c2ScientificPromotionWritersPg17.test.ts"
       - "tests/investingGenesisI5Rl9b1BlindTruthPersistencePg17.test.ts"
       - "tests/investingGenesisI5Rl9b2BlindTruthWritersPg17.test.ts"
+      - "tests/investingGenesisI5Rl9c3b1RegistrationAdmissionLockPg17.test.ts"
       - "tests/support/investingEngineV2GoldenFixture.ts"
       - "tests/support/investingI5ExperimentScientificFixtures.ts"
       - "lib/investing/research/**"
@@ -227,6 +228,65 @@ jobs:
 
       - name: PostgreSQL 17 RL-9B2 Blind Truth writer rehearsal
         run: npx vitest run tests/investingGenesisI5Rl9b2BlindTruthWritersPg17.test.ts
+
+  investing-rl9c3b1-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      PG17_RECONCILIATION_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Bootstrap Supabase baseline roles and extensions
+        run: |
+          node <<'NODE'
+          const { Client } = require("pg");
+          const client = new Client({ connectionString: process.env.PG17_RECONCILIATION_URL });
+          const roles = ["anon", "authenticated", "service_role"];
+          (async () => {
+            await client.connect();
+            for (const role of roles) {
+              await client.query(`do $$ begin if not exists (select 1 from pg_catalog.pg_roles where rolname = '${role}') then create role ${role} nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls; end if; end $$`);
+            }
+            await client.query("create schema if not exists extensions");
+            await client.query("create extension if not exists pgcrypto with schema extensions");
+            await client.end();
+          })().catch(async (error) => {
+            console.error(error);
+            await client.end().catch(() => undefined);
+            process.exit(1);
+          });
+          NODE
+
+      - name: PostgreSQL 17 RL-9C3B1 unsupported registration admission lockdown
+        run: npx vitest run tests/investingGenesisI5Rl9c3b1RegistrationAdmissionLockPg17.test.ts
 
   investing-managed-supabase-roles-pg17:
     runs-on: ubuntu-latest
