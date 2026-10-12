@@ -26,7 +26,7 @@ import {
 } from "../lib/investing/research";
 import { resolveAuthorizedResearchMaterialRevisionCreateContext } from "../lib/investing/authority/context";
 import { createScientificRunInputV1 } from "../lib/investing/research/runInputScientificWriter";
-import { resolveAuthorizedResearchExecutionContext } from "../lib/investing/authority/context";
+import { resolveAuthorizedResearchExecutionContext, isAuthorizedResearchExecutionContext } from "../lib/investing/authority/context";
 import { executeResearchRunV1 } from "../lib/investing/research/researchExecutionWriter";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import { scientificRunInputCandidateV1 } from "./support/investingI5DatasetRunScientificFixtures";
@@ -52,7 +52,7 @@ async function executeScientificResearchFixtureV1(input: {
     runInputIdentityId:input.runInputIdentityId,
     correlationId:input.correlationId,
   });
-  if (authority.ok !== true) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
+  if (authority.ok !== true || !isAuthorizedResearchExecutionContext(authority.context)) throw Error("SCIENTIFIC_FIXTURE_AUTHORITY_MISSING");
   return executeResearchRunV1({
     authorizedContext:authority.context,
     datasetMaterialProvider:input.datasetMaterialProvider,
