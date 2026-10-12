@@ -31,7 +31,10 @@ plaintext, data locator, HMAC key or salt is admitted.
 - Append-only UPDATE/DELETE trigger, reuse of existing accepted immutability
   rejection, no key material or additional public table grants.
 - Temporarily grants schema CREATE to the restricted function owner during
-  migration, then revokes it. Explicit `pg_auth_members` inspection rules out
+  migration, then revokes it. `investing_owner` receives narrowly scoped EXECUTE
+  on the trigger function solely to install/manage the trigger; ordinary app,
+  `service_role`, `anon` and `authenticated` remain denied. PostgreSQL 17 checks
+  installer EXECUTE at `CREATE TRIGGER` time. Explicit `pg_auth_members` inspection rules out
   residual effective SET/INHERIT grants in managed PostgreSQL 17.
 - Migration refuses installations with already persisted Blind Truth registrations
   because previous access/exposure cannot be reconstructed from missing evidence.

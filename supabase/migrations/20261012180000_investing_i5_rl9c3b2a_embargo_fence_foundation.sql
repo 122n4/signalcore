@@ -129,6 +129,10 @@ end;
 $$;
 revoke all on function investing.rl9c3b2a_fence_registration_v1()
   from public, anon, authenticated, service_role, investing_app, investing_rl9_writer;
+-- The schema-owning role must have EXECUTE to install the restricted trigger.
+-- No ordinary app/service role gains this capability.
+grant execute on function investing.rl9c3b2a_fence_registration_v1()
+  to investing_owner;
 set local role investing_owner;
 revoke create on schema investing from investing_rl9_writer;
 create trigger research_blind_truth_registration_embargo_fence_v1
@@ -165,6 +169,13 @@ begin
   ) then
     raise exception 'RL9C3B2A_FENCE_OWNER_RLS_MISMATCH';
   end if;
+  if pg_catalog.has_function_privilege(
+      'investing_app', 'investing.rl9c3b2a_fence_registration_v1()', 'EXECUTE')
+    or pg_catalog.has_function_privilege(
+      'service_role', 'investing.rl9c3b2a_fence_registration_v1()', 'EXECUTE')
+    or not pg_catalog.has_function_privilege(
+      'investing_owner', 'investing.rl9c3b2a_fence_registration_v1()', 'EXECUTE')
+  then raise exception 'RL9C3B2A_TRIGGER_FUNCTION_GRANT_MISMATCH'; end if;
   if pg_catalog.has_table_privilege(
      'investing_app','investing.research_blind_truth_embargo_fences_v1','SELECT')
     or pg_catalog.has_table_privilege(

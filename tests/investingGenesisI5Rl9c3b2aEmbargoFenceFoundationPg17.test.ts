@@ -110,6 +110,23 @@ runPg("RL-9C3B2A: PostgreSQL 17 embargo fence foundation (NOT full resolver gate
     expect(String(rows[0]!.body).toLowerCase()).toContain("insert into investing.research_blind_truth_embargo_fences_v1");
   });
 
+  it("permits the owning installer role to attach trigger while denying frontend/service EXECUTE", async () => {
+    const {rows}=await db!.query(`
+      select role_name, has_function_privilege(
+        role_name,'investing.rl9c3b2a_fence_registration_v1()','EXECUTE'
+      ) as can_execute
+      from (values ('investing_owner'),('investing_app'),('service_role'),
+            ('anon'),('authenticated')) v(role_name)
+    `);
+    expect(rows).toEqual([
+      {role_name:"investing_owner",can_execute:true},
+      {role_name:"investing_app",can_execute:false},
+      {role_name:"service_role",can_execute:false},
+      {role_name:"anon",can_execute:false},
+      {role_name:"authenticated",can_execute:false},
+    ]);
+  });
+
   it("actual app role is denied registration and direct fence reads/writes", async () => {
     const client=await db!.connect();
     try {
