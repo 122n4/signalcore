@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import os from "node:os";
+import { createSyntheticPrivateCiphertextStoreV1 } from "../workers/investing-blind-vault/privateCiphertextStore.mjs";
+import { createSyntheticVaultConsumeOnceRehearsalV1 } from "../workers/investing-blind-vault/privateSyntheticConsumeOnce.mjs";
+import { encryptBlindTruthVaultEnvelopeV1, decryptBlindTruthVaultEnvelopeV1 } from "../workers/investing-blind-vault/envelope";
+import { deriveBlindTruthHoldoutCommitmentV1, verifyBlindTruthHoldoutCommitmentV1 } from "../lib/investing/secretVault/blindTruthVaultCrypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
@@ -1038,6 +1043,145 @@ maybeDescribe("I5 RL-9B2 Blind Truth PG17 writer ACLs", () => {
     }
   }, 120_000);
 
+
+  /**
+   * Real disposable PG17 writer chain + privately stored fictional bytes.
+   * Test harness verifies REVEAL_STARTED was committed before a synthetic
+   * consume attempt. NOT a real vault authority or an operational reveal.
+   */
+  async function runIntegratedSyntheticReveal(failureAfterBurn:boolean):Promise<void>{
+    if(process.platform==="win32")return; // POSIX ownership/O_EXCL only
+    const suffix=failureAfterBurn?"integrated-pg17-crash":"integrated-pg17-failclosed";
+    const fx=await createCommittedRl9Chain(suffix);
+    const fictional=Buffer.from('{"fictionalOnly":true,"day":"2026-01-01","close":"123.45"}\\n',"utf8");
+    const salt=Buffer.alloc(32,0x4A),key=Buffer.alloc(32,0x5B);
+    const commitment=deriveBlindTruthHoldoutCommitmentV1({
+      secretSalt:salt,exactCanonicalHoldoutPlaintextBytes:fictional,
+    });
+    const seal:BlindTruthVaultSealV1={
+      ...makeVaultSeal(fx.registrationPayload),
+      commitmentHash:canonicalSha256HexV1(commitment),
+      declaredPlaintextByteLength:String(fictional.length),
+    };
+    const sealHash=hashBlindTruthVaultSealV1(seal).hashHex;
+    expect((await runWriterInCommittedTransaction(fx,
+      "RESEARCH_BLIND_TRUTH_VAULT_SEAL_CREATE_V1",
+      "persist_research_blind_truth_vault_seal_v1",sealHash,
+      canonicalBlindTruthVaultSealV1(seal),false)).status).toBe("CREATED");
+    const evaluation=makeEvaluation(fx.registrationPayload,seal);
+    const evaluationHash=hashBlindTruthEvaluationV1(evaluation).hashHex;
+    expect((await runWriterInCommittedTransaction(fx,
+      "RESEARCH_BLIND_TRUTH_EVALUATION_CREATE_V1",
+      "persist_research_blind_truth_evaluation_v1",evaluationHash,
+      canonicalBlindTruthEvaluationV1(evaluation),false)).status).toBe("CREATED");
+    const started=makeRevealStarted(fx.registrationPayload,seal,evaluation);
+    const startedHash=hashBlindTruthRevealResultEventV1(started).hashHex;
+    expect((await runWriterInCommittedTransaction(fx,
+      "RESEARCH_BLIND_TRUTH_REVEAL_STARTED_CREATE_V1",
+      "persist_research_blind_truth_reveal_started_v1",startedHash,
+      canonicalBlindTruthRevealResultEventV1(started),false)).status).toBe("CREATED");
+    const persisted=await pool!.query<{
+      tenant_id:string;registration_hash_hex:string;
+      evaluation_hash_hex:string;event_hash_hex:string;event_state:string;
+    }>(
+      "select tenant_id::text,registration_hash_hex,evaluation_hash_hex,"+
+      "event_hash_hex,event_state from investing."+
+      "research_blind_truth_reveal_result_events_scientific_identities "+
+      "where event_hash_hex=$1",[startedHash]);
+    expect(persisted.rows).toEqual([{
+      tenant_id:fx.tenantId,registration_hash_hex:fx.registrationHash,
+      evaluation_hash_hex:evaluationHash,event_hash_hex:startedHash,
+      event_state:"REVEAL_STARTED",
+    }]);
+
+    const root=fs.mkdtempSync(path.join(os.tmpdir(),"syntrake-rl9-pg17-integrated-"));
+    fs.chmodSync(root,0o700);
+    try{
+      const config={environment:{
+        SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",
+        SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:"ISOLATED_REHEARSAL_V1",
+      },rootDirectory:root,storageMode:"ISOLATED_REHEARSAL_V1"};
+      const binding={
+        tenantId:fx.tenantId,registrationHashHex:fx.registrationHash,
+        holdoutScopeDigestHex:blindTruthHoldoutScopeDigestV1(
+          fx.registrationPayload.holdoutScope),
+        commitmentHashHex:commitment,
+      };
+      const envelope=encryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,keyVersion:"SYNTHETIC_K1",binding,
+        exactCanonicalPlaintextBytes:fictional,
+      });
+      const staged=createSyntheticPrivateCiphertextStoreV1(config)
+        .stageSyntheticEnvelopeV1({classification:"SYNTHETIC_TEST_VECTOR",envelope});
+      const request={classification:"SYNTHETIC_TEST_VECTOR",
+        privateObjectLocator:staged.privateObjectLocator,
+        evaluationHashHex:evaluationHash,
+        revealStartedEventHashHex:startedHash};
+      if(failureAfterBurn) {
+        // Object disappears AFTER staging but BEFORE consumption. The worker
+        // must burn both claims even though it cannot open ciphertext.
+        fs.unlinkSync(path.join(root,"objects",staged.privateObjectLocator+".sealed"));
+        expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
+          .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
+      } else {
+        const consumed=createSyntheticVaultConsumeOnceRehearsalV1(config)
+          .consumeSyntheticSealedEnvelopeOnceV1(request);
+        expect(consumed.status).toBe("SYNTHETIC_CONSUMED_ONCE");
+        const opened=decryptBlindTruthVaultEnvelopeV1({
+          vaultEncryptionKey:key,expectedKeyVersion:"SYNTHETIC_K1",
+          expectedBinding:binding,envelope:consumed.envelope,
+        });
+        try {
+          verifyBlindTruthHoldoutCommitmentV1({
+            secretSalt:salt,exactCanonicalHoldoutPlaintextBytes:opened,
+            publicCommitmentHash:commitment,
+            declaredPlaintextByteLength:String(fictional.length),
+          });
+          expect(opened.equals(fictional)).toBe(true);
+        } finally {opened.fill(0);}
+        // This rehearsal has NO approved metric evaluator nor complete
+        // pre-registration exposure audit: scientific PASS is forbidden.
+        const finalEvent:BlindTruthRevealResultEventV1={
+          ...started,predecessorEvent:hashBlindTruthRevealResultEventV1(started),
+          eventState:"REVEAL_FAILED_CLOSED",reason:"ACCESS_AUDIT_UNAVAILABLE",
+        };
+        const finalHash=hashBlindTruthRevealResultEventV1(finalEvent,started).hashHex;
+        expect((await runWriterInCommittedTransaction(fx,
+          "RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1",
+          "persist_research_blind_truth_final_event_v1",finalHash,
+          canonicalBlindTruthRevealResultEventV1(finalEvent,started),false)
+        ).status).toBe("CREATED");
+        expect((await runWriterInCommittedTransaction(fx,
+          "RESEARCH_BLIND_TRUTH_FINAL_EVENT_CREATE_V1",
+          "persist_research_blind_truth_final_event_v1",finalHash,
+          canonicalBlindTruthRevealResultEventV1(finalEvent,started),false)
+        ).status).toBe("REUSED_IDENTICAL");
+      }
+      // A new test worker instance may never regain the burned envelope.
+      expect(()=>createSyntheticVaultConsumeOnceRehearsalV1(config)
+        .consumeSyntheticSealedEnvelopeOnceV1(request)).toThrow("VAULT_UNAVAILABLE");
+      expect(fs.readdirSync(path.join(root,"synthetic-evaluation-claims")))
+        .toEqual([evaluationHash+".claimed"]);
+      const events=await pool!.query<{event_state:string}>(
+        "select event_state from investing."+
+        "research_blind_truth_reveal_result_events_scientific_identities "+
+        "where tenant_id=$1 and evaluation_hash_hex=$2 order by event_state",
+        [fx.tenantId,evaluationHash]);
+      expect(events.rows).toEqual(failureAfterBurn
+        ?[{event_state:"REVEAL_STARTED"}]
+        :[{event_state:"REVEAL_FAILED_CLOSED"},{event_state:"REVEAL_STARTED"}]);
+      // This is raw event truth, not yet an accepted runtime projector.
+      expect(events.rows.some(e=>e.event_state==="REVEAL_COMPLETED")).toBe(false);
+    }finally{fictional.fill(0);fs.rmSync(root,{recursive:true,force:true});}
+  }
+
+  it("durably connects PG17 REVEAL_STARTED → synthetic one-shot → committed REVEAL_FAILED_CLOSED",async()=>{
+    await runIntegratedSyntheticReveal(false);
+  },120_000);
+
+  it("keeps committed PG17 REVEAL_STARTED without a fictional terminal result after post-burn crash",async()=>{
+    await runIntegratedSyntheticReveal(true);
+  },120_000);
 });
 
 
