@@ -8,19 +8,20 @@ import type {
  * confidential locator/salt, or metric plaintext. An absent migration is
  * DEFERRED, never interpreted as an empty successfully-audited history.
  */
+export type BlindTruthPassportEpisodeV1 = Readonly<{
+  registration: string;
+  vaultSeal: string | null;
+  evaluation: string | null;
+  state:
+    | "REGISTERED" | "SEALED" | "EVALUATION_ARMED"
+    | "REVEAL_CONSUMED_RESULT_UNAVAILABLE" | "REVEAL_FAILED_CLOSED";
+  latestEvent: string | null;
+  reason: string | null;
+  overallOutcome: null;
+}>;
 export type BlindTruthPassportProjectionV1 = Readonly<{
   availability: "PUBLIC_METADATA_ONLY";
-  episodes: readonly Readonly<{
-    registration: string;
-    vaultSeal: string | null;
-    evaluation: string | null;
-    state:
-      | "REGISTERED" | "SEALED" | "EVALUATION_ARMED"
-      | "REVEAL_CONSUMED_RESULT_UNAVAILABLE" | "REVEAL_FAILED_CLOSED";
-    latestEvent: string | null;
-    reason: string | null;
-    overallOutcome: null;
-  }>[];
+  episodes: readonly BlindTruthPassportEpisodeV1[];
 }> | Readonly<{ availability: "DEFERRED_RL9"; episodes: readonly [] }>;
 
 export type BlindTruthPassportReadV1 =
@@ -69,7 +70,7 @@ export function projectBlindTruthPublicEventRowsV1(rows: readonly Row[]): BlindT
     existing.push(row);
     groups.set(row.registration_hash_hex, existing);
   }
-  const episodes: Array<BlindTruthPassportProjectionV1 extends { episodes: readonly (infer E)[] } ? E : never> = [];
+  const episodes: BlindTruthPassportEpisodeV1[] = [];
   for (const [registration, members] of [...groups].sort(([a], [b])=>a.localeCompare(b))) {
     const first = members[0];
     if (!first) return integrity();
