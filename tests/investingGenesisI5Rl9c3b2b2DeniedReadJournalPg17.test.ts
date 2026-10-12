@@ -240,4 +240,25 @@ runPg("RL-9C3B2B2: PostgreSQL 17 blocked-read journal (NOT an access authorizer)
     const decisions=await db!.query(`select distinct decision from ${table}`);
     expect(decisions.rows).toEqual([{ decision: "UNPROVEN_NOT_AUTHORIZED" }]);
   });
+  it("rejects real UPDATE and DELETE of committed blocked-read evidence", async () => {
+    const client=await db!.connect();
+    try {
+      await client.query("begin");
+      await expect(client.query(
+        `update ${table} set decision='UNPROVEN_NOT_AUTHORIZED' where tenant_id=$1`,[tenantA],
+      )).rejects.toMatchObject({ code:"P0001" });
+      await client.query("rollback");
+      await client.query("begin");
+      await expect(client.query(
+        `delete from ${table} where tenant_id=$1`,[tenantA],
+      )).rejects.toMatchObject({ code:"P0001" });
+      await client.query("rollback");
+    } finally {
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
+    }
+    const row=await db!.query(`select count(*)::int as n from ${table} where tenant_id=$1`,[tenantA]);
+    expect(row.rows[0].n).toBe(1);
+  });
+
 });
