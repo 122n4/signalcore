@@ -1571,6 +1571,9 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     try{
       await client.query("begin");
       const fx=await seedRl9BehaviorFixture(client,"b2f-"+suffix);
+      // RL-8 deferred closure must COMMIT before RL-9 writers use promotion.
+      await client.query("commit");
+      await client.query("begin");
       await callBlindTruthWriter(client,fx,
         "RESEARCH_BLIND_TRUTH_PROTOCOL_CREATE_V1",
         "persist_research_blind_truth_protocol_v1",protocolHash,protocolPayload,true);
