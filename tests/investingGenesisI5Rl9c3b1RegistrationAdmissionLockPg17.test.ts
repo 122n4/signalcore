@@ -100,8 +100,16 @@ runPg("RL-9C3B1: PostgreSQL 17 unsupported registration admission lock", () => {
     const { rows } = await db!.query<{
       writer_set: boolean; writer_usage: boolean; schema_create: boolean;
     }>(`
-      select pg_has_role('postgres','investing_rl9_writer','SET') as writer_set,
-             pg_has_role('postgres','investing_rl9_writer','USAGE') as writer_usage,
+      select exists(
+               select 1 from pg_catalog.pg_auth_members m
+               where m.member='postgres'::regrole
+                 and m.roleid='investing_rl9_writer'::regrole and m.set_option
+             ) as writer_set,
+             exists(
+               select 1 from pg_catalog.pg_auth_members m
+               where m.member='postgres'::regrole
+                 and m.roleid='investing_rl9_writer'::regrole and m.inherit_option
+             ) as writer_usage,
              has_schema_privilege('investing_rl9_writer','investing','CREATE') as schema_create
     `);
     expect(rows[0]!).toEqual({ writer_set: false, writer_usage: false, schema_create: false });

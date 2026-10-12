@@ -34,9 +34,15 @@ begin
   if not pg_catalog.has_function_privilege('investing_app', 'investing.persist_research_blind_truth_protocol_v1(text,jsonb)', 'EXECUTE') then
     raise exception 'RL9C3B1_BLOCKED: protocol writer regression';
   end if;
+  -- PostgreSQL superusers satisfy pg_has_role without explicit membership.
+  -- Inspect actual GRANT graph flags instead, exactly as the accepted RL-9B2 gate.
   if pg_catalog.has_schema_privilege('investing_rl9_writer','investing','CREATE')
-      or pg_catalog.pg_has_role('postgres','investing_rl9_writer','SET')
-      or pg_catalog.pg_has_role('postgres','investing_rl9_writer','USAGE') then
+      or exists (
+        select 1 from pg_catalog.pg_auth_members m
+        where m.roleid = 'investing_rl9_writer'::pg_catalog.regrole
+          and (m.member <> 'postgres'::pg_catalog.regrole
+               or m.set_option or m.inherit_option or not m.admin_option)
+      ) then
     raise exception 'RL9C3B1_BLOCKED: temporary writer capability survived';
   end if;
 end $$;
