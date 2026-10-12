@@ -188,7 +188,9 @@ export function resolveCoreMarketIdentityCandidateV1(raw: unknown): CoreMarketId
     request = closedRecord(raw, REQUEST_KEYS);
     series = parseSeries(request.series);
     asOf = utcTimestamp(request.asOf);
-    // Date-only observations have no validated intraday publication time.\n    // Same-day asOf cannot prove even a completed daily close.\n    if (series.coverageEnd >= asOf.slice(0, 10)) throw Error("INVALID");
+    // Date-only observations have no validated intraday publication time.
+    // Same-day asOf cannot prove even a completed daily close.
+    if (series.coverageEnd >= asOf.slice(0, 10)) throw Error("INVALID");
   } catch {
     return result("INVALID_REQUEST");
   }
