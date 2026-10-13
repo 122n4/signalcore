@@ -3,6 +3,7 @@ import "server-only";
 import { isAuthorizedResearchExecutionContext, resolveAuthorizedResearchExecutionContext } from "../authority/context";
 import { executeResearchRunV1, type ExecuteResearchRunResultV1 } from "./researchExecutionWriter";
 import { createDeniedAndJournaledResearchMaterialProviderV1 } from "./deniedAndJournaledResearchMaterialProvider";
+import { createLocalSyntheticResearchMaterialProviderV1 } from "./localSyntheticResearchMaterialProvider";
 import { getInvestingAuthorityDatabase } from "../authority/transport";
 import type { ResearchIrV1 } from "./index";
 
@@ -32,9 +33,12 @@ export async function executeResearchRunCommandV1(input: ExecuteResearchRunComma
   if (!isAuthorizedResearchExecutionContext(authority.context)) return { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" };
   return executeResearchRunV1({
     authorizedContext: authority.context,
-    // Until authoritative provider mapping/read audit is implemented, the
-    // production command is intentionally denial-only, never fake ALLOW.
-    datasetMaterialProvider: createDeniedAndJournaledResearchMaterialProviderV1(
+    // The only optional positive path is a POSIX local, nonproduction,
+    // SHA-verified fictional RL5 fixture with an fsynced access audit.
+    // Real/provider material remains denial-only until full embargo proof.
+    datasetMaterialProvider: createLocalSyntheticResearchMaterialProviderV1(
+      authority.context, process.env.SYNTRAKE_RL9_LOCAL_SYNTHETIC_RESEARCH_ROOT,
+    ) ?? createDeniedAndJournaledResearchMaterialProviderV1(
       authority.context, getInvestingAuthorityDatabase(),
     ),
     legacyResearchIrProof: input.legacyResearchIrProof,
