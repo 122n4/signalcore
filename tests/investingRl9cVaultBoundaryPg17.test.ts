@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmodSync, linkSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createConfidentialAntiReuseFingerprintV1 } from "../workers/investing-blind-vault/privateConfidentialAntiReuseFingerprint.mjs";
