@@ -27,7 +27,7 @@ No real holdout, salt, secret truth, ciphertext, or private secret locator is ad
 
 `VAULT_POSITIVE`: trusted independent Vault operator reads the exact synthetic object via Vault-owned credential; HTTP 200 and exact marker bytes are mandatory.
 
-`PRIMARY_DENIAL`: security auditor with a separately mounted actual **primary** project credential first demands HTTP 200 when querying the primary project's own Storage bucket listing. Then it must receive **401 or 403**, not 200 or 404, from the identical Vault canary URL.
+`PRIMARY_DENIAL`: security auditor with a separately mounted actual **primary** project credential first demands HTTP 200 when querying the primary project's own Storage bucket listing. Then it must receive **401 or 403**, not 200 or 404, from the identical Vault canary URL; alternatively the actual Supabase Storage gateway may return **400** with the **exact** JSON error `error="InvalidRequest"` and `message="headers must have required property 'authorization'"`. This strictly scoped 400 is a different evidence class: the primary credential was accepted by its own project (200) but did not become an authorized Vault principal. **Never** accept a generic 400, absent body, truncated/unparseable error, wrong message, failed primary self-project positive control, or any 404/200 as cross-project isolation proof.
 
 `ANONYMOUS_DENIAL`: no user-session JWT or privileged credential is supplied, but a Vault publishable/legacy anon API key is mandatory. **First** demand HTTP 200 from that Vault project's `GET /auth/v1/settings` using the exact supplied public key, before any canary request. Failed/invalid/foreign/revoked key, redirect or timeout must block; a gateway-only 401 is NOT an RLS denial proof. **Then** demand 401/403 on the same existing private canary. Independently cross-check the public key's active project membership and custody with the provider control plane before any real acceptance.
 
@@ -50,6 +50,15 @@ Each phase is run under a distinct operator-controlled Linux principal/host with
 `SYNTRAKE_VAULT_C2C_CREDENTIAL_FILE` to the privileged phase's owner-only mounted secret file. For `ANONYMOUS_DENIAL` set `SYNTRAKE_VAULT_C2C_PUBLIC_KEY_FILE` instead, pointing to the independently verified active low-privilege Vault API key. The private reader runs on Linux only and checks every parent directory for symlinks or group/other write access, accepting ownership only by the current UID or root. The secret is read through a single pinned O_NOFOLLOW file descriptor with owner-only file mode, single hard link and an 8 KiB size bound; it refuses ordinary /tmp world-writable ancestry. Each operator must mount credentials in a dedicated root/owner-controlled, read-only directory. Never place credential material in git, application process environment, project logs, GitHub Actions or Vercel. The operator environment fails closed if it contains ordinary credentials.
 
 Invoke: `node scripts/investing/rl9c2b2cStorageIsolationProbe.mjs` from a dedicated Linux security workstation. The script's JSON result should be retained only in restricted audit evidence storage.
+
+
+## Live cross-project HTTP observation and fail-closed recovery — 2026-10-13
+
+The trusted operator reported `VAULT_POSITIVE: PASS` for the exact 38-byte fictional canary with subject digest `83c09bdcc0dd228ac543b899ad219092c4db1e7413e8d0b77589d74272e25970`. Independent Supabase service-side logs in the observed test interval confirm `GET /storage/v1/bucket` on primary project `qdnvbamoamtkujzwrxdb` returned **HTTP 200**, while `GET` of the existing Vault canary returned **HTTP 400 / InvalidRequest**, with server-side error message **`headers must have required property 'authorization'`**. The previous verifier required only 401/403 and correctly returned `RL9C2B2C_BLOCKED`: **do not represent this earlier run as a 3/3 PASS**.
+
+The narrowly corrected candidate accepts this exact missing-Authorization 400 only after the proven 200 primary self-project control, extracts bounded JSON body without reflecting it or any key, and emits the distinct evidence code `PRIMARY_KEY_VALID_AND_VAULT_GATEWAY_AUTHORIZATION_ABSENT`. Negative vectors reject generic 400, altered message/error, oversized/empty body, failed self-control, 404, or cross-project 200. This is a **gateway principal-isolation observation**, not an RLS-level authorization assertion or a proof of any broader privileged cloud-admin boundary. Operator must run the revised verifier for actual endpoint-body confirmation; mocked CI vectors do not count as live success.
+
+Real holdouts, Vault worker authorization, cross-S3/SQL/signed-URL/admin isolation, rotation, embargo and one-shot controls remain blocked pending independent evidence.
 
 ## Additional gates before an operational real Vault exists
 
