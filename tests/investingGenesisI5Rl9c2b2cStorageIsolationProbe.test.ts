@@ -35,6 +35,41 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
     expect(calls).toEqual([own,target]);
     expect(out.evidence).toBe('PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT');
   });
+  it('allows only the exact live Supabase Storage foreign-key missing-Authorization 400, after primary 200',async()=>{
+    const seen:string[]=[];
+    const result=await proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:cred,fetcher:async(url:string)=>{
+      seen.push(url);
+      return url===own?response(200,'[]'):new Response(JSON.stringify({
+        statusCode:'400',error:'InvalidRequest',
+        message:"headers must have required property 'authorization'",
+      }),{status:400,headers:{'content-type':'application/json'}});
+    }});
+    expect(seen).toEqual([own,target]);
+    expect(result.evidence).toBe('PRIMARY_KEY_VALID_AND_VAULT_GATEWAY_AUTHORIZATION_ABSENT');
+    expect(result.subjectDigest).toBe(canarySubjectDigest(config));
+  });
+  it('rejects unrelated Storage 400s, partial messages, missing errors and oversize responses',async()=>{
+    const cases=[
+      {error:'InvalidRequest',message:'Unrelated request error'},
+      {error:'InvalidRequest',message:'headers must have required property authorization'},
+      {error:'Unauthorized',message:"headers must have required property 'authorization'"},
+      {message:"headers must have required property 'authorization'"},
+      {error:'InvalidRequest',message:"headers must have required property 'authorization'",garbage:'x'.repeat(600)},
+    ];
+    for(const body of cases){
+      await expect(proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:cred,fetcher:async(url:string)=>
+        url===own?response(200,'[]'):response(400,JSON.stringify(body)),
+      })).rejects.toThrow('RL9C2B2C_BLOCKED');
+    }
+    await expect(proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:cred,fetcher:async(url:string)=>
+      url===own?response(200,'[]'):response(400,''),
+    })).rejects.toThrow('RL9C2B2C_BLOCKED');
+    await expect(proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:cred,fetcher:async(url:string)=>
+      url===own?response(403):response(400,JSON.stringify({
+        error:'InvalidRequest',message:"headers must have required property 'authorization'",
+      })),
+    })).rejects.toThrow('RL9C2B2C_BLOCKED');
+  });
   it('uses apikey only for modern sb_secret keys; legacy JWT credentials may use Bearer',async()=>{
     const modern = cred;
     const seen:any[]=[];
