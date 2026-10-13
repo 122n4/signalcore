@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import os from "node:os";
+import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -688,6 +690,45 @@ maybeDescribe("I5 Research Execution Closure real PG17 rehearsal", () => {
     expect(firstExecution.researchExecutionRunId).not.toBe(secondExecution.researchExecutionRunId);
     expect(firstExecution.resultIdentityId).toBe(secondExecution.resultIdentityId);
     expect(firstExecution.resultHashHex).toBe(secondExecution.resultHashHex);
+
+    // RL-9: prove the ACTUAL authenticated production command (not an
+    // injected low-level writer) executes a canonical fictional research
+    // dataset when the operator explicitly provisions the local POSIX fixture.
+    // No real source, market adapter, Vault or Production authorization.
+    if (process.platform !== "win32") {
+      const localRoot=fs.mkdtempSync(path.join(os.tmpdir(),"syntrake-rl9-real-command-"));
+      fs.chmodSync(localRoot,0o700);
+      try {
+        for (const row of [executable.aaa,executable.bbb]) {
+          const name=hashDatasetSeriesV1(row.series)+".jsonl";
+          const filename=path.join(localRoot,name);
+          fs.writeFileSync(filename,row.bytes,{mode:0o600,flag:"wx"});
+          fs.chmodSync(filename,0o600);
+        }
+        vi.stubEnv("SYNTRAKE_RL9_LOCAL_SYNTHETIC_RESEARCH_ROOT",localRoot);
+        const viaNormalCommand=await executeResearchRunCommandV1({
+          researchInvestigationId:ids.investigation,
+          runInputIdentityId:ids.executableRunInputIdentity,
+          correlationId:"corr-pg17-rl9-local-command-executable",
+        });
+        expect(viaNormalCommand.ok).toBe(true);
+        if (viaNormalCommand.ok===false) throw Error(
+          "RL9_LOCAL_RESEARCH_COMMAND_BLOCKED:"+viaNormalCommand.code);
+        expect(viaNormalCommand.resultHashHex).toBe(firstExecution.resultHashHex);
+        const audit=fs.readFileSync(path.join(localRoot,
+          ".syntrake-synthetic-read-audit.jsonl"),"utf8");
+        const events=audit.trim().split("\n").map(s=>JSON.parse(s));
+        expect(events.map(e=>e.phase)).toEqual([
+          "ATTEMPT","VERIFIED","ATTEMPT","VERIFIED",
+        ]);
+        expect(events.every(e=>e.tenantId===ids.tenant &&
+          e.researchInvestigationId===ids.investigation)).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        fs.rmSync(localRoot,{recursive:true,force:true});
+      }
+    }
+
     const evidenceReuse = await client.query<{ count: string; content_ok: boolean }>(
       "select count(*)::text, bool_and(octet_length(content) = content_byte_length and upper(encode(extensions.digest(content, 'sha256'), 'hex')) = content_sha256) as content_ok from investing.research_evidence_objects_scientific_identities where result_identity_id = $1",
       [firstExecution.resultIdentityId],

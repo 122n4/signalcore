@@ -22,5 +22,5 @@ export async function loadOrdinaryResearchDatasetSeriesMaterialV1(
       hashDatasetSeriesV1(series) !== ref.hashHex) {
     throw new Error("DATASET_MATERIAL_SCHEMA_INVALID");
   }
-  return provider.loadSeriesContent(ref);
+  return provider.loadSeriesContent(ref,series);
 }

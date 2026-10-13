@@ -12,7 +12,7 @@ export type VerifiedDatasetSeriesMaterialV1 = Readonly<{
 }>;
 
 export interface ResearchDatasetMaterialProviderV1 {
-  loadSeriesContent(seriesRef: HashRefV1): Promise<Buffer | null>;
+  loadSeriesContent(seriesRef: HashRefV1, series?: DatasetSeriesHashPayloadV1): Promise<Buffer | null>;
 }
 
 export class InMemoryResearchDatasetMaterialProviderV1 implements ResearchDatasetMaterialProviderV1 {

@@ -2,6 +2,8 @@
  * RL-9C2B2C: operator-side Supabase Storage isolation canary, NOT an operational Vault.
  * Execute each role on its separately controlled host/principal. No ordinary app import.
  * Read-only: never creates buckets or objects and never accepts real holdout locators.
+ * A PRIMARY key may contact only the PRIMARY host; Vault credentials contact only Vault.
+ * Retired cross-project phases are hard-blocked before reading any credentials.
  */
 import { createHash } from 'node:crypto';
 import { openSync, closeSync, fstatSync, readSync, lstatSync, constants } from 'node:fs';
@@ -13,7 +15,7 @@ const KIND = 'SYNTRAKE_RL9C2B2C_ISOLATION_CANARY_V1';
 const REF = /^[a-z]{20}$/u;
 const BUCKET = /^[a-z][a-z0-9-]{2,62}$/u;
 const PATH = /^rl9c2b2c-isolation-canary-v1\/[a-f0-9]{32}\.txt$/u;
-const PHASES = new Set(['VAULT_POSITIVE', 'PRIMARY_DENIAL', 'ANONYMOUS_DENIAL']);
+const PHASES = new Set(['VAULT_POSITIVE', 'PRIMARY_SELF_CONTROL', 'ANONYMOUS_DENIAL']);
 const MAX_CANARY_BYTES = 1024;
 const SECRET_KEY = /^sb_secret_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
 const PUBLISHABLE_KEY = /^sb_publishable_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
@@ -63,7 +65,16 @@ export function canarySubjectDigest(config){
   return createHash('sha256').update(['SYNTRAKE:RL9C2B2C:CANARY_SUBJECT:V1',c.primaryProjectRef,c.vaultProjectRef,c.bucket,c.objectPath,SYNTHETIC_MARKER].join('\n'),'utf8').digest('hex');
 }
 function storageUrl(ref,c){return `https://${ref}.supabase.co/storage/v1/object/authenticated/${encodeURIComponent(c.bucket)}/${c.objectPath}`;}
-async function requestStatus(url,key,fetcher,readBody=false){
+async function requestStatus(url,key,fetcher,expectedRef,readBody=false){
+  // SECURITY INVARIANT: never send a project's credential to another
+  // project's hostname. Enforce at the lowest HTTP boundary, independent
+  // of the calling phase, key type, or future caller refactoring.
+  if(typeof expectedRef!=='string'||!REF.test(expectedRef))blocked();
+  let endpoint;
+  try{endpoint=new URL(url)}catch{blocked()}
+  if(endpoint.protocol!=='https:'||endpoint.hostname!==`${expectedRef}.supabase.co`||
+    endpoint.port!==''||endpoint.username!==''||endpoint.password!==''||
+    endpoint.search!==''||endpoint.hash!=='')blocked();
   const controller = new AbortController();
   const timer=setTimeout(()=>controller.abort(),8000);
   try {
@@ -103,21 +114,29 @@ export async function proveCanaryPhase({phase,config,credential=undefined,public
   const url=storageUrl(c.vaultProjectRef,c);
   let evidence;
   if(phase==='VAULT_POSITIVE'){
-    const answer=await requestStatus(url,credential,fetcher,true);
+    const answer=await requestStatus(url,credential,fetcher,c.vaultProjectRef,true);
     if(answer.status!==200||!answer.content?.equals(Buffer.from(SYNTHETIC_MARKER,'utf8')))blocked();
     evidence='PRIVATE_CANARY_CONFIRMED';
-  }else if(phase==='PRIMARY_DENIAL'){
-    // Prove the primary key is actually accepted by its OWN project.
-    // If a fake/expired key is supplied, the negative result cannot pass.
-    const self=await requestStatus(`https://${c.primaryProjectRef}.supabase.co/storage/v1/bucket`,credential,fetcher);
-    if(self.status!==200)blocked();
-    const denied=await requestStatus(url,credential,fetcher);
-    if(denied.status!==401&&denied.status!==403)blocked();
-    evidence='PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT';
+  }else if(phase==='PRIMARY_SELF_CONTROL'){
+    // Validate the PRIMARY key only against its own project. A 200 provides
+    // no cross-project or Vault object-level authorization evidence.
+    const own=await requestStatus(
+      `https://${c.primaryProjectRef}.supabase.co/storage/v1/bucket`,
+      credential,fetcher,c.primaryProjectRef,
+    );
+    if(own.status!==200)blocked();
+    evidence='PRIMARY_KEY_VALID_ON_OWN_PROJECT_ONLY';
   }else{
-    const denied=await requestStatus(url,publicKey,fetcher);
+    // Vault public/anon key is used only on the Vault's own host. Without
+    // positive admission, an unrelated gateway 401 cannot prove RLS denial.
+    const own=await requestStatus(
+      `https://${c.vaultProjectRef}.supabase.co/auth/v1/settings`,
+      publicKey,fetcher,c.vaultProjectRef,
+    );
+    if(own.status!==200)blocked();
+    const denied=await requestStatus(url,publicKey,fetcher,c.vaultProjectRef);
     if(denied.status!==401&&denied.status!==403)blocked();
-    evidence='ANONYMOUS_DENIED_BY_VAULT';
+    evidence='VALID_VAULT_ANON_KEY_AND_PRIVATE_CANARY_DENIED';
   }
   // Report contains no credential, bucket name, endpoint, private locator, or response body.
   return Object.freeze({kind:KIND,phase,status:'PASS',subjectDigest,evidence});
@@ -160,6 +179,9 @@ export async function runProbeCli({env=process.env,fetcher=fetch}={}){
   assertCleanProcessEnvironment(env);
   if(process.argv.length!==2)blocked();
   const phase=env.SYNTRAKE_VAULT_C2C_PHASE;
+  // Check phase BEFORE touching config/credential mounts; revoked cross-project
+  // phases must never read or transmit a PRIMARY secret.
+  if(!PHASES.has(phase))blocked();
   const config=JSON.parse(readPrivateMount(env.SYNTRAKE_VAULT_C2C_CONFIG_FILE));
   const credential=phase==='ANONYMOUS_DENIAL'?undefined:readPrivateMount(env.SYNTRAKE_VAULT_C2C_CREDENTIAL_FILE).replace(/\r?\n$/u,'');
   const publicKey=phase==='ANONYMOUS_DENIAL'?readPrivateMount(env.SYNTRAKE_VAULT_C2C_PUBLIC_KEY_FILE).replace(/\r?\n$/u,''):undefined;

@@ -7,6 +7,7 @@ import type {
 } from "../authority/context";
 import { isAuthorizedResearchPassportReadContext } from "../authority/context";
 import { getInvestingAuthorityDatabase } from "../authority/transport";
+import { readBlindTruthPassportProjectionV1, type BlindTruthPassportProjectionV1 } from "./blindTruthPassportProjection";
 import {
   readValidationPassportProjectionV1,
   type ValidationPassportProjectionV1,
@@ -119,7 +120,7 @@ export type ResearchPassportV1 = Readonly<{
   ledger: readonly ResearchEvidenceLedgerEventV1[];
   validation: ValidationPassportProjectionV1;
   scientificPromotion: { availability: "DEFERRED_RL8"; transitions: readonly [] };
-  blindTruth: { availability: "DEFERRED_RL9"; episodes: readonly [] };
+  blindTruth: BlindTruthPassportProjectionV1;
 }>;
 
 type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
@@ -641,6 +642,11 @@ export async function readResearchPassportV1(
       await client.query("rollback");
       return { ok: false, code: validationRead.code };
     }
+    const blindTruthRead = await readBlindTruthPassportProjectionV1(client, context);
+    if (blindTruthRead.ok === false) {
+      await client.query("rollback");
+      return { ok: false, code: blindTruthRead.code };
+    }
 
     const artifactsById = new Map(artifactRows.map((artifact) => [artifact.artifact_id, artifact]));
     const materialRevisions = materialRows.map(projectMaterialRevision);
@@ -715,7 +721,7 @@ export async function readResearchPassportV1(
         ledger,
         validation: validationRead.validation,
         scientificPromotion: { availability: "DEFERRED_RL8", transitions: [] },
-        blindTruth: { availability: "DEFERRED_RL9", episodes: [] },
+        blindTruth: blindTruthRead.projection,
       },
     };
   } catch {
