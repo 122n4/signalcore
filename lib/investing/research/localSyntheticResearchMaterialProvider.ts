@@ -9,7 +9,7 @@ import type {
 } from "../authority/context";
 import { hashRefV1 } from "./canonical";
 import { canonicalDatasetSeriesHashPayloadV1, hashDatasetSeriesV1, type DatasetSeriesHashPayloadV1 } from "./executionMaterials";
-import { verifyDatasetSeriesMaterialV2, type ResearchDatasetMaterialProviderV1 } from "./datasetMaterial";
+import { verifyDatasetSeriesMaterialV1, verifyDatasetSeriesMaterialV2, type ResearchDatasetMaterialProviderV1 } from "./datasetMaterial";
 
 type Context = AuthorizedResearchExecutionContext | AuthorizedResearchValidationChildExecutionContext;
 const REFUSED = "RESEARCH_MATERIAL_ACCESS_UNPROVEN";
@@ -96,9 +96,12 @@ export function createLocalSyntheticResearchMaterialProviderV1(
         series = rawSeries;
         canonicalDatasetSeriesHashPayloadV1(series);
         hashHex=hashDatasetSeriesV1(series);
+        const fixtureV2 = series.providerDatasetId==="SYNTRAKE_RL5_TEST_OHLCV"
+          && series.providerDatasetVersion==="V20260926";
+        const fixtureV1 = series.providerDatasetId==="PG17_EXECUTION_FIXTURE"
+          && series.providerDatasetVersion==="V20260920";
         if (!FILENAME.test(hashHex) || ref.hashHex!==hashHex ||
-            series.providerDatasetId!=="SYNTRAKE_RL5_TEST_OHLCV" ||
-            series.providerDatasetVersion!=="V20260926") throw Error(REFUSED);
+            (!fixtureV2 && !fixtureV1)) throw Error(REFUSED);
         audit("ATTEMPT",hashHex,series.contentSha256);
       } catch { throw Error(REFUSED); }
 
@@ -120,7 +123,11 @@ export function createLocalSyntheticResearchMaterialProviderV1(
         }
         // The existing deterministic verifier checks SHA256, canonical
         // JSONL bytes, exact observation count, coverage and OHLC semantics.
-        verifyDatasetSeriesMaterialV2(series,bytes);
+        if (series.providerDatasetId==="SYNTRAKE_RL5_TEST_OHLCV") {
+          verifyDatasetSeriesMaterialV2(series,bytes);
+        } else {
+          verifyDatasetSeriesMaterialV1(series,bytes);
+        }
         audit("VERIFIED",hashHex,series.contentSha256);
         return bytes;
       } catch {throw Error(REFUSED);}
