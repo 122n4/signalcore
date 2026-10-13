@@ -104,18 +104,30 @@ grant usage on schema syntrake_vault_private to syntrake_vault_writer;
 grant select, insert on syntrake_vault_private.confidential_fingerprints_v1,
   syntrake_vault_private.sealed_ciphertexts_v1,
   syntrake_vault_private.reveal_burns_v1 to syntrake_vault_writer;
-create policy rl9c_vault_writer_fingerprints_v1
+create policy rl9c_vault_writer_fingerprints_select_v1
   on syntrake_vault_private.confidential_fingerprints_v1
-  for all to syntrake_vault_writer
-  using (true) with check (true);
-create policy rl9c_vault_writer_sealed_v1
+  for select to syntrake_vault_writer
+  using (true);
+create policy rl9c_vault_writer_fingerprints_insert_v1
+  on syntrake_vault_private.confidential_fingerprints_v1
+  for insert to syntrake_vault_writer
+  with check (true);
+create policy rl9c_vault_writer_sealed_select_v1
   on syntrake_vault_private.sealed_ciphertexts_v1
-  for all to syntrake_vault_writer
-  using (true) with check (true);
-create policy rl9c_vault_writer_burn_v1
+  for select to syntrake_vault_writer
+  using (true);
+create policy rl9c_vault_writer_sealed_insert_v1
+  on syntrake_vault_private.sealed_ciphertexts_v1
+  for insert to syntrake_vault_writer
+  with check (true);
+create policy rl9c_vault_writer_burn_select_v1
   on syntrake_vault_private.reveal_burns_v1
-  for all to syntrake_vault_writer
-  using (true) with check (true);
+  for select to syntrake_vault_writer
+  using (true);
+create policy rl9c_vault_writer_burn_insert_v1
+  on syntrake_vault_private.reveal_burns_v1
+  for insert to syntrake_vault_writer
+  with check (true);
 
 -- Storage may serve ONLY private authenticated-object GET, never LIST or
 -- signed-URL generation. No worker enrollment exists at migration time.
@@ -126,7 +138,21 @@ create policy rl9c_vault_reveal_worker_read_v1 on storage.objects
   for select to authenticated
   using (
     bucket_id = 'syntrake-private-sealed'
-    and name ~ '^sealed-v1/[A-F0-9]{64}\\.json$'
+    and name ~ '^sealed-v1/[A-F0-9]{64}\.json
+    and storage.allow_only_operation('object.get_authenticated')
+    and exists (
+      select 1
+      from syntrake_vault_private.worker_auth_enrollments_v1 e
+      where e.auth_user_id=(select auth.uid()) and e.enabled
+    )
+  );
+
+-- No upsert, overwrite, move, delete, list, or signed-URL policies.
+-- Ciphertext upload is intentionally NOT admitted in this first migration:
+-- the dedicated writer identity + no-overwrite upload gate must be proved
+-- in separate Vault-only rehearsal before operational seal.
+commit;
+
     and storage.allow_only_operation('object.get_authenticated')
     and exists (
       select 1
