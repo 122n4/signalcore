@@ -13,7 +13,7 @@ const KIND = 'SYNTRAKE_RL9C2B2C_ISOLATION_CANARY_V1';
 const REF = /^[a-z]{20}$/u;
 const BUCKET = /^[a-z][a-z0-9-]{2,62}$/u;
 const PATH = /^rl9c2b2c-isolation-canary-v1\/[a-f0-9]{32}\.txt$/u;
-const PHASES = new Set(['VAULT_POSITIVE', 'PRIMARY_DENIAL', 'ANONYMOUS_DENIAL']);
+const PHASES = new Set(['VAULT_POSITIVE', 'PRIMARY_DENIAL', 'ANONYMOUS_DENIAL', 'PRIMARY_KEY_GATEWAY_DENIAL']);
 const MAX_CANARY_BYTES = 1024;
 const SECRET_KEY = /^sb_secret_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
 const PUBLISHABLE_KEY = /^sb_publishable_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
@@ -107,13 +107,23 @@ export async function proveCanaryPhase({phase,config,credential=undefined,public
     if(answer.status!==200||!answer.content?.equals(Buffer.from(SYNTHETIC_MARKER,'utf8')))blocked();
     evidence='PRIVATE_CANARY_CONFIRMED';
   }else if(phase==='PRIMARY_DENIAL'){
-    // Prove the primary key is actually accepted by its OWN project.
-    // If a fake/expired key is supplied, the negative result cannot pass.
+    // Keep the canary-object admission gate strict: an HTTP 400 for a missing
+    // Authorization header is NOT evidence that Vault rejected this identity.
     const self=await requestStatus(`https://${c.primaryProjectRef}.supabase.co/storage/v1/bucket`,credential,fetcher);
     if(self.status!==200)blocked();
     const denied=await requestStatus(url,credential,fetcher);
     if(denied.status!==401&&denied.status!==403)blocked();
     evidence='PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT';
+  }else if(phase==='PRIMARY_KEY_GATEWAY_DENIAL'){
+    // A separate, strictly narrower project-key boundary proof. Both requests
+    // hit the SAME Storage API contract which accepts modern sb_secret_* via
+    // apikey only. This is NOT evidence of RLS/object-read isolation.
+    const endpoint='/storage/v1/bucket';
+    const self=await requestStatus(`https://${c.primaryProjectRef}.supabase.co${endpoint}`,credential,fetcher);
+    if(self.status!==200)blocked();
+    const foreign=await requestStatus(`https://${c.vaultProjectRef}.supabase.co${endpoint}`,credential,fetcher);
+    if(foreign.status!==401 && foreign.status!==403)blocked();
+    evidence='PRIMARY_KEY_VALID_AND_REJECTED_BY_VAULT_STORAGE_GATEWAY';
   }else{
     // An invalid/foreign publishable key can yield a gateway 401 BEFORE RLS.
     // First require the same key to pass this Vault's Auth gateway.
