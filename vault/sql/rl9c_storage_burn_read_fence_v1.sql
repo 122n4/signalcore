@@ -73,7 +73,8 @@ create policy rl9c_reader_scoped_sealed_v1
   using (
     exists (
       select 1 from syntrake_vault_private.reveal_burns_v1 b
-      where b.sealed_id=sealed_id and b.tenant_id=tenant_id
+      where b.sealed_id=syntrake_vault_private.sealed_ciphertexts_v1.sealed_id
+        and b.tenant_id=syntrake_vault_private.sealed_ciphertexts_v1.tenant_id
         and b.reader_auth_user_id=(select auth.uid())
         and b.access_expires_at>statement_timestamp()
     )
