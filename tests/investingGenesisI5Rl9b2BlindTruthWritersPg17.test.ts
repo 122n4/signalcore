@@ -1939,7 +1939,7 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
         vaultEncryptionKey:key,keyVersion:"SYNTHETIC_K1",binding,
         exactCanonicalPlaintextBytes:fictional,
       });
-      const wire=Buffer.from(JSON.stringify(encrypted)+"\\n","utf8");
+      const wire=Buffer.from(JSON.stringify(encrypted)+"\n","utf8");
       const wireSha=createHash("sha256").update(wire).digest("hex").toUpperCase();
       const locator="E".repeat(64);
       const env={
