@@ -36,7 +36,7 @@ function cfg(credentialFilePath:string,fetcher:(url:string,options:any)=>Promise
   return {environment:env,vaultProjectRef:ref,privateBucket:bucket,credentialFilePath,fetcher};
 }
 const response=(status:number,body:Buffer=Buffer.alloc(0))=>
-  new Response(body,{status});
+  new Response(new Uint8Array(body),{status});
 
 describe.skipIf(process.platform!=='linux')('RL-9C private ciphertext-only Vault Storage transport — no holdout admission',()=>{
   it('reads only encrypted bytes from own Vault host with byte-level SHA-256 integrity',()=>fixture(async file=>{
