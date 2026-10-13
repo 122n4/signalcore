@@ -138,21 +138,7 @@ create policy rl9c_vault_reveal_worker_read_v1 on storage.objects
   for select to authenticated
   using (
     bucket_id = 'syntrake-private-sealed'
-    and name ~ '^sealed-v1/[A-F0-9]{64}\.json
-    and storage.allow_only_operation('object.get_authenticated')
-    and exists (
-      select 1
-      from syntrake_vault_private.worker_auth_enrollments_v1 e
-      where e.auth_user_id=(select auth.uid()) and e.enabled
-    )
-  );
-
--- No upsert, overwrite, move, delete, list, or signed-URL policies.
--- Ciphertext upload is intentionally NOT admitted in this first migration:
--- the dedicated writer identity + no-overwrite upload gate must be proved
--- in separate Vault-only rehearsal before operational seal.
-commit;
-
+    and name ~ '^sealed-v1/[A-F0-9]{64}\.json$'
     and storage.allow_only_operation('object.get_authenticated')
     and exists (
       select 1
