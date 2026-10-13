@@ -71,6 +71,35 @@ function secretFile(path){
   }catch{blocked();}finally{if(fd!==undefined){try{closeSync(fd)}catch{}}}
 }
 
+/**
+ * Refuse arbitrary content even when its SHA matches an untrusted assertion.
+ * This does not validate the AES-GCM tag (only the isolated decryptor can).
+ * It ensures this reader cannot be repurposed as a generic plaintext endpoint.
+ */
+function assertEncryptedEnvelopeBytes(bytes){
+  try{
+    const encoded=bytes.toString('utf8');
+    if(!encoded.endsWith('\n')||encoded.slice(0,-1).includes('\n')||
+      encoded.includes('\r')||!Buffer.from(encoded,'utf8').equals(bytes))blocked();
+    const parsed=JSON.parse(encoded);
+    const e=snapshot(parsed,[
+      'schemaVersion','algorithm','keyVersion','nonceHex','ciphertextBase64','tagHex',
+    ]);
+    if(e.schemaVersion!=='BLIND_TRUTH_VAULT_ENVELOPE_V1'||
+      e.algorithm!=='AES_256_GCM'||
+      typeof e.keyVersion!=='string'||
+      !/^[A-Z][A-Z0-9_]{0,63}$/u.test(e.keyVersion)||
+      typeof e.nonceHex!=='string'||!/^[A-F0-9]{24}$/u.test(e.nonceHex)||
+      typeof e.tagHex!=='string'||!/^[A-F0-9]{32}$/u.test(e.tagHex)||
+      typeof e.ciphertextBase64!=='string'||e.ciphertextBase64.length===0||
+      e.ciphertextBase64.length>MAX_BYTES)blocked();
+    const cipher=Buffer.from(e.ciphertextBase64,'base64');
+    if(cipher.length===0||cipher.toString('base64')!==e.ciphertextBase64)blocked();
+    // No arbitrary whitespace or hidden second JSON document.
+    if(JSON.stringify(parsed)+'\n'!==encoded)blocked();
+  }catch{blocked();}
+}
+
 function requestUrl(projectRef,bucket,locator){
   return `https://${projectRef}.supabase.co/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/sealed-v1/${locator}.json`;
 }
@@ -138,7 +167,9 @@ export function createPrivateSupabaseCiphertextReaderV1(raw){
         const actual=createHash('sha256').update(bytes).digest();
         const expected=Buffer.from(expectedCiphertextSha256Hex,'hex');
         if(actual.length!==expected.length||!timingSafeEqual(actual,expected))blocked();
-        // This is encrypted material, *not* an authority/reveal result.
+        assertEncryptedEnvelopeBytes(bytes);
+        // Format and SHA-256 validated. AES-GCM authenticity, burn authority
+        // and permission to reveal are NOT granted by this transport.
         return bytes;
       }catch{blocked();}finally{clearTimeout(timeout);}
     },
