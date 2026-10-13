@@ -20,7 +20,10 @@ const envelopeBytes=Buffer.from(JSON.stringify({
   tagHex:'B'.repeat(32),
 })+'\n','utf8');
 const digest=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex').toUpperCase();
-const env={SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1'};
+const env={
+  SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1',
+  SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:'ISOLATED_REHEARSAL_V1',
+};
 const fields={privateObjectLocator:locator,expectedCiphertextSha256Hex:digest(envelopeBytes)};
 const target=`https://${ref}.supabase.co/storage/v1/object/authenticated/${bucket}/sealed-v1/${locator}.json`;
 
@@ -78,6 +81,24 @@ describe.skipIf(process.platform!=='linux')('RL-9C private ciphertext-only Vault
       privateObjectLocator:locator,
       expectedCiphertextSha256Hex:digest(invalid),
     })).rejects.toThrow('VAULT_UNAVAILABLE');
+  }));
+
+  it('HARD GATE: never routes injected HTTP or a Vault key outside synthetic rehearsal mode',()=>fixture(async file=>{
+    let requests=0;
+    const fake=async()=>{requests++;return response(200,envelopeBytes);};
+    const cases=[
+      {SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1'},
+      {SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1',
+       SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:'REAL_VAULT'},
+      {SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1',
+       SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:''},
+    ];
+    for(const environment of cases) {
+      expect(()=>createPrivateSupabaseCiphertextReaderV1({
+        ...cfg(file,fake),environment,
+      })).toThrow('VAULT_UNAVAILABLE');
+    }
+    expect(requests).toBe(0);
   }));
 
   it('rejects wrong checksum, empty body, HTTP errors, redirect and server errors',()=>fixture(async file=>{
