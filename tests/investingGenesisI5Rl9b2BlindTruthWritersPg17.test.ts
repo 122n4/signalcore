@@ -1,4 +1,6 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createCommittedSyntheticPgBurnIssuerV1 } from "../workers/investing-blind-vault/privateCommittedSyntheticPgBurnIssuer.mjs";
+import { syntheticRemoteBurnSigningBytesV1 } from "../workers/investing-blind-vault/privateSignedSyntheticRemoteConsume.mjs";
 import { readBlindTruthPassportProjectionV1 } from "../lib/investing/research/blindTruthPassportProjection";
 import { createVerifiedSyntheticBurnConsumerV1, syntheticBurnAttestationSigningBytesV1 } from "../workers/investing-blind-vault/privateSignedSyntheticBurnConsumer.mjs";
 import os from "node:os";
@@ -1848,6 +1850,68 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
     }finally{fictional.fill(0);fs.rmSync(root,{recursive:true,force:true});}
   },120_000);
 
+
+  it("witnesses REAL disposable PG17 committed event+burn before issuing a SYNTHETIC signed remote token",async()=>{
+    if(process.platform!=="linux")return;
+    const f=await eventFixture("issuer-committed-readonly");
+    const directory=fs.mkdtempSync(path.join(os.homedir(),".syntrake-rl9c-pg17-private-issuer-"));
+    fs.chmodSync(directory,0o700);
+    try {
+      const {privateKey,publicKey}=generateKeyPairSync("ed25519");
+      const privatePath=path.join(directory,"fixture-ed25519-pkcs8.pem");
+      fs.writeFileSync(privatePath,privateKey.export({format:"pem",type:"pkcs8"}),{mode:0o600});
+      const publicDer=publicKey.export({format:"der",type:"spki"}) as Buffer;
+      const config={
+        environment:{
+          SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",
+          SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:"ISOLATED_REHEARSAL_V1",
+          SYNTRAKE_VAULT_ISSUER_MODE:"ISOLATED_REHEARSAL_V1",
+        },
+        issuerMode:"ISOLATED_REHEARSAL_V1",
+        // Disposable admin pool only; NOT a production signer principal.
+        database:pool!,
+        fixedIdentity:{
+          tenantId:f.fx.tenantId,principalId:f.fx.principalId,
+          tenantMembershipId:f.fx.membershipId,
+          researchInvestigationId:f.fx.investigationId,
+          evaluationHashHex:f.evalHash,
+          privateObjectLocator:"A".repeat(64),
+          expectedCiphertextSha256Hex:"B".repeat(64),
+        },
+        signerPrivateKeyPath:privatePath,
+        signerPublicKeySha256Hex:createHash("sha256").update(publicDer)
+          .digest("hex").toUpperCase(),
+      };
+      const issuer=createCommittedSyntheticPgBurnIssuerV1(config);
+      // Event alone is NOT proof: before the B2F COMMIT the issuer fails.
+      await expect(issuer.issueSignedSyntheticCommittedBurnV1())
+        .rejects.toThrow("RL9C_ISSUER_BLOCKED");
+      const burn=await reserve(f);
+      expect(burn).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+      // A fresh independent read-only transaction now sees joined, committed
+      // registration/evaluation/event/burn rows under the actual RLS writer role.
+      const token=await issuer.issueSignedSyntheticCommittedBurnV1();
+      expect(token.claims).toMatchObject({
+        tenantId:f.fx.tenantId,
+        registrationHashHex:f.fx.registrationHash,
+        evaluationHashHex:f.evalHash,
+        revealStartedEventHashHex:f.startedHash,
+        burnState:"BURNED_NOT_AUTHORIZED",
+        audience:"ISOLATED_VAULT_SYNTHETIC_REMOTE_TEST_ONLY",
+      });
+      expect(token.claims.burnReservationId)
+        .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u);
+      expect(verify(null,syntheticRemoteBurnSigningBytesV1(token.claims),
+        publicKey,Buffer.from(token.signatureBase64,"base64"))).toBe(true);
+      // The same fixed connector cannot sign a different tenant's burn.
+      const wrong=createCommittedSyntheticPgBurnIssuerV1({
+        ...config,fixedIdentity:{...config.fixedIdentity,
+          tenantId:"99999999-9999-4999-8999-999999999999"},
+      });
+      await expect(wrong.issueSignedSyntheticCommittedBurnV1())
+        .rejects.toThrow("RL9C_ISSUER_BLOCKED");
+    } finally { fs.rmSync(directory,{recursive:true,force:true}); }
+  },120_000);
 
   it("reads actual committed RL9B public Passport states through investing_app RLS, never secret data",async()=>{
     const a=await eventFixture("passport-owner-a");
