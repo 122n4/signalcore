@@ -85,26 +85,7 @@ create policy rl9c_vault_reveal_worker_read_v2 on storage.objects
   for select to authenticated
   using (
     bucket_id='syntrake-private-sealed'
-    and name ~ '^sealed-v1/[A-F0-9]{64}\.json
-    and storage.allow_only_operation('object.get_authenticated')
-    and exists (
-      select 1 from syntrake_vault_private.sealed_ciphertexts_v1 s
-      join syntrake_vault_private.reveal_burns_v1 b
-        on b.sealed_id=s.sealed_id and b.tenant_id=s.tenant_id
-      where name='sealed-v1/' || s.sealed_locator_hex || '.json'
-        and b.reader_auth_user_id=(select auth.uid())
-        and b.access_expires_at>statement_timestamp()
-        and exists (
-          select 1 from syntrake_vault_private.worker_auth_enrollments_v1 e
-          where e.auth_user_id=(select auth.uid()) and e.enabled
-        )
-    )
-  );
-
--- No storage INSERT/UPDATE/DELETE policy added.
--- No Auth user is enrolled or created by this migration.
-commit;
-
+    and name ~ '^sealed-v1/[A-F0-9]{64}\.json$'
     and storage.allow_only_operation('object.get_authenticated')
     and exists (
       select 1 from syntrake_vault_private.sealed_ciphertexts_v1 s
