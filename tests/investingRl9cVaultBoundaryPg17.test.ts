@@ -63,6 +63,22 @@ async function checkVisible(role: "authenticated" | "anon", subject: string | nu
   } finally { client.release(); }
 }
 
+async function visibleRegisteredLocators(subject: string): Promise<string[]> {
+  const client=await pool.connect();
+  try{
+    await client.query("begin transaction read only");
+    await client.query("set local role authenticated");
+    await client.query("select set_config('request.jwt.claim.sub',$1,true)",[subject]);
+    const r=await client.query<{sealed_locator_hex:string}>(
+      "select sealed_locator_hex from syntrake_vault_private.sealed_ciphertexts_v1 order by sealed_locator_hex");
+    await client.query("rollback");
+    return r.rows.map(x=>x.sealed_locator_hex);
+  }catch(e){
+    try{await client.query("rollback");}catch{}
+    throw e;
+  }finally{client.release();}
+}
+
 async function asVaultWriter(query: string, values: unknown[]=[]): Promise<unknown[]> {
   const client: PoolClient = await pool.connect();
   try {
@@ -138,6 +154,31 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
       [sealed[0]!.sealed_id,workerId,"1".repeat(64),"2".repeat(64),workerId]);
     expect(await checkVisible("authenticated",workerId,"object.get_authenticated"))
       .toEqual([sealedName]);
+    // An authenticated SQL client sees ONLY metadata for its burned object.
+    // An unburned ciphertext cannot become readable through a loose JOIN.
+    expect(await visibleRegisteredLocators(workerId)).toEqual(["A".repeat(64)]);
+    expect(await visibleRegisteredLocators(strangerId)).toEqual([]);
+    const fpOther=await asVaultWriter(
+      "insert into syntrake_vault_private.confidential_fingerprints_v1(fingerprint_hmac,hmac_key_version) values($1,'VAULT_HMAC_V1') returning fingerprint_id",
+      [Buffer.alloc(32,0x44)],
+    ) as {fingerprint_id:string}[];
+    const other=await asVaultWriter(`
+      insert into syntrake_vault_private.sealed_ciphertexts_v1
+      (fingerprint_id,tenant_id,registration_hash_hex,sealed_locator_hex,ciphertext_sha256_hex)
+      values($1,$2,$3,$4,$5) returning sealed_id`,
+      [fpOther[0]!.fingerprint_id,workerId,"D".repeat(64),"B".repeat(64),"E".repeat(64)],
+    ) as {sealed_id:string}[];
+    expect(await visibleRegisteredLocators(workerId)).toEqual(["A".repeat(64)]);
+    expect(await checkVisible("authenticated",workerId,"object.get_authenticated")).toEqual([sealedName]);
+    // A short-lived committed burn cannot be reactivated after expiry.
+    await asVaultWriter(`
+      insert into syntrake_vault_private.reveal_burns_v1
+      (sealed_id,tenant_id,evaluation_hash_hex,reveal_started_hash_hex,reader_auth_user_id,access_expires_at)
+      values($1,$2,$3,$4,$5,transaction_timestamp()+interval '1 millisecond')`,
+      [other[0]!.sealed_id,workerId,"9".repeat(64),"8".repeat(64),workerId]);
+    await new Promise(resolve=>setTimeout(resolve,80));
+    expect(await visibleRegisteredLocators(workerId)).toEqual(["A".repeat(64)]);
+    expect(await checkVisible("authenticated",workerId,"object.get_authenticated")).toEqual([sealedName]);
     // Another enrolled Vault Auth user MUST NEVER inherit this burn.
     expect(await checkVisible("authenticated",strangerId,"object.get_authenticated")).toEqual([]);
     expect(await checkVisible("anon",workerId,"object.get_authenticated")).toEqual([]);
