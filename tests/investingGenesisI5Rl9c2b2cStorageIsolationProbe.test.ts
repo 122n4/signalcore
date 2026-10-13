@@ -11,6 +11,7 @@ const publicKey='sb_publishable_'+'C'.repeat(22)+'_'+'D'.repeat(8);
 function response(status:number, body='') { return new Response(body, {status}); }
 const target = `https://${vault}.supabase.co/storage/v1/object/authenticated/vault-private-canary/${config.objectPath}`;
 const own = `https://${primary}.supabase.co/storage/v1/bucket`;
+const anonControl = `https://${vault}.supabase.co/auth/v1/settings`;
 
 describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=>{
   it('proves positive read of same extant synthetic private canary with a credential',async()=>{
@@ -45,19 +46,33 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
     for(const req of seen){expect(req.headers.apikey).toBe(modern);expect(req.headers).not.toHaveProperty('authorization');}
     expect(JSON.stringify(result)).not.toContain(modern);
   });
-  it('proves anonymous is denied on same Vault object',async()=>{
+  it('proves Vault anonymous key admission before private object denial',async()=>{
+    const calls:string[]=[];
     const out=await proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey,fetcher:async (url:string,opts:any)=>{
-      expect(url).toBe(target);expect(opts.headers).not.toHaveProperty('authorization');expect(opts.headers.apikey).toBe(publicKey);return response(401);
+      calls.push(url);
+      expect(opts.headers).not.toHaveProperty('authorization');
+      expect(opts.headers.apikey).toBe(publicKey);
+      return response(url===anonControl?200:401);
     }});
-    expect(out.evidence).toBe('ANONYMOUS_DENIED_BY_VAULT');
+    expect(calls).toEqual([anonControl,target]);
+    expect(out.evidence).toBe('VALID_VAULT_ANON_KEY_AND_PRIVATE_CANARY_DENIED');
   });
   it('requires Vault anonymous API key so gateway-only 401 cannot pass',async()=>{
     await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,fetcher:async()=>response(401)})).rejects.toThrow('RL9C2B2C_BLOCKED');
     await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey:cred,fetcher:async()=>response(401)})).rejects.toThrow('RL9C2B2C_BLOCKED');
     const ok=await proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey,fetcher:async(url:string,opts:any)=>{
-      expect(url).toBe(target);expect(opts.headers.apikey).toBe(publicKey);return response(403);
+      expect([anonControl,target]).toContain(url);
+      expect(opts.headers.apikey).toBe(publicKey);
+      return response(url===anonControl?200:403);
     }});
     expect(ok.status).toBe('PASS');
+  });
+  it('rejects invalid or revoked Vault public key before evaluating object denial',async()=>{
+    let count=0;
+    await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey,fetcher:async()=>{
+      count++;return response(401);
+    }})).rejects.toThrow('RL9C2B2C_BLOCKED');
+    expect(count).toBe(1);
   });
   it('disallows publishable credentials as privileged primary authority even with a mocked 200',async()=>{
     await expect(proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:publicKey,fetcher:async()=>response(200)})).rejects.toThrow('RL9C2B2C_BLOCKED');
@@ -77,7 +92,9 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
   });
   it('rejects 404 absent object, 302 redirects, 500, and network failure as denial evidence',async()=>{
     for(const code of [302,404,500]){
-      await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey,fetcher:async()=>response(code)})).rejects.toThrow('RL9C2B2C_BLOCKED');
+      await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey,
+        fetcher:async(url:string)=>response(url===anonControl?200:code),
+      })).rejects.toThrow('RL9C2B2C_BLOCKED');
       await expect(proveCanaryPhase({phase:'PRIMARY_DENIAL',config,credential:cred,fetcher:async (url:string)=>response(url===own?200:code)})).rejects.toThrow('RL9C2B2C_BLOCKED');
     }
     await expect(proveCanaryPhase({phase:'ANONYMOUS_DENIAL',config,publicKey,fetcher:async()=>{throw Error('my leaked credential!');}})).rejects.toThrow('RL9C2B2C_BLOCKED');
