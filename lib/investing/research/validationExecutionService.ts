@@ -13,6 +13,7 @@ import {
   type ExecuteValidationChildV1Result,
 } from "./validationExecutionWriter";
 import { createDeniedAndJournaledResearchMaterialProviderV1 } from "./deniedAndJournaledResearchMaterialProvider";
+import { createLocalSyntheticResearchMaterialProviderV1 } from "./localSyntheticResearchMaterialProvider";
 import { getInvestingAuthorityDatabase } from "../authority/transport";
 import type { ValidationProtocolCandidateV1 } from "./validationProtocol";
 
@@ -71,7 +72,9 @@ export async function executeValidationChildCommandV1(
   if (!isAuthorizedResearchValidationChildExecutionContext(authority.context)) return { ok: false, code: "FORBIDDEN_OR_NOT_FOUND" };
   return executeValidationChildV1({
     authorizedContext: authority.context,
-    datasetMaterialProvider: createDeniedAndJournaledResearchMaterialProviderV1(
+    datasetMaterialProvider: createLocalSyntheticResearchMaterialProviderV1(
+      authority.context, process.env.SYNTRAKE_RL9_LOCAL_SYNTHETIC_RESEARCH_ROOT,
+    ) ?? createDeniedAndJournaledResearchMaterialProviderV1(
       authority.context, getInvestingAuthorityDatabase(),
     ),
   });
