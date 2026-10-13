@@ -43,10 +43,10 @@ describe("RL-9C3B2B0: Investing Research read-surface inventory (non-authorizing
     expect(directReads).toEqual([readSeam]);
   });
 
-  it("pins the current hash-only provider interface as a known embargo gap", () => {
+  it("pins full frozen series binding while keeping caller providers untrusted", () => {
     const material = source("lib/investing/research/datasetMaterial.ts");
     expect(material).toContain(
-      "loadSeriesContent(seriesRef: HashRefV1): Promise<Buffer | null>;",
+      "loadSeriesContent(seriesRef: HashRefV1, series?: DatasetSeriesHashPayloadV1): Promise<Buffer | null>;",
     );
     expect(material).toContain("this.materials.get(seriesRef.hashHex)");
   });
@@ -58,7 +58,7 @@ describe("RL-9C3B2B0: Investing Research read-surface inventory (non-authorizing
       expect(text).not.toContain("provider.loadSeriesContent(");
       expect(text).toContain("datasetMaterialProvider: ResearchDatasetMaterialProviderV1");
     }
-    expect(source(readSeam)).toContain("provider.loadSeriesContent(ref)");
+    expect(source(readSeam)).toContain("provider.loadSeriesContent(ref,series)");
     expect(source(readSeam)).toContain("hashDatasetSeriesV1(series)");
     expect(source(writerPaths[0])).toContain("loadAndVerifyMaterials(");
     expect(source(writerPaths[1])).toContain("buildValidationRunInput(");
