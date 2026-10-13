@@ -28,7 +28,7 @@ const denied = () => { throw Error(BLOCKED); };
 
 function validServiceKey(credential) {
   if (typeof credential !== 'string' || credential.length > 4096 ||
-      credential.length < 20 || /\\s/u.test(credential)) denied();
+      credential.length < 20 || /\s/u.test(credential)) denied();
   if (credential.startsWith('sb_secret_')) {
     if (!SECRET.test(credential)) denied();
     return;
@@ -148,13 +148,13 @@ export async function runCanaryStagerCliV1({env=process.env,fetcher=fetch}={}) {
   try { config = JSON.parse(readPrivateMount(env.SYNTRAKE_VAULT_C2C_CONFIG_FILE)); }
   catch { denied(); }
   const credential = readPrivateMount(env.SYNTRAKE_VAULT_C2C_CREDENTIAL_FILE)
-    .replace(/\\r?\\n$/u,'');
+    .replace(/\r?\n$/u,'');
   const out = await stageExistingPrivateVaultCanaryV1({config,credential,fetcher});
-  process.stdout.write(JSON.stringify(out)+'\\n');
+  process.stdout.write(JSON.stringify(out)+'\n');
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   runCanaryStagerCliV1().catch(() => {
-    process.stderr.write(BLOCKED+'\\n');
+    process.stderr.write(BLOCKED+'\n');
     process.exitCode = 1;
   });
 }
