@@ -1,6 +1,7 @@
 import { createHash, generateKeyPairSync, sign, verify } from "node:crypto";
 import { createCommittedSyntheticPgBurnIssuerV1 } from "../workers/investing-blind-vault/privateCommittedSyntheticPgBurnIssuer.mjs";
 import { syntheticRemoteBurnSigningBytesV1 } from "../workers/investing-blind-vault/privateSignedSyntheticRemoteConsume.mjs";
+import { createSignedSyntheticRemoteVaultConsumerV1 } from "../workers/investing-blind-vault/privateSignedSyntheticRemoteConsume.mjs";
 import { readBlindTruthPassportProjectionV1 } from "../lib/investing/research/blindTruthPassportProjection";
 import { createVerifiedSyntheticBurnConsumerV1, syntheticBurnAttestationSigningBytesV1 } from "../workers/investing-blind-vault/privateSignedSyntheticBurnConsumer.mjs";
 import os from "node:os";
@@ -1911,6 +1912,136 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
       await expect(wrong.issueSignedSyntheticCommittedBurnV1())
         .rejects.toThrow("RL9C_ISSUER_BLOCKED");
     } finally { fs.rmSync(directory,{recursive:true,force:true}); }
+  },120_000);
+
+  it("INTEGRATED: PG17 COMMIT → private Ed25519 issuer → durable one-shot burn → Vault ciphertext read (synthetic only)",async()=>{
+    if(process.platform!=="linux")return;
+    const fictional=Buffer.from('{"syntheticOnly":true,"values":[11,13,17]}');
+    const f=await eventFixture("pg17-issuer-to-remote-consumer",fictional);
+    const root=fs.mkdtempSync(path.join(os.homedir(),".syntrake-rl9c-pg17-complete-fixture-"));
+    fs.chmodSync(root,0o700);
+    try {
+      const signer=generateKeyPairSync("ed25519");
+      const publicDer=signer.publicKey.export({format:"der",type:"spki"}) as Buffer;
+      const signerFile=path.join(root,"fixture-ed25519.pk8");
+      fs.writeFileSync(signerFile,signer.privateKey.export({format:"pem",type:"pkcs8"}),{mode:0o600});
+      const credentials=path.join(root,"vault-credential");
+      const fakeVaultSecret="sb_secret_"+"A".repeat(22)+"_"+"B".repeat(8);
+      fs.writeFileSync(credentials,fakeVaultSecret,{mode:0o600});
+      const binding={
+        tenantId:f.fx.tenantId,registrationHashHex:f.fx.registrationHash,
+        holdoutScopeDigestHex:blindTruthHoldoutScopeDigestV1(
+          f.fx.registrationPayload.holdoutScope),
+        commitmentHashHex:f.seal.commitmentHash,
+      };
+      const key=Buffer.alloc(32,0x42);
+      const encrypted=encryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,keyVersion:"SYNTHETIC_K1",binding,
+        exactCanonicalPlaintextBytes:fictional,
+      });
+      const wire=Buffer.from(JSON.stringify(encrypted)+"\\n","utf8");
+      const wireSha=createHash("sha256").update(wire).digest("hex").toUpperCase();
+      const locator="E".repeat(64);
+      const env={
+        SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",
+        SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE:"ISOLATED_REHEARSAL_V1",
+        SYNTRAKE_VAULT_ISSUER_MODE:"ISOLATED_REHEARSAL_V1",
+      };
+      const signerSha=createHash("sha256").update(publicDer).digest("hex").toUpperCase();
+      const issuerConfig={
+        environment:env,issuerMode:"ISOLATED_REHEARSAL_V1",
+        database:pool!,
+        fixedIdentity:{
+          tenantId:f.fx.tenantId,principalId:f.fx.principalId,
+          tenantMembershipId:f.fx.membershipId,
+          researchInvestigationId:f.fx.investigationId,
+          evaluationHashHex:f.evalHash,privateObjectLocator:locator,
+          expectedCiphertextSha256Hex:wireSha,
+        },
+        signerPrivateKeyPath:signerFile,signerPublicKeySha256Hex:signerSha,
+      };
+      const issuer=createCommittedSyntheticPgBurnIssuerV1(issuerConfig);
+      const fetchCalls:{url:string;headers:Record<string,string>}[]=[];
+      const vaultProjectRef="b".repeat(20);
+      const bucket="private-test-ciphertext";
+      const consumer=createSignedSyntheticRemoteVaultConsumerV1({
+        environment:env,storageMode:"ISOLATED_REHEARSAL_V1",rootDirectory:root,
+        trustedSignerPublicKeyDer:publicDer,trustedSignerPublicKeySha256Hex:signerSha,
+        transportConfig:{
+          environment:env,vaultProjectRef,privateBucket:bucket,
+          credentialFilePath:credentials,
+          fetcher:async(url:string,opts:{headers:Record<string,string>})=>{
+            fetchCalls.push({url,headers:opts.headers});
+            return new Response(new Uint8Array(wire),{status:200});
+          },
+        },
+      });
+      // The real PG event exists but there is no committed burn yet.
+      await expect(issuer.issueSignedSyntheticCommittedBurnV1())
+        .rejects.toThrow("RL9C_ISSUER_BLOCKED");
+      expect(fetchCalls).toHaveLength(0);
+      expect(await reserve(f)).toBe("BURN_INSERTED_IN_TRANSACTION_NOT_AUTHORIZED");
+      const grant=await issuer.issueSignedSyntheticCommittedBurnV1();
+      expect(grant.claims).toMatchObject({
+        tenantId:f.fx.tenantId,evaluationHashHex:f.evalHash,
+        registrationHashHex:f.fx.registrationHash,revealStartedEventHashHex:f.startedHash,
+        audience:"ISOLATED_VAULT_SYNTHETIC_REMOTE_TEST_ONLY",
+        burnState:"BURNED_NOT_AUTHORIZED",
+        privateObjectLocator:locator,expectedCiphertextSha256Hex:wireSha,
+      });
+      const outcomes=await Promise.allSettled([
+        consumer.consumeSignedSyntheticRemoteEnvelopeOnceV1(grant),
+        consumer.consumeSignedSyntheticRemoteEnvelopeOnceV1(grant),
+      ]);
+      const accepted=outcomes.filter(x=>x.status==="fulfilled");
+      const rejected=outcomes.filter(x=>x.status==="rejected");
+      expect(accepted).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(fetchCalls).toHaveLength(1);
+      expect(fetchCalls[0]?.url).toBe(
+        `https://${vaultProjectRef}.supabase.co/storage/v1/object/authenticated/${bucket}/sealed-v1/${locator}.json`);
+      expect(fetchCalls[0]?.headers).toEqual({
+        apikey:fakeVaultSecret,accept:"application/octet-stream",
+      });
+      if(accepted[0]?.status!=="fulfilled")throw Error("RL9C_INTEGRATED_UNEXPECTED");
+      const consumed=accepted[0].value;
+      expect(consumed.status).toBe("SYNTHETIC_REMOTE_CONSUMED_ONCE");
+      expect(consumed.encryptedEnvelopeBytes.equals(wire)).toBe(true);
+      // The fixture harness alone decrypts. No worker/app HTTP endpoint does.
+      const clear=decryptBlindTruthVaultEnvelopeV1({
+        vaultEncryptionKey:key,expectedKeyVersion:"SYNTHETIC_K1",
+        expectedBinding:binding,envelope:JSON.parse(wire.toString("utf8")),
+      });
+      try{
+        verifyBlindTruthHoldoutCommitmentV1({
+          secretSalt:Buffer.alloc(32,0x69),
+          exactCanonicalHoldoutPlaintextBytes:clear,
+          publicCommitmentHash:f.seal.commitmentHash,
+          declaredPlaintextByteLength:f.seal.declaredPlaintextByteLength,
+        });
+        expect(clear.equals(fictional)).toBe(true);
+      }finally{clear.fill(0);}
+      expect(fs.readdirSync(path.join(root,"remote-evaluation-burns"))).toHaveLength(1);
+      expect(fs.readdirSync(path.join(root,"remote-object-burns"))).toHaveLength(1);
+      await expect(createSignedSyntheticRemoteVaultConsumerV1({
+        environment:env,storageMode:"ISOLATED_REHEARSAL_V1",rootDirectory:root,
+        trustedSignerPublicKeyDer:publicDer,trustedSignerPublicKeySha256Hex:signerSha,
+        transportConfig:{
+          environment:env,vaultProjectRef,privateBucket:bucket,
+          credentialFilePath:credentials,
+          fetcher:async()=>{throw Error("SECOND_READ_FORBIDDEN");},
+        },
+      }).consumeSignedSyntheticRemoteEnvelopeOnceV1(grant))
+        .rejects.toThrow("VAULT_UNAVAILABLE");
+      await expect(reserve(f)).rejects.toThrow(/RL9C2B2F_ALREADY_BURNED/);
+      const terminal=await pool!.query<{n:number}>(
+        "select count(*)::int as n from "+
+        "investing.research_blind_truth_reveal_result_events_scientific_identities "+
+        "where tenant_id=$1 and evaluation_hash_hex=$2 and event_state='REVEAL_COMPLETED'",
+        [f.fx.tenantId,f.evalHash]);
+      expect(terminal.rows).toEqual([{n:0}]);
+      // A synthetic success MUST NEVER be reported as real scientific completion.
+    } finally {fictional.fill(0);fs.rmSync(root,{recursive:true,force:true});}
   },120_000);
 
   it("reads actual committed RL9B public Passport states through investing_app RLS, never secret data",async()=>{
