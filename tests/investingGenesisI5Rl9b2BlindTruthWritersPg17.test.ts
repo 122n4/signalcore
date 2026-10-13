@@ -1900,7 +1900,7 @@ maybeDescribe("RL-9C2B2F committed event-bound consume burn (never ALLOW)",()=>{
         audience:"ISOLATED_VAULT_SYNTHETIC_REMOTE_TEST_ONLY",
       });
       expect(token.claims.burnReservationId)
-        .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u);
+        .toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u);
       expect(verify(null,syntheticRemoteBurnSigningBytesV1(token.claims),
         publicKey,Buffer.from(token.signatureBase64,"base64"))).toBe(true);
       // The same fixed connector cannot sign a different tenant's burn.
