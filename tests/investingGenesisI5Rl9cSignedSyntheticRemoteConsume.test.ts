@@ -72,7 +72,7 @@ function build(root:string,credentialFilePath:string){
   });
   return {
     root,config,claims,calls,token,
-    setResponse(status:number,body:Buffer=envelope){upstreamStatus=status;upstreamBytes=body;},
+    setResponse(status:number,body:Buffer=envelope){upstreamStatus=status;upstreamBytes=Buffer.from(body);},
   };
 }
 
