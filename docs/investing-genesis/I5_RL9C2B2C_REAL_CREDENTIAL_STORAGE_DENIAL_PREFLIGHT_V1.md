@@ -1,8 +1,17 @@
 # RL-9C2B2C — Real Credential / Private Storage Isolation Preflight
 
-Status: EXECUTABLE_CANDIDATE / REAL_INFRASTRUCTURE_UNPROVISIONED / NOT ACCEPTED / REAL_VAULT_NOT_OPERATIONAL.
+Status (as of 2026-10-13): EXECUTABLE_PREFLIGHT / SEPARATE_VAULT_PROJECT_EXISTS / REAL_CREDENTIAL_ISOLATION_UNPROVEN / NOT ACCEPTED / REAL_VAULT_NOT_OPERATIONAL.
 
 Predecessor: RL-9C2B2B post-merge lint correction, accepted predecessor `8bb1c840aeb0200c2586c5b6038c1c4c2f75d5d9`.
+
+
+## Live infrastructure discovery, not operational acceptance — 2026-10-13
+
+Supabase read-only inventory verifies a separate Vault project `nlgxqbggvgigcggaybas` (`syntrake-blind-vault`, `eu-west-1`, PostgreSQL 17.11, `ACTIVE_HEALTHY`) distinct from the primary project `qdnvbamoamtkujzwrxdb`. This supersedes **the historic unprovisioned-infrastructure status** in earlier code and PR descriptions, but NOT any security gate.
+
+The Vault Storage bucket `syntrake-private-canary` is private (`public=false`), with RLS enabled on `storage.objects`, zero object SELECT/INSERT/UPDATE/DELETE policies and one non-placeholder canary object under the restricted synthetic marker prefix. A second storage row `.emptyFolderPlaceholder` is a zero-byte folder marker, **not** a second canary. The Vault project currently has zero tracked migrations and no deployed Edge Functions. The Vault `service_role` bypasses RLS, so a no-policies result is **not** administrator or secret-capability isolation proof. Both projects still share the same Supabase organization administration plane.
+
+GitHub CI and SQL metadata **cannot prove** secret-held REST GET bytes, positive Vault credential, cross-project primary service-key rejection, signed URL/S3/admin controls, true key-custody separation, live worker or secret reveal. All such gates remain BLOCKED pending independently controlled live credentials and witness evidence. Only the already existing fictional canary may be used for this preflight; no real holdout or secret key is accepted.
 
 ## Minimum security outcome
 
@@ -42,7 +51,7 @@ Each phase is run under a distinct operator-controlled Linux principal/host with
 
 Invoke: `node scripts/investing/rl9c2b2cStorageIsolationProbe.mjs` from a dedicated Linux security workstation. The script's JSON result should be retained only in restricted audit evidence storage.
 
-## Additional gates before a real Vault exists
+## Additional gates before an operational real Vault exists
 
 - Approve an independent provider/project, billing, credential owner, key custody and restricted network; prove no ordinary app identity can assume Vault identity.
 - Provision private canary with documented provider/as-of, bucket privacy and independent secret distribution; test both key-based and anonymous denials using **actual** primary credentials.
