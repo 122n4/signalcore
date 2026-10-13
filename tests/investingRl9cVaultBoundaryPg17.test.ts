@@ -86,6 +86,8 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
     await pool.query(bootstrap);
     const sql=readFileSync(path.join(process.cwd(),"vault/sql/rl9c_private_vault_boundary_v1.sql"),"utf8");
     await pool.query(sql);
+    const tightened=readFileSync(path.join(process.cwd(),"vault/sql/rl9c_storage_burn_read_fence_v1.sql"),"utf8");
+    await pool.query(tightened);
     await pool.query("insert into storage.objects(bucket_id,name) values ($1,$2),($3,$4),($5,$6)",[
       "syntrake-private-sealed",sealedName,
       "syntrake-private-sealed","sealed-v1/"+"B".repeat(64)+".json",
@@ -108,10 +110,35 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
     expect(guards.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity)).toBe(true);
   });
 
-  it("admits ONLY the enrolled Vault Auth worker, only authenticated GET, never listing or signed URL",async()=>{
-    await pool.query("insert into syntrake_vault_private.worker_auth_enrollments_v1(auth_user_id,enabled) values($1,true)",[workerId]);
+  it("requires enrolled identity AND committed tenant-bound burn before GET, with no cross-object reads",async()=>{
+    await pool.query("insert into syntrake_vault_private.worker_auth_enrollments_v1(auth_user_id,enabled) values($1,true),($2,true)",[workerId,strangerId]);
+    // Being enrolled is NEVER enough to read a ciphertext.
+    expect(await checkVisible("authenticated",workerId,"object.get_authenticated")).toEqual([]);
+    const fp=await asVaultWriter(
+      "insert into syntrake_vault_private.confidential_fingerprints_v1(fingerprint_hmac,hmac_key_version) values($1,'VAULT_HMAC_V1') returning fingerprint_id",
+      [Buffer.alloc(32,0x40)],
+    ) as {fingerprint_id:string}[];
+    const sealed=await asVaultWriter(`
+      insert into syntrake_vault_private.sealed_ciphertexts_v1
+      (fingerprint_id,tenant_id,registration_hash_hex,sealed_locator_hex,ciphertext_sha256_hex)
+      values($1,$2,$3,$4,$5) returning sealed_id`,
+      [fp[0]!.fingerprint_id,workerId,"D".repeat(64),"A".repeat(64),"E".repeat(64)],
+    ) as {sealed_id:string}[];
+    expect(await checkVisible("authenticated",workerId,"object.get_authenticated")).toEqual([]);
+    const insertBurn=`
+      insert into syntrake_vault_private.reveal_burns_v1
+      (sealed_id,tenant_id,evaluation_hash_hex,reveal_started_hash_hex,reader_auth_user_id,access_expires_at)
+      values($1,$2,$3,$4,$5,transaction_timestamp()+interval '30 seconds')`;
+    // A nonmatching tenant is never able to commit a forged burn.
+    await expect(asVaultWriter(insertBurn,
+      [sealed[0]!.sealed_id,strangerId,"1".repeat(64),"2".repeat(64),workerId]))
+      .rejects.toThrow();
+    expect(await checkVisible("authenticated",workerId,"object.get_authenticated")).toEqual([]);
+    await asVaultWriter(insertBurn,
+      [sealed[0]!.sealed_id,workerId,"1".repeat(64),"2".repeat(64),workerId]);
     expect(await checkVisible("authenticated",workerId,"object.get_authenticated"))
-      .toEqual(["sealed-v1/"+"B".repeat(64)+".json",sealedName].sort());
+      .toEqual([sealedName]);
+    // Another enrolled Vault Auth user MUST NEVER inherit this burn.
     expect(await checkVisible("authenticated",strangerId,"object.get_authenticated")).toEqual([]);
     expect(await checkVisible("anon",workerId,"object.get_authenticated")).toEqual([]);
     for(const operation of ["object.list","object.sign","object.move","object.download",""]) {
@@ -119,6 +146,7 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
     }
     await pool.query("update syntrake_vault_private.worker_auth_enrollments_v1 set enabled=false where auth_user_id=$1",[workerId]);
     expect(await checkVisible("authenticated",workerId,"object.get_authenticated")).toEqual([]);
+    await pool.query("update syntrake_vault_private.worker_auth_enrollments_v1 set enabled=true where auth_user_id=$1",[workerId]);
   });
 
   it("does not grant app roles direct access to private anti-reuse or committed-burn tables",async()=>{
@@ -133,7 +161,11 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
         ('syntrake_vault_private.reveal_burns_v1')
       ) as tab(t)`);
     expect(r.rows).toHaveLength(9);
-    expect(r.rows.every(x=>!x.can_select&&!x.can_insert)).toBe(true);
+    // Authenticated has minimal SELECT of RLS-scoped nonsecret JOIN keys,
+    // but no INSERT rights. No ordinary role can write burns or fingerprints.
+    expect(r.rows.every(x=>!x.can_insert)).toBe(true);
+    expect(r.rows.filter(x=>x.role!=="authenticated").every(x=>!x.can_select)).toBe(true);
+    expect(r.rows.filter(x=>x.table.includes("fingerprints")).every(x=>!x.can_select)).toBe(true);
     const grants=await pool.query<{has_insert:boolean;has_delete:boolean;has_update:boolean}>(`
       select has_table_privilege('syntrake_vault_writer',
         'syntrake_vault_private.reveal_burns_v1','INSERT') as has_insert,
@@ -220,15 +252,13 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
       values($1,$2,$3,$4,$5) returning sealed_id`,
       [fingerprint[0]!.fingerprint_id,workerId,"D".repeat(64),"E".repeat(64),"F".repeat(64)],
     ) as {sealed_id:string}[];
-    const args=[sealed[0]!.sealed_id,workerId,"1".repeat(64),"2".repeat(64)];
-    await asVaultWriter(`
+    const insertBurn=`
       insert into syntrake_vault_private.reveal_burns_v1
-      (sealed_id,tenant_id,evaluation_hash_hex,reveal_started_hash_hex)
-      values($1,$2,$3,$4)`,args);
-    await expect(asVaultWriter(`
-      insert into syntrake_vault_private.reveal_burns_v1
-      (sealed_id,tenant_id,evaluation_hash_hex,reveal_started_hash_hex)
-      values($1,$2,$3,$4)`,[sealed[0]!.sealed_id,workerId,"3".repeat(64),"4".repeat(64)]))
+      (sealed_id,tenant_id,evaluation_hash_hex,reveal_started_hash_hex,reader_auth_user_id,access_expires_at)
+      values($1,$2,$3,$4,$5,transaction_timestamp()+interval '30 seconds')`;
+    await asVaultWriter(insertBurn,[sealed[0]!.sealed_id,workerId,"5".repeat(64),"6".repeat(64),workerId]);
+    await expect(asVaultWriter(insertBurn,
+      [sealed[0]!.sealed_id,workerId,"7".repeat(64),"8".repeat(64),workerId]))
       .rejects.toThrow();
     const count=await pool.query<{n:number}>(
       "select count(*)::int as n from syntrake_vault_private.reveal_burns_v1 where sealed_id=$1",
