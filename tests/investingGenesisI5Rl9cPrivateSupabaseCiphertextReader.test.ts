@@ -11,7 +11,14 @@ const ref='b'.repeat(20);
 const bucket='syntrake-private-test-ciphertext';
 const key='sb_secret_'+'A'.repeat(22)+'_'+'B'.repeat(8);
 const locator='C'.repeat(64);
-const envelopeBytes=Buffer.from('SYNTHETIC_ENCRYPTED_ENVELOPE_TRANSPORT_FIXTURE_V1\n','utf8');
+const envelopeBytes=Buffer.from(JSON.stringify({
+  schemaVersion:'BLIND_TRUTH_VAULT_ENVELOPE_V1',
+  algorithm:'AES_256_GCM',
+  keyVersion:'SYNTHETIC_V1',
+  nonceHex:'A'.repeat(24),
+  ciphertextBase64:Buffer.from('TEST_ONLY_FICTIONAL_ENCRYPTED_PAYLOAD','utf8').toString('base64'),
+  tagHex:'B'.repeat(32),
+})+'\n','utf8');
 const digest=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex').toUpperCase();
 const env={SYNTRAKE_VAULT_WORKER_MODE:'ISOLATED_SECRET_VAULT_V1'};
 const fields={privateObjectLocator:locator,expectedCiphertextSha256Hex:digest(envelopeBytes)};
@@ -49,6 +56,28 @@ describe.skipIf(process.platform!=='linux')('RL-9C private ciphertext-only Vault
     expect(sent[0].options.headers).not.toHaveProperty('authorization');
     expect(Object.keys(reader)).toEqual(['readSealedObjectV1']);
     expect(JSON.stringify(reader)).not.toContain(key);
+  }));
+
+  it('rejects syntactically unencrypted material, even if a caller supplies its exact SHA-256',()=>fixture(async file=>{
+    const raw=Buffer.from('PLAINTEXT_IS_NOT_A_CIPHERTEXT_ENVELOPE\\n','utf8');
+    const reader=createPrivateSupabaseCiphertextReaderV1(cfg(file,async()=>response(200,raw)));
+    await expect(reader.readSealedObjectV1({
+      privateObjectLocator:locator,
+      expectedCiphertextSha256Hex:digest(raw),
+    })).rejects.toThrow('VAULT_UNAVAILABLE');
+    const invalid=Buffer.from(JSON.stringify({
+      schemaVersion:'BLIND_TRUTH_VAULT_ENVELOPE_V1',
+      algorithm:'AES_256_GCM',
+      keyVersion:'SYNTHETIC_V1',
+      nonceHex:'A'.repeat(24),
+      ciphertextBase64:'bad base64',
+      tagHex:'B'.repeat(32),
+    })+'\\n','utf8');
+    const badReader=createPrivateSupabaseCiphertextReaderV1(cfg(file,async()=>response(200,invalid)));
+    await expect(badReader.readSealedObjectV1({
+      privateObjectLocator:locator,
+      expectedCiphertextSha256Hex:digest(invalid),
+    })).rejects.toThrow('VAULT_UNAVAILABLE');
   }));
 
   it('rejects wrong checksum, empty body, HTTP errors, redirect and server errors',()=>fixture(async file=>{
