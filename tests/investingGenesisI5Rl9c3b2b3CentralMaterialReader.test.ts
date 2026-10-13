@@ -37,7 +37,7 @@ describe("RL-9C3B2B3: single ordinary Research dataset material read seam", () =
     const result = await load({ loadSeriesContent: spy }, series, ref);
     expect(result).toBe(bytes);
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(ref);
+    expect(spy).toHaveBeenCalledWith(ref,series);
   });
 
   it("does not call a material provider when the series hash does not match", async () => {
