@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { chmodSync, linkSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { createConfidentialAntiReuseFingerprintV1 } from "../workers/investing-blind-vault/privateConfidentialAntiReuseFingerprint.mjs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
@@ -156,6 +158,54 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
       [first[0]!.fingerprint_id]);
     expect(row.rows[0]!.fingerprint_hmac.equals(fp)).toBe(true);
     expect(row.rows[0]!.fingerprint_hmac.toString('utf8')).not.toContain("PLAINTEXT");
+  });
+
+  it("derives stable private-key HMAC from exact canonical plaintext; PG17 rejects duplicate reseal",async()=>{
+    const dir=mkdtempSync(path.join(homedir(),".rl9c-vault-private-hmac-"));
+    chmodSync(dir,0o700);
+    const keyFile=path.join(dir,"pepper.key");
+    writeFileSync(keyFile,Buffer.alloc(32,0x7a),{mode:0o600});
+    try{
+      const generator=createConfidentialAntiReuseFingerprintV1({
+        environment:{
+          SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",
+          SYNTRAKE_VAULT_HMAC_MODE:"VAULT_HMAC_V1",
+        },
+        secretHmacKeyFilePath:keyFile,
+        hmacKeyVersion:"VAULT_HMAC_V1",
+      });
+      const clear=Buffer.from("SYNTHETIC_HOLDOUT_EXACT_CANONICAL_BYTES_V1","utf8");
+      const repeated=Buffer.from(clear),changed=Buffer.from(clear.toString("utf8")+"X");
+      const fingerprint=generator.fingerprintExactCanonicalPlaintextV1(clear);
+      expect(fingerprint.byteLength).toBe(32);
+      expect(generator.fingerprintExactCanonicalPlaintextV1(repeated).equals(fingerprint)).toBe(true);
+      expect(generator.fingerprintExactCanonicalPlaintextV1(changed).equals(fingerprint)).toBe(false);
+      expect(fingerprint.equals(createHash("sha256").update(clear).digest())).toBe(false);
+      const write=async(data:Buffer)=>asVaultWriter(
+        "insert into syntrake_vault_private.confidential_fingerprints_v1(fingerprint_hmac,hmac_key_version) values($1,'VAULT_HMAC_V1') returning fingerprint_id",
+        [data],
+      );
+      const first=await write(fingerprint);
+      expect(first).toHaveLength(1);
+      await expect(write(generator.fingerprintExactCanonicalPlaintextV1(repeated))).rejects.toThrow();
+      expect(await write(generator.fingerprintExactCanonicalPlaintextV1(changed))).toHaveLength(1);
+      chmodSync(keyFile,0o644);
+      expect(()=>generator.fingerprintExactCanonicalPlaintextV1(clear)).toThrow("VAULT_UNAVAILABLE");
+      chmodSync(keyFile,0o600);
+      const symlink=path.join(dir,"symlink");
+      symlinkSync(keyFile,symlink);
+      const bad=createConfidentialAntiReuseFingerprintV1({
+        environment:{SYNTRAKE_VAULT_WORKER_MODE:"ISOLATED_SECRET_VAULT_V1",SYNTRAKE_VAULT_HMAC_MODE:"VAULT_HMAC_V1"},
+        secretHmacKeyFilePath:symlink,
+        hmacKeyVersion:"VAULT_HMAC_V1",
+      });
+      expect(()=>bad.fingerprintExactCanonicalPlaintextV1(clear)).toThrow("VAULT_UNAVAILABLE");
+      const hardlink=path.join(dir,"hardlink");
+      linkSync(keyFile,hardlink);
+      expect(()=>generator.fingerprintExactCanonicalPlaintextV1(clear)).toThrow("VAULT_UNAVAILABLE");
+      unlinkSync(hardlink);
+      clear.fill(0);repeated.fill(0);changed.fill(0);
+    }finally{rmSync(dir,{recursive:true,force:true});}
   });
 
   it("one sealed locator may be burned only once even with a different evaluation identity",async()=>{
