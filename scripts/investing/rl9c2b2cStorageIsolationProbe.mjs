@@ -115,9 +115,15 @@ export async function proveCanaryPhase({phase,config,credential=undefined,public
     if(denied.status!==401&&denied.status!==403)blocked();
     evidence='PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT';
   }else{
+    // An invalid/foreign publishable key can yield a gateway 401 BEFORE RLS.
+    // First require the same key to pass this Vault's Auth gateway.
+    const own=await requestStatus(
+      `https://${c.vaultProjectRef}.supabase.co/auth/v1/settings`,publicKey,fetcher,
+    );
+    if(own.status!==200)blocked();
     const denied=await requestStatus(url,publicKey,fetcher);
     if(denied.status!==401&&denied.status!==403)blocked();
-    evidence='ANONYMOUS_DENIED_BY_VAULT';
+    evidence='VALID_VAULT_ANON_KEY_AND_PRIVATE_CANARY_DENIED';
   }
   // Report contains no credential, bucket name, endpoint, private locator, or response body.
   return Object.freeze({kind:KIND,phase,status:'PASS',subjectDigest,evidence});
