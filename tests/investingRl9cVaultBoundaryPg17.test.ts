@@ -80,8 +80,8 @@ run("RL-9C — Vault-only schema, RLS, confidential anti-reuse + committed burn 
   beforeAll(async () => {
     refuseRemoteDb(connectionString);
     pool=new Pool({connectionString,max:4,connectionTimeoutMillis:3000});
-    const version=await pool.query<{v:string}>("show server_version");
-    if(!version.rows[0]?.v.startsWith("17.")) throw Error("RL9C_VAULT_PG17_REQUIRED");
+    const version=await pool.query<{v:string}>("select current_setting('server_version') as v");
+    if(typeof version.rows[0]?.v!=="string"||!version.rows[0].v.startsWith("17.")) throw Error("RL9C_VAULT_PG17_REQUIRED");
     await pool.query(bootstrap);
     const sql=readFileSync(path.join(process.cwd(),"vault/sql/rl9c_private_vault_boundary_v1.sql"),"utf8");
     await pool.query(sql);
