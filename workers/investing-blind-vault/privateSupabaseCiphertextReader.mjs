@@ -1,6 +1,9 @@
 /**
- * RL-9C private worker: production-capable *read-only ciphertext transport*.
- * NOT a seal, decrypt, embargo, anti-reuse or reveal authorization boundary.
+ * RL-9C private worker: SYNTHETIC-ONLY read-only ciphertext transport.
+ * NOT a production Storage authorization, seal, decrypt, embargo, anti-reuse,
+ * or reveal boundary. The injectable fetcher is a test hook, not live egress.
+ * Supabase private /object/authenticated requires a valid Authorization
+ * context: a modern sb_secret_* in apikey alone proves none.
  *
  * No ordinary app/server API can import this module or expose its methods.
  * A future real isolated worker must prove a separately committed one-shot
@@ -21,6 +24,7 @@ const SECRET=/^sb_secret_[A-Za-z0-9_-]{22}_[A-Za-z0-9_-]{8}$/u;
 const MAX_BYTES=8*1024*1024;
 const TIMEOUT_MS=8000;
 const FIELD_NAMES=['environment','vaultProjectRef','privateBucket','credentialFilePath','fetcher'];
+const REHEARSAL_MODE='ISOLATED_REHEARSAL_V1';
 
 function blocked(){throw Error('VAULT_UNAVAILABLE');}
 function snapshot(value,fields){
@@ -112,15 +116,19 @@ function readParameters(raw){
 }
 
 /**
- * A private *ciphertext only* I/O adapter. Never pass it an ordinary Investing
- * credential or a browser/HTTP-provided locator. Real authorization and
- * committed-burn proof are external gates that remain unavailable today.
+ * A SYNTHETIC ciphertext-only I/O rehearsal. Never pass it an ordinary
+ * Investing credential or a browser/HTTP-provided locator. Real Storage
+ * authorization, committed-burn proof and custody are unavailable today.
  *
  * The user-controlled `fetcher` hook exists ONLY for offline transport tests.
  */
 export function createPrivateSupabaseCiphertextReaderV1(raw){
   const config=snapshot(raw,FIELD_NAMES);
   assertIsolatedVaultEnvironmentV1(config.environment);
+  // An injected HTTP transport is NEVER an operational private Storage
+  // client. Production must use a separate adapter with Vault-issued JWT,
+  // verified custody and provider-side Storage/RLS admission evidence.
+  if(config.environment.SYNTRAKE_VAULT_SYNTHETIC_STORE_MODE!==REHEARSAL_MODE)blocked();
   if(typeof config.vaultProjectRef!=='string'||!REF.test(config.vaultProjectRef)||
     typeof config.privateBucket!=='string'||!BUCKET.test(config.privateBucket)||
     typeof config.fetcher!=='function')blocked();
