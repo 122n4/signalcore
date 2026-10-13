@@ -105,7 +105,7 @@ describe.skipIf(process.platform==="win32")("RL-9 local fictional-only positive 
   it("rejects malformed hash and missing expected payload",async()=>rootFixture(async root=>{
     stage(root);
     const provider=createLocalSyntheticResearchMaterialProviderV1(ctx,root)!;
-    await expect(provider.loadSeriesContent({...ref,hashHex:"F".repeat(64)},series))
+    await expect(provider.loadSeriesContent(hashRefV1({...ref,hashHex:"F".repeat(64)}),series))
       .rejects.toThrow("RESEARCH_MATERIAL_ACCESS_UNPROVEN");
     await expect(provider.loadSeriesContent(ref))
       .rejects.toThrow("RESEARCH_MATERIAL_ACCESS_UNPROVEN");
@@ -136,14 +136,12 @@ describe.skipIf(process.platform==="win32")("RL-9 local fictional-only positive 
     }finally{fs.rmSync(link,{force:true});}
   }));
   it("refuses Production even if someone injects a local directory",async()=>rootFixture(async root=>{
-    const old=process.env.NODE_ENV;
     try{
       vi.stubEnv("NODE_ENV","production");
       expect(()=>createLocalSyntheticResearchMaterialProviderV1(ctx,root))
         .toThrow("RESEARCH_MATERIAL_ACCESS_UNPROVEN");
     }finally{
       vi.unstubAllEnvs();
-      if(old!==undefined)process.env.NODE_ENV=old;
     }
   }));
   it("refuses account/portfolio scopes and malformed authority",async()=>rootFixture(async root=>{
