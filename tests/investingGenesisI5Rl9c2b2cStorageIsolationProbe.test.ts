@@ -11,6 +11,7 @@ const publicKey='sb_publishable_'+'C'.repeat(22)+'_'+'D'.repeat(8);
 function response(status:number, body='') { return new Response(body, {status}); }
 const target = `https://${vault}.supabase.co/storage/v1/object/authenticated/vault-private-canary/${config.objectPath}`;
 const own = `https://${primary}.supabase.co/storage/v1/bucket`;
+const foreignBucket = `https://${vault}.supabase.co/storage/v1/bucket`;
 const anonControl = `https://${vault}.supabase.co/auth/v1/settings`;
 
 describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=>{
@@ -34,6 +35,54 @@ describe('RL-9C2B2C Storage isolation canary preflight, no real credentials',()=
     }});
     expect(calls).toEqual([own,target]);
     expect(out.evidence).toBe('PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT');
+  });
+  it('proves the same modern primary key is valid at its own Storage gateway but refused at the Vault Storage gateway',async()=>{
+    const calls:string[]=[];
+    const result=await proveCanaryPhase({
+      phase:'PRIMARY_KEY_GATEWAY_DENIAL',config,credential:cred,
+      fetcher:async(url:string,opts:any)=>{
+        calls.push(url);
+        expect(opts.headers.apikey).toBe(cred);
+        expect(opts.headers).not.toHaveProperty('authorization');
+        expect(opts.redirect).toBe('manual');
+        expect(opts.cache).toBe('no-store');
+        return response(url===own?200:401);
+      },
+    });
+    expect(calls).toEqual([own,foreignBucket]);
+    expect(result.evidence).toBe('PRIMARY_KEY_VALID_AND_REJECTED_BY_VAULT_STORAGE_GATEWAY');
+    expect(result.subjectDigest).toBe(canarySubjectDigest(config));
+    expect(JSON.stringify(result)).not.toContain(cred);
+  });
+  it('never accepts malformed/invalid responses as Vault project-key gateway isolation',async()=>{
+    for(const other of [200,302,400,404,429,500]){
+      const calls:string[]=[];
+      await expect(proveCanaryPhase({
+        phase:'PRIMARY_KEY_GATEWAY_DENIAL',config,credential:cred,
+        fetcher:async(url:string)=>{
+          calls.push(url);
+          return response(url===own?200:other);
+        },
+      })).rejects.toThrow('RL9C2B2C_BLOCKED');
+      expect(calls).toEqual([own,foreignBucket]);
+    }
+    for(const self of [401,403,500]){
+      const calls:string[]=[];
+      await expect(proveCanaryPhase({
+        phase:'PRIMARY_KEY_GATEWAY_DENIAL',config,credential:cred,
+        fetcher:async(url:string)=>{calls.push(url);return response(self);},
+      })).rejects.toThrow('RL9C2B2C_BLOCKED');
+      expect(calls).toEqual([own]);
+    }
+  });
+  it('accepts 403 only for valid project-key gateway denial and never expands to canary RLS proof',async()=>{
+    const r=await proveCanaryPhase({
+      phase:'PRIMARY_KEY_GATEWAY_DENIAL',config,credential:cred,
+      fetcher:async(url:string)=>response(url===own?200:403),
+    });
+    expect(r.evidence).toBe('PRIMARY_KEY_VALID_AND_REJECTED_BY_VAULT_STORAGE_GATEWAY');
+    expect(r.evidence).not.toContain('CANARY');
+    expect(r.evidence).not.toContain('RLS');
   });
   it('rejects even exact missing-Authorization 400: syntactic pre-auth rejection is not key isolation',async()=>{
     const calls:string[]=[];
