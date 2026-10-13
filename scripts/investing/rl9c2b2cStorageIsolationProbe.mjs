@@ -63,35 +63,7 @@ export function canarySubjectDigest(config){
   return createHash('sha256').update(['SYNTRAKE:RL9C2B2C:CANARY_SUBJECT:V1',c.primaryProjectRef,c.vaultProjectRef,c.bucket,c.objectPath,SYNTHETIC_MARKER].join('\n'),'utf8').digest('hex');
 }
 function storageUrl(ref,c){return `https://${ref}.supabase.co/storage/v1/object/authenticated/${encodeURIComponent(c.bucket)}/${c.objectPath}`;}
-const FOREIGN_KEY_MISSING_AUTH = "headers must have required property 'authorization'";
-const MAX_GATEWAY_ERROR_BYTES = 512;
-
-/**
- * Narrow Supabase Storage missing-Authorization response. A generic 400,
- * invalid-key status, missing canary, redirect, or arbitrary error JSON can
- * NEVER be promoted to cross-project isolation evidence.
- */
-async function exactForeignKeyGatewayDenial(response){
-  if(response.status!==400 || !response.body?.getReader)blocked();
-  const reader=response.body.getReader();
-  const parts=[];let total=0;
-  try {
-    while(true){
-      const {done,value}=await reader.read();
-      if(done)break;
-      if(!(value instanceof Uint8Array))blocked();
-      total+=value.byteLength;
-      if(total>MAX_GATEWAY_ERROR_BYTES)blocked();
-      parts.push(Buffer.from(value));
-    }
-    const body=JSON.parse(Buffer.concat(parts,total).toString('utf8'));
-    if(!body || typeof body!=='object' || Array.isArray(body) ||
-       body.error!=='InvalidRequest' ||
-       body.message!==FOREIGN_KEY_MISSING_AUTH)blocked();
-    return true;
-  }catch{blocked();}
-}
-async function requestStatus(url,key,fetcher,readBody=false,inspectForeignKey400=false){
+async function requestStatus(url,key,fetcher,readBody=false){
   const controller = new AbortController();
   const timer=setTimeout(()=>controller.abort(),8000);
   try {
@@ -103,10 +75,6 @@ async function requestStatus(url,key,fetcher,readBody=false,inspectForeignKey400
     }
     const response=await fetcher(url,{method:'GET',headers,signal:controller.signal,redirect:'manual',cache:'no-store'});
     if(!response||!Number.isInteger(response.status))blocked();
-    if(inspectForeignKey400 && response.status===400){
-      const matches=await exactForeignKeyGatewayDenial(response);
-      return {status:400,foreignKeyMissingAuthorization:matches};
-    }
     if(!readBody){try{await response.body?.cancel?.()}catch{} return {status:response.status};}
     if(response.status!==200){try{await response.body?.cancel?.()}catch{} return {status:response.status};}
     let chunks=[],size=0;
@@ -143,15 +111,9 @@ export async function proveCanaryPhase({phase,config,credential=undefined,public
     // If a fake/expired key is supplied, the negative result cannot pass.
     const self=await requestStatus(`https://${c.primaryProjectRef}.supabase.co/storage/v1/bucket`,credential,fetcher);
     if(self.status!==200)blocked();
-    const denied=await requestStatus(url,credential,fetcher,false,true);
-    if(denied.status===400 && denied.foreignKeyMissingAuthorization===true){
-      // Live Supabase Storage: valid primary key is NOT elevated to Vault's
-      // Authorization principal. Distinct from a 401/403 RLS denial.
-      evidence='PRIMARY_KEY_VALID_AND_VAULT_GATEWAY_AUTHORIZATION_ABSENT';
-    }else{
-      if(denied.status!==401&&denied.status!==403)blocked();
-      evidence='PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT';
-    }
+    const denied=await requestStatus(url,credential,fetcher);
+    if(denied.status!==401&&denied.status!==403)blocked();
+    evidence='PRIMARY_KEY_VALID_ON_PRIMARY_PROJECT_AND_DENIED_BY_VAULT';
   }else{
     // An invalid/foreign publishable key can yield a gateway 401 BEFORE RLS.
     // First require the same key to pass this Vault's Auth gateway.
