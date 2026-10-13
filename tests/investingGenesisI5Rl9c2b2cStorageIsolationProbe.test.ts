@@ -73,21 +73,20 @@ describe('RL-9C2B2C credential host confinement: offline only, never foreign sec
   it('never upgrades PRIMARY positive control into a Vault isolation assertion',async()=>{
     let calls=0;
     for(const status of [401,403,404,400,200,500,302]){
-      await expect(proveCanaryPhase({
+      const trial=proveCanaryPhase({
         phase:'PRIMARY_SELF_CONTROL',config,credential:secret,
         fetcher:async(url:string)=>{
           expect(url).toBe(primaryBucket);
           calls++;return response(status);
         },
-      })).then(report=>{
-        if(status===200){
-          expect(report.evidence).toBe('PRIMARY_KEY_VALID_ON_OWN_PROJECT_ONLY');
-          expect(report.evidence).not.toMatch(/VAULT|DENIAL|ISOLATION/);
-        }else{throw Error('unexpected PASS');}
-      },error=>{
-        if(status===200)throw error;
-        expect(String(error)).toContain('RL9C2B2C_BLOCKED');
       });
+      if(status===200){
+        const report=await trial;
+        expect(report.evidence).toBe('PRIMARY_KEY_VALID_ON_OWN_PROJECT_ONLY');
+        expect(report.evidence).not.toMatch(/VAULT|DENIAL|ISOLATION/);
+      }else{
+        await expect(trial).rejects.toThrow('RL9C2B2C_BLOCKED');
+      }
     }
     expect(calls).toBe(7);
   });
