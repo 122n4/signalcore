@@ -20,6 +20,7 @@ import { createExperimentBaselineForCurrentUserV1 } from "./experimentBaselineSe
 import { createExperimentVariantForCurrentUserV1 } from "./experimentVariantService";
 import { readResearchPassportServiceV1 } from "./researchPassportService";
 import { inspectResearchRunRecoveryForCurrentUserV1 } from "./runRecoveryInspector";
+import { readScientificPromotionChainForCurrentUserV1 } from "./scientificPromotionHistoryService";
 import { writeExperimentComparisonV1 } from "./experimentComparisonWriter";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
@@ -49,6 +50,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "COMPARE_EXPERIMENTS",
   "READ_PASSPORT",
   "INSPECT_RUN_RECOVERY",
+  "READ_PROMOTION_CHAIN",
 ] as const);
 
 export type HeadlessResearchOperationV1 = typeof headlessResearchCommandOperationsV1[number];
@@ -88,6 +90,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   COMPARE_EXPERIMENTS: ["researchInvestigationId", "correlationId", "sources"],
   READ_PASSPORT: ["researchInvestigationId", "correlationId"],
   INSPECT_RUN_RECOVERY: ["researchInvestigationId", "correlationId"],
+  READ_PROMOTION_CHAIN: ["researchInvestigationId", "rootTransitionIdentityId", "correlationId"],
 });
 
 type PlainRecord = Record<string, unknown>;
@@ -134,6 +137,8 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
   }
   if (typeof data.researchInvestigationId !== "string" ||
       !uuid.test(data.researchInvestigationId)) return null;
+  if (fields[operation].includes("rootTransitionIdentityId") &&
+      (typeof data.rootTransitionIdentityId !== "string" || !uuid.test(data.rootTransitionIdentityId))) return null;
   if (fields[operation].includes("researchExperimentId") &&
       (typeof data.researchExperimentId !== "string" || !uuid.test(data.researchExperimentId))) return null;
   if (fields[operation].includes("runInputIdentityId") &&
@@ -293,6 +298,12 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
         };
         break;
       }
+      case "READ_PROMOTION_CHAIN":
+        outcome = await readScientificPromotionChainForCurrentUserV1({
+          researchInvestigationId:command.researchInvestigationId as string,
+          rootTransitionIdentityId:command.rootTransitionIdentityId as string,
+          correlationId:command.correlationId as string,
+        }); break;
       case "INSPECT_RUN_RECOVERY":
         outcome = await inspectResearchRunRecoveryForCurrentUserV1({
           researchInvestigationId: command.researchInvestigationId as string,
