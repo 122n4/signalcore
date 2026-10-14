@@ -98,17 +98,19 @@ function fixture(){
         aggregate:{validationResult:bValidation}},
     ]},
   } as unknown as ResearchPassportV1;
-  const rows=[{
+  const rows: {protocol_hash_hex:string;protocol_payload:unknown;result_hash_hex:string|null;result_payload:unknown|null}[]=[{
     protocol_hash_hex:protocolHash,protocol_payload:protocol,
     result_hash_hex:resultHash,result_payload:result,
   }];
   const calls:{sql:string;params:readonly unknown[]}[]=[];
+  const queryState={throwRead:false};
   const db={query:vi.fn(async(sql:string,params:readonly unknown[]=[])=>{
     calls.push({sql,params});
+    if(queryState.throwRead && sql.includes("from investing.research_experiment_comparison_protocols_scientific_identities")) throw Error("PG_DENIAL");
     return {rows:sql.includes("from investing.research_experiment_comparison_protocols_scientific_identities")
       ?rows:[]};
   })} as unknown as InvestingAuthorityTransactionClient;
-  return {protocol,result,protocolHash,resultHash,binding,authority,passport,rows,calls,db};
+  return {protocol,result,protocolHash,resultHash,binding,authority,passport,rows,calls,db,queryState};
 }
 
 describe("RL-10 RL-7 persisted robustness bridge",()=>{
@@ -128,7 +130,7 @@ describe("RL-10 RL-7 persisted robustness bridge",()=>{
     const select=f.calls.find(x=>x.sql.includes("from investing.research_experiment_comparison_protocols_scientific_identities"));
     expect(select?.params).toEqual([uuid.tenant,uuid.principal,uuid.membership,uuid.investigation,
       subj.hashHex,sResult.hashHex,sValidation.hashHex]);
-    expect(f.calls.some(x=>/^\\s*(insert|update|delete|alter|drop|create)\\b/iu.test(x.sql))).toBe(false);
+    expect(f.calls.some(x=>/^\s*(insert|update|delete|alter|drop|create)\b/iu.test(x.sql))).toBe(false);
   });
   it("reports no comparison as unavailable evidence, never fabricated STABLE",async()=>{
     f.rows.splice(0);
@@ -147,7 +149,7 @@ describe("RL-10 RL-7 persisted robustness bridge",()=>{
     await expect(read()).rejects.toThrow();
     f.rows[0]={...correct,result_hash_hex:"B".repeat(64)};
     await expect(read()).rejects.toThrow();
-    f.rows[0]={...correct,protocol_payload:{...correct.protocol_payload,subjectExperiment:base}};
+    f.rows[0]={...correct,protocol_payload:{...(correct.protocol_payload as ExperimentComparisonProtocolV1),subjectExperiment:base}};
     await expect(read()).rejects.toThrow();
   });
   it("rejects foreign Investigation, reference Experiment, missing owner Result and failed run",async()=>{
@@ -161,10 +163,7 @@ describe("RL-10 RL-7 persisted robustness bridge",()=>{
     await expect(read()).rejects.toThrow("RL7_REFERENCE_RESULT_INVALID");
   });
   it("restores the RL-8 operation even when SQL SELECT throws",async()=>{
-    const real=f.db.query.bind(f.db);
-    f.db.query=vi.fn(async(sql:string,params?:readonly unknown[])=>
-      sql.includes("from investing.research_experiment_comparison_protocols_scientific_identities")
-      ?Promise.reject(Error("PG_DENIAL")):real(sql,params));
+    f.queryState.throwRead=true;
     await expect(read()).rejects.toThrow("PG_DENIAL");
     expect(f.calls.filter(x=>x.sql.includes("set_config")).map(x=>x.params[1])).toEqual([
       "RESEARCH_EXPERIMENT_COMPARISON_RESULT_FINALIZE_V1",
