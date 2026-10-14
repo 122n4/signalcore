@@ -220,9 +220,15 @@ async function evaluateOrPersistForCurrentUserV1(input:PromotionCommandV1,persis
       descriptor_format:evidence.descriptor.format,
     },evidence.evidence.hashHex);
 
-    const ep=exactlyOne(passport.validation.episodes.filter(x=>
+    const matchingEpisodes=passport.validation.episodes.filter(x=>
       x.researchValidationProtocolIdentityId===input.researchValidationProtocolIdentityId &&
-      x.researchExperimentId===exp.researchExperimentId));
+      x.researchExperimentId===exp.researchExperimentId);
+    // No matching Validation is unavailable evidence, NOT a fabricated
+    // validation failure or an unexpected database-integrity incident.
+    // Multiple matching episodes remain an integrity failure.
+    if(matchingEpisodes.length===0)
+      throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
+    const ep=exactlyOne(matchingEpisodes);
     if(ep.state!=="AGGREGATE_AVAILABLE"||!ep.aggregate)
       throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
 

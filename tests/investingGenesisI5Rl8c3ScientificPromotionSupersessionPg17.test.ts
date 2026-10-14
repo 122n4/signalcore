@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
 import { readResearchPassportV1 } from "../lib/investing/research/researchPassportReader";
 import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
+import { evaluateScientificPromotionForCurrentUserV1,persistScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
 import { resolveAuthorizedResearchPassportReadContext, isAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
 import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
 import type { ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
@@ -1118,6 +1119,22 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         rootTransitionIdentityId:rootId,scientificState:"EXECUTED",
         status:"REUSED_IDENTICAL",executionAuthority:"NONE",
       });
+      const evaluationInput={
+        researchInvestigationId:fixture.researchInvestigationId,
+        rootTransitionIdentityId:rootId,
+        researchValidationProtocolIdentityId:fixture.protocolIdentityId,
+        correlationId:"rl10-owner-no-validation-gate",
+      };
+      // Same branded owner authority, real Passport, real PG17 immutable
+      // root: an absent Validation episode must NEVER create Stage-A.
+      expect(await evaluateScientificPromotionForCurrentUserV1(evaluationInput))
+        .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
+      expect(await persistScientificPromotionForCurrentUserV1(evaluationInput))
+        .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
+      const rootOnly=await setup.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId]);
+      expect(rootOnly.rows[0]?.n).toBe(1);
       rl10ReadState.externalSubject="unknown-foreign-clerk";
       const denied=await createScientificPromotionRootForCurrentUserV1({
         researchInvestigationId:fixture.researchInvestigationId,
@@ -1126,6 +1143,13 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         correlationId:"rl10-foreign-denied-real-owner",
       });
       expect(denied).toMatchObject({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+      const foreignPromotion=await persistScientificPromotionForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        rootTransitionIdentityId:rootId,
+        researchValidationProtocolIdentityId:fixture.protocolIdentityId,
+        correlationId:"rl10-owner-no-validation-foreign",
+      });
+      expect(foreignPromotion).toMatchObject({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
     }finally{
       rl10ReadState.realOwnerMode=false;
       rl10ReadState.externalSubject="";
