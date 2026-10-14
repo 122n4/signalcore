@@ -19,6 +19,8 @@ import { hashValidationRunInputV1, hashValidationChildResultV1 } from "../lib/in
 import { hashValidationResultV1 } from "../lib/investing/research/validationAggregate";
 import { canonicalExperimentComparisonProtocolBytesV1, hashExperimentComparisonProtocolV1 } from "../lib/investing/research/experimentComparison";
 import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
+import { executeHeadlessResearchCommandV1 } from "../lib/investing/research/headlessResearchService";
+import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
 import { i5ExperimentParametersCandidateV1, i5ExperimentResolvedResearchIrV1 } from "./support/investingI5ExperimentScientificFixtures";
 
 const writerState = vi.hoisted(() => ({
@@ -32,6 +34,9 @@ const writerState = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("../lib/investing/authority/transport", () => ({
+  getInvestingAuthorityDatabase: vi.fn(),
+}));
 vi.mock("../lib/investing/research/researchPassportReader", () => ({
   readResearchPassportV1: async () => {
     writerState.passportReads += 1;
@@ -872,6 +877,46 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
     expect(second.protocolHash).toBe(first.protocolHash);
     expect(second.resultHash).toBe(first.resultHash);
     expect(writerState.passportReads).toBeGreaterThanOrEqual(2);
+
+    // RL-10 dispatch must use precisely the same owner/persistence writer,
+    // without accepting database or authorization objects from the command.
+    vi.mocked(getInvestingAuthorityDatabase).mockReturnValue(database);
+    const routed = await executeHeadlessResearchCommandV1({
+      schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+      operation: "COMPARE_EXPERIMENTS",
+      command: {
+        researchInvestigationId: ids.investigation,
+        correlationId: "pg17-rl10-comparison-replay",
+        sources: fixture.sources,
+      },
+    });
+    expect(routed).toEqual({
+      ok: true,
+      operation: "COMPARE_EXPERIMENTS",
+      value: {
+        ok: true,
+        protocolIdentityId: first.protocolIdentityId,
+        resultIdentityId: first.resultIdentityId,
+        protocolHash: first.protocolHash,
+        resultHash: first.resultHash,
+      },
+    });
+    writerState.denied = true;
+    try {
+      const denied = await executeHeadlessResearchCommandV1({
+        schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+        operation: "COMPARE_EXPERIMENTS",
+        command: {
+          researchInvestigationId: ids.investigation,
+          correlationId: "pg17-rl10-comparison-denied",
+          sources: fixture.sources,
+        },
+      });
+      expect(denied).toEqual({ ok: false, code: "INTERNAL_ERROR" });
+    } finally {
+      writerState.denied = false;
+      vi.mocked(getInvestingAuthorityDatabase).mockReset();
+    }
 
     const client = await pool.connect();
     try {
