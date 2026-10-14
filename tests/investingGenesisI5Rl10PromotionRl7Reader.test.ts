@@ -88,9 +88,9 @@ function fixture(){
       operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
     },
     experiments:[
-      {researchExperimentId:"ref",experiment:base,experimentParameters:bParams},
-      {researchExperimentId:"sub",experiment:subj,experimentParameters:sParams},
-      {researchExperimentId:"third",experiment:member,experimentParameters:bParams},
+      {researchExperimentId:"ref",experiment:base,experimentParameters:bParams,parentExperimentId:null},
+      {researchExperimentId:"sub",experiment:subj,experimentParameters:sParams,parentExperimentId:"ref"},
+      {researchExperimentId:"third",experiment:member,experimentParameters:bParams,parentExperimentId:"ref"},
     ],
     runInputs:[{runInputIdentityId:"ref-run",researchExperimentId:"ref",experimentHashHex:base.hashHex}],
     results:[{resultIdentityId:"ref-result",runInputIdentityId:"ref-run",result:bResult}],
@@ -182,6 +182,9 @@ describe("RL-10 RL-7 persisted robustness bridge",()=>{
     f=fixture();
     (f.passport.experiments as unknown[]).splice(0,1);
     await expect(read()).rejects.toThrow("RL7_EVIDENCE_AMBIGUOUS_OR_MISSING");
+    f=fixture();
+    (f.passport.experiments as unknown as {parentExperimentId:string|null}[])[1]!.parentExperimentId=null;
+    await expect(read()).rejects.toThrow("RL7_REFERENCE_NOT_ANCESTOR");
     f=fixture();
     (f.passport.executionRuns as unknown as {terminalState:string}[])[0]!.terminalState="FAILED";
     await expect(read()).rejects.toThrow("RL7_REFERENCE_RESULT_INVALID");

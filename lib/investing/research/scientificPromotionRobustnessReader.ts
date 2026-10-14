@@ -166,6 +166,17 @@ export async function readPersistedPromotionRobustnessV1(
   // owner-verified Research Passport; UUIDs alone are never ownership proof.
   const referenceExperiment = one(passport.experiments.filter(x =>
     x.experiment && same(hashRefV1(x.experiment), hashRefV1(protocol.referenceExperiment))));
+  const subjectExperiment = one(passport.experiments.filter(x =>
+    x.experiment && same(hashRefV1(x.experiment), binding.subjectExperiment)));
+  const visited=new Set<string>();
+  let cursor=subjectExperiment;
+  while(cursor.researchExperimentId!==referenceExperiment.researchExperimentId){
+    if(visited.has(cursor.researchExperimentId)||visited.size>=passport.experiments.length||
+       cursor.parentExperimentId===null)
+      throw Error("RL7_REFERENCE_NOT_ANCESTOR");
+    visited.add(cursor.researchExperimentId);
+    cursor=one(passport.experiments.filter(x=>x.researchExperimentId===cursor.parentExperimentId));
+  }
   if (!referenceExperiment.experimentParameters ||
       !same(hashRefV1(referenceExperiment.experimentParameters),
         hashRefV1(protocol.referenceExperimentParameters)))
