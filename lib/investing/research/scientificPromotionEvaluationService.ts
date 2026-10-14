@@ -15,6 +15,7 @@ import { readPersistedPromotionRobustnessV1 } from "./scientificPromotionRobustn
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const hex=/^[0-9A-F]{64}$/u;
 const operation="RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1";
+const validationEvidenceReadOperation="RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1";
 const ref=(domain:HashRefV1["hashDomain"],hashHex:string):HashRefV1=>
   hashRefV1({hashAlgorithm:"SHA-256",hashDomain:domain,hashVersion:"SYNTRAKE_SHA256_V1",hashHex});
 type DbRow={hash_hex:string;canonical_payload:unknown};
@@ -101,7 +102,7 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       actor_kind:"USER_PRINCIPAL",actor_id:ctx.actorId,
       external_provider:"CLERK",external_subject:ctx.actorId,
       operation,capability:"RESEARCH_MUTATE",operation_scope:"TENANT_SCOPE",
-      source_context:"PURE_RESEARCH",tenant_id:ctx.tenantId,
+      source_context:"PURE_RESEARCH",account_id:"",account_access_id:"",tenant_id:ctx.tenantId,
       principal_id:ctx.principalId,tenant_membership_id:ctx.tenantMembershipId,
       research_investigation_id:ctx.researchInvestigationId,correlation_id:input.correlationId,
     };
@@ -206,6 +207,11 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
     if(ep.state!=="AGGREGATE_AVAILABLE"||!ep.aggregate)
       throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
 
+    // RL-3D's accepted FORCE RLS policies require its validation-assessment
+    // finalize operation for reads. Both operation values are server-owned,
+    // transaction-local and only SELECT statements execute in this segment.
+    await client.query("select set_config($1,$2,true)",
+      ["syntrake.investing.operation",validationEvidenceReadOperation]);
     const validationProtocol=exactlyOne((await client.query<DbRow>(
       "select hash_hex,canonical_payload from investing.research_validation_protocols_scientific_identities where research_validation_protocol_identity_id=$1 and research_investigation_id=$2 and tenant_id=$3 and principal_id=$4 and tenant_membership_id=$5",
       [ep.researchValidationProtocolIdentityId,ctx.researchInvestigationId,ctx.tenantId,ctx.principalId,ctx.tenantMembershipId])).rows);
@@ -224,6 +230,8 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       "select ar.hash_hex,ar.canonical_payload from investing.research_validation_assessment_results_scientific_identities ar join investing.research_validation_assessment_protocols_scientific_identities ap on ap.research_validation_assessment_protocol_identity_id=ar.research_validation_assessment_protocol_identity_id where ap.research_validation_protocol_identity_id=$1 and ar.research_validation_result_identity_id=$2 and ar.research_investigation_id=$3 and ar.tenant_id=$4 and ar.principal_id=$5 and ar.tenant_membership_id=$6",
       [ep.researchValidationProtocolIdentityId,ep.aggregate.researchValidationResultIdentityId,
        ctx.researchInvestigationId,ctx.tenantId,ctx.principalId,ctx.tenantMembershipId])).rows);
+    await client.query("select set_config($1,$2,true)",
+      ["syntrake.investing.operation",operation]);
 
     const robustness=await readPersistedPromotionRobustnessV1(client,ctx,passport,{
       subjectExperiment:hashRefV1(predecessor.subject.subjectExperiment),
