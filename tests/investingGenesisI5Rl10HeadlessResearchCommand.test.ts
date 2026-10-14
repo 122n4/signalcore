@@ -14,6 +14,7 @@ vi.mock("../lib/investing/research/researchPassportService",()=>({readResearchPa
 vi.mock("../lib/investing/research/runRecoveryInspector",()=>({inspectResearchRunRecoveryForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/scientificPromotionHistoryService",()=>({readScientificPromotionChainForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/scientificPromotionRootService",()=>({createScientificPromotionRootForCurrentUserV1:vi.fn()}));
+vi.mock("../lib/investing/research/scientificPromotionEvaluationService",()=>({evaluateScientificPromotionForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/experimentComparisonWriter",()=>({writeExperimentComparisonV1:vi.fn()}));
 vi.mock("../lib/investing/research/runInputScientificService",()=>({createScientificRunInputForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchExecutionService",()=>({executeResearchRunCommandV1:vi.fn()}));
@@ -44,6 +45,7 @@ import { readResearchPassportServiceV1 } from "../lib/investing/research/researc
 import { inspectResearchRunRecoveryForCurrentUserV1 } from "../lib/investing/research/runRecoveryInspector";
 import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
 import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
+import { evaluateScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
 import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
 import { createScientificRunInputForCurrentUserV1 } from "../lib/investing/research/runInputScientificService";
 import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
@@ -82,6 +84,7 @@ const all: Record<string, ReturnType<typeof vi.fn>> = {
   INSPECT_RUN_RECOVERY: vi.mocked(inspectResearchRunRecoveryForCurrentUserV1),
   READ_PROMOTION_CHAIN: vi.mocked(readScientificPromotionChainForCurrentUserV1),
   CREATE_PROMOTION_ROOT: vi.mocked(createScientificPromotionRootForCurrentUserV1),
+  EVALUATE_PROMOTION: vi.mocked(evaluateScientificPromotionForCurrentUserV1),
 };
 const provider = Object.freeze({loadSeriesContent:vi.fn()});
 const comparisonOutput = Object.freeze({
@@ -111,6 +114,7 @@ const commands: Record<string, Record<string,unknown>> = {
   INSPECT_RUN_RECOVERY: {researchInvestigationId:id,correlationId},
   READ_PROMOTION_CHAIN: {researchInvestigationId:id,rootTransitionIdentityId:id,correlationId},
   CREATE_PROMOTION_ROOT: {researchInvestigationId:id,researchExperimentId:id,runInputIdentityId:id,correlationId},
+  EVALUATE_PROMOTION: {researchInvestigationId:id,rootTransitionIdentityId:id,researchValidationProtocolIdentityId:id,correlationId},
 };
 function input(operation:string,command:unknown = commands[operation]) {
   return {schemaVersion:version,operation,command};
@@ -354,6 +358,18 @@ describe("RL-10 headless Investing Research entry point",()=>{
     expect(await executeHeadlessResearchCommandV1(input("READ_PROMOTION_CHAIN",{
       ...commands.READ_PROMOTION_CHAIN,rootTransitionIdentityId:"invalid",
     }))).toEqual({ok:false,code:"VALIDATION_ERROR"});
+    expect(totalCalls()).toBe(0);
+  });
+  it("EVALUATE_PROMOTION admits identifiers only, not scientific evidence or verdict",async()=>{
+    for(const extra of [
+      {authority:{status:"VERIFIED"}},{evidenceObject:{}},{validationResult:{}},
+      {robustness:{}},{assessmentResult:{}},{database:{}},{proposedState:"PROMOTION_ELIGIBLE"},
+      {tenantId:id},{brokerAccountId:id},{transition:{}},
+    ]) {
+      expect(await executeHeadlessResearchCommandV1(input("EVALUATE_PROMOTION",{
+        ...commands.EVALUATE_PROMOTION,...extra,
+      }))).toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
     expect(totalCalls()).toBe(0);
   });
   it("denies caller authority, eligibility, or evidence injection into promotion root",async()=>{

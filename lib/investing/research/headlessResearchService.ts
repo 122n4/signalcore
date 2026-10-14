@@ -22,6 +22,7 @@ import { readResearchPassportServiceV1 } from "./researchPassportService";
 import { inspectResearchRunRecoveryForCurrentUserV1 } from "./runRecoveryInspector";
 import { readScientificPromotionChainForCurrentUserV1 } from "./scientificPromotionHistoryService";
 import { createScientificPromotionRootForCurrentUserV1 } from "./scientificPromotionRootService";
+import { evaluateScientificPromotionForCurrentUserV1 } from "./scientificPromotionEvaluationService";
 import { writeExperimentComparisonV1 } from "./experimentComparisonWriter";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
@@ -53,6 +54,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "INSPECT_RUN_RECOVERY",
   "READ_PROMOTION_CHAIN",
   "CREATE_PROMOTION_ROOT",
+  "EVALUATE_PROMOTION",
 ] as const);
 
 export type HeadlessResearchOperationV1 = typeof headlessResearchCommandOperationsV1[number];
@@ -94,6 +96,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   INSPECT_RUN_RECOVERY: ["researchInvestigationId", "correlationId"],
   READ_PROMOTION_CHAIN: ["researchInvestigationId", "rootTransitionIdentityId", "correlationId"],
   CREATE_PROMOTION_ROOT: ["researchInvestigationId", "researchExperimentId", "runInputIdentityId", "correlationId"],
+  EVALUATE_PROMOTION: ["researchInvestigationId", "rootTransitionIdentityId", "researchValidationProtocolIdentityId", "correlationId"],
 });
 
 type PlainRecord = Record<string, unknown>;
@@ -140,6 +143,8 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
   }
   if (typeof data.researchInvestigationId !== "string" ||
       !uuid.test(data.researchInvestigationId)) return null;
+  if (fields[operation].includes("researchValidationProtocolIdentityId") &&
+      (typeof data.researchValidationProtocolIdentityId !== "string" || !uuid.test(data.researchValidationProtocolIdentityId))) return null;
   if (fields[operation].includes("rootTransitionIdentityId") &&
       (typeof data.rootTransitionIdentityId !== "string" || !uuid.test(data.rootTransitionIdentityId))) return null;
   if (fields[operation].includes("researchExperimentId") &&
@@ -301,6 +306,13 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
         };
         break;
       }
+      case "EVALUATE_PROMOTION":
+        outcome = await evaluateScientificPromotionForCurrentUserV1({
+          researchInvestigationId:command.researchInvestigationId as string,
+          rootTransitionIdentityId:command.rootTransitionIdentityId as string,
+          researchValidationProtocolIdentityId:command.researchValidationProtocolIdentityId as string,
+          correlationId:command.correlationId as string,
+        }); break;
       case "CREATE_PROMOTION_ROOT":
         outcome = await createScientificPromotionRootForCurrentUserV1({
           researchInvestigationId:command.researchInvestigationId as string,
