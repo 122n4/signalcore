@@ -131,16 +131,26 @@ async function evaluateOrPersistForCurrentUserV1(input:PromotionCommandV1,persis
        typeof chain.activeLeafTransitionIdentityId!=="string"||
        !uuid.test(chain.activeLeafTransitionIdentityId)||!hex.test(String(chain.activeLeafTransitionHashHex)))
       throw Error("PROMOTION_CHAIN_INVALID");
-    // RL-8C3 only exposes a scoped reconstruction (leaf ID/hash/state),
-    // not the canonical payload through investing_app RLS. Rebuild exactly
-    // the immutable EXECUTED root from Passport scientific identities and
-    // prove its hash equals the DB-verified root hash. Later states remain
-    // explicitly unavailable until a separately accepted scoped reader exists.
-    if(chain.activeLeafTransitionIdentityId!==input.rootTransitionIdentityId||
-       chain.activeLeafState!=="EXECUTED"||
-       !Array.isArray(chain.traversal)||chain.traversal.length!==1||
-       !Array.isArray(chain.crossChainHops)||chain.crossChainHops.length!==0)
+    // The accepted reconstruction is a hash-only, owner-scoped view.
+    // Re-evaluate against the immutable EXECUTED ROOT, even when its Stage-A
+    // and closure have already been committed. The same SQL writer then
+    // distinguishes exact REUSED_IDENTICAL from divergent concurrent plans.
+    // Never use an advanced/superseded leaf as scientific authority.
+    if(!Array.isArray(chain.traversal)||
+       ![1,2,3].includes(chain.traversal.length)||
+       !Array.isArray(chain.crossChainHops)||chain.crossChainHops.length!==0||
+       chain.traversal[0]?.transitionIdentityId!==input.rootTransitionIdentityId||
+       typeof chain.traversal[0]?.transitionHashHex!=="string"||
+       !hex.test(chain.traversal[0].transitionHashHex)||
+       chain.traversal[0]?.resultingState!=="EXECUTED"||
+       chain.traversal.at(-1)?.transitionIdentityId!==chain.activeLeafTransitionIdentityId||
+       chain.traversal.at(-1)?.transitionHashHex!==chain.activeLeafTransitionHashHex||
+       chain.traversal.at(-1)?.resultingState!==chain.activeLeafState||
+       (chain.traversal.length===1&&chain.activeLeafState!=="EXECUTED")||
+       (chain.traversal.length===2&&chain.activeLeafState!=="INSUFFICIENT_EVIDENCE")||
+       (chain.traversal.length===3&&!["PROMOTION_ELIGIBLE","REJECTED"].includes(String(chain.activeLeafState))))
       throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
+    const rootTransitionHashHex=chain.traversal[0].transitionHashHex as string;
     if(passport.runInputs.length>4096||passport.experiments.length>4096||
        passport.results.length>4096||passport.executionRuns.length>8192)
       throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
@@ -175,7 +185,7 @@ async function evaluateOrPersistForCurrentUserV1(input:PromotionCommandV1,persis
         },
         gateOutcomes:[],transitionReasons:[],supersedes:null,rejectedTransition:null,supersededByChain:null,
       };
-      if(hashScientificPromotionTransitionV1(root).hashHex===chain.activeLeafTransitionHashHex)
+      if(hashScientificPromotionTransitionV1(root).hashHex===rootTransitionHashHex)
         roots.push(root);
     }
     const predecessor=exactlyOne(roots);
