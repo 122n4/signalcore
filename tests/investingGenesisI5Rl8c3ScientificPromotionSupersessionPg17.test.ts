@@ -2,7 +2,25 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
+
+const rl10ReadState = vi.hoisted(() => ({
+  context: null as null | Record<string,unknown>,
+  database: null as unknown,
+  authorized: true,
+}));
+vi.mock("server-only",()=>({}));
+vi.mock("../lib/investing/authority/context",()=>({
+  resolveAuthorizedResearchPassportReadContext:vi.fn(async ()=>
+    rl10ReadState.authorized?{ok:true,context:rl10ReadState.context}:
+      {ok:false,code:"FORBIDDEN_OR_NOT_FOUND"}),
+  isAuthorizedResearchPassportReadContext:vi.fn((context:unknown)=>
+    context===rl10ReadState.context && rl10ReadState.authorized),
+}));
+vi.mock("../lib/investing/authority/transport",()=>({
+  getInvestingAuthorityDatabase:vi.fn(()=>rl10ReadState.database),
+}));
 import {
   canonicalSha256HexV1,
   i5ResearchInternalCanonicalJsonBytesV1,
@@ -806,6 +824,77 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
   }, 240_000);
 
   afterAll(async () => { await behaviorPool?.end(); });
+
+  it("RL-10 reads RL-8 persisted promotion chain via owner-scope and investing_app, denying foreign roots", async () => {
+    const setup=await behaviorPool.connect();
+    try {
+      const history=await createRl8c3Leaf(setup,"PROMOTION_ELIGIBLE","rl10-authorized-chain");
+      const ctx={
+        actorKind:"USER_PRINCIPAL",
+        actorId:"pg17-authorized-rl10",
+        principalId:history.fixture.principalId,
+        tenantId:history.fixture.tenantId,
+        tenantMembershipId:history.fixture.tenantMembershipId,
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        operationScope:"TENANT_SCOPE",
+        sourceContext:"PURE_RESEARCH",
+      };
+      rl10ReadState.authorized=true;
+      rl10ReadState.context=ctx;
+      rl10ReadState.database={
+        connect:async()=>{
+          const real=await behaviorPool.connect();
+          return {
+            query:async(sql:string,params?:readonly unknown[])=>{
+              if (sql==="begin") {
+                const result=await real.query("begin");
+                await real.query("set local role investing_app");
+                return result;
+              }
+              return real.query(sql,params as unknown[]);
+            },
+            release:(destroy?:boolean)=>real.release(destroy),
+          };
+        },
+      };
+      const read=await readScientificPromotionChainForCurrentUserV1({
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:history.rootId,
+        correlationId:"rl10-pg17-promotion-history",
+      });
+      expect(read.ok).toBe(true);
+      if(!read.ok) throw Error("RL-10 persisted RL-8 chain was not readable through investing_app");
+      expect(read.chain).toMatchObject({
+        schemaVersion:"RL10_PROMOTION_CHAIN_READ_V1",
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:history.rootId,
+        scientificState:"PROMOTION_ELIGIBLE",
+        executionAuthority:"NONE",
+        newPromotionEvaluation:"NOT_PERFORMED",
+      });
+      expect(read.chain.historicalTransitionCount).toBeGreaterThan(0);
+
+      const foreign=await createRl8c3Leaf(setup,"EXECUTED","rl10-foreign-chain");
+      const cross=await readScientificPromotionChainForCurrentUserV1({
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:foreign.rootId,
+        correlationId:"rl10-pg17-promotion-foreign",
+      });
+      expect(cross).toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+      rl10ReadState.authorized=false;
+      const denied=await readScientificPromotionChainForCurrentUserV1({
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:history.rootId,
+        correlationId:"rl10-pg17-promotion-denied",
+      });
+      expect(denied).toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+    } finally {
+      rl10ReadState.authorized=true;
+      rl10ReadState.context=null;
+      rl10ReadState.database=null;
+      setup.release();
+    }
+  }, 180_000);
 
   for (const state of ["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"] as const) {
     it(`REAL PG17 valid edge ${state} to SUPERSEDED`, async () => {
