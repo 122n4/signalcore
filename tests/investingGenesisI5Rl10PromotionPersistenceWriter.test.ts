@@ -32,7 +32,7 @@ function fixture(withClosure=false){
     kind:"AUTHORITATIVE_PLAN",
     stageA:{transition:stage,transitionRef:{hashHex:stageHash}},
     closure:withClosure?{transition:closure,transitionRef:{hashHex:closureHash}}:null,
-  } as unknown as ScientificPromotionEvaluationPlanV1;
+  } as unknown as Extract<ScientificPromotionEvaluationPlanV1,{kind:"AUTHORITATIVE_PLAN"}>;
   const queries:{sql:string;params:readonly unknown[]}[]=[];
   let writeStatus="CREATED",badChain=false,badReceipt=false;
   const client={
