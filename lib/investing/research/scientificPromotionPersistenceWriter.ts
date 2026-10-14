@@ -53,7 +53,7 @@ export async function persistScientificPromotionPlanV1(
      plan.stageA.transitionRef.hashHex!==hashScientificPromotionTransitionV1(stage).hashHex)
     throw Error("PROMOTION_PLAN_LINEAGE_INVALID");
   assertScientificPromotionPredecessorRelationV1({predecessor,transition:stage});
-  if((stage.resultingState==="INSUFFICIENT_EVIDENCE")!==(closure===null))
+  if(closure===null)
     throw Error("PROMOTION_CLOSURE_MISMATCH");
   if(closure){
     if(!plan.closure||plan.closure.transitionRef.hashHex!==hashScientificPromotionTransitionV1(closure).hashHex)
