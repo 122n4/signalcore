@@ -863,7 +863,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         correlationId:"rl10-pg17-promotion-history",
       });
       expect(read.ok).toBe(true);
-      if(!read.ok) throw Error("RL-10 persisted RL-8 chain was not readable through investing_app");
+      if(!read.ok || !("chain" in read)) throw Error("RL-10 persisted RL-8 chain was not readable through investing_app");
       expect(read.chain).toMatchObject({
         schemaVersion:"RL10_PROMOTION_CHAIN_READ_V1",
         researchInvestigationId:history.fixture.researchInvestigationId,
