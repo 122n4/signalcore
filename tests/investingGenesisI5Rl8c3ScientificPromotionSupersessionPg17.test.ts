@@ -1094,6 +1094,76 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     }
   },180_000);
 
+  it("RL-10 rolls back both scientific transitions when the post-write RL-8C3 proof is corrupt or unavailable",async()=>{
+    const setup=await behaviorPool.connect();
+    const retry=await behaviorPool.connect();
+    try{
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        setup,"rl10-postwrite-proof-failure");
+      const stage=stageATransition();
+      const closure=closureTransition(stage);
+      const plan={
+        kind:"AUTHORITATIVE_PLAN",
+        stageA:{transition:stage,transitionRef:hashScientificPromotionTransitionV1(stage)},
+        closure:{transition:closure,transitionRef:hashScientificPromotionTransitionV1(closure)},
+      } satisfies ScientificPromotionEvaluationPlanV1;
+      const count=async()=>(await setup.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId],
+      )).rows[0]!.n;
+      expect(await count()).toBe(1);
+
+      for(const failure of ["CORRUPT_CHAIN","READ_UNAVAILABLE"] as const){
+        await retry.query("begin");
+        try{
+          await setRl8Context(retry,fixture,
+            "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+          await retry.query("set local role investing_app");
+          const failingClient={
+            query:async <Row=Record<string,unknown>>(sql:string,params:readonly unknown[]=[])=>{
+              const result=await retry.query<Row>(sql,params as unknown[]);
+              if(sql.includes("reconstruct_research_scientific_promotion_chain_v1")){
+                if(failure==="READ_UNAVAILABLE")throw Error("SIMULATED_CONNECTION_READ_FAILURE");
+                return {rows:[{result:{status:"CORRUPT_HISTORY",rootTransitionIdentityId:rootId}}]};
+              }
+              return result;
+            },
+          } as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0];
+          await expect(persistScientificPromotionPlanV1(
+            failingClient,rootId,rootPayload,plan,
+          )).rejects.toThrow(failure==="CORRUPT_CHAIN"?
+            "PROMOTION_POSTWRITE_CHAIN_INVALID":"SIMULATED_CONNECTION_READ_FAILURE");
+        }finally{
+          await retry.query("rollback");
+        }
+        // A writer success followed by an invalid/unavailable read is NOT
+        // allowed to commit any Stage-A or closure. Read with another client.
+        expect(await count()).toBe(1);
+      }
+
+      await retry.query("begin");
+      try{
+        await setRl8Context(retry,fixture,
+          "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await retry.query("set local role investing_app");
+        const successful=await persistScientificPromotionPlanV1(
+          retry as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+        expect(successful.status).toBe("CREATED");
+        await retry.query("commit");
+      }catch(error){
+        await retry.query("rollback").catch(()=>undefined);
+        throw error;
+      }
+      expect(await count()).toBe(3);
+    }finally{
+      await setup.query("rollback").catch(()=>undefined);
+      await retry.query("rollback").catch(()=>undefined);
+      setup.release();
+      retry.release();
+    }
+  },180_000);
+
   it("REAL PG17 replay returns CREATED then REUSED_IDENTICAL and blocks divergent second successor", async () => {
     const client = await behaviorPool.connect();
     try {
