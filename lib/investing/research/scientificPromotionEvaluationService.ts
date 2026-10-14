@@ -158,7 +158,7 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       x.researchValidationProtocolIdentityId===input.researchValidationProtocolIdentityId &&
       x.researchExperimentId===exp.researchExperimentId));
     if(ep.state!=="AGGREGATE_AVAILABLE"||!ep.aggregate)
-      return {ok:false as const,code:"CAPABILITY_UNAVAILABLE" as const};
+      throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
 
     const validationProtocol=exactlyOne((await client.query<DbRow>(
       "select hash_hex,canonical_payload from investing.research_validation_protocols_scientific_identities where research_validation_protocol_identity_id=$1 and research_investigation_id=$2 and tenant_id=$3 and principal_id=$4 and tenant_membership_id=$5",
@@ -205,8 +205,10 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       stageAHashHex:plan.stageA.transitionRef.hashHex,
       closureHashHex:plan.closure?.transitionRef.hashHex??null,
       persisted:false as const,executionAuthority:"NONE" as const};
-  } catch {
+  } catch (error) {
     if(client){try{await client.query("rollback");}catch{destroy=true;}}
-    return {ok:false as const,code:"INTERNAL_ERROR" as const};
+    return {ok:false as const,code:
+      error instanceof Error && error.message==="PROMOTION_EVIDENCE_UNAVAILABLE"
+        ? "CAPABILITY_UNAVAILABLE" as const : "INTERNAL_ERROR" as const};
   } finally {if(client)await client.release(destroy);}
 }

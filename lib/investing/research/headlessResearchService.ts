@@ -143,8 +143,6 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
   }
   if (typeof data.researchInvestigationId !== "string" ||
       !uuid.test(data.researchInvestigationId)) return null;
-  if (fields[operation].includes("researchValidationProtocolIdentityId") &&
-      (typeof data.researchValidationProtocolIdentityId !== "string" || !uuid.test(data.researchValidationProtocolIdentityId))) return null;
   if (fields[operation].includes("rootTransitionIdentityId") &&
       (typeof data.rootTransitionIdentityId !== "string" || !uuid.test(data.rootTransitionIdentityId))) return null;
   if (fields[operation].includes("researchExperimentId") &&
