@@ -102,7 +102,7 @@ function fixture(){
   } as unknown as ResearchPassportV1;
   const rows: {protocol_hash_hex:string;protocol_payload:unknown;result_hash_hex:string|null;result_payload:unknown|null}[]=[{
     protocol_hash_hex:protocolHash,protocol_payload:protocol,
-    result_hash_hex:resultHash,result_payload:result,
+    result_hash_hex:resultHash,result_payload:canonicalExperimentComparisonResultV1(result),
   }];
   const calls:{sql:string;params:readonly unknown[]}[]=[];
   const queryState={throwRead:false};
