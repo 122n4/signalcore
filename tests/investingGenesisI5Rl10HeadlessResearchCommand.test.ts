@@ -12,6 +12,8 @@ vi.mock("../lib/investing/research/experimentBaselineService",()=>({createExperi
 vi.mock("../lib/investing/research/experimentVariantService",()=>({createExperimentVariantForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchPassportService",()=>({readResearchPassportServiceV1:vi.fn()}));
 vi.mock("../lib/investing/research/runInputScientificService",()=>({createScientificRunInputForCurrentUserV1:vi.fn()}));
+vi.mock("../lib/investing/research/researchExecutionService",()=>({executeResearchRunCommandV1:vi.fn()}));
+vi.mock("../lib/investing/research/serverDatasetMaterialProvider",()=>({createServerDatasetMaterialProviderV1:vi.fn()}));
 vi.mock("../lib/investing/research/validationExecutionService",()=>({createValidationProtocolCommandV1:vi.fn()}));
 vi.mock("../lib/investing/research/validationAggregateService",()=>({finalizeValidationResultCommandV1:vi.fn()}));
 vi.mock("../lib/investing/research/validationAssessmentService",()=>({
@@ -33,6 +35,8 @@ import { createExperimentBaselineForCurrentUserV1 } from "../lib/investing/resea
 import { createExperimentVariantForCurrentUserV1 } from "../lib/investing/research/experimentVariantService";
 import { readResearchPassportServiceV1 } from "../lib/investing/research/researchPassportService";
 import { createScientificRunInputForCurrentUserV1 } from "../lib/investing/research/runInputScientificService";
+import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
+import { createServerDatasetMaterialProviderV1 } from "../lib/investing/research/serverDatasetMaterialProvider";
 import { createValidationProtocolCommandV1 } from "../lib/investing/research/validationExecutionService";
 import { finalizeValidationResultCommandV1 } from "../lib/investing/research/validationAggregateService";
 import {
@@ -56,12 +60,14 @@ const all: Record<string, ReturnType<typeof vi.fn>> = {
   CREATE_BASELINE_EXPERIMENT: vi.mocked(createExperimentBaselineForCurrentUserV1),
   CREATE_VARIANT_EXPERIMENT: vi.mocked(createExperimentVariantForCurrentUserV1),
   CREATE_RUN_INPUT: vi.mocked(createScientificRunInputForCurrentUserV1),
+  EXECUTE_RUN: vi.mocked(executeResearchRunCommandV1),
   CREATE_VALIDATION_PROTOCOL: vi.mocked(createValidationProtocolCommandV1),
   FINALIZE_VALIDATION_RESULT: vi.mocked(finalizeValidationResultCommandV1),
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: vi.mocked(createValidationAssessmentProtocolCommandV1),
   FINALIZE_VALIDATION_ASSESSMENT: vi.mocked(finalizeValidationAssessmentResultCommandV1),
   READ_PASSPORT: vi.mocked(readResearchPassportServiceV1),
 };
+const provider = Object.freeze({loadSeriesContent:vi.fn()});
 const commands: Record<string, Record<string,unknown>> = {
   CREATE_INVESTIGATION: {sourceContext:"PURE_RESEARCH",tenantId:id,correlationId,idempotencyKey},
   CREATE_DRAFT: {...basis,draft:{schemaVersion:"DRAFT_V1"}},
@@ -72,6 +78,7 @@ const commands: Record<string, Record<string,unknown>> = {
   CREATE_BASELINE_EXPERIMENT: {...basis,expectedPointers:pointer,experiment:{schemaVersion:"EXPERIMENT_V1"}},
   CREATE_VARIANT_EXPERIMENT: {...basis,expectedPointers:pointer,experiment:{schemaVersion:"EXPERIMENT_V1"}},
   CREATE_RUN_INPUT: {researchInvestigationId:id,researchExperimentId:id,correlationId,candidate:{schemaVersion:"RUN_INPUT_V1"}},
+  EXECUTE_RUN: {researchInvestigationId:id,runInputIdentityId:id,correlationId},
   CREATE_VALIDATION_PROTOCOL: {researchInvestigationId:id,researchExperimentId:id,correlationId,candidate:{schemaVersion:"VALIDATION_PROTOCOL_V1"}},
   FINALIZE_VALIDATION_RESULT: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId},
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId,protocol:{schemaVersion:"VALIDATION_ASSESSMENT_PROTOCOL_V1"}},
@@ -84,6 +91,7 @@ function input(operation:string,command:unknown = commands[operation]) {
 function totalCalls(){return Object.values(all).reduce((n,m)=>n+m.mock.calls.length,0);}
 beforeEach(()=>{
   vi.resetAllMocks();
+  vi.mocked(createServerDatasetMaterialProviderV1).mockReturnValue(provider);
   for(const fn of Object.values(all)) fn.mockResolvedValue({ok:true, identity:id});
 });
 
@@ -99,7 +107,8 @@ describe("RL-10 headless Investing Research entry point",()=>{
     expect(totalCalls()).toBe(1);
     expect(all[operation]).toHaveBeenCalledOnce();
     const received=all[operation]!.mock.calls[0]![0] as Record<string,unknown>;
-    expect(received).toEqual(commands[operation]);
+    expect(received).toEqual(operation === "EXECUTE_RUN"
+      ? {...commands[operation],datasetMaterialProvider:provider} : commands[operation]);
     expect(received).not.toHaveProperty("authorizedContext");
     expect(received).not.toHaveProperty("database");
   });
@@ -133,7 +142,7 @@ describe("RL-10 headless Investing Research entry point",()=>{
   it("never exposes Vault or unverified execution routes, even for a valid payload",async()=>{
     for(const op of [
       "BLIND_TRUTH_REGISTER","BLIND_TRUTH_REVEAL","BLIND_TRUTH_EVALUATE",
-      "EXECUTE_RUN","EXECUTE_VALIDATION_CHILD",
+      "EXECUTE_VALIDATION_CHILD",
     ]){
       expect(await executeHeadlessResearchCommandV1(input(op,{...basis})))
         .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
@@ -206,14 +215,15 @@ describe("RL-10 headless Investing Research entry point",()=>{
 
   it("rejects authority injection, invalid scientific IDs and extra idempotency fields for new owner-bound services",async()=>{
     for(const op of [
-      "CREATE_RUN_INPUT","CREATE_VALIDATION_PROTOCOL","FINALIZE_VALIDATION_RESULT",
+      "CREATE_RUN_INPUT","EXECUTE_RUN","CREATE_VALIDATION_PROTOCOL","FINALIZE_VALIDATION_RESULT",
       "CREATE_VALIDATION_ASSESSMENT_PROTOCOL","FINALIZE_VALIDATION_ASSESSMENT",
     ]){
       expect(await executeHeadlessResearchCommandV1(input(op,{...commands[op],idempotencyKey})))
         .toEqual({ok:false,code:"VALIDATION_ERROR"});
       expect(await executeHeadlessResearchCommandV1(input(op,{...commands[op],researchInvestigationId:"invalid"})))
         .toEqual({ok:false,code:"VALIDATION_ERROR"});
-      const selector = op === "CREATE_RUN_INPUT" || op === "CREATE_VALIDATION_PROTOCOL"
+      const selector = op === "EXECUTE_RUN" ? "runInputIdentityId"
+        : op === "CREATE_RUN_INPUT" || op === "CREATE_VALIDATION_PROTOCOL"
         ? "researchExperimentId" : "researchValidationProtocolIdentityId";
       expect(await executeHeadlessResearchCommandV1(input(op,{...commands[op],[selector]:"invalid"})))
         .toEqual({ok:false,code:"VALIDATION_ERROR"});
@@ -221,6 +231,19 @@ describe("RL-10 headless Investing Research entry point",()=>{
     expect(totalCalls()).toBe(0);
   });
 
+  it("does not invoke execution when the server material directory is unavailable",async()=>{
+    vi.mocked(createServerDatasetMaterialProviderV1).mockReturnValueOnce(null);
+    expect(await executeHeadlessResearchCommandV1(input("EXECUTE_RUN")))
+      .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
+    expect(totalCalls()).toBe(0);
+  });
+  it("rejects client-injected file roots and providers for execution",async()=>{
+    for(const extra of [{directory:"/tmp"}, {datasetMaterialProvider:provider}, {provider:"api"}, {legacyResearchIrProof:{}}]){
+      expect(await executeHeadlessResearchCommandV1(input("EXECUTE_RUN",{...commands.EXECUTE_RUN,...extra})))
+        .toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
+    expect(totalCalls()).toBe(0);
+  });
   it("retains stable failure codes for existing validation owner writers",async()=>{
     vi.mocked(finalizeValidationResultCommandV1).mockResolvedValueOnce({
       ok:false,code:"VALIDATION_RESULT_CONCURRENT_CONFLICT",

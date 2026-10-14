@@ -19,6 +19,8 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "./researchSpecRevisi
 import { createExperimentBaselineForCurrentUserV1 } from "./experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "./experimentVariantService";
 import { readResearchPassportServiceV1 } from "./researchPassportService";
+import { executeResearchRunCommandV1 } from "./researchExecutionService";
+import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
 import { createScientificRunInputForCurrentUserV1 } from "./runInputScientificService";
 import { createValidationProtocolCommandV1 } from "./validationExecutionService";
 import { finalizeValidationResultCommandV1 } from "./validationAggregateService";
@@ -36,6 +38,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "CREATE_BASELINE_EXPERIMENT",
   "CREATE_VARIANT_EXPERIMENT",
   "CREATE_RUN_INPUT",
+  "EXECUTE_RUN",
   "CREATE_VALIDATION_PROTOCOL",
   "FINALIZE_VALIDATION_RESULT",
   "CREATE_VALIDATION_ASSESSMENT_PROTOCOL",
@@ -71,6 +74,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   CREATE_BASELINE_EXPERIMENT: [...common, "expectedPointers", "experiment"],
   CREATE_VARIANT_EXPERIMENT: [...common, "expectedPointers", "experiment"],
   CREATE_RUN_INPUT: ["researchInvestigationId", "researchExperimentId", "correlationId", "candidate"],
+  EXECUTE_RUN: ["researchInvestigationId", "runInputIdentityId", "correlationId"],
   CREATE_VALIDATION_PROTOCOL: ["researchInvestigationId", "researchExperimentId", "correlationId", "candidate"],
   FINALIZE_VALIDATION_RESULT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId", "protocol"],
@@ -124,6 +128,8 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
       !uuid.test(data.researchInvestigationId)) return null;
   if (fields[operation].includes("researchExperimentId") &&
       (typeof data.researchExperimentId !== "string" || !uuid.test(data.researchExperimentId))) return null;
+  if (fields[operation].includes("runInputIdentityId") &&
+      (typeof data.runInputIdentityId !== "string" || !uuid.test(data.runInputIdentityId))) return null;
   if (fields[operation].includes("researchValidationProtocolIdentityId") &&
       (typeof data.researchValidationProtocolIdentityId !== "string" ||
        !uuid.test(data.researchValidationProtocolIdentityId))) return null;
@@ -159,8 +165,7 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
   // Blind Truth remains unavailable. No synthetic Vault transport, issuer or
   // embargo-evasive execution gets wired into this command path.
   if (envelope.operation.startsWith("BLIND_TRUTH_") ||
-      envelope.operation === "EXECUTE_RUN" ||
-      envelope.operation === "EXECUTE_VALIDATION_CHILD") {
+      envelope.operation === "EXECUTE_VALIDATION_CHILD" ) {
     return { ok: false, code: "CAPABILITY_UNAVAILABLE" };
   }
   if (!(headlessResearchCommandOperationsV1 as readonly string[]).includes(envelope.operation)) {
@@ -190,6 +195,17 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
       case "CREATE_RUN_INPUT":
         outcome = await createScientificRunInputForCurrentUserV1(
           command as Parameters<typeof createScientificRunInputForCurrentUserV1>[0]); break;
+      case "EXECUTE_RUN": {
+        const datasetMaterialProvider = createServerDatasetMaterialProviderV1();
+        if (!datasetMaterialProvider) return { ok: false, code: "CAPABILITY_UNAVAILABLE" };
+        outcome = await executeResearchRunCommandV1({
+          researchInvestigationId: command.researchInvestigationId as string,
+          runInputIdentityId: command.runInputIdentityId as string,
+          correlationId: command.correlationId as string,
+          datasetMaterialProvider,
+        });
+        break;
+      }
       case "CREATE_VALIDATION_PROTOCOL":
         outcome = await createValidationProtocolCommandV1(
           command as Parameters<typeof createValidationProtocolCommandV1>[0]); break;
