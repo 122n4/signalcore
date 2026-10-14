@@ -11,6 +11,7 @@ import { hashScientificPromotionProtocolV1, hashScientificPromotionTransitionV1,
 import { evaluateScientificPromotionV1, type ScientificPromotionResolvedEvidenceV1 } from "./scientificPromotionEngine";
 import type { ResearchExecutionEvidenceObjectV1 } from "./evidenceObject";
 import { readPersistedPromotionRobustnessV1 } from "./scientificPromotionRobustnessReader";
+import { persistScientificPromotionPlanV1 } from "./scientificPromotionPersistenceWriter";
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const hex=/^[0-9A-F]{64}$/u;
@@ -58,12 +59,20 @@ function singleEvidenceRow(row:{
  * is promoted to financial recommendation, Paper, or Live authority.
  * Missing/ambiguous evidence returns BLOCKED instead of fabricated gates.
  */
-export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly<{
+type PromotionCommandV1=Readonly<{
   researchInvestigationId:string;
   rootTransitionIdentityId:string;
   researchValidationProtocolIdentityId:string;
   correlationId:string;
-}>) {
+}>;
+
+export function evaluateScientificPromotionForCurrentUserV1(input:PromotionCommandV1){
+  return evaluateOrPersistForCurrentUserV1(input,false);
+}
+export function persistScientificPromotionForCurrentUserV1(input:PromotionCommandV1){
+  return evaluateOrPersistForCurrentUserV1(input,true);
+}
+async function evaluateOrPersistForCurrentUserV1(input:PromotionCommandV1,persist:boolean){
   if(!uuid.test(input.researchInvestigationId)||!uuid.test(input.rootTransitionIdentityId)||
      !uuid.test(input.researchValidationProtocolIdentityId))
     return {ok:false as const,code:"VALIDATION_ERROR" as const};
@@ -255,11 +264,24 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
         payload:ar.canonical_payload as NonNullable<ScientificPromotionResolvedEvidenceV1["validationAssessmentResult"]>["payload"]},
       robustness,
     };
+    // Do not finalize a terminal scientific branch just because an upstream
+    // robustness comparison has not yet been produced.
+    if(persist&&robustness===null)
+      throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
     const plan=evaluateScientificPromotionV1(sources);
-    await client.query("commit");
-    if(plan.kind==="FAIL_CLOSED")
+    if(plan.kind==="FAIL_CLOSED"){
+      await client.query("commit");
       return {ok:true as const,evaluation:"FAIL_CLOSED" as const,reason:plan.reason,
         persisted:false as const,executionAuthority:"NONE" as const};
+    }
+    if(persist){
+      const receipt=await persistScientificPromotionPlanV1(
+        client,input.rootTransitionIdentityId,predecessor,plan);
+      await client.query("commit");
+      return {ok:true as const,evaluation:"SCIENTIFIC_TRANSITIONS_PERSISTED" as const,
+        ...receipt,persisted:true as const,executionAuthority:"NONE" as const};
+    }
+    await client.query("commit");
     return {ok:true as const,evaluation:"SCIENTIFIC_PLAN_ONLY" as const,
       proposedState:plan.closure?.transition.resultingState??plan.stageA.transition.resultingState,
       stageAHashHex:plan.stageA.transitionRef.hashHex,
@@ -269,6 +291,8 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
     if(client){try{await client.query("rollback");}catch{destroy=true;}}
     return {ok:false as const,code:
       error instanceof Error && error.message==="PROMOTION_EVIDENCE_UNAVAILABLE"
-        ? "CAPABILITY_UNAVAILABLE" as const : "INTERNAL_ERROR" as const};
+        ? "CAPABILITY_UNAVAILABLE" as const :
+      error instanceof Error && error.message==="PROMOTION_WRITER_CONFLICT"
+        ? "CONFLICT" as const : "INTERNAL_ERROR" as const};
   } finally {if(client)await client.release(destroy);}
 }
