@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
 import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
 import { readResearchPassportServiceV1 } from "../lib/investing/research/researchPassportService";
+import { executeHeadlessResearchCommandV1 } from "../lib/investing/research/headlessResearchService";
 
 vi.mock("server-only", () => ({}));
 vi.mock("../lib/investing/authority/clerk", () => ({ resolveVerifiedClerkIdentity: vi.fn() }));
@@ -534,6 +535,16 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
       correlationId: "corr-rl2-pg17-read-a",
     });
     expect(first).toEqual(second);
+    const headless = await executeHeadlessResearchCommandV1({
+      schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+      operation: "READ_PASSPORT",
+      command: { researchInvestigationId: ids.investigationA, correlationId: "corr-rl2-pg17-read-a" },
+    });
+    expect(headless).toEqual({
+      ok: true,
+      operation: "READ_PASSPORT",
+      value: first,
+    });
     if (first.ok !== true) {
       const pg = lastPgError as { message?: string; code?: string; detail?: string; table?: string; constraint?: string } | null;
       throw new Error(`tenant passport read failed: ${JSON.stringify({ first, pg })}`);
@@ -601,6 +612,12 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
       correlationId: "corr-rl2-pg17-foreign-investigation",
     });
     expect(foreign).toMatchObject({ ok: false, code: "FORBIDDEN_OR_NOT_FOUND", externalCode: "FORBIDDEN_OR_NOT_FOUND" });
+    const headlessForeign = await executeHeadlessResearchCommandV1({
+      schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+      operation: "READ_PASSPORT",
+      command: { researchInvestigationId: ids.foreignInvestigation, correlationId: "corr-rl2-pg17-foreign-investigation" },
+    });
+    expect(headlessForeign).toEqual({ ok: false, code: "FORBIDDEN_OR_NOT_FOUND" });
     await expect(countVisibleInvestigations({ research_investigation_id: ids.foreignInvestigation })).resolves.toBe(0);
   });
 
