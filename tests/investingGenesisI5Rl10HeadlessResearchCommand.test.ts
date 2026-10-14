@@ -14,7 +14,7 @@ vi.mock("../lib/investing/research/researchPassportService",()=>({readResearchPa
 vi.mock("../lib/investing/research/runRecoveryInspector",()=>({inspectResearchRunRecoveryForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/scientificPromotionHistoryService",()=>({readScientificPromotionChainForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/scientificPromotionRootService",()=>({createScientificPromotionRootForCurrentUserV1:vi.fn()}));
-vi.mock("../lib/investing/research/scientificPromotionEvaluationService",()=>({evaluateScientificPromotionForCurrentUserV1:vi.fn()}));
+vi.mock("../lib/investing/research/scientificPromotionEvaluationService",()=>({evaluateScientificPromotionForCurrentUserV1:vi.fn(),persistScientificPromotionForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/experimentComparisonWriter",()=>({writeExperimentComparisonV1:vi.fn()}));
 vi.mock("../lib/investing/research/runInputScientificService",()=>({createScientificRunInputForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchExecutionService",()=>({executeResearchRunCommandV1:vi.fn()}));
@@ -45,7 +45,7 @@ import { readResearchPassportServiceV1 } from "../lib/investing/research/researc
 import { inspectResearchRunRecoveryForCurrentUserV1 } from "../lib/investing/research/runRecoveryInspector";
 import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
 import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
-import { evaluateScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
+import { evaluateScientificPromotionForCurrentUserV1, persistScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
 import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
 import { createScientificRunInputForCurrentUserV1 } from "../lib/investing/research/runInputScientificService";
 import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
@@ -85,6 +85,7 @@ const all: Record<string, ReturnType<typeof vi.fn>> = {
   READ_PROMOTION_CHAIN: vi.mocked(readScientificPromotionChainForCurrentUserV1),
   CREATE_PROMOTION_ROOT: vi.mocked(createScientificPromotionRootForCurrentUserV1),
   EVALUATE_PROMOTION: vi.mocked(evaluateScientificPromotionForCurrentUserV1),
+  PERSIST_PROMOTION: vi.mocked(persistScientificPromotionForCurrentUserV1),
 };
 const provider = Object.freeze({loadSeriesContent:vi.fn()});
 const comparisonOutput = Object.freeze({
@@ -115,6 +116,7 @@ const commands: Record<string, Record<string,unknown>> = {
   READ_PROMOTION_CHAIN: {researchInvestigationId:id,rootTransitionIdentityId:id,correlationId},
   CREATE_PROMOTION_ROOT: {researchInvestigationId:id,researchExperimentId:id,runInputIdentityId:id,correlationId},
   EVALUATE_PROMOTION: {researchInvestigationId:id,rootTransitionIdentityId:id,researchValidationProtocolIdentityId:id,correlationId},
+  PERSIST_PROMOTION: {researchInvestigationId:id,rootTransitionIdentityId:id,researchValidationProtocolIdentityId:id,correlationId},
 };
 function input(operation:string,command:unknown = commands[operation]) {
   return {schemaVersion:version,operation,command};
@@ -371,6 +373,32 @@ describe("RL-10 headless Investing Research entry point",()=>{
       }))).toEqual({ok:false,code:"VALIDATION_ERROR"});
     }
     expect(totalCalls()).toBe(0);
+  });
+  it("PERSIST_PROMOTION accepts selectors only, never caller-declared scientific authority or transition",async()=>{
+    for(const extra of [
+      {authority:{status:"VERIFIED"}},{evidenceObject:{}},{validationResult:{}},
+      {robustness:{}},{assessmentResult:{}},{database:{}},
+      {proposedState:"PROMOTION_ELIGIBLE"},{plan:{}},{stageA:{}},
+      {tenantId:id},{accountId:id},{brokerAccountId:id},{transition:{}},
+      {forcePersist:true},{commit:true},
+    ]){
+      expect(await executeHeadlessResearchCommandV1(input("PERSIST_PROMOTION",{
+        ...commands.PERSIST_PROMOTION,...extra,
+      }))).toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
+    expect(totalCalls()).toBe(0);
+  });
+  it("PERSIST_PROMOTION routes conflict and unavailable evidence without fabricating success",async()=>{
+    vi.mocked(persistScientificPromotionForCurrentUserV1).mockResolvedValueOnce({
+      ok:false,code:"CONFLICT",
+    } as never);
+    expect(await executeHeadlessResearchCommandV1(input("PERSIST_PROMOTION")))
+      .toEqual({ok:false,code:"CONFLICT"});
+    vi.mocked(persistScientificPromotionForCurrentUserV1).mockResolvedValueOnce({
+      ok:false,code:"CAPABILITY_UNAVAILABLE",
+    } as never);
+    expect(await executeHeadlessResearchCommandV1(input("PERSIST_PROMOTION")))
+      .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
   });
   it("denies caller authority, eligibility, or evidence injection into promotion root",async()=>{
     for(const extra of [{authority:{status:"VERIFIED"}},{tenantId:id},

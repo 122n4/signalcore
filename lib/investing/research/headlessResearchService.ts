@@ -22,7 +22,7 @@ import { readResearchPassportServiceV1 } from "./researchPassportService";
 import { inspectResearchRunRecoveryForCurrentUserV1 } from "./runRecoveryInspector";
 import { readScientificPromotionChainForCurrentUserV1 } from "./scientificPromotionHistoryService";
 import { createScientificPromotionRootForCurrentUserV1 } from "./scientificPromotionRootService";
-import { evaluateScientificPromotionForCurrentUserV1 } from "./scientificPromotionEvaluationService";
+import { evaluateScientificPromotionForCurrentUserV1, persistScientificPromotionForCurrentUserV1 } from "./scientificPromotionEvaluationService";
 import { writeExperimentComparisonV1 } from "./experimentComparisonWriter";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
@@ -55,6 +55,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "READ_PROMOTION_CHAIN",
   "CREATE_PROMOTION_ROOT",
   "EVALUATE_PROMOTION",
+  "PERSIST_PROMOTION",
 ] as const);
 
 export type HeadlessResearchOperationV1 = typeof headlessResearchCommandOperationsV1[number];
@@ -97,6 +98,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   READ_PROMOTION_CHAIN: ["researchInvestigationId", "rootTransitionIdentityId", "correlationId"],
   CREATE_PROMOTION_ROOT: ["researchInvestigationId", "researchExperimentId", "runInputIdentityId", "correlationId"],
   EVALUATE_PROMOTION: ["researchInvestigationId", "rootTransitionIdentityId", "researchValidationProtocolIdentityId", "correlationId"],
+  PERSIST_PROMOTION: ["researchInvestigationId", "rootTransitionIdentityId", "researchValidationProtocolIdentityId", "correlationId"],
 });
 
 type PlainRecord = Record<string, unknown>;
@@ -304,6 +306,13 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
         };
         break;
       }
+      case "PERSIST_PROMOTION":
+        outcome = await persistScientificPromotionForCurrentUserV1({
+          researchInvestigationId:command.researchInvestigationId as string,
+          rootTransitionIdentityId:command.rootTransitionIdentityId as string,
+          researchValidationProtocolIdentityId:command.researchValidationProtocolIdentityId as string,
+          correlationId:command.correlationId as string,
+        }); break;
       case "EVALUATE_PROMOTION":
         outcome = await evaluateScientificPromotionForCurrentUserV1({
           researchInvestigationId:command.researchInvestigationId as string,
