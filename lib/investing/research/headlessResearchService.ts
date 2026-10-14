@@ -19,6 +19,13 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "./researchSpecRevisi
 import { createExperimentBaselineForCurrentUserV1 } from "./experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "./experimentVariantService";
 import { readResearchPassportServiceV1 } from "./researchPassportService";
+import { createScientificRunInputForCurrentUserV1 } from "./runInputScientificService";
+import { createValidationProtocolCommandV1 } from "./validationExecutionService";
+import { finalizeValidationResultCommandV1 } from "./validationAggregateService";
+import {
+  createValidationAssessmentProtocolCommandV1,
+  finalizeValidationAssessmentResultCommandV1,
+} from "./validationAssessmentService";
 
 export const headlessResearchCommandOperationsV1 = Object.freeze([
   "CREATE_INVESTIGATION",
@@ -28,6 +35,11 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "REVISE_SPEC",
   "CREATE_BASELINE_EXPERIMENT",
   "CREATE_VARIANT_EXPERIMENT",
+  "CREATE_RUN_INPUT",
+  "CREATE_VALIDATION_PROTOCOL",
+  "FINALIZE_VALIDATION_RESULT",
+  "CREATE_VALIDATION_ASSESSMENT_PROTOCOL",
+  "FINALIZE_VALIDATION_ASSESSMENT",
   "READ_PASSPORT",
 ] as const);
 
@@ -58,6 +70,11 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   REVISE_SPEC: [...common, "expectedRoot", "expectedPointers", "sourceDraftRevisionId", "hypothesisRevisionId", "spec"],
   CREATE_BASELINE_EXPERIMENT: [...common, "expectedPointers", "experiment"],
   CREATE_VARIANT_EXPERIMENT: [...common, "expectedPointers", "experiment"],
+  CREATE_RUN_INPUT: ["researchInvestigationId", "researchExperimentId", "correlationId", "candidate"],
+  CREATE_VALIDATION_PROTOCOL: ["researchInvestigationId", "researchExperimentId", "correlationId", "candidate"],
+  FINALIZE_VALIDATION_RESULT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
+  CREATE_VALIDATION_ASSESSMENT_PROTOCOL: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId", "protocol"],
+  FINALIZE_VALIDATION_ASSESSMENT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
   READ_PASSPORT: ["researchInvestigationId", "correlationId"],
 });
 
@@ -89,7 +106,10 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
     strictDataRecord(input, ["sourceContext", "accountId", "idempotencyKey", "correlationId"]);
   const data = alternate || strictDataRecord(input, fields[operation]);
   if (!data || typeof data.correlationId !== "string" || !tag.test(data.correlationId)) return null;
-  if (operation !== "READ_PASSPORT" &&
+  // Not every accepted writer has an idempotencyKey field. RunInputs and
+  // validation identities derive replay/concurrency semantics from scientific
+  // identity in their existing authorized persistence paths.
+  if (fields[operation].includes("idempotencyKey") &&
       (typeof data.idempotencyKey !== "string" || !tag.test(data.idempotencyKey))) return null;
   if (operation === "CREATE_INVESTIGATION") {
     const scope = data.sourceContext;
@@ -102,6 +122,11 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
   }
   if (typeof data.researchInvestigationId !== "string" ||
       !uuid.test(data.researchInvestigationId)) return null;
+  if (fields[operation].includes("researchExperimentId") &&
+      (typeof data.researchExperimentId !== "string" || !uuid.test(data.researchExperimentId))) return null;
+  if (fields[operation].includes("researchValidationProtocolIdentityId") &&
+      (typeof data.researchValidationProtocolIdentityId !== "string" ||
+       !uuid.test(data.researchValidationProtocolIdentityId))) return null;
   // Existing services verify canonical scientific material, expected pointers,
   // idempotency, tenant/account authority and operation-specific invariants.
   // This entry point never accepts transport, SQL clients or trusted contexts.
@@ -114,7 +139,8 @@ function failureCode(code: unknown): HeadlessResearchFailureCodeV1 {
   if (code === "FORBIDDEN_OR_NOT_FOUND" || code === "FORBIDDEN" ||
       code === "NOT_FOUND") return "FORBIDDEN_OR_NOT_FOUND";
   if (code === "CONFLICT" || code === "IDEMPOTENCY_CONFLICT" ||
-      code === "MATERIAL_CONFLICT") return "CONFLICT";
+      code === "MATERIAL_CONFLICT" || code === "VALIDATION_RESULT_CONFLICT" ||
+      code === "VALIDATION_RESULT_CONCURRENT_CONFLICT") return "CONFLICT";
   // Internal scientific integrity, DB or writer failure never exposes records
   // or pretends to be a successful research outcome.
   return "INTERNAL_ERROR";
@@ -161,6 +187,21 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
         outcome = await createExperimentBaselineForCurrentUserV1(command); break;
       case "CREATE_VARIANT_EXPERIMENT":
         outcome = await createExperimentVariantForCurrentUserV1(command); break;
+      case "CREATE_RUN_INPUT":
+        outcome = await createScientificRunInputForCurrentUserV1(
+          command as Parameters<typeof createScientificRunInputForCurrentUserV1>[0]); break;
+      case "CREATE_VALIDATION_PROTOCOL":
+        outcome = await createValidationProtocolCommandV1(
+          command as Parameters<typeof createValidationProtocolCommandV1>[0]); break;
+      case "FINALIZE_VALIDATION_RESULT":
+        outcome = await finalizeValidationResultCommandV1(
+          command as Parameters<typeof finalizeValidationResultCommandV1>[0]); break;
+      case "CREATE_VALIDATION_ASSESSMENT_PROTOCOL":
+        outcome = await createValidationAssessmentProtocolCommandV1(
+          command as Parameters<typeof createValidationAssessmentProtocolCommandV1>[0]); break;
+      case "FINALIZE_VALIDATION_ASSESSMENT":
+        outcome = await finalizeValidationAssessmentResultCommandV1(
+          command as Parameters<typeof finalizeValidationAssessmentResultCommandV1>[0]); break;
       case "READ_PASSPORT":
         outcome = await readResearchPassportServiceV1({
           researchInvestigationId: command.researchInvestigationId as string,

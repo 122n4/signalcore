@@ -11,6 +11,13 @@ vi.mock("../lib/investing/research/researchSpecRevisionService",()=>({createRese
 vi.mock("../lib/investing/research/experimentBaselineService",()=>({createExperimentBaselineForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/experimentVariantService",()=>({createExperimentVariantForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchPassportService",()=>({readResearchPassportServiceV1:vi.fn()}));
+vi.mock("../lib/investing/research/runInputScientificService",()=>({createScientificRunInputForCurrentUserV1:vi.fn()}));
+vi.mock("../lib/investing/research/validationExecutionService",()=>({createValidationProtocolCommandV1:vi.fn()}));
+vi.mock("../lib/investing/research/validationAggregateService",()=>({finalizeValidationResultCommandV1:vi.fn()}));
+vi.mock("../lib/investing/research/validationAssessmentService",()=>({
+  createValidationAssessmentProtocolCommandV1:vi.fn(),
+  finalizeValidationAssessmentResultCommandV1:vi.fn(),
+}));
 
 import {
   executeHeadlessResearchCommandV1, headlessResearchCommandOperationsV1,
@@ -25,6 +32,13 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "../lib/investing/res
 import { createExperimentBaselineForCurrentUserV1 } from "../lib/investing/research/experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "../lib/investing/research/experimentVariantService";
 import { readResearchPassportServiceV1 } from "../lib/investing/research/researchPassportService";
+import { createScientificRunInputForCurrentUserV1 } from "../lib/investing/research/runInputScientificService";
+import { createValidationProtocolCommandV1 } from "../lib/investing/research/validationExecutionService";
+import { finalizeValidationResultCommandV1 } from "../lib/investing/research/validationAggregateService";
+import {
+  createValidationAssessmentProtocolCommandV1,
+  finalizeValidationAssessmentResultCommandV1,
+} from "../lib/investing/research/validationAssessmentService";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const version = "RL10_HEADLESS_RESEARCH_COMMAND_V1";
@@ -41,6 +55,11 @@ const all: Record<string, ReturnType<typeof vi.fn>> = {
   REVISE_SPEC: vi.mocked(createResearchSpecRevisionForCurrentUserV1),
   CREATE_BASELINE_EXPERIMENT: vi.mocked(createExperimentBaselineForCurrentUserV1),
   CREATE_VARIANT_EXPERIMENT: vi.mocked(createExperimentVariantForCurrentUserV1),
+  CREATE_RUN_INPUT: vi.mocked(createScientificRunInputForCurrentUserV1),
+  CREATE_VALIDATION_PROTOCOL: vi.mocked(createValidationProtocolCommandV1),
+  FINALIZE_VALIDATION_RESULT: vi.mocked(finalizeValidationResultCommandV1),
+  CREATE_VALIDATION_ASSESSMENT_PROTOCOL: vi.mocked(createValidationAssessmentProtocolCommandV1),
+  FINALIZE_VALIDATION_ASSESSMENT: vi.mocked(finalizeValidationAssessmentResultCommandV1),
   READ_PASSPORT: vi.mocked(readResearchPassportServiceV1),
 };
 const commands: Record<string, Record<string,unknown>> = {
@@ -52,6 +71,11 @@ const commands: Record<string, Record<string,unknown>> = {
     hypothesisRevisionId:null,spec:{schemaVersion:"SPEC_V1"}},
   CREATE_BASELINE_EXPERIMENT: {...basis,expectedPointers:pointer,experiment:{schemaVersion:"EXPERIMENT_V1"}},
   CREATE_VARIANT_EXPERIMENT: {...basis,expectedPointers:pointer,experiment:{schemaVersion:"EXPERIMENT_V1"}},
+  CREATE_RUN_INPUT: {researchInvestigationId:id,researchExperimentId:id,correlationId,candidate:{schemaVersion:"RUN_INPUT_V1"}},
+  CREATE_VALIDATION_PROTOCOL: {researchInvestigationId:id,researchExperimentId:id,correlationId,candidate:{schemaVersion:"VALIDATION_PROTOCOL_V1"}},
+  FINALIZE_VALIDATION_RESULT: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId},
+  CREATE_VALIDATION_ASSESSMENT_PROTOCOL: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId,protocol:{schemaVersion:"VALIDATION_ASSESSMENT_PROTOCOL_V1"}},
+  FINALIZE_VALIDATION_ASSESSMENT: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId},
   READ_PASSPORT: {researchInvestigationId:id,correlationId},
 };
 function input(operation:string,command:unknown = commands[operation]) {
@@ -178,6 +202,36 @@ describe("RL-10 headless Investing Research entry point",()=>{
     vi.mocked(createResearchDraftForCurrentUserV1).mockResolvedValueOnce({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"} as never);
     expect(await executeHeadlessResearchCommandV1(input("CREATE_DRAFT")))
       .toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+  });
+
+  it("rejects authority injection, invalid scientific IDs and extra idempotency fields for new owner-bound services",async()=>{
+    for(const op of [
+      "CREATE_RUN_INPUT","CREATE_VALIDATION_PROTOCOL","FINALIZE_VALIDATION_RESULT",
+      "CREATE_VALIDATION_ASSESSMENT_PROTOCOL","FINALIZE_VALIDATION_ASSESSMENT",
+    ]){
+      expect(await executeHeadlessResearchCommandV1(input(op,{...commands[op],idempotencyKey})))
+        .toEqual({ok:false,code:"VALIDATION_ERROR"});
+      expect(await executeHeadlessResearchCommandV1(input(op,{...commands[op],researchInvestigationId:"invalid"})))
+        .toEqual({ok:false,code:"VALIDATION_ERROR"});
+      const selector = op === "CREATE_RUN_INPUT" || op === "CREATE_VALIDATION_PROTOCOL"
+        ? "researchExperimentId" : "researchValidationProtocolIdentityId";
+      expect(await executeHeadlessResearchCommandV1(input(op,{...commands[op],[selector]:"invalid"})))
+        .toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
+    expect(totalCalls()).toBe(0);
+  });
+
+  it("retains stable failure codes for existing validation owner writers",async()=>{
+    vi.mocked(finalizeValidationResultCommandV1).mockResolvedValueOnce({
+      ok:false,code:"VALIDATION_RESULT_CONCURRENT_CONFLICT",
+    } as never);
+    expect(await executeHeadlessResearchCommandV1(input("FINALIZE_VALIDATION_RESULT")))
+      .toEqual({ok:false,code:"CONFLICT"});
+    vi.mocked(createValidationProtocolCommandV1).mockResolvedValueOnce({
+      ok:false,code:"UNAVAILABLE",
+    } as never);
+    expect(await executeHeadlessResearchCommandV1(input("CREATE_VALIDATION_PROTOCOL")))
+      .toEqual({ok:false,code:"INTERNAL_ERROR"});
   });
 
   it("reuses the actual service idempotency authority rather than inventing a cross-command transaction",async()=>{
