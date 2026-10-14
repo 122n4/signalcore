@@ -6,6 +6,7 @@ const data=vi.hoisted(()=>({
   transport:"investing_app",
   readFailure:false,
   passport:{} as Record<string,unknown>,
+  chainResult:null as unknown,
   connections:0,
   queries:[] as readonly {sql:string;params?:readonly unknown[]}[],
   releases:0,
@@ -38,7 +39,7 @@ vi.mock("../lib/investing/authority/transport",()=>({
           if(sql.includes("select m.tenant_membership_id"))
             return {rows:[{tenant_membership_id:"66666666-6666-4666-8666-666666666666"}]};
           if(sql.includes("reconstruct_research_scientific_promotion_chain_v1"))
-            return {rows:[{result:{status:"CORRUPT_HISTORY",rootTransitionIdentityId:"22222222-2222-4222-8222-222222222222"}}]};
+            return {rows:[{result:data.chainResult??{status:"CORRUPT_HISTORY",rootTransitionIdentityId:"22222222-2222-4222-8222-222222222222"}}]};
           return {rows:[]};
         },
         release:async()=>{data.releases++;},
@@ -47,13 +48,15 @@ vi.mock("../lib/investing/authority/transport",()=>({
   })),
 }));
 import {evaluateScientificPromotionForCurrentUserV1} from "../lib/investing/research/scientificPromotionEvaluationService";
+import {hashRefV1} from "../lib/investing/research/canonical";
+import {hashScientificPromotionProtocolV1,hashScientificPromotionTransitionV1,type ScientificPromotionTransitionV1} from "../lib/investing/research/scientificPromotion";
 
 const inputs={researchInvestigationId:"11111111-1111-4111-8111-111111111111",
  rootTransitionIdentityId:"22222222-2222-4222-8222-222222222222",
  researchValidationProtocolIdentityId:"33333333-3333-4333-8333-333333333333",
  correlationId:"rl10-evaluate-test"};
 beforeEach(()=>{
- data.authority=true;data.scope="PURE_RESEARCH";data.transport="investing_app";
+ data.authority=true;data.scope="PURE_RESEARCH";data.transport="investing_app";data.chainResult=null;
  data.readFailure=false;data.connections=0;data.queries=[];data.releases=0;
  data.passport={
    transportProof:{currentUser:"investing_app",currentRole:"investing_app"},
@@ -97,6 +100,60 @@ describe("RL-10 persisted-only, no-write promotion evaluation",()=>{
    expect(await evaluateScientificPromotionForCurrentUserV1(inputs))
      .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
    expect(data.connections).toBe(0);
+ });
+ it("matches only a scientific root hash from authorized Passport, without direct RL-8 table SELECT",async()=>{
+   const mk=(domain:string,c:string)=>hashRefV1({
+     hashAlgorithm:"SHA-256",hashDomain:domain as "SYNTRAKE:EXPERIMENT:V1",
+     hashVersion:"SYNTRAKE_SHA256_V1",hashHex:c.repeat(64),
+   });
+   const experiment=mk("SYNTRAKE:EXPERIMENT:V1","A");
+   const parameters=mk("SYNTRAKE:EXPERIMENT_PARAMETERS:V1","B");
+   const ir=mk("SYNTRAKE:RESEARCH_IR:V1","C");
+   const run=mk("SYNTRAKE:RUN_INPUT:V1","D");
+   const result=mk("SYNTRAKE:RESULT:V1","E");
+   const predecessor:ScientificPromotionTransitionV1={
+     schemaVersion:"SCIENTIFIC_PROMOTION_TRANSITION_V1",
+     protocol:hashScientificPromotionProtocolV1(),
+     subject:{subjectExperiment:experiment,subjectExperimentParameters:parameters,subjectResearchIr:ir},
+     predecessorTransition:null,predecessorState:"DRAFT_RESEARCH",resultingState:"EXECUTED",
+     evidenceSnapshot:{
+       runInput:run,result,evidenceObject:null,validationProtocol:null,validationResult:null,
+       validationAssessmentProtocol:null,validationAssessmentResult:null,
+       robustnessComparisonProtocol:null,robustnessComparisonResult:null,
+     },
+     gateOutcomes:[],transitionReasons:[],supersedes:null,rejectedTransition:null,supersededByChain:null,
+   };
+   const hash=hashScientificPromotionTransitionV1(predecessor).hashHex;
+   data.chainResult={
+     status:"OK",rootTransitionIdentityId:inputs.rootTransitionIdentityId,
+     activeLeafTransitionIdentityId:inputs.rootTransitionIdentityId,
+     activeLeafTransitionHashHex:hash,activeLeafState:"EXECUTED",
+     traversal:[{transitionIdentityId:inputs.rootTransitionIdentityId,transitionHashHex:hash,resultingState:"EXECUTED"}],
+     crossChainHops:[],
+   };
+   Object.assign(data.passport,{
+     validation:{availability:"AVAILABLE_RL3",episodes:[]},
+     experiments:[{researchExperimentId:"77777777-7777-4777-8777-777777777777",
+       experiment,experimentParameters:parameters,researchIr:ir}],
+     runInputs:[{runInputIdentityId:"88888888-8888-4888-8888-888888888888",
+       researchExperimentId:"77777777-7777-4777-8777-777777777777",
+       runInput:run,experimentHashHex:experiment.hashHex,researchIrHashHex:ir.hashHex,
+       canonicalPayload:{}}],
+     results:[{resultIdentityId:"99999999-9999-4999-8999-999999999999",
+       runInputIdentityId:"88888888-8888-4888-8888-888888888888",result,canonicalPayload:{}}],
+     executionRuns:[{runInputIdentityId:"88888888-8888-4888-8888-888888888888",
+       terminalState:"SUCCEEDED",resultIdentityId:"99999999-9999-4999-8999-999999999999"}],
+     evidence:[{resultIdentityId:"99999999-9999-4999-8999-999999999999",
+       runInputIdentityId:"88888888-8888-4888-8888-888888888888",
+       evidenceIdentityId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",evidence:mk("SYNTRAKE:EVIDENCE_OBJECT:V1","F")}],
+   });
+   // The mock DB has no Evidence content row; execution must fail closed
+   // AFTER matching the hash and reaching the scoped Evidence SELECT.
+   expect(await evaluateScientificPromotionForCurrentUserV1(inputs))
+     .toEqual({ok:false,code:"INTERNAL_ERROR"});
+   expect(data.queries.some(x=>x.sql.includes("from investing.research_evidence_objects_scientific_identities"))).toBe(true);
+   expect(data.queries.some(x=>x.sql.includes("from investing.research_scientific_promotion_transitions_scientific_identities"))).toBe(false);
+   expect(data.queries.some(x=>x.sql==="rollback")).toBe(true);
  });
  it("rolls back a corrupt persisted RL-8 chain without mutation",async()=>{
    data.passport.validation={availability:"AVAILABLE_RL3",episodes:[]};
