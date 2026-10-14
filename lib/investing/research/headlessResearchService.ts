@@ -268,6 +268,17 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
           correlationId: command.correlationId as string,
           sources: command.sources as Parameters<typeof writeExperimentComparisonV1>[0]["sources"],
         });
+        // Do not convert an incomplete or malformed writer result into success.
+        if (!persisted || typeof persisted.protocolIdentityId !== "string" ||
+            !uuid.test(persisted.protocolIdentityId) ||
+            typeof persisted.resultIdentityId !== "string" ||
+            !uuid.test(persisted.resultIdentityId) ||
+            typeof persisted.protocolHash !== "string" ||
+            !/^[0-9A-F]{64}$/u.test(persisted.protocolHash) ||
+            typeof persisted.resultHash !== "string" ||
+            !/^[0-9A-F]{64}$/u.test(persisted.resultHash)) {
+          return { ok: false, code: "INTERNAL_ERROR" };
+        }
         // No unbounded canonical payload bytes or evidence material in the
         // command response: return immutable, persisted identities only.
         outcome = {

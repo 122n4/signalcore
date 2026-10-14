@@ -305,6 +305,19 @@ describe("RL-10 headless Investing Research entry point",()=>{
       .toEqual({ok:false,code:"INTERNAL_ERROR"});
     expect(vi.mocked(writeExperimentComparisonV1)).toHaveBeenCalledOnce();
   });
+  it("fails closed when scientific comparison returns malformed persisted identities",async()=>{
+    for (const malformed of [
+      undefined, null, {},
+      {...comparisonOutput,protocolIdentityId:"invalid"},
+      {...comparisonOutput,resultIdentityId:"invalid"},
+      {...comparisonOutput,protocolHash:"unverified"},
+      {...comparisonOutput,resultHash:"unverified"},
+    ]) {
+      vi.mocked(writeExperimentComparisonV1).mockResolvedValueOnce(malformed as never);
+      expect(await executeHeadlessResearchCommandV1(input("COMPARE_EXPERIMENTS")))
+        .toEqual({ok:false,code:"INTERNAL_ERROR"});
+    }
+  });
   it("retains stable failure codes for existing validation owner writers",async()=>{
     vi.mocked(finalizeValidationResultCommandV1).mockResolvedValueOnce({
       ok:false,code:"VALIDATION_RESULT_CONCURRENT_CONFLICT",
