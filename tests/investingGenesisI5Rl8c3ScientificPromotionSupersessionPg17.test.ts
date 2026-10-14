@@ -1019,6 +1019,81 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     }finally{client.release();}
   },180_000);
 
+  it("RL-10 recovers lost acknowledgement and rolled-back transaction without duplicate scientific transitions",async()=>{
+    const initial=await behaviorPool.connect();
+    const replay=await behaviorPool.connect();
+    try{
+      // Setup is committed independently. These are real PG17 RLS, SQL
+      // writers and reconstruction calls; only the scientific fixture data
+      // and pre-evaluated plan are controlled by the rehearsal.
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        initial,"rl10-interruption-reconciliation");
+      const stage=stageATransition();
+      const closure=closureTransition(stage);
+      const plan={
+        kind:"AUTHORITATIVE_PLAN",
+        stageA:{transition:stage,transitionRef:hashScientificPromotionTransitionV1(stage)},
+        closure:{transition:closure,transitionRef:hashScientificPromotionTransitionV1(closure)},
+      } satisfies ScientificPromotionEvaluationPlanV1;
+      const write=async(client:PoolClient)=>{
+        await setRl8Context(client,fixture,"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        return persistScientificPromotionPlanV1(
+          client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+      };
+      const count=async()=>{
+        const rows=await initial.query<{n:number}>(
+          "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1 and research_experiment_id=$2",
+          [fixture.researchInvestigationId,fixture.researchExperimentId]);
+        return rows.rows[0]!.n;
+      };
+      expect(await count()).toBe(1);
+
+      // Crash before commit: callback appeared successful, but rollback
+      // must erase both Stage-A and closure, including deferred constraints.
+      await initial.query("begin");
+      const rolledBack=await write(initial);
+      expect(rolledBack.status).toBe("CREATED");
+      await initial.query("rollback");
+      expect(await count()).toBe(1);
+
+      // Re-execution after crash creates the same scientific content;
+      // commit atomically and intentionally lose the reply.
+      await initial.query("begin");
+      const committed=await write(initial);
+      expect(committed.status).toBe("CREATED");
+      await initial.query("commit");
+      expect(await count()).toBe(3);
+
+      // A different connection with independent request/context must
+      // reconstruct exact identity/hash and return REUSED, not create.
+      await replay.query("begin");
+      const acknowledged=await write(replay);
+      expect(acknowledged).toEqual({...committed,status:"REUSED_IDENTICAL"});
+      await replay.query("commit");
+      expect(await count()).toBe(3);
+
+      // Ownership loss after commit cannot read or replay the existing
+      // root and cannot modify its immutable transition records.
+      await replay.query("begin");
+      await setRl8Context(replay,{
+        ...fixture,principalId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      },"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+      await replay.query("set local role investing_app");
+      await expect(persistScientificPromotionPlanV1(
+        replay as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+        rootId,rootPayload,plan,
+      )).rejects.toThrow(/AUTHORITY_FAILURE|WRONG_LINEAGE|permission denied/iu);
+      await replay.query("rollback");
+      expect(await count()).toBe(3);
+    }finally{
+      await initial.query("rollback").catch(()=>undefined);
+      await replay.query("rollback").catch(()=>undefined);
+      initial.release();replay.release();
+    }
+  },180_000);
+
   it("REAL PG17 replay returns CREATED then REUSED_IDENTICAL and blocks divergent second successor", async () => {
     const client = await behaviorPool.connect();
     try {
