@@ -88,7 +88,7 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
   const alternate = operation === "CREATE_INVESTIGATION" &&
     strictDataRecord(input, ["sourceContext", "accountId", "idempotencyKey", "correlationId"]);
   const data = alternate || strictDataRecord(input, fields[operation]);
-  if (!data || !tag.test(String(data.correlationId))) return null;
+  if (!data || typeof data.correlationId !== "string" || !tag.test(data.correlationId)) return null;
   if (operation !== "READ_PASSPORT" &&
       (typeof data.idempotencyKey !== "string" || !tag.test(data.idempotencyKey))) return null;
   if (operation === "CREATE_INVESTIGATION") {
