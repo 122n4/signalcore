@@ -11,6 +11,7 @@ vi.mock("../lib/investing/research/researchSpecRevisionService",()=>({createRese
 vi.mock("../lib/investing/research/experimentBaselineService",()=>({createExperimentBaselineForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/experimentVariantService",()=>({createExperimentVariantForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchPassportService",()=>({readResearchPassportServiceV1:vi.fn()}));
+vi.mock("../lib/investing/research/experimentComparisonWriter",()=>({writeExperimentComparisonV1:vi.fn()}));
 vi.mock("../lib/investing/research/runInputScientificService",()=>({createScientificRunInputForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchExecutionService",()=>({executeResearchRunCommandV1:vi.fn()}));
 vi.mock("../lib/investing/research/serverDatasetMaterialProvider",()=>({createServerDatasetMaterialProviderV1:vi.fn()}));
@@ -37,6 +38,7 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "../lib/investing/res
 import { createExperimentBaselineForCurrentUserV1 } from "../lib/investing/research/experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "../lib/investing/research/experimentVariantService";
 import { readResearchPassportServiceV1 } from "../lib/investing/research/researchPassportService";
+import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
 import { createScientificRunInputForCurrentUserV1 } from "../lib/investing/research/runInputScientificService";
 import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "../lib/investing/research/serverDatasetMaterialProvider";
@@ -69,9 +71,14 @@ const all: Record<string, ReturnType<typeof vi.fn>> = {
   FINALIZE_VALIDATION_RESULT: vi.mocked(finalizeValidationResultCommandV1),
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: vi.mocked(createValidationAssessmentProtocolCommandV1),
   FINALIZE_VALIDATION_ASSESSMENT: vi.mocked(finalizeValidationAssessmentResultCommandV1),
+  COMPARE_EXPERIMENTS: vi.mocked(writeExperimentComparisonV1),
   READ_PASSPORT: vi.mocked(readResearchPassportServiceV1),
 };
 const provider = Object.freeze({loadSeriesContent:vi.fn()});
+const comparisonOutput = Object.freeze({
+  ok:true,protocolIdentityId:id,resultIdentityId:id,
+  protocolHash:"A".repeat(64),resultHash:"B".repeat(64),
+});
 const commands: Record<string, Record<string,unknown>> = {
   CREATE_INVESTIGATION: {sourceContext:"PURE_RESEARCH",tenantId:id,correlationId,idempotencyKey},
   CREATE_DRAFT: {...basis,draft:{schemaVersion:"DRAFT_V1"}},
@@ -88,6 +95,9 @@ const commands: Record<string, Record<string,unknown>> = {
   FINALIZE_VALIDATION_RESULT: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId},
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId,protocol:{schemaVersion:"VALIDATION_ASSESSMENT_PROTOCOL_V1"}},
   FINALIZE_VALIDATION_ASSESSMENT: {researchInvestigationId:id,researchValidationProtocolIdentityId:id,correlationId},
+  COMPARE_EXPERIMENTS: {researchInvestigationId:id,correlationId,
+    sources:{protocol:{schemaVersion:"EXPERIMENT_COMPARISON_PROTOCOL_V1"},
+      referenceParameters:{},subjectParameters:{},neighborhoodResults:[]}},
   READ_PASSPORT: {researchInvestigationId:id,correlationId},
 };
 function input(operation:string,command:unknown = commands[operation]) {
@@ -98,6 +108,7 @@ beforeEach(()=>{
   vi.resetAllMocks();
   vi.mocked(createServerDatasetMaterialProviderV1).mockReturnValue(provider);
   for(const fn of Object.values(all)) fn.mockResolvedValue({ok:true, identity:id});
+  vi.mocked(writeExperimentComparisonV1).mockResolvedValue(comparisonOutput as never);
 });
 
 describe("RL-10 headless Investing Research entry point",()=>{
@@ -108,7 +119,8 @@ describe("RL-10 headless Investing Research entry point",()=>{
 
   it.each(headlessResearchCommandOperationsV1)("calls ONLY the existing owner service: %s",async(operation)=>{
     const result=await executeHeadlessResearchCommandV1(input(operation));
-    expect(result).toEqual({ok:true,operation,value:{ok:true,identity:id}});
+    expect(result).toEqual({ok:true,operation,
+      value:operation==="COMPARE_EXPERIMENTS" ? comparisonOutput : {ok:true,identity:id}});
     expect(totalCalls()).toBe(1);
     expect(all[operation]).toHaveBeenCalledOnce();
     const received=all[operation]!.mock.calls[0]![0] as Record<string,unknown>;
@@ -270,6 +282,28 @@ describe("RL-10 headless Investing Research entry point",()=>{
         .toEqual({ok:false,code:"VALIDATION_ERROR"});
     }
     expect(totalCalls()).toBe(0);
+  });
+  it("rejects comparison source injection and unverified top-level arguments",async()=>{
+    const command=commands.COMPARE_EXPERIMENTS;
+    for(const extra of [{database:{}},{authorizedContext:{}},{tenantId:id},{idempotencyKey}]) {
+      expect(await executeHeadlessResearchCommandV1(input("COMPARE_EXPERIMENTS",{...command,...extra})))
+        .toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
+    for(const sources of [
+      null, {}, {protocol:{},referenceParameters:{},subjectParameters:{},neighborhoodResults:"fake"},
+      {...(command.sources as object),database:{}},
+      {...(command.sources as object),neighborhoodResults:[{experiment:{},result:{},authorizedContext:{}}]},
+    ]) {
+      expect(await executeHeadlessResearchCommandV1(input("COMPARE_EXPERIMENTS",{...command,sources})))
+        .toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
+    expect(totalCalls()).toBe(0);
+  });
+  it("does not claim comparison success when the accepted persistence writer rejects it",async()=>{
+    vi.mocked(writeExperimentComparisonV1).mockRejectedValueOnce(new Error("COMPARISON_AUTHORITY_REQUIRED"));
+    expect(await executeHeadlessResearchCommandV1(input("COMPARE_EXPERIMENTS")))
+      .toEqual({ok:false,code:"INTERNAL_ERROR"});
+    expect(vi.mocked(writeExperimentComparisonV1)).toHaveBeenCalledOnce();
   });
   it("retains stable failure codes for existing validation owner writers",async()=>{
     vi.mocked(finalizeValidationResultCommandV1).mockResolvedValueOnce({

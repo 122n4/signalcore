@@ -19,6 +19,7 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "./researchSpecRevisi
 import { createExperimentBaselineForCurrentUserV1 } from "./experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "./experimentVariantService";
 import { readResearchPassportServiceV1 } from "./researchPassportService";
+import { writeExperimentComparisonV1 } from "./experimentComparisonWriter";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
 import { createScientificRunInputForCurrentUserV1 } from "./runInputScientificService";
@@ -44,6 +45,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "FINALIZE_VALIDATION_RESULT",
   "CREATE_VALIDATION_ASSESSMENT_PROTOCOL",
   "FINALIZE_VALIDATION_ASSESSMENT",
+  "COMPARE_EXPERIMENTS",
   "READ_PASSPORT",
 ] as const);
 
@@ -81,6 +83,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   FINALIZE_VALIDATION_RESULT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId", "protocol"],
   FINALIZE_VALIDATION_ASSESSMENT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
+  COMPARE_EXPERIMENTS: ["researchInvestigationId", "correlationId", "sources"],
   READ_PASSPORT: ["researchInvestigationId", "correlationId"],
 });
 
@@ -139,10 +142,33 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
       (typeof data.foldOrdinal !== "string" ||
        !/^(?:0|[1-9][0-9]*)$/u.test(data.foldOrdinal) ||
        (data.phase !== "TRAINING" && data.phase !== "EVALUATION"))) return null;
+  if (operation === "COMPARE_EXPERIMENTS") {
+    const verifiedShape = strictComparisonSourceShape(data.sources);
+    if (!verifiedShape) return null;
+    return Object.freeze({ ...data, sources: verifiedShape });
+  }
   // Existing services verify canonical scientific material, expected pointers,
   // idempotency, tenant/account authority and operation-specific invariants.
   // This entry point never accepts transport, SQL clients or trusted contexts.
   return data;
+}
+
+// This is an input-shape check, never scientific evidence verification.
+ // The accepted RL-7 source reader and writer independently prove persisted
+ // provenance, membership and material identity in the database.
+function strictComparisonSourceShape(value: unknown): PlainRecord | null {
+  const shape = strictDataRecord(value, [
+    "protocol", "referenceParameters", "subjectParameters", "neighborhoodResults",
+  ]);
+  if (!shape) return null;
+  try {
+    if (!Array.isArray(shape.neighborhoodResults) ||
+        shape.neighborhoodResults.length > 128) return null;
+    for (const member of shape.neighborhoodResults) {
+      if (!strictDataRecord(member, ["experiment", "result"])) return null;
+    }
+    return shape;
+  } catch { return null; }
 }
 
 function failureCode(code: unknown): HeadlessResearchFailureCodeV1 {
@@ -236,6 +262,23 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
       case "FINALIZE_VALIDATION_ASSESSMENT":
         outcome = await finalizeValidationAssessmentResultCommandV1(
           command as Parameters<typeof finalizeValidationAssessmentResultCommandV1>[0]); break;
+      case "COMPARE_EXPERIMENTS": {
+        const persisted = await writeExperimentComparisonV1({
+          researchInvestigationId: command.researchInvestigationId as string,
+          correlationId: command.correlationId as string,
+          sources: command.sources as Parameters<typeof writeExperimentComparisonV1>[0]["sources"],
+        });
+        // No unbounded canonical payload bytes or evidence material in the
+        // command response: return immutable, persisted identities only.
+        outcome = {
+          ok: true,
+          protocolIdentityId: persisted.protocolIdentityId,
+          resultIdentityId: persisted.resultIdentityId,
+          protocolHash: persisted.protocolHash,
+          resultHash: persisted.resultHash,
+        };
+        break;
+      }
       case "READ_PASSPORT":
         outcome = await readResearchPassportServiceV1({
           researchInvestigationId: command.researchInvestigationId as string,
