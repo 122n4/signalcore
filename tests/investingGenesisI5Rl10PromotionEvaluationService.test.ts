@@ -47,7 +47,7 @@ vi.mock("../lib/investing/authority/transport",()=>({
     },
   })),
 }));
-import {evaluateScientificPromotionForCurrentUserV1} from "../lib/investing/research/scientificPromotionEvaluationService";
+import {evaluateScientificPromotionForCurrentUserV1,persistScientificPromotionForCurrentUserV1} from "../lib/investing/research/scientificPromotionEvaluationService";
 import {hashRefV1} from "../lib/investing/research/canonical";
 import {hashScientificPromotionProtocolV1,hashScientificPromotionTransitionV1,type ScientificPromotionTransitionV1} from "../lib/investing/research/scientificPromotion";
 
@@ -158,6 +158,29 @@ describe("RL-10 persisted-only, no-write promotion evaluation",()=>{
    expect(data.queries.some(x=>x.sql.includes("from investing.research_validation_protocols_scientific_identities"))).toBe(false);
    expect(data.queries.some(x=>x.sql.includes("from investing.research_scientific_promotion_transitions_scientific_identities"))).toBe(false);
    expect(data.queries.some(x=>x.sql==="rollback")).toBe(true);
+ });
+ it("PERSIST_PROMOTION must not open a transaction without owner scope or full validation",async()=>{
+   data.authority=false;
+   expect(await persistScientificPromotionForCurrentUserV1(inputs))
+     .toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+   data.authority=true;data.scope="USER_PORTFOLIO";
+   expect(await persistScientificPromotionForCurrentUserV1(inputs))
+     .toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+   data.scope="PURE_RESEARCH";
+   expect(await persistScientificPromotionForCurrentUserV1({...inputs,rootTransitionIdentityId:"invalid"}))
+     .toEqual({ok:false,code:"VALIDATION_ERROR"});
+   expect(await persistScientificPromotionForCurrentUserV1(inputs))
+     .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
+   expect(data.connections).toBe(0);
+   expect(data.queries).toHaveLength(0);
+ });
+ it("PERSIST_PROMOTION rolls back on a corrupt RL-8 reconstruction without calling SQL writer",async()=>{
+   data.passport.validation={availability:"AVAILABLE_RL3",episodes:[]};
+   expect(await persistScientificPromotionForCurrentUserV1(inputs))
+     .toEqual({ok:false,code:"INTERNAL_ERROR"});
+   expect(data.queries.some(x=>x.sql==="rollback")).toBe(true);
+   expect(data.queries.some(x=>x.sql.includes("persist_research_scientific_promotion_evaluation_plan_v1"))).toBe(false);
+   expect(data.releases).toBe(1);
  });
  it("rolls back a corrupt persisted RL-8 chain without mutation",async()=>{
    data.passport.validation={availability:"AVAILABLE_RL3",episodes:[]};
