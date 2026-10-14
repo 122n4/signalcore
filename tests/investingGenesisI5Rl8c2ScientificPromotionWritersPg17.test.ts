@@ -1530,7 +1530,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         ok:true,status:"REUSED_IDENTICAL",rootTransitionIdentityId:
           first.ok && "rootTransitionIdentityId" in first ? first.rootTransitionIdentityId : "",
       });
-      rl10PromotionState.passport={...rl10PromotionState.passport,
+      rl10PromotionState.passport={...(rl10PromotionState.passport as Record<string,unknown>),
         validation:{availability:"AVAILABLE_RL3",episodes:[]}};
       const evalBlocked=await evaluateScientificPromotionForCurrentUserV1({
         researchInvestigationId:fixture.researchInvestigationId,
