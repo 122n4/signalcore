@@ -7,7 +7,7 @@ import {
 import { getInvestingAuthorityDatabase } from "../authority/transport";
 import { readResearchPassportV1 } from "./researchPassportReader";
 import { hashRefV1, type HashRefV1 } from "./canonical";
-import { hashScientificPromotionTransitionV1, type ScientificPromotionTransitionV1 } from "./scientificPromotion";
+import { hashScientificPromotionProtocolV1, hashScientificPromotionTransitionV1, type ScientificPromotionTransitionV1 } from "./scientificPromotion";
 import { evaluateScientificPromotionV1, type ScientificPromotionResolvedEvidenceV1 } from "./scientificPromotionEngine";
 import type { ResearchExecutionEvidenceObjectV1 } from "./evidenceObject";
 
@@ -122,13 +122,54 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
        typeof chain.activeLeafTransitionIdentityId!=="string"||
        !uuid.test(chain.activeLeafTransitionIdentityId)||!hex.test(String(chain.activeLeafTransitionHashHex)))
       throw Error("PROMOTION_CHAIN_INVALID");
-    const prev=exactlyOne((await client.query<{hash_hex:string;canonical_payload:unknown}>(
-      "select transition_hash_hex as hash_hex,canonical_payload from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=$1 and research_investigation_id=$2 and tenant_id=$3 and principal_id=$4 and tenant_membership_id=$5",
-      [chain.activeLeafTransitionIdentityId,ctx.researchInvestigationId,ctx.tenantId,ctx.principalId,ctx.tenantMembershipId])).rows);
-    const predecessor=prev.canonical_payload as ScientificPromotionTransitionV1;
-    if(prev.hash_hex!==chain.activeLeafTransitionHashHex||
-       hashScientificPromotionTransitionV1(predecessor).hashHex!==prev.hash_hex)
-      throw Error("PROMOTION_PREDECESSOR_TAMPERED");
+    // RL-8C3 only exposes a scoped reconstruction (leaf ID/hash/state),
+    // not the canonical payload through investing_app RLS. Rebuild exactly
+    // the immutable EXECUTED root from Passport scientific identities and
+    // prove its hash equals the DB-verified root hash. Later states remain
+    // explicitly unavailable until a separately accepted scoped reader exists.
+    if(chain.activeLeafTransitionIdentityId!==input.rootTransitionIdentityId||
+       chain.activeLeafState!=="EXECUTED"||
+       !Array.isArray(chain.traversal)||chain.traversal.length!==1||
+       !Array.isArray(chain.crossChainHops)||chain.crossChainHops.length!==0)
+      throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
+    if(passport.runInputs.length>4096||passport.experiments.length>4096||
+       passport.results.length>4096||passport.executionRuns.length>8192)
+      throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
+    const roots:ScientificPromotionTransitionV1[]=[];
+    for(const candidateRun of passport.runInputs) {
+      const matches=passport.experiments.filter(x=>x.researchExperimentId===candidateRun.researchExperimentId);
+      if(matches.length!==1||!matches[0]!.experiment||!matches[0]!.experimentParameters||
+         candidateRun.experimentHashHex!==matches[0]!.experiment!.hashHex||
+         candidateRun.researchIrHashHex!==matches[0]!.researchIr.hashHex)continue;
+      const successes=passport.executionRuns.filter(x=>x.runInputIdentityId===candidateRun.runInputIdentityId&&
+        x.terminalState==="SUCCEEDED");
+      const resultIds=new Set(successes.map(x=>x.resultIdentityId));
+      if(successes.length===0||resultIds.size!==1||resultIds.has(null))continue;
+      const results=passport.results.filter(x=>x.runInputIdentityId===candidateRun.runInputIdentityId&&
+        x.resultIdentityId===[...resultIds][0]);
+      if(results.length!==1)continue;
+      const experiment=matches[0]!, resultRow=results[0]!;
+      const root:ScientificPromotionTransitionV1={
+        schemaVersion:"SCIENTIFIC_PROMOTION_TRANSITION_V1",
+        protocol:hashScientificPromotionProtocolV1(),
+        subject:{
+          subjectExperiment:hashRefV1(experiment.experiment!),
+          subjectExperimentParameters:hashRefV1(experiment.experimentParameters!),
+          subjectResearchIr:hashRefV1(experiment.researchIr),
+        },
+        predecessorTransition:null,predecessorState:"DRAFT_RESEARCH",resultingState:"EXECUTED",
+        evidenceSnapshot:{
+          runInput:hashRefV1(candidateRun.runInput),result:hashRefV1(resultRow.result),
+          evidenceObject:null,validationProtocol:null,validationResult:null,
+          validationAssessmentProtocol:null,validationAssessmentResult:null,
+          robustnessComparisonProtocol:null,robustnessComparisonResult:null,
+        },
+        gateOutcomes:[],transitionReasons:[],supersedes:null,rejectedTransition:null,supersededByChain:null,
+      };
+      if(hashScientificPromotionTransitionV1(root).hashHex===chain.activeLeafTransitionHashHex)
+        roots.push(root);
+    }
+    const predecessor=exactlyOne(roots);
     const runRef=refOf(predecessor.evidenceSnapshot.runInput,"SYNTRAKE:RUN_INPUT:V1");
     const resultRef=refOf(predecessor.evidenceSnapshot.result,"SYNTRAKE:RESULT:V1");
     const run=exactlyOne(passport.runInputs.filter(x=>x.runInput.hashHex===runRef.hashHex));
