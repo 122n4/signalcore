@@ -150,10 +150,10 @@ describe("RL-10 persisted-only, no-write promotion evaluation",()=>{
        descriptor:{schemaVersion:"EVIDENCE_CONTENT_DESCRIPTOR_V1",kind:"RESEARCH_EXECUTION_EVIDENCE",
          artifactSchemaVersion:"RESEARCH_EXECUTION_EVIDENCE_V1",format:"CANONICAL_JSON_UTF8_V1"}}],
    });
-   // The mock DB has no validation protocol row; execution must fail closed
-   // AFTER matching the hash and checking the scoped validation source.
+   // The authenticated root hash matches. No Validation episode is
+   // available, which is a capability gap, NOT database corruption.
    expect(await evaluateScientificPromotionForCurrentUserV1(inputs))
-     .toEqual({ok:false,code:"INTERNAL_ERROR"});
+     .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
    expect(data.queries.some(x=>x.sql.includes("from investing.research_evidence_objects_scientific_identities"))).toBe(false);
    expect(data.queries.some(x=>x.sql.includes("from investing.research_validation_protocols_scientific_identities"))).toBe(false);
    expect(data.queries.some(x=>x.sql.includes("from investing.research_scientific_promotion_transitions_scientific_identities"))).toBe(false);
