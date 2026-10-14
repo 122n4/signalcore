@@ -4,8 +4,10 @@ import {
   hashExperimentComparisonProtocolV1, type ExperimentComparisonProtocolV1,
 } from "../lib/investing/research/experimentComparison";
 import {
+  canonicalExperimentComparisonResultV1,
   hashExperimentComparisonResultV1,type ExperimentComparisonResultV1,
 } from "../lib/investing/research/experimentComparisonResult";
+import {compareExactMetricObservationV1} from "../lib/investing/research/experimentComparisonEvidence";
 import {
   readPersistedPromotionRobustnessV1,type PromotionRobustnessBindingV1,
 } from "../lib/investing/research/scientificPromotionRobustnessReader";
@@ -131,6 +133,28 @@ describe("RL-10 RL-7 persisted robustness bridge",()=>{
     expect(select?.params).toEqual([uuid.tenant,uuid.principal,uuid.membership,uuid.investigation,
       subj.hashHex,sResult.hashHex,sValidation.hashHex]);
     expect(f.calls.some(x=>/^\s*(insert|update|delete|alter|drop|create)\b/iu.test(x.sql))).toBe(false);
+  });
+  it("decodes accepted JSONB exact-number signs without changing the scientific hash",async()=>{
+    const observation=(value:string)=>({
+      metricId:"CAGR" as const,metricVersion:"METRIC_V2" as const,
+      registryVersion:"METRIC_REGISTRY_V20260927" as const,
+      artifactSchemaVersion:"METRIC_RESULT_SET_V2" as const,
+      state:"VALUE" as const,canonicalDecimal:value,
+    });
+    const compared=compareExactMetricObservationV1(observation("0.05"),observation("0.1"));
+    if(compared.state!=="AVAILABLE")throw Error("FIXTURE_METRIC_MISSING");
+    const result:ExperimentComparisonResultV1={...f.result,metricDeltas:[compared.delta]};
+    const newHash=hashExperimentComparisonResultV1(result);
+    const canonical=canonicalExperimentComparisonResultV1(result) as unknown as Record<string,unknown>;
+    expect((canonical.metricDeltas as {orientedDeltaSign:string}[])[0]?.orientedDeltaSign).toBe("1");
+    f.rows[0]={...f.rows[0]!,result_hash_hex:newHash,result_payload:canonical};
+    const readResult=await read();
+    expect(readResult?.result.metricDeltas[0]?.orientedDeltaSign).toBe(1);
+    expect(readResult&&hashExperimentComparisonResultV1(readResult.result)).toBe(newHash);
+    f.rows[0]={...f.rows[0]!,result_payload:{
+      ...canonical,metricDeltas:[{...(canonical.metricDeltas as Record<string,unknown>[])[0],orientedDeltaSign:1}],
+    }};
+    await expect(read()).rejects.toThrow("RL7_CANONICAL_SIGN_INVALID");
   });
   it("reports no comparison as unavailable evidence, never fabricated STABLE",async()=>{
     f.rows.splice(0);
