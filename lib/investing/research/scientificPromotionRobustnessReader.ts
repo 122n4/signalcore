@@ -1,12 +1,13 @@
 import "server-only";
 
 import type { AuthorizedResearchPassportReadContext, InvestingAuthorityTransactionClient } from "../authority/context";
-import { hashRefV1, type HashRefV1 } from "./canonical";
+import { hashRefV1, i5ResearchInternalCanonicalJsonBytesV1, type CanonicalJsonValue, type HashRefV1 } from "./canonical";
 import {
   hashExperimentComparisonProtocolV1,
   type ExperimentComparisonProtocolV1,
 } from "./experimentComparison";
 import {
+  canonicalExperimentComparisonResultV1,
   hashExperimentComparisonResultV1,
   type ExperimentComparisonResultV1,
 } from "./experimentComparisonResult";
@@ -38,6 +39,36 @@ function same(a: HashRefV1, b: HashRefV1): boolean {
 function one<T>(items: readonly T[]): T {
   if (items.length !== 1 || items[0] === undefined) throw Error("RL7_EVIDENCE_AMBIGUOUS_OR_MISSING");
   return items[0];
+}
+
+function record(value:unknown):value is Record<string,unknown>{
+  return value!==null&&typeof value==="object"&&!Array.isArray(value);
+}
+
+/**
+ * Accepted RL-7 canonical JSON serializes orientedDeltaSign as an exact
+ * string ("-1", "0", "1"), whereas the deterministic classification engine
+ * consumes -1/0/1 numbers. Convert this known representation only; then
+ * independently re-canonicalize and compare exact canonical JSON bytes.
+ * Never trust a fabricated or lossy type conversion from stored JSONB.
+ */
+function decodeCanonicalRl7ResultV1(raw:unknown):ExperimentComparisonResultV1{
+  if(!record(raw)||!Array.isArray(raw.metricDeltas))
+    throw Error("RL7_CANONICAL_RESULT_INVALID");
+  const deltas=raw.metricDeltas.map((item:unknown)=>{
+    if(!record(item))throw Error("RL7_CANONICAL_RESULT_INVALID");
+    const sign=item.orientedDeltaSign;
+    if(sign!==null&&sign!=="-1"&&sign!=="0"&&sign!=="1")
+      throw Error("RL7_CANONICAL_SIGN_INVALID");
+    return {...item,orientedDeltaSign:sign===null?null:Number(sign)};
+  });
+  const decoded={...raw,metricDeltas:deltas} as unknown as ExperimentComparisonResultV1;
+  const canonical=canonicalExperimentComparisonResultV1(decoded);
+  const canonicalBytes=i5ResearchInternalCanonicalJsonBytesV1(canonical);
+  const storedBytes=i5ResearchInternalCanonicalJsonBytesV1(raw as CanonicalJsonValue);
+  if(!canonicalBytes.equals(storedBytes))
+    throw Error("RL7_CANONICAL_RESULT_MISMATCH");
+  return decoded;
 }
 
 /**
@@ -109,7 +140,7 @@ export async function readPersistedPromotionRobustnessV1(
     throw Error("RL7_COMPARISON_INCOMPLETE");
 
   const protocol = row.protocol_payload as ExperimentComparisonProtocolV1;
-  const result = row.result_payload as ExperimentComparisonResultV1;
+  const result = decodeCanonicalRl7ResultV1(row.result_payload);
   if (hashExperimentComparisonProtocolV1(protocol) !== row.protocol_hash_hex ||
       hashExperimentComparisonResultV1(result) !== row.result_hash_hex)
     throw Error("RL7_COMPARISON_HASH_INVALID");

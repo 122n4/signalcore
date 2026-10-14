@@ -907,7 +907,9 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
       );
       expect(robustness?.protocolRef.hashHex).toBe(first.protocolHash);
       expect(robustness?.resultRef.hashHex).toBe(first.resultHash);
-      expect(robustness?.result).toEqual(JSON.parse(first.resultPayloadBytes));
+      expect(robustness?.result.metricDeltas.every((x)=>x.orientedDeltaSign===null||
+        typeof x.orientedDeltaSign==="number")).toBe(true);
+      expect(robustness && hashExperimentComparisonResultV1(robustness.result)).toBe(first.resultHash);
       await inspection.query("commit");
     } finally {
       await inspection.query("rollback").catch(()=>undefined);
