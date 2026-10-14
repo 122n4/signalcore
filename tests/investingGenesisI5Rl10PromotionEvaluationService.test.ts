@@ -166,7 +166,7 @@ describe("RL-10 persisted-only, no-write promotion evaluation",()=>{
    expect(data.connections).toBe(1);
    expect(data.releases).toBe(1);
    expect(data.queries.some(x=>x.sql==="rollback")).toBe(true);
-   expect(data.queries.some(x=>/^\\s*(insert|update|delete|alter|drop|create)\\b/iu.test(x.sql))).toBe(false);
+   expect(data.queries.some(x=>/^\s*(insert|update|delete|alter|drop|create)\b/iu.test(x.sql))).toBe(false);
    expect(data.queries.filter(x=>x.sql.includes("reconstruct_research_scientific_promotion_chain_v1")))
      .toHaveLength(1);
    expect(data.queries.some(x=>x.sql.includes("persist_research_scientific_promotion_evaluation_plan_v1"))).toBe(false);
