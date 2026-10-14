@@ -21,6 +21,7 @@ import { createExperimentVariantForCurrentUserV1 } from "./experimentVariantServ
 import { readResearchPassportServiceV1 } from "./researchPassportService";
 import { inspectResearchRunRecoveryForCurrentUserV1 } from "./runRecoveryInspector";
 import { readScientificPromotionChainForCurrentUserV1 } from "./scientificPromotionHistoryService";
+import { createScientificPromotionRootForCurrentUserV1 } from "./scientificPromotionRootService";
 import { writeExperimentComparisonV1 } from "./experimentComparisonWriter";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
@@ -51,6 +52,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "READ_PASSPORT",
   "INSPECT_RUN_RECOVERY",
   "READ_PROMOTION_CHAIN",
+  "CREATE_PROMOTION_ROOT",
 ] as const);
 
 export type HeadlessResearchOperationV1 = typeof headlessResearchCommandOperationsV1[number];
@@ -91,6 +93,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   READ_PASSPORT: ["researchInvestigationId", "correlationId"],
   INSPECT_RUN_RECOVERY: ["researchInvestigationId", "correlationId"],
   READ_PROMOTION_CHAIN: ["researchInvestigationId", "rootTransitionIdentityId", "correlationId"],
+  CREATE_PROMOTION_ROOT: ["researchInvestigationId", "researchExperimentId", "runInputIdentityId", "correlationId"],
 });
 
 type PlainRecord = Record<string, unknown>;
@@ -298,6 +301,13 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
         };
         break;
       }
+      case "CREATE_PROMOTION_ROOT":
+        outcome = await createScientificPromotionRootForCurrentUserV1({
+          researchInvestigationId:command.researchInvestigationId as string,
+          researchExperimentId:command.researchExperimentId as string,
+          runInputIdentityId:command.runInputIdentityId as string,
+          correlationId:command.correlationId as string,
+        }); break;
       case "READ_PROMOTION_CHAIN":
         outcome = await readScientificPromotionChainForCurrentUserV1({
           researchInvestigationId:command.researchInvestigationId as string,
