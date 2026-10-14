@@ -189,6 +189,7 @@ function strictComparisonSourceShape(value: unknown): PlainRecord | null {
 
 function failureCode(code: unknown): HeadlessResearchFailureCodeV1 {
   if (code === "UNAUTHENTICATED") return "UNAUTHENTICATED";
+  if (code === "CAPABILITY_UNAVAILABLE") return "CAPABILITY_UNAVAILABLE";
   if (code === "VALIDATION_ERROR") return "VALIDATION_ERROR";
   if (code === "FORBIDDEN_OR_NOT_FOUND" || code === "FORBIDDEN" ||
       code === "NOT_FOUND") return "FORBIDDEN_OR_NOT_FOUND";
