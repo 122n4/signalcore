@@ -10,6 +10,7 @@ import { hashRefV1, type HashRefV1 } from "./canonical";
 import { hashScientificPromotionProtocolV1, hashScientificPromotionTransitionV1, type ScientificPromotionTransitionV1 } from "./scientificPromotion";
 import { evaluateScientificPromotionV1, type ScientificPromotionResolvedEvidenceV1 } from "./scientificPromotionEngine";
 import type { ResearchExecutionEvidenceObjectV1 } from "./evidenceObject";
+import { readPersistedPromotionRobustnessV1 } from "./scientificPromotionRobustnessReader";
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const hex=/^[0-9A-F]{64}$/u;
@@ -224,6 +225,12 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       [ep.researchValidationProtocolIdentityId,ep.aggregate.researchValidationResultIdentityId,
        ctx.researchInvestigationId,ctx.tenantId,ctx.principalId,ctx.tenantMembershipId])).rows);
 
+    const robustness=await readPersistedPromotionRobustnessV1(client,ctx,passport,{
+      subjectExperiment:hashRefV1(predecessor.subject.subjectExperiment),
+      subjectExperimentParameters:hashRefV1(predecessor.subject.subjectExperimentParameters),
+      subjectResult:resultRef,
+      subjectValidationResult:hashRefV1(ep.aggregate.validationResult),
+    });
     const sources:ScientificPromotionResolvedEvidenceV1={
       predecessor,authority:{status:"VERIFIED"},
       subject:predecessor.subject,
@@ -238,7 +245,7 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
         payload:assessment.canonical_payload as NonNullable<ScientificPromotionResolvedEvidenceV1["validationAssessmentProtocol"]>["payload"]},
       validationAssessmentResult:{ref:ref("SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1",ar.hash_hex),
         payload:ar.canonical_payload as NonNullable<ScientificPromotionResolvedEvidenceV1["validationAssessmentResult"]>["payload"]},
-      robustness:null,
+      robustness,
     };
     const plan=evaluateScientificPromotionV1(sources);
     await client.query("commit");
