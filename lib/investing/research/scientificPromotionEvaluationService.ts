@@ -182,16 +182,22 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       throw Error("PROMOTION_SUBJECT_LINEAGE_INVALID");
     const evidence=exactlyOne(passport.evidence.filter(x=>
       x.resultIdentityId===result.resultIdentityId&&x.runInputIdentityId===run.runInputIdentityId));
-    const evidenceRow=exactlyOne((await client.query<{
-      hash_hex:string;content:Buffer;content_sha256:string;content_byte_length:string;
-      descriptor_schema_version:string;descriptor_kind:string;descriptor_artifact_schema_version:string;descriptor_format:string;
-    }>(
-      "select hash_hex,content,content_sha256,content_byte_length::text,descriptor_schema_version,descriptor_kind,descriptor_artifact_schema_version,descriptor_format from investing.research_evidence_objects_scientific_identities where evidence_identity_id=$1 and result_identity_id=$2 and run_input_identity_id=$3 and tenant_id=$4 and principal_id=$5 and tenant_membership_id=$6",
-      [evidence.evidenceIdentityId,result.resultIdentityId,run.runInputIdentityId,
-       ctx.tenantId,ctx.principalId,ctx.tenantMembershipId])).rows);
-    if(evidenceRow.hash_hex!==evidence.evidence.hashHex)
-      throw Error("PROMOTION_EVIDENCE_IDENTITY_MISMATCH");
-    const validatedEvidence=singleEvidenceRow(evidenceRow,evidence.evidence.hashHex);
+    // The accepted Passport validates lineage/content provenance and makes
+    // small canonical Evidence bodies available inline. Never elevate a
+    // CONTENT_REFERENCE into invented data; larger bodies remain UNAVAILABLE
+    // until an independently accepted scoped byte-reader exists.
+    if(evidence.acceptedContent.availability!=="INLINE")
+      throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
+    const validatedEvidence=singleEvidenceRow({
+      hash_hex:evidence.evidence.hashHex,
+      content:Buffer.from(evidence.acceptedContent.utf8,"utf8"),
+      content_sha256:evidence.contentSha256,
+      content_byte_length:evidence.contentByteLength,
+      descriptor_schema_version:evidence.descriptor.schemaVersion,
+      descriptor_kind:evidence.descriptor.kind,
+      descriptor_artifact_schema_version:evidence.descriptor.artifactSchemaVersion,
+      descriptor_format:evidence.descriptor.format,
+    },evidence.evidence.hashHex);
 
     const ep=exactlyOne(passport.validation.episodes.filter(x=>
       x.researchValidationProtocolIdentityId===input.researchValidationProtocolIdentityId &&

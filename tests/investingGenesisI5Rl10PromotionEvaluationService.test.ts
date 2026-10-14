@@ -145,13 +145,17 @@ describe("RL-10 persisted-only, no-write promotion evaluation",()=>{
        terminalState:"SUCCEEDED",resultIdentityId:"99999999-9999-4999-8999-999999999999"}],
      evidence:[{resultIdentityId:"99999999-9999-4999-8999-999999999999",
        runInputIdentityId:"88888888-8888-4888-8888-888888888888",
-       evidenceIdentityId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",evidence:mk("SYNTRAKE:EVIDENCE_OBJECT:V1","F")}],
+       evidenceIdentityId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",evidence:mk("SYNTRAKE:EVIDENCE_OBJECT:V1","F"),
+       acceptedContent:{availability:"INLINE",utf8:"{}"},contentSha256:"F".repeat(64),contentByteLength:"2",
+       descriptor:{schemaVersion:"EVIDENCE_CONTENT_DESCRIPTOR_V1",kind:"RESEARCH_EXECUTION_EVIDENCE",
+         artifactSchemaVersion:"RESEARCH_EXECUTION_EVIDENCE_V1",format:"CANONICAL_JSON_UTF8_V1"}}],
    });
-   // The mock DB has no Evidence content row; execution must fail closed
-   // AFTER matching the hash and reaching the scoped Evidence SELECT.
+   // The mock DB has no validation protocol row; execution must fail closed
+   // AFTER matching the hash and checking the scoped validation source.
    expect(await evaluateScientificPromotionForCurrentUserV1(inputs))
      .toEqual({ok:false,code:"INTERNAL_ERROR"});
-   expect(data.queries.some(x=>x.sql.includes("from investing.research_evidence_objects_scientific_identities"))).toBe(true);
+   expect(data.queries.some(x=>x.sql.includes("from investing.research_evidence_objects_scientific_identities"))).toBe(false);
+   expect(data.queries.some(x=>x.sql.includes("from investing.research_validation_protocols_scientific_identities"))).toBe(false);
    expect(data.queries.some(x=>x.sql.includes("from investing.research_scientific_promotion_transitions_scientific_identities"))).toBe(false);
    expect(data.queries.some(x=>x.sql==="rollback")).toBe(true);
  });
