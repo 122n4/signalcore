@@ -64,17 +64,18 @@ function fixture(withClosure=false){
 
 describe("RL-10 scientific promotion idempotent writer boundary",()=>{
   beforeEach(()=>vi.clearAllMocks());
-  it.each(["CREATED","REUSED_IDENTICAL"])("persists and reconstructs Stage-A %s with exact hashes",async(status)=>{
-    const f=fixture();f.setWriteStatus(status);
+  it.each(["CREATED","REUSED_IDENTICAL"])("persists and reconstructs Stage-A plus closure %s with exact hashes",async(status)=>{
+    const f=fixture(true);f.setWriteStatus(status);
     const saved=await persistScientificPromotionPlanV1(f.client,rootId,predecessor,f.plan);
     expect(saved).toMatchObject({
-      status,stageATransitionIdentityId:stageId,closureTransitionIdentityId:null,
-      scientificState:"INSUFFICIENT_EVIDENCE",stageAHashHex:stageHash,
-      closureHashHex:null,
+      status,stageATransitionIdentityId:stageId,closureTransitionIdentityId:closureId,
+      scientificState:"PROMOTION_ELIGIBLE",stageAHashHex:stageHash,
+      closureHashHex:closureHash,
     });
     expect(f.queries).toHaveLength(2);
     expect(f.queries[0]!.params).toEqual([rootId,stageHash,
-      JSON.stringify(f.plan.stageA.transition),null,null]);
+      JSON.stringify(f.plan.stageA.transition),closureHash,
+      JSON.stringify(f.plan.closure?.transition)]);
     expect(f.queries[1]!.params).toEqual([rootId]);
     expect(f.queries.every(x=>x.sql.startsWith("select investing."))).toBe(true);
   });
@@ -90,8 +91,14 @@ describe("RL-10 scientific promotion idempotent writer boundary",()=>{
     expect(f.queries[0]!.params[3]).toBe(closureHash);
     expect(f.queries[0]!.params[4]).toBe(JSON.stringify(f.plan.closure?.transition));
   });
-  it("blocks incomplete evidence/invalid lineage before touching SQL",async()=>{
+  it("does not freeze an immutable root on INSUFFICIENT_EVIDENCE",async()=>{
     const f=fixture();
+    await expect(persistScientificPromotionPlanV1(f.client,rootId,predecessor,f.plan))
+      .rejects.toThrow("PROMOTION_EVIDENCE_UNAVAILABLE");
+    expect(f.queries).toHaveLength(0);
+  });
+  it("blocks incomplete evidence/invalid lineage before touching SQL",async()=>{
+    const f=fixture(true);
     await expect(persistScientificPromotionPlanV1(f.client,"invalid",predecessor,f.plan))
       .rejects.toThrow("PROMOTION_PLAN_NOT_WRITABLE");
     const invalid={...f.plan,stageA:{
@@ -105,16 +112,16 @@ describe("RL-10 scientific promotion idempotent writer boundary",()=>{
     expect(f.queries).toHaveLength(0);
   });
   it("returns conflict on divergent immutable successor; no successful receipt",async()=>{
-    const f=fixture();f.setWriteStatus("DIVERGENT_EXISTING_IDENTITY");
+    const f=fixture(true);f.setWriteStatus("DIVERGENT_EXISTING_IDENTITY");
     await expect(persistScientificPromotionPlanV1(f.client,rootId,predecessor,f.plan))
       .rejects.toThrow("PROMOTION_WRITER_CONFLICT");
     expect(f.queries).toHaveLength(1);
   });
   it("blocks malformed writer receipt or tampered reconstruction",async()=>{
-    const f=fixture();f.badReceipt();
+    const f=fixture(true);f.badReceipt();
     await expect(persistScientificPromotionPlanV1(f.client,rootId,predecessor,f.plan))
       .rejects.toThrow("PROMOTION_WRITER_RECEIPT_INVALID");
-    const g=fixture();g.badChain();
+    const g=fixture(true);g.badChain();
     await expect(persistScientificPromotionPlanV1(g.client,rootId,predecessor,g.plan))
       .rejects.toThrow("PROMOTION_POSTWRITE_CHAIN_INVALID");
   });

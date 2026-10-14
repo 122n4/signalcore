@@ -40,6 +40,12 @@ export async function persistScientificPromotionPlanV1(
   const stage=plan.stageA.transition;
   const closure=plan.closure?.transition??null;
   const predecessorRef=hashScientificPromotionTransitionV1(predecessor);
+  // The first Stage-A successor is immutable. Do not commit a missing-
+  // evidence verdict that would prevent a later evaluation with newly
+  // completed RL-3/RL-7 material under the same accepted protocol.
+  // Read-only EVALUATE_PROMOTION may still report INSUFFICIENT_EVIDENCE.
+  if(stage.resultingState==="INSUFFICIENT_EVIDENCE")
+    throw Error("PROMOTION_EVIDENCE_UNAVAILABLE");
   if(predecessor.resultingState!=="EXECUTED"||
      stage.predecessorTransition?.hashHex!==predecessorRef.hashHex||
      stage.predecessorState!=="EXECUTED"||
