@@ -694,4 +694,82 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
     await expect(client.query("update investing.research_experiments set relation = relation")).rejects.toThrow();
     await client.query("rollback");
   });
+
+  it("RL-10 real PG17 detects committed REGISTERED/STARTED interruptions without unsafe retry",async()=>{
+    const registeredId="77000000-0000-4000-8000-0000000002b1";
+    const startedId="77000000-0000-4000-8000-0000000002b2";
+    const before=await client.query<{n:number}>(
+      "select count(*)::int as n from investing.research_execution_runs where research_investigation_id=$1",
+      [ids.investigationA],
+    );
+    expect(before.rows[0]?.n).toBe(3);
+    for(const [runId,terminal] of [[registeredId,"REGISTERED"],[startedId,"STARTED"]] as const){
+      await client.query(`
+        insert into investing.research_execution_runs
+          (research_execution_run_id,tenant_id,account_id,principal_id,tenant_membership_id,
+           research_investigation_id,run_input_identity_id,operation,capability,operation_scope,
+           source_context,engine_id,engine_version)
+        values($1,$2,null,$3,$4,$5,$6,
+          'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',
+          'HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918')`,
+        [runId,ids.tenant,ids.principal,ids.membership,ids.investigationA,ids.runInput],
+      );
+      const stages=terminal==="STARTED"?["REGISTERED","STARTED"]:["REGISTERED"];
+      for(const [index,state] of stages.entries()){
+        await client.query(`
+          insert into investing.research_execution_run_events
+            (research_execution_run_event_id,research_execution_run_id,tenant_id,account_id,
+             principal_id,tenant_membership_id,operation,capability,operation_scope,source_context,
+             event_sequence,run_status,result_identity_id,failure_reason_code)
+          values (gen_random_uuid(),$1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1',
+            'RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,null,null)`,
+          [runId,ids.tenant,ids.principal,ids.membership,index+1,state],
+        );
+      }
+    }
+    // Read via genuine owner resolution, Passport RLS and investing_app
+    // transport after commit. Never infer from a synthetic Run response.
+    const input={researchInvestigationId:ids.investigationA,correlationId:"rl10-pg17-interrupted"};
+    for(let attempt=0;attempt<2;attempt++){
+      const outcome=await executeHeadlessResearchCommandV1({
+        schemaVersion:"RL10_HEADLESS_RESEARCH_COMMAND_V1",
+        operation:"INSPECT_RUN_RECOVERY",command:input,
+      });
+      expect(outcome.ok,JSON.stringify(outcome)).toBe(true);
+      if(!outcome.ok)throw Error("RL-10 interrupted Run inspection unavailable");
+      const view=(outcome.value as {inspection:{
+        retryAuthorized:boolean;workerLiveness:string;
+        runs:readonly {researchExecutionRunId:string;lastObservedState:string;
+          recoveryState:string;nextAction:string;resultIdentityId:string|null}[];
+      }}).inspection;
+      expect(view.retryAuthorized).toBe(false);
+      expect(view.workerLiveness).toBe("UNAVAILABLE");
+      expect(view.runs).toHaveLength(5);
+      for(const [runId,state] of [[registeredId,"REGISTERED"],[startedId,"STARTED"]] as const){
+        expect(view.runs.find(x=>x.researchExecutionRunId===runId)).toMatchObject({
+          lastObservedState:state,recoveryState:"RECONCILIATION_REQUIRED",
+          nextAction:"BLOCKED_MANUAL_RECONCILIATION",resultIdentityId:null,
+        });
+      }
+      expect(view.runs.filter(x=>x.recoveryState==="OBSERVED_SUCCEEDED")).toHaveLength(2);
+      expect(view.runs.filter(x=>x.recoveryState==="OBSERVED_FAILED")).toHaveLength(1);
+      expect(view.runs.filter(x=>x.nextAction==="BLOCKED_MANUAL_RECONCILIATION")).toHaveLength(2);
+      expect(view.runs.filter(x=>x.nextAction==="NO_RETRY")).toHaveLength(3);
+    }
+    const after=await client.query<{runs:number;events:number}>(
+      `select
+       (select count(*)::int from investing.research_execution_runs
+        where research_investigation_id=$1) as runs,
+       (select count(*)::int from investing.research_execution_run_events
+        where research_execution_run_id=any($2::uuid[])) as events`,
+      [ids.investigationA,[registeredId,startedId]],
+    );
+    expect(after.rows[0]).toEqual({runs:5,events:3});
+    const foreign=await inspectResearchRunRecoveryForCurrentUserV1({
+      researchInvestigationId:ids.foreignInvestigation,
+      correlationId:"rl10-pg17-interrupted-foreign",
+    });
+    expect(foreign).toMatchObject({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+    expect(appRoleProofs.every(x=>x.current_user==="investing_app"&&x.current_role==="investing_app")).toBe(true);
+  });
 });
