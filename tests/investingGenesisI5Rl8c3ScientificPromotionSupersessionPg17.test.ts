@@ -588,7 +588,7 @@ async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFix
   ] as [string,string,{artifactSchemaVersion:string}][];
   for (const [id, kind, descriptor] of artifacts) {
     const schema=descriptor.artifactSchemaVersion;
-    const content = gold?'{"ok":true}\\n':`${JSON.stringify({ suffix, kind })}\n`;
+    const content = gold?'{"ok":true}\n':`${JSON.stringify({ suffix, kind })}\n`;
     await client.query(`
       insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content)
       values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,'CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',upper(encode(extensions.digest(convert_to($7,'UTF8'),'sha256'),'hex')),octet_length(convert_to($7,'UTF8')),1,convert_to($7,'UTF8'))
