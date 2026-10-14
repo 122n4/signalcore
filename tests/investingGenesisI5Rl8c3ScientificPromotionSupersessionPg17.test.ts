@@ -580,7 +580,7 @@ async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFix
     [artifactIds.valuation,"VALUATION_SERIES",gold.result.payload.valuationSeries],
     [artifactIds.metrics,"METRIC_RESULT_SET",gold.result.payload.metricResultSet],
     [artifactIds.benchmark,"BENCHMARK_SERIES",gold.result.payload.benchmark],
-  ].filter((x):x is [string,string,NonNullable<PositiveBundle["result"]["payload"]["benchmark"]>]=>x[2]!==null):null;
+  ].filter(x=>x[2]!==null) as [string,string,{artifactSchemaVersion:string}][]:null;
   const artifacts=sourceDescriptors??[
     [artifactIds.trace,"EXECUTION_TRACE",{artifactSchemaVersion:"EXECUTION_TRACE_V1"}],
     [artifactIds.valuation,"VALUATION_SERIES",{artifactSchemaVersion:"VALUATION_SERIES_V1"}],
@@ -588,7 +588,7 @@ async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFix
   ] as [string,string,{artifactSchemaVersion:string}][];
   for (const [id, kind, descriptor] of artifacts) {
     const schema=descriptor.artifactSchemaVersion;
-    const content = gold?\"{\\\"ok\\\":true}\\n\":`${JSON.stringify({ suffix, kind })}\n`;
+    const content = gold?'{"ok":true}\\n':`${JSON.stringify({ suffix, kind })}\n`;
     await client.query(`
       insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content)
       values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,'CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',upper(encode(extensions.digest(convert_to($7,'UTF8'),'sha256'),'hex')),octet_length(convert_to($7,'UTF8')),1,convert_to($7,'UTF8'))
@@ -663,19 +663,19 @@ function validationAssessmentResultPayloadFixture(): CanonicalJsonValue {
     outcome: "PASS",
   };
 }
-async function seedFullStageAEvidence(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<void> {
+async function seedFullStageAEvidence(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<void> {
   const validationProtocolId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const validationResultId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const assessmentProtocolId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const assessmentResultId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const comparisonProtocolId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const comparisonResultId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
-  await client.query(`insert into investing.research_validation_protocols_scientific_identities (research_validation_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$7,'{"schemaVersion":"TEST_VALIDATION_PROTOCOL"}'::jsonb)`, [validationProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, validationProtocol.hashHex]);
-  await client.query(`insert into investing.research_validation_results_scientific_identities (research_validation_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'RESEARCH_VALIDATION_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_RESULT:V1','SYNTRAKE_SHA256_V1',$8,'{"schemaVersion":"TEST_VALIDATION_RESULT"}'::jsonb)`, [validationResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, validationResult.hashHex]);
-  await client.query(`insert into investing.research_validation_assessment_protocols_scientific_identities (research_validation_assessment_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, validation_protocol_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, assessment_methodology, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'METRIC_REGISTRY_V20260927','VALIDATION_ASSESSMENT_METHODOLOGY_V20260929','RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$11,$12::jsonb)`, [assessmentProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, validationProtocol.hashHex, experiment.hashHex, researchIr.hashHex, validationAssessmentProtocol.hashHex, JSON.stringify(validationAssessmentProtocolPayloadFixture())]);
-  await client.query(`insert into investing.research_validation_assessment_results_scientific_identities (research_validation_assessment_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, assessment_protocol_hash_hex, validation_protocol_hash_hex, validation_result_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, outcome, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'METRIC_REGISTRY_V20260927','PASS','RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1','SYNTRAKE_SHA256_V1',$15,$16::jsonb)`, [assessmentResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, assessmentProtocolId, validationResultId, validationAssessmentProtocol.hashHex, validationProtocol.hashHex, validationResult.hashHex, experiment.hashHex, researchIr.hashHex, validationAssessmentResult.hashHex, JSON.stringify(validationAssessmentResultPayloadFixture())]);
-  await client.query(`insert into investing.research_experiment_comparison_protocols_scientific_identities (research_experiment_comparison_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, hash_hex, logical_comparison_key, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'{"schemaVersion":"TEST_COMPARISON_PROTOCOL"}'::jsonb)`, [comparisonProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, robustnessComparisonProtocol.hashHex, fixtureHash(`rl8c2:${suffix}:comparison-logical-key`)]);
-  await client.query(`insert into investing.research_experiment_comparison_results_scientific_identities (research_experiment_comparison_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_comparison_protocol_identity_id, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'{"schemaVersion":"TEST_COMPARISON_RESULT"}'::jsonb)`, [comparisonResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, comparisonProtocolId, robustnessComparisonResult.hashHex]);
+  await client.query(`insert into investing.research_validation_protocols_scientific_identities (research_validation_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$7,$8::jsonb)`, [validationProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, gold?.validationProtocol.ref.hashHex??validationProtocol.hashHex,JSON.stringify(gold?.validationProtocol.payload??{schemaVersion:"TEST_VALIDATION_PROTOCOL"})]);
+  await client.query(`insert into investing.research_validation_results_scientific_identities (research_validation_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'RESEARCH_VALIDATION_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_RESULT:V1','SYNTRAKE_SHA256_V1',$8,$9::jsonb)`, [validationResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId,gold?.validationResult.ref.hashHex??validationResult.hashHex,JSON.stringify(gold?.validationResult.payload??{schemaVersion:"TEST_VALIDATION_RESULT"})]);
+  await client.query(`insert into investing.research_validation_assessment_protocols_scientific_identities (research_validation_assessment_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, validation_protocol_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, assessment_methodology, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'METRIC_REGISTRY_V20260927','VALIDATION_ASSESSMENT_METHODOLOGY_V20260929','RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$11,$12::jsonb)`, [assessmentProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, gold?.validationProtocol.ref.hashHex??validationProtocol.hashHex, gold?.subject.subjectExperiment.hashHex??experiment.hashHex, gold?.subject.subjectResearchIr.hashHex??researchIr.hashHex, gold?.validationAssessmentProtocol?.ref.hashHex??validationAssessmentProtocol.hashHex,JSON.stringify(gold?.validationAssessmentProtocol?.payload??validationAssessmentProtocolPayloadFixture())]);
+  await client.query(`insert into investing.research_validation_assessment_results_scientific_identities (research_validation_assessment_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, assessment_protocol_hash_hex, validation_protocol_hash_hex, validation_result_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, outcome, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'METRIC_REGISTRY_V20260927','PASS','RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1','SYNTRAKE_SHA256_V1',$15,$16::jsonb)`, [assessmentResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, assessmentProtocolId, validationResultId, gold?.validationAssessmentProtocol?.ref.hashHex??validationAssessmentProtocol.hashHex,gold?.validationProtocol.ref.hashHex??validationProtocol.hashHex,gold?.validationResult.ref.hashHex??validationResult.hashHex,gold?.subject.subjectExperiment.hashHex??experiment.hashHex,gold?.subject.subjectResearchIr.hashHex??researchIr.hashHex,gold?.validationAssessmentResult?.ref.hashHex??validationAssessmentResult.hashHex,JSON.stringify(gold?.validationAssessmentResult?.payload??validationAssessmentResultPayloadFixture())]);
+  await client.query(`insert into investing.research_experiment_comparison_protocols_scientific_identities (research_experiment_comparison_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, hash_hex, logical_comparison_key, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, [comparisonProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, gold?.robustness?.protocolRef.hashHex??robustnessComparisonProtocol.hashHex, fixtureHash(`rl8c2:${suffix}:comparison-logical-key`),JSON.stringify(gold?.robustness?.protocol??{schemaVersion:"TEST_COMPARISON_PROTOCOL"})]);
+  await client.query(`insert into investing.research_experiment_comparison_results_scientific_identities (research_experiment_comparison_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_comparison_protocol_identity_id, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, [comparisonResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, comparisonProtocolId,gold?.robustness?.resultRef.hashHex??robustnessComparisonResult.hashHex,JSON.stringify(gold?.robustness?.result??{schemaVersion:"TEST_COMPARISON_RESULT"})]);
 }
 
 function closureTransition(stageA: ScientificPromotionTransitionV1): ScientificPromotionTransitionV1 {
@@ -1170,6 +1170,50 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       rl10ReadState.context=null;
       rl10ReadState.database=null;
       setup.release();
+    }
+  },180_000);
+
+  it("RL-10 uses a deterministic RL-8B positive scientific golden through the real PG17 owner SQL writer",async()=>{
+    const client=await behaviorPool.connect();
+    try{
+      const golden=buildRl10PositivePromotionEvidence();
+      const plan=evaluateScientificPromotionV1(golden);
+      expect(plan.kind,plan.kind==="FAIL_CLOSED"?plan.reason:"").toBe("AUTHORITATIVE_PLAN");
+      if(plan.kind!=="AUTHORITATIVE_PLAN")throw Error("GOLDEN_ENGINE_NOT_POSITIVE");
+      expect(plan.stageA.transition.resultingState).toBe("VALIDATION_PASSED");
+      expect(plan.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        client,"rl10-golden-engine-positive",true,true,golden);
+      expect(hashScientificPromotionTransitionV1(rootPayload).hashHex)
+        .toBe(hashScientificPromotionTransitionV1(golden.predecessor).hashHex);
+      const write=async()=>{
+        await setRl8Context(client,fixture,"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        return persistScientificPromotionPlanV1(
+          client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+      };
+      await client.query("begin");
+      const created=await write();
+      expect(created).toMatchObject({status:"CREATED",scientificState:"PROMOTION_ELIGIBLE",
+        stageAHashHex:plan.stageA.transitionRef.hashHex,
+        closureHashHex:plan.closure?.transitionRef.hashHex,
+      });
+      await client.query("commit");
+      await client.query("begin");
+      const repeated=await write();
+      expect(repeated).toEqual({...created,status:"REUSED_IDENTICAL"});
+      await client.query("commit");
+      const persisted=await client.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId]);
+      expect(persisted.rows[0]?.n).toBe(3);
+      // This PG17 test verifies cryptographic engine-plan -> RL-8 writer
+      // binding. Its RL-7 and Validation rows are golden fixture data,
+      // NOT a no-mock full Passport/Comparison writer end-to-end proof.
+    }finally{
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
     }
   },180_000);
 
