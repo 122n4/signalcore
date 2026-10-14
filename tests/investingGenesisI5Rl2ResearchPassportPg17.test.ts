@@ -6,6 +6,7 @@ import { resolveVerifiedClerkIdentity } from "../lib/investing/authority/clerk";
 import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
 import { readResearchPassportServiceV1 } from "../lib/investing/research/researchPassportService";
 import { executeHeadlessResearchCommandV1 } from "../lib/investing/research/headlessResearchService";
+import { inspectResearchRunRecoveryForCurrentUserV1 } from "../lib/investing/research/runRecoveryInspector";
 
 vi.mock("server-only", () => ({}));
 vi.mock("../lib/investing/authority/clerk", () => ({ resolveVerifiedClerkIdentity: vi.fn() }));
@@ -567,6 +568,21 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
     expect(first.passport.evidence).toHaveLength(1);
     expect(first.passport.executionRuns[2]?.terminalState).toBe("FAILED");
     expect(first.passport.executionRuns[2]?.failureReasonCode).toBe("UNSUPPORTED_ENGINE");
+    const recovery=await executeHeadlessResearchCommandV1({
+      schemaVersion:"RL10_HEADLESS_RESEARCH_COMMAND_V1",operation:"INSPECT_RUN_RECOVERY",
+      command:{researchInvestigationId:ids.investigationA,correlationId:"corr-rl10-recovery-pg17"},
+    });
+    expect(recovery.ok).toBe(true);
+    if(!recovery.ok) throw Error("headless recovery denied");
+    const rec=(recovery.value as {inspection:{
+      retryAuthorized:boolean,workerLiveness:string,runs:readonly {recoveryState:string,nextAction:string}[]
+    }}).inspection;
+    expect(rec.retryAuthorized).toBe(false);
+    expect(rec.workerLiveness).toBe("UNAVAILABLE");
+    expect(rec.runs).toHaveLength(3);
+    expect(rec.runs.filter(x=>x.recoveryState==="OBSERVED_SUCCEEDED")).toHaveLength(2);
+    expect(rec.runs.filter(x=>x.recoveryState==="OBSERVED_FAILED")).toHaveLength(1);
+    expect(rec.runs.every(x=>x.nextAction==="NO_RETRY")).toBe(true);
     expect(first.passport.ledger.map((event) => event.eventKind)).toEqual(expect.arrayContaining(["RUN_FAILED", "RESULT_AVAILABLE", "EVIDENCE_AVAILABLE"]));
     expect(first.passport.validation).toEqual({ availability: "AVAILABLE_RL3", episodes: [] });
     expect(first.passport.scientificPromotion.availability).toBe("DEFERRED_RL8");
@@ -618,6 +634,10 @@ maybeDescribe("I5 RL-2 Passport PG17 migration rehearsal", () => {
       command: { researchInvestigationId: ids.foreignInvestigation, correlationId: "corr-rl2-pg17-foreign-investigation" },
     });
     expect(headlessForeign).toEqual({ ok: false, code: "FORBIDDEN_OR_NOT_FOUND" });
+    const foreignRecovery=await inspectResearchRunRecoveryForCurrentUserV1({
+      researchInvestigationId:ids.foreignInvestigation,correlationId:"corr-rl10-recovery-foreign",
+    });
+    expect(foreignRecovery).toMatchObject({ok:false,externalCode:"FORBIDDEN_OR_NOT_FOUND"});
     await expect(countVisibleInvestigations({ research_investigation_id: ids.foreignInvestigation })).resolves.toBe(0);
   });
 

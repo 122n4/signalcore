@@ -19,6 +19,7 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "./researchSpecRevisi
 import { createExperimentBaselineForCurrentUserV1 } from "./experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "./experimentVariantService";
 import { readResearchPassportServiceV1 } from "./researchPassportService";
+import { inspectResearchRunRecoveryForCurrentUserV1 } from "./runRecoveryInspector";
 import { writeExperimentComparisonV1 } from "./experimentComparisonWriter";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
@@ -47,6 +48,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "FINALIZE_VALIDATION_ASSESSMENT",
   "COMPARE_EXPERIMENTS",
   "READ_PASSPORT",
+  "INSPECT_RUN_RECOVERY",
 ] as const);
 
 export type HeadlessResearchOperationV1 = typeof headlessResearchCommandOperationsV1[number];
@@ -85,6 +87,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   FINALIZE_VALIDATION_ASSESSMENT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
   COMPARE_EXPERIMENTS: ["researchInvestigationId", "correlationId", "sources"],
   READ_PASSPORT: ["researchInvestigationId", "correlationId"],
+  INSPECT_RUN_RECOVERY: ["researchInvestigationId", "correlationId"],
 });
 
 type PlainRecord = Record<string, unknown>;
@@ -290,6 +293,11 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
         };
         break;
       }
+      case "INSPECT_RUN_RECOVERY":
+        outcome = await inspectResearchRunRecoveryForCurrentUserV1({
+          researchInvestigationId: command.researchInvestigationId as string,
+          correlationId: command.correlationId as string,
+        }); break;
       case "READ_PASSPORT":
         outcome = await readResearchPassportServiceV1({
           researchInvestigationId: command.researchInvestigationId as string,

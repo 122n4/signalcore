@@ -11,6 +11,7 @@ vi.mock("../lib/investing/research/researchSpecRevisionService",()=>({createRese
 vi.mock("../lib/investing/research/experimentBaselineService",()=>({createExperimentBaselineForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/experimentVariantService",()=>({createExperimentVariantForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchPassportService",()=>({readResearchPassportServiceV1:vi.fn()}));
+vi.mock("../lib/investing/research/runRecoveryInspector",()=>({inspectResearchRunRecoveryForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/experimentComparisonWriter",()=>({writeExperimentComparisonV1:vi.fn()}));
 vi.mock("../lib/investing/research/runInputScientificService",()=>({createScientificRunInputForCurrentUserV1:vi.fn()}));
 vi.mock("../lib/investing/research/researchExecutionService",()=>({executeResearchRunCommandV1:vi.fn()}));
@@ -38,6 +39,7 @@ import { createResearchSpecRevisionForCurrentUserV1 } from "../lib/investing/res
 import { createExperimentBaselineForCurrentUserV1 } from "../lib/investing/research/experimentBaselineService";
 import { createExperimentVariantForCurrentUserV1 } from "../lib/investing/research/experimentVariantService";
 import { readResearchPassportServiceV1 } from "../lib/investing/research/researchPassportService";
+import { inspectResearchRunRecoveryForCurrentUserV1 } from "../lib/investing/research/runRecoveryInspector";
 import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
 import { createScientificRunInputForCurrentUserV1 } from "../lib/investing/research/runInputScientificService";
 import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
@@ -73,6 +75,7 @@ const all: Record<string, ReturnType<typeof vi.fn>> = {
   FINALIZE_VALIDATION_ASSESSMENT: vi.mocked(finalizeValidationAssessmentResultCommandV1),
   COMPARE_EXPERIMENTS: vi.mocked(writeExperimentComparisonV1),
   READ_PASSPORT: vi.mocked(readResearchPassportServiceV1),
+  INSPECT_RUN_RECOVERY: vi.mocked(inspectResearchRunRecoveryForCurrentUserV1),
 };
 const provider = Object.freeze({loadSeriesContent:vi.fn()});
 const comparisonOutput = Object.freeze({
@@ -99,6 +102,7 @@ const commands: Record<string, Record<string,unknown>> = {
     sources:{protocol:{schemaVersion:"EXPERIMENT_COMPARISON_PROTOCOL_V1"},
       referenceParameters:{},subjectParameters:{},neighborhoodResults:[]}},
   READ_PASSPORT: {researchInvestigationId:id,correlationId},
+  INSPECT_RUN_RECOVERY: {researchInvestigationId:id,correlationId},
 };
 function input(operation:string,command:unknown = commands[operation]) {
   return {schemaVersion:version,operation,command};
@@ -317,6 +321,16 @@ describe("RL-10 headless Investing Research entry point",()=>{
       expect(await executeHeadlessResearchCommandV1(input("COMPARE_EXPERIMENTS")))
         .toEqual({ok:false,code:"INTERNAL_ERROR"});
     }
+  });
+  it("recovery inspection refuses caller status, retry or authority injection",async()=>{
+    for(const extra of [
+      {runStatus:"FAILED"},{leaseId:id},{resume:true},{retry:true},{database:{}},{authorizedContext:{}},
+    ]) {
+      expect(await executeHeadlessResearchCommandV1(input("INSPECT_RUN_RECOVERY",{
+        ...commands.INSPECT_RUN_RECOVERY,...extra,
+      }))).toEqual({ok:false,code:"VALIDATION_ERROR"});
+    }
+    expect(totalCalls()).toBe(0);
   });
   it("retains stable failure codes for existing validation owner writers",async()=>{
     vi.mocked(finalizeValidationResultCommandV1).mockResolvedValueOnce({
