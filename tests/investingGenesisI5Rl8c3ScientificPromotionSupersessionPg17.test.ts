@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
 import { readResearchPassportV1 } from "../lib/investing/research/researchPassportReader";
 import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
-import { resolveAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
+import { resolveAuthorizedResearchPassportReadContext, isAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
 import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
 import type { ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
 
@@ -1087,7 +1087,8 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         correlationId:"rl10-owner-verified-root",
       });
       expect(verified.ok,JSON.stringify(verified)).toBe(true);
-      if(!verified.ok)throw Error("RL-10 real owner resolver denied lawful Investigation");
+      if(!verified.ok||!isAuthorizedResearchPassportReadContext(verified.context))
+        throw Error("RL-10 real owner resolver denied lawful Investigation");
       expect(verified.context.principalId).toBe(fixture.principalId);
       expect(verified.context.tenantId).toBe(fixture.tenantId);
       expect(verified.context.tenantMembershipId).toBe(fixture.tenantMembershipId);
