@@ -178,6 +178,8 @@ describe("Investing Genesis I5 Experiment VARIANT lineage admission runtime", ()
       "lib/investing/research/materialRequest.ts",
       "lib/investing/research/experimentVariantWriter.ts",
       "lib/investing/research/experimentVariantService.ts",
+      // RL-10 dispatch only reaches the existing authorized variant owner service.
+      "lib/investing/research/headlessResearchService.ts",
     ]);
     let references = "";
     try {
