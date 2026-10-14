@@ -996,11 +996,11 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       // scientific spec identity that the real Passport validates.
       const specRef=ref("SYNTRAKE:RESEARCH_SPEC:V1","7");
       await setup.query(`insert into investing.research_specs_scientific_identities
-        (tenant_id,principal_id,tenant_membership_id,research_spec_revision_id,
+        (research_spec_identity_id,tenant_id,principal_id,tenant_membership_id,research_spec_revision_id,
          operation,capability,operation_scope,source_context,
          hash_algorithm,hash_domain,hash_version,hash_hex,
          source_draft_hash_hex,hypothesis_hash_hex,canonical_payload)
-        values ($1,$2,$3,$4,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1',
+        values (extensions.gen_random_uuid(),$1,$2,$3,$4,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1',
                 'RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',
                 'SHA-256','SYNTRAKE:RESEARCH_SPEC:V1','SYNTRAKE_SHA256_V1',
                 $5,$6,$7,$8::jsonb)`,[
