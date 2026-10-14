@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
 import { readResearchPassportV1 } from "../lib/investing/research/researchPassportReader";
 import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
+import { resolveAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
 import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
 import type { ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
 
@@ -13,15 +14,33 @@ const rl10ReadState = vi.hoisted(() => ({
   context: null as null | Record<string,unknown>,
   database: null as unknown,
   authorized: true,
+  realOwnerMode:false,
+  externalSubject:"",
 }));
 vi.mock("server-only",()=>({}));
-vi.mock("../lib/investing/authority/context",()=>({
-  resolveAuthorizedResearchPassportReadContext:vi.fn(async ()=>
-    rl10ReadState.authorized?{ok:true,context:rl10ReadState.context}:
-      {ok:false,code:"FORBIDDEN_OR_NOT_FOUND"}),
-  isAuthorizedResearchPassportReadContext:vi.fn((context:unknown)=>
-    context===rl10ReadState.context && rl10ReadState.authorized),
+vi.mock("../lib/investing/authority/clerk",()=>({
+  resolveVerifiedClerkIdentity:vi.fn(async()=>({
+    ok:true,externalProvider:"CLERK",externalSubject:rl10ReadState.externalSubject,
+  })),
 }));
+vi.mock("../lib/investing/authority/context",async(importOriginal)=>{
+  const actual=await importOriginal<typeof import("../lib/investing/authority/context")>();
+  return {
+    ...actual,
+    resolveAuthorizedResearchPassportReadContext:vi.fn(
+      async(input:Parameters<typeof actual.resolveAuthorizedResearchPassportReadContext>[0])=>
+        rl10ReadState.realOwnerMode
+          ? actual.resolveAuthorizedResearchPassportReadContext(input)
+          : rl10ReadState.authorized
+            ? {ok:true,context:rl10ReadState.context}
+            : {ok:false,code:"FORBIDDEN_OR_NOT_FOUND"},
+    ),
+    isAuthorizedResearchPassportReadContext:vi.fn((context:unknown)=>
+      rl10ReadState.realOwnerMode
+        ? actual.isAuthorizedResearchPassportReadContext(context)
+        : context===rl10ReadState.context&&rl10ReadState.authorized),
+  };
+});
 vi.mock("../lib/investing/authority/transport",()=>({
   getInvestingAuthorityDatabase:vi.fn(()=>rl10ReadState.database),
 }));
@@ -436,11 +455,11 @@ async function nextFixtureIds(client: PoolClient): Promise<Rl8cAuthorityFixture>
 }
 
 
-async function seedAuthorityScope(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; reuseAuthority: boolean }> = {}): Promise<void> {
+async function seedAuthorityScope(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {}): Promise<void> {
   const membershipState = overrides.membershipState ?? "ACTIVE";
   const membershipRole = overrides.membershipRole ?? "OWNER";
   if (!overrides.reuseAuthority) {
-    await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', $2)", [fixture.principalId, `rl8c1-${suffix}`]);
+    await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', $2)", [fixture.principalId, overrides.authActorFromPrincipal ? fixture.principalId : `rl8c1-${suffix}`]);
     await client.query("insert into investing.tenants (tenant_id) values ($1)", [fixture.tenantId]);
     await client.query("insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id, role, state, revoked_at) values ($1, $2, $3, $4, $5, case when $5 = 'REVOKED' then transaction_timestamp() else null end)", [fixture.tenantMembershipId, fixture.tenantId, fixture.principalId, membershipRole, membershipState]);
   }
@@ -585,7 +604,7 @@ async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixt
   `, [fixture.evidenceObjectIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, fixture.resultIdentityId, content, fixture.evidenceObjectHashHex]);
 }
 
-async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean }> = {}): Promise<Rl8cAuthorityFixture> {
+async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {}): Promise<Rl8cAuthorityFixture> {
   const fixture = { ...(await nextFixtureIds(client)), ...overrides };
   await seedAuthorityScope(client, fixture, suffix, overrides);
   await seedResearchMaterialAndSpec(client, fixture, suffix);
@@ -596,7 +615,7 @@ async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, o
   return fixture;
 }
 
-async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean }> = {}): Promise<Rl8cAuthorityFixture> {
+async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {}): Promise<Rl8cAuthorityFixture> {
   return seedRl8RootAuthorityFixture(client, suffix, overrides);
 }
 
@@ -657,8 +676,8 @@ function failedStageATransition(): ScientificPromotionTransitionV1 {
   return stageATransition({ resultingState: "VALIDATION_FAILED", gateOutcomes: gates, transitionReasons: ["FAILED_VALIDATION"] });
 }
 
-async function createWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
-  const fixture = await createRl8cRootFixture(client, suffix);
+async function createWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+  const fixture = await createRl8cRootFixture(client, suffix,realOwnerAuth?{authActorFromPrincipal:true}:{});
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
   await client.query("set local role investing_app");
   const protocol = await client.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
@@ -673,10 +692,10 @@ async function createWriterReadyRoot(client: PoolClient, suffix: string, withSta
   return { fixture, rootId: root.rows[0]!.result.researchScientificPromotionTransitionIdentityId, rootPayload };
 }
 
-async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
   await client.query("begin");
   try {
-    const result = await createWriterReadyRoot(client, suffix, withStageAEvidence);
+    const result = await createWriterReadyRoot(client, suffix, withStageAEvidence, realOwnerAuth);
     await client.query("commit");
     return result;
   } catch (error) {
@@ -982,7 +1001,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     const setup=await behaviorPool.connect();
     try{
       const {fixture,rootId}=await createCommittedWriterReadyRoot(
-        setup,"rl10-real-owner-passport-root",false);
+        setup,"rl10-real-owner-passport-root",false,true);
       const spec=await setup.query<{
         source_draft_material_hash:string;hypothesis_material_hash:string;
       }>("select source_draft_material_hash,hypothesis_material_hash from investing.research_spec_revisions where research_spec_revision_id=$1",
@@ -1046,7 +1065,8 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         correlationId:"rl10-passport-real-owner-root",
       };
       rl10ReadState.authorized=true;
-      rl10ReadState.context=context;
+      rl10ReadState.realOwnerMode=true;
+      rl10ReadState.externalSubject=fixture.principalId;
       const realDatabase={
         connect:async()=>{
           const client=await behaviorPool.connect();
@@ -1062,8 +1082,18 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         },
       };
       rl10ReadState.database=realDatabase;
+      const verified=await resolveAuthorizedResearchPassportReadContext({
+        researchInvestigationId:fixture.researchInvestigationId,
+        correlationId:"rl10-owner-verified-root",
+      });
+      expect(verified.ok,JSON.stringify(verified)).toBe(true);
+      if(!verified.ok)throw Error("RL-10 real owner resolver denied lawful Investigation");
+      expect(verified.context.principalId).toBe(fixture.principalId);
+      expect(verified.context.tenantId).toBe(fixture.tenantId);
+      expect(verified.context.tenantMembershipId).toBe(fixture.tenantMembershipId);
+      expect(verified.context.actorId).toBe(fixture.principalId);
       const passport=await readResearchPassportV1(
-        {authorizedContext:context as Parameters<typeof readResearchPassportV1>[0]["authorizedContext"]},
+        {authorizedContext:verified.context},
         realDatabase as unknown as Parameters<typeof readResearchPassportV1>[1]);
       expect(passport.ok,JSON.stringify(passport)).toBe(true);
       if(!passport.ok)throw Error("RL-10 real PG17 Passport source rejected");
@@ -1087,7 +1117,17 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
         rootTransitionIdentityId:rootId,scientificState:"EXECUTED",
         status:"REUSED_IDENTICAL",executionAuthority:"NONE",
       });
+      rl10ReadState.externalSubject="unknown-foreign-clerk";
+      const denied=await createScientificPromotionRootForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        researchExperimentId:fixture.researchExperimentId,
+        runInputIdentityId:fixture.runInputIdentityId,
+        correlationId:"rl10-foreign-denied-real-owner",
+      });
+      expect(denied).toMatchObject({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
     }finally{
+      rl10ReadState.realOwnerMode=false;
+      rl10ReadState.externalSubject="";
       rl10ReadState.context=null;
       rl10ReadState.database=null;
       setup.release();
