@@ -9,7 +9,9 @@ import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/
 import { evaluateScientificPromotionForCurrentUserV1,persistScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
 import { resolveAuthorizedResearchPassportReadContext, isAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
 import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
-import type { ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
+import { evaluateScientificPromotionV1, type ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
+import { buildRl10PositivePromotionEvidence } from "./support/investingI5Rl10PromotionPositiveGolden";
+type PositiveBundle = ReturnType<typeof buildRl10PositivePromotionEvidence>;
 
 const rl10ReadState = vi.hoisted(() => ({
   context: null as null | Record<string,unknown>,
@@ -548,8 +550,8 @@ async function seedBaselineAndVariantExperiment(client: PoolClient, fixture: Rl8
   `, [fixture.baselineExperimentId, fixture.researchExperimentId, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchSpecRevisionId, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, fixtureHash(`${suffix}:baseline-experiment`), fixtureHash(`${suffix}:baseline`), `rl8c1-${suffix}-baseline-idem`, `rl8c1-${suffix}-baseline-corr`, fixtureHash(`${suffix}:variant`), `rl8c1-${suffix}-variant-idem`, `rl8c1-${suffix}-variant-corr`]);
 }
 
-async function seedRunInput(client: PoolClient, fixture: Rl8cAuthorityFixture): Promise<void> {
-  const payload = {
+async function seedRunInput(client: PoolClient, fixture: Rl8cAuthorityFixture, gold?:PositiveBundle): Promise<void> {
+  const payload = gold?.runInput.payload??{
     schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1",
     researchSourceContext: "PURE_RESEARCH",
     metricRegistryVersion: "METRIC_REGISTRY_V20260927",
@@ -566,36 +568,48 @@ async function seedRunInput(client: PoolClient, fixture: Rl8cAuthorityFixture): 
       run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
       operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex,
       metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
-    ) values ($1,$2,null,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11,'METRIC_REGISTRY_V20260927',$12,'ENGINE_V20260918',$13,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$14,$15::jsonb)
-  `, [fixture.runInputIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.researchSpecRevisionId, payload.researchSpec.hashHex, researchIr.hashHex, experiment.hashHex, payload.datasetSnapshot.hashHex, payload.metricRequestSet.hashHex, payload.executionConfig.hashHex, fixture.runInputHashHex, JSON.stringify(payload)]);
+    ) values ($1,$2,null,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11 ,$16,$12,$17,$13,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$14,$15::jsonb)
+  `, [fixture.runInputIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.researchSpecRevisionId, payload.researchSpec.hashHex, payload.researchIr.hashHex, payload.experiment.hashHex, payload.datasetSnapshot.hashHex, payload.metricRequestSet.hashHex, payload.executionConfig.hashHex, fixture.runInputHashHex, JSON.stringify(payload),payload.metricRegistryVersion,payload.engineVersion]);
 }
 
-async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<{ trace: string; valuation: string; metrics: string }> {
-  const ids = await client.query<{ trace: string; valuation: string; metrics: string }>("select extensions.gen_random_uuid()::text as trace, extensions.gen_random_uuid()::text as valuation, extensions.gen_random_uuid()::text as metrics");
+async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<{ trace: string; valuation: string; metrics: string; benchmark:string|null }> {
+  const ids = await client.query<{ trace: string; valuation: string; metrics: string; benchmark:string }>("select extensions.gen_random_uuid()::text as trace, extensions.gen_random_uuid()::text as valuation, extensions.gen_random_uuid()::text as metrics, extensions.gen_random_uuid()::text as benchmark");
   const artifactIds = ids.rows[0]!;
-  for (const [id, kind, schema] of [[artifactIds.trace, "EXECUTION_TRACE", "EXECUTION_TRACE_V1"], [artifactIds.valuation, "VALUATION_SERIES", "VALUATION_SERIES_V1"], [artifactIds.metrics, "METRIC_RESULT_SET", "METRIC_RESULT_SET_V1"]]) {
-    const content = `${JSON.stringify({ suffix, kind })}\n`;
+  const sourceDescriptors=gold?[
+    [artifactIds.trace,"EXECUTION_TRACE",gold.result.payload.executionTrace],
+    [artifactIds.valuation,"VALUATION_SERIES",gold.result.payload.valuationSeries],
+    [artifactIds.metrics,"METRIC_RESULT_SET",gold.result.payload.metricResultSet],
+    [artifactIds.benchmark,"BENCHMARK_SERIES",gold.result.payload.benchmark],
+  ].filter((x):x is [string,string,NonNullable<PositiveBundle["result"]["payload"]["benchmark"]>]=>x[2]!==null):null;
+  const artifacts=sourceDescriptors??[
+    [artifactIds.trace,"EXECUTION_TRACE",{artifactSchemaVersion:"EXECUTION_TRACE_V1"}],
+    [artifactIds.valuation,"VALUATION_SERIES",{artifactSchemaVersion:"VALUATION_SERIES_V1"}],
+    [artifactIds.metrics,"METRIC_RESULT_SET",{artifactSchemaVersion:"METRIC_RESULT_SET_V1"}],
+  ] as [string,string,{artifactSchemaVersion:string}][];
+  for (const [id, kind, descriptor] of artifacts) {
+    const schema=descriptor.artifactSchemaVersion;
+    const content = gold?\"{\\\"ok\\\":true}\\n\":`${JSON.stringify({ suffix, kind })}\n`;
     await client.query(`
       insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content)
       values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,'CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',upper(encode(extensions.digest(convert_to($7,'UTF8'),'sha256'),'hex')),octet_length(convert_to($7,'UTF8')),1,convert_to($7,'UTF8'))
     `, [id, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, kind, schema, content]);
   }
-  return artifactIds;
+  return {trace:artifactIds.trace,valuation:artifactIds.valuation,metrics:artifactIds.metrics,benchmark:gold?artifactIds.benchmark:null};
 }
 
-async function seedResult(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<void> {
-  const artifacts = await seedResultArtifacts(client, fixture, suffix);
+async function seedResult(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<void> {
+  const artifacts = await seedResultArtifacts(client, fixture, suffix,gold);
   await client.query(`
     insert into investing.research_results_scientific_identities (
       result_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id,
       execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, benchmark_series_artifact_id,
       operation, capability, operation_scope, source_context, engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
-    ) values ($1,$2,null,$3,$4,$5,$6,$7,$8,null,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$9,'{"schemaVersion":"RESULT_HASH_PAYLOAD_V1"}'::jsonb)
-  `, [fixture.resultIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, artifacts.trace, artifacts.valuation, artifacts.metrics, fixture.resultHashHex]);
+    ) values ($1,$2,null,$3,$4,$5,$6,$7,$8,$10,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER',$11,'SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$9,$12::jsonb)
+  `, [fixture.resultIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, artifacts.trace, artifacts.valuation, artifacts.metrics, fixture.resultHashHex,artifacts.benchmark,gold?.result.payload.engineVersion??"ENGINE_V20260918",JSON.stringify(gold?.result.payload??{schemaVersion:"RESULT_HASH_PAYLOAD_V1"})]);
 }
 
-async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<void> {
-  const content = JSON.stringify({ schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1", suffix });
+async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<void> {
+  const content = gold?.evidenceObject?.object.contentBytes.toString("utf8")??JSON.stringify({ schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1", suffix });
   await client.query(`
     insert into investing.research_evidence_objects_scientific_identities (
       evidence_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id, result_identity_id,
@@ -605,19 +619,19 @@ async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixt
   `, [fixture.evidenceObjectIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, fixture.resultIdentityId, content, fixture.evidenceObjectHashHex]);
 }
 
-async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {}): Promise<Rl8cAuthorityFixture> {
-  const fixture = { ...(await nextFixtureIds(client)), ...overrides };
+async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {},gold?:PositiveBundle): Promise<Rl8cAuthorityFixture> {
+  const fixture = { ...(await nextFixtureIds(client)), ...overrides,...(gold?{runInputHashHex:gold.runInput.ref.hashHex,resultHashHex:gold.result.ref.hashHex,evidenceObjectHashHex:gold.evidenceObject?.ref.hashHex}: {}) };
   await seedAuthorityScope(client, fixture, suffix, overrides);
   await seedResearchMaterialAndSpec(client, fixture, suffix);
   await seedBaselineAndVariantExperiment(client, fixture, suffix);
-  await seedRunInput(client, fixture);
-  await seedResult(client, fixture, suffix);
-  await seedEvidenceObject(client, fixture, suffix);
+  await seedRunInput(client, fixture,gold);
+  await seedResult(client, fixture, suffix,gold);
+  await seedEvidenceObject(client, fixture, suffix,gold);
   return fixture;
 }
 
-async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {}): Promise<Rl8cAuthorityFixture> {
-  return seedRl8RootAuthorityFixture(client, suffix, overrides);
+async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {},gold?:PositiveBundle): Promise<Rl8cAuthorityFixture> {
+  return seedRl8RootAuthorityFixture(client, suffix, overrides,gold);
 }
 
 function validationAssessmentProtocolPayloadFixture(): CanonicalJsonValue {
@@ -677,8 +691,8 @@ function failedStageATransition(): ScientificPromotionTransitionV1 {
   return stageATransition({ resultingState: "VALIDATION_FAILED", gateOutcomes: gates, transitionReasons: ["FAILED_VALIDATION"] });
 }
 
-async function createWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
-  const fixture = await createRl8cRootFixture(client, suffix,realOwnerAuth?{authActorFromPrincipal:true}:{});
+async function createWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false,gold?:PositiveBundle): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+  const fixture = await createRl8cRootFixture(client, suffix,realOwnerAuth?{authActorFromPrincipal:true}:{},gold);
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
   await client.query("set local role investing_app");
   const protocol = await client.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
@@ -686,17 +700,17 @@ async function createWriterReadyRoot(client: PoolClient, suffix: string, withSta
   await client.query("reset role");
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
   await client.query("set local role investing_app");
-  const rootPayload = rootTransition();
+  const rootPayload = gold?.predecessor??rootTransition();
   const root = await client.query<{ result: { researchScientificPromotionTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(rootPayload).hashHex, JSON.stringify(rootPayload)]);
   await client.query("reset role");
-  if(withStageAEvidence) await seedFullStageAEvidence(client, fixture, suffix);
+  if(withStageAEvidence) await seedFullStageAEvidence(client, fixture, suffix,gold);
   return { fixture, rootId: root.rows[0]!.result.researchScientificPromotionTransitionIdentityId, rootPayload };
 }
 
-async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false,gold?:PositiveBundle): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
   await client.query("begin");
   try {
-    const result = await createWriterReadyRoot(client, suffix, withStageAEvidence, realOwnerAuth);
+    const result = await createWriterReadyRoot(client, suffix, withStageAEvidence, realOwnerAuth,gold);
     await client.query("commit");
     return result;
   } catch (error) {
