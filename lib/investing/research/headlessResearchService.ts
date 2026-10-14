@@ -22,7 +22,7 @@ import { readResearchPassportServiceV1 } from "./researchPassportService";
 import { executeResearchRunCommandV1 } from "./researchExecutionService";
 import { createServerDatasetMaterialProviderV1 } from "./serverDatasetMaterialProvider";
 import { createScientificRunInputForCurrentUserV1 } from "./runInputScientificService";
-import { createValidationProtocolCommandV1 } from "./validationExecutionService";
+import { createValidationProtocolCommandV1, executeValidationChildCommandV1 } from "./validationExecutionService";
 import { finalizeValidationResultCommandV1 } from "./validationAggregateService";
 import {
   createValidationAssessmentProtocolCommandV1,
@@ -40,6 +40,7 @@ export const headlessResearchCommandOperationsV1 = Object.freeze([
   "CREATE_RUN_INPUT",
   "EXECUTE_RUN",
   "CREATE_VALIDATION_PROTOCOL",
+  "EXECUTE_VALIDATION_CHILD",
   "FINALIZE_VALIDATION_RESULT",
   "CREATE_VALIDATION_ASSESSMENT_PROTOCOL",
   "FINALIZE_VALIDATION_ASSESSMENT",
@@ -76,6 +77,7 @@ const fields: Readonly<Record<HeadlessResearchOperationV1, readonly string[]>> =
   CREATE_RUN_INPUT: ["researchInvestigationId", "researchExperimentId", "correlationId", "candidate"],
   EXECUTE_RUN: ["researchInvestigationId", "runInputIdentityId", "correlationId"],
   CREATE_VALIDATION_PROTOCOL: ["researchInvestigationId", "researchExperimentId", "correlationId", "candidate"],
+  EXECUTE_VALIDATION_CHILD: ["researchInvestigationId", "researchValidationProtocolIdentityId", "foldOrdinal", "phase", "correlationId"],
   FINALIZE_VALIDATION_RESULT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
   CREATE_VALIDATION_ASSESSMENT_PROTOCOL: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId", "protocol"],
   FINALIZE_VALIDATION_ASSESSMENT: ["researchInvestigationId", "researchValidationProtocolIdentityId", "correlationId"],
@@ -133,6 +135,10 @@ function validatedPayload(operation: HeadlessResearchOperationV1, input: unknown
   if (fields[operation].includes("researchValidationProtocolIdentityId") &&
       (typeof data.researchValidationProtocolIdentityId !== "string" ||
        !uuid.test(data.researchValidationProtocolIdentityId))) return null;
+  if (operation === "EXECUTE_VALIDATION_CHILD" &&
+      (typeof data.foldOrdinal !== "string" ||
+       !/^(?:0|[1-9][0-9]*)$/u.test(data.foldOrdinal) ||
+       (data.phase !== "TRAINING" && data.phase !== "EVALUATION"))) return null;
   // Existing services verify canonical scientific material, expected pointers,
   // idempotency, tenant/account authority and operation-specific invariants.
   // This entry point never accepts transport, SQL clients or trusted contexts.
@@ -164,8 +170,7 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
   }
   // Blind Truth remains unavailable. No synthetic Vault transport, issuer or
   // embargo-evasive execution gets wired into this command path.
-  if (envelope.operation.startsWith("BLIND_TRUTH_") ||
-      envelope.operation === "EXECUTE_VALIDATION_CHILD" ) {
+  if (envelope.operation.startsWith("BLIND_TRUTH_")) {
     return { ok: false, code: "CAPABILITY_UNAVAILABLE" };
   }
   if (!(headlessResearchCommandOperationsV1 as readonly string[]).includes(envelope.operation)) {
@@ -209,6 +214,19 @@ export async function executeHeadlessResearchCommandV1(input: unknown): Promise<
       case "CREATE_VALIDATION_PROTOCOL":
         outcome = await createValidationProtocolCommandV1(
           command as Parameters<typeof createValidationProtocolCommandV1>[0]); break;
+      case "EXECUTE_VALIDATION_CHILD": {
+        const datasetMaterialProvider = createServerDatasetMaterialProviderV1();
+        if (!datasetMaterialProvider) return { ok: false, code: "CAPABILITY_UNAVAILABLE" };
+        outcome = await executeValidationChildCommandV1({
+          researchInvestigationId: command.researchInvestigationId as string,
+          researchValidationProtocolIdentityId: command.researchValidationProtocolIdentityId as string,
+          foldOrdinal: command.foldOrdinal as string,
+          phase: command.phase as "TRAINING" | "EVALUATION",
+          correlationId: command.correlationId as string,
+          datasetMaterialProvider,
+        });
+        break;
+      }
       case "FINALIZE_VALIDATION_RESULT":
         outcome = await finalizeValidationResultCommandV1(
           command as Parameters<typeof finalizeValidationResultCommandV1>[0]); break;
