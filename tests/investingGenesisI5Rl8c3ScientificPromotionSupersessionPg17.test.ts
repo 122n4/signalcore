@@ -657,7 +657,7 @@ function failedStageATransition(): ScientificPromotionTransitionV1 {
   return stageATransition({ resultingState: "VALIDATION_FAILED", gateOutcomes: gates, transitionReasons: ["FAILED_VALIDATION"] });
 }
 
-async function createWriterReadyRoot(client: PoolClient, suffix: string): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+async function createWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
   const fixture = await createRl8cRootFixture(client, suffix);
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
   await client.query("set local role investing_app");
@@ -669,14 +669,14 @@ async function createWriterReadyRoot(client: PoolClient, suffix: string): Promis
   const rootPayload = rootTransition();
   const root = await client.query<{ result: { researchScientificPromotionTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(rootPayload).hashHex, JSON.stringify(rootPayload)]);
   await client.query("reset role");
-  await seedFullStageAEvidence(client, fixture, suffix);
+  if(withStageAEvidence) await seedFullStageAEvidence(client, fixture, suffix);
   return { fixture, rootId: root.rows[0]!.result.researchScientificPromotionTransitionIdentityId, rootPayload };
 }
 
-async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
   await client.query("begin");
   try {
-    const result = await createWriterReadyRoot(client, suffix);
+    const result = await createWriterReadyRoot(client, suffix, withStageAEvidence);
     await client.query("commit");
     return result;
   } catch (error) {
@@ -982,7 +982,7 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
     const setup=await behaviorPool.connect();
     try{
       const {fixture,rootId}=await createCommittedWriterReadyRoot(
-        setup,"rl10-real-owner-passport-root");
+        setup,"rl10-real-owner-passport-root",false);
       const spec=await setup.query<{
         source_draft_material_hash:string;hypothesis_material_hash:string;
       }>("select source_draft_material_hash,hypothesis_material_hash from investing.research_spec_revisions where research_spec_revision_id=$1",
