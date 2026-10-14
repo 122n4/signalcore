@@ -4,6 +4,8 @@ import path from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
+import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
+import type { ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
 
 const rl10ReadState = vi.hoisted(() => ({
   context: null as null | Record<string,unknown>,
@@ -973,6 +975,49 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       await client.query("rollback");
     } finally { client.release(); }
   }, 180_000);
+
+  it("RL-10 persists and replays actual RL-8C2 Stage-A/closure through investing_app with RL-8C3 chain postproof",async()=>{
+    const client=await behaviorPool.connect();
+    try{
+      await withTransaction(client,async()=>{
+        const {fixture,rootId,rootPayload}=await createWriterReadyRoot(client,"rl10-persist-plan-gateway");
+        await setRl8Context(client,fixture,"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        const stage=stageATransition();
+        const closure=closureTransition(stage);
+        const plan={
+          kind:"AUTHORITATIVE_PLAN",
+          stageA:{transition:stage,transitionRef:hashScientificPromotionTransitionV1(stage)},
+          closure:{transition:closure,transitionRef:hashScientificPromotionTransitionV1(closure)},
+        } satisfies ScientificPromotionEvaluationPlanV1;
+        const dbClient=client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0];
+        const created=await persistScientificPromotionPlanV1(dbClient,rootId,rootPayload,plan);
+        expect(created).toMatchObject({
+          status:"CREATED",scientificState:"PROMOTION_ELIGIBLE",
+          stageAHashHex:hashScientificPromotionTransitionV1(stage).hashHex,
+          closureHashHex:hashScientificPromotionTransitionV1(closure).hashHex,
+        });
+        expect(created.closureTransitionIdentityId).toMatch(/^[0-9a-f-]{36}$/u);
+        const reused=await persistScientificPromotionPlanV1(dbClient,rootId,rootPayload,plan);
+        expect(reused).toEqual({...created,status:"REUSED_IDENTICAL"});
+        const alternate=failedStageATransition();
+        const alternateClosure=closureTransition(alternate);
+        const conflict={
+          kind:"AUTHORITATIVE_PLAN",
+          stageA:{transition:alternate,transitionRef:hashScientificPromotionTransitionV1(alternate)},
+          closure:{transition:alternateClosure,transitionRef:hashScientificPromotionTransitionV1(alternateClosure)},
+        } satisfies ScientificPromotionEvaluationPlanV1;
+        await expect(persistScientificPromotionPlanV1(dbClient,rootId,rootPayload,conflict))
+          .rejects.toThrow("PROMOTION_WRITER_CONFLICT");
+        await client.query("reset role");
+        const rows=await client.query<{resulting_state:string}>(
+          "select resulting_state from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=any($1::uuid[])",
+          [[rootId,created.stageATransitionIdentityId,created.closureTransitionIdentityId]]);
+        expect(rows.rows.map(x=>x.resulting_state).sort())
+          .toEqual(["EXECUTED","PROMOTION_ELIGIBLE","VALIDATION_PASSED"].sort());
+      });
+    }finally{client.release();}
+  },180_000);
 
   it("REAL PG17 replay returns CREATED then REUSED_IDENTICAL and blocks divergent second successor", async () => {
     const client = await behaviorPool.connect();
