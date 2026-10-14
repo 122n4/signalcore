@@ -11,7 +11,8 @@ import type { ResearchDatasetMaterialProviderV1 } from "./datasetMaterial";
 // of truth for DatasetSeries identities; the accepted execution writer checks
 // canonical material bytes, content SHA-256, coverage and observation count.
 const maxSeriesBytes = 32 * 1024 * 1024;
-const hashHex = /^[0-9a-f]{64}$/u;
+// Scientific SHA-256 identity is canonical UPPERCASE hexadecimal.
+const hashHex = /^[0-9A-F]{64}$/u;
 const rootVariable = "SYNTRAKE_I5_DATASET_MATERIAL_DIRECTORY";
 
 export function createServerDatasetMaterialProviderV1(): ResearchDatasetMaterialProviderV1 | null {

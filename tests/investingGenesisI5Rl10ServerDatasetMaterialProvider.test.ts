@@ -5,14 +5,15 @@ import { join } from "node:path";
 
 vi.mock("server-only", () => ({}));
 import { createServerDatasetMaterialProviderV1 } from "../lib/investing/research/serverDatasetMaterialProvider";
+import { hashRefV1 } from "../lib/investing/research/canonical";
 
-const hash = "a".repeat(64);
-const ref = Object.freeze({
+const hash = "A".repeat(64);
+const ref = Object.freeze(hashRefV1({
   hashAlgorithm: "SHA-256" as const,
   hashDomain: "SYNTRAKE:DATASET_SERIES:V1" as const,
   hashVersion: "SYNTRAKE_SHA256_V1" as const,
   hashHex: hash,
-});
+}));
 const folders: string[] = [];
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -38,8 +39,8 @@ describe("RL-10 operator-owned content-addressed material loader", () => {
     const provider = createServerDatasetMaterialProviderV1();
     expect(provider).not.toBeNull();
     expect(await provider!.loadSeriesContent(ref)).toEqual(bytes);
-    expect(await provider!.loadSeriesContent({...ref,hashHex:"b".repeat(64)})).toBeNull();
-    expect(await provider!.loadSeriesContent({...ref,hashHex:"../../etc/passwd"})).toBeNull();
+    expect(await provider!.loadSeriesContent({...ref,hashHex:"B".repeat(64) as typeof ref.hashHex})).toBeNull();
+    expect(await provider!.loadSeriesContent({...ref,hashHex:"../../etc/passwd" as typeof ref.hashHex})).toBeNull();
     expect(await provider!.loadSeriesContent({...ref,hashDomain:"SYNTRAKE:RESULT:V1"})).toBeNull();
   });
   it.skipIf(process.platform === "win32")("rejects symlink material without following it", async () => {
