@@ -10,6 +10,7 @@ import { evaluateScientificPromotionForCurrentUserV1,persistScientificPromotionF
 import { resolveAuthorizedResearchPassportReadContext, isAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
 import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
 import { evaluateScientificPromotionV1, type ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
+import { readPersistedPromotionRobustnessV1 } from "../lib/investing/research/scientificPromotionRobustnessReader";
 import { buildRl10PositivePromotionEvidence } from "./support/investingI5Rl10PromotionPositiveGolden";
 type PositiveBundle = ReturnType<typeof buildRl10PositivePromotionEvidence>;
 
@@ -1170,6 +1171,130 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       rl10ReadState.context=null;
       rl10ReadState.database=null;
       setup.release();
+    }
+  },180_000);
+
+  it("RL-10 reads immutable RL-7 comparison through real investing_app RLS, hashes and RL-8 positive writer",async()=>{
+    const client=await behaviorPool.connect();
+    try{
+      const golden=buildRl10PositivePromotionEvidence();
+      if(!golden.robustness)throw Error("POSITIVE_FIXTURE_NO_RL7");
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        client,"rl10-rl7-rl8-real-gateway",true,true,golden);
+      rl10ReadState.externalSubject=fixture.principalId;
+      rl10ReadState.realOwnerMode=true;
+      rl10ReadState.database={
+        connect:async()=>{
+          const conn=await behaviorPool.connect();
+          return {
+            query:async(sql:string,params?:readonly unknown[])=>{
+              const value=await conn.query(sql,params as unknown[]);
+              if(sql.trim().toLowerCase().startsWith("begin"))
+                await conn.query("set local role investing_app");
+              return value;
+            },
+            release:(destroy?:boolean)=>conn.release(destroy),
+          };
+        },
+      };
+      const resolved=await resolveAuthorizedResearchPassportReadContext({
+        researchInvestigationId:fixture.researchInvestigationId,
+        correlationId:"rl10-rl7-r8-verified-owner",
+      });
+      expect(resolved.ok,JSON.stringify(resolved)).toBe(true);
+      if(!resolved.ok||!isAuthorizedResearchPassportReadContext(resolved.context))
+        throw Error("POSITIVE_RL7_OWNER_AUTHORITY_DENIED");
+      const ctx=resolved.context;
+      const protocol=golden.robustness.protocol;
+      const referenceResultId=(await client.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const referenceRunId=(await client.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const thirdExperimentId=(await client.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      // PASSport reference fragments are deliberately synthetic HERE.
+      // The real RL-7 gateway independently reads and verifies immutable
+      // Protocol/Result through PostgreSQL FORCE RLS and checked ownership.
+      // This does not claim an end-to-end real Research Passport lineage.
+      const passport={
+        investigation:{
+          researchInvestigationId:fixture.researchInvestigationId,
+          tenantId:fixture.tenantId,principalId:fixture.principalId,
+          tenantMembershipId:fixture.tenantMembershipId,
+          operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
+        },
+        experiments:[
+          {researchExperimentId:fixture.researchExperimentId,
+            experiment:golden.subject.subjectExperiment,
+            experimentParameters:golden.subject.subjectExperimentParameters,
+            parentExperimentId:fixture.baselineExperimentId},
+          {researchExperimentId:fixture.baselineExperimentId,
+            experiment:protocol.referenceExperiment,
+            experimentParameters:protocol.referenceExperimentParameters,
+            parentExperimentId:null},
+          {researchExperimentId:thirdExperimentId,
+            experiment:protocol.neighborhoodExperimentRefs[2],
+            experimentParameters:null,parentExperimentId:fixture.baselineExperimentId},
+        ],
+        runInputs:[{
+          runInputIdentityId:referenceRunId,
+          researchExperimentId:fixture.baselineExperimentId,
+          experimentHashHex:protocol.referenceExperiment.hashHex,
+        }],
+        results:[{
+          resultIdentityId:referenceResultId,runInputIdentityId:referenceRunId,
+          result:protocol.referenceResult,
+        }],
+        executionRuns:[{
+          runInputIdentityId:referenceRunId,resultIdentityId:referenceResultId,
+          terminalState:"SUCCEEDED",
+        }],
+        validation:{availability:"AVAILABLE_RL3",episodes:[{
+          researchExperimentId:fixture.baselineExperimentId,state:"AGGREGATE_AVAILABLE",
+          aggregate:{validationResult:protocol.referenceValidationResult},
+        }]},
+      } as unknown as Parameters<typeof readPersistedPromotionRobustnessV1>[2];
+      await client.query("begin");
+      try{
+        await setRl8Context(client,fixture,
+          "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        const bound={
+          subjectExperiment:golden.subject.subjectExperiment,
+          subjectExperimentParameters:golden.subject.subjectExperimentParameters,
+          subjectResult:golden.result.ref,
+          subjectValidationResult:golden.validationResult.ref,
+        };
+        const observed=await readPersistedPromotionRobustnessV1(
+          client as unknown as Parameters<typeof readPersistedPromotionRobustnessV1>[0],
+          ctx,passport,bound);
+        expect(observed).not.toBeNull();
+        expect(observed?.protocolRef.hashHex).toBe(golden.robustness.protocolRef.hashHex);
+        expect(observed?.resultRef.hashHex).toBe(golden.robustness.resultRef.hashHex);
+        const plan=evaluateScientificPromotionV1({...golden,robustness:observed});
+        expect(plan.kind,plan.kind==="FAIL_CLOSED"?plan.reason:"").toBe("AUTHORITATIVE_PLAN");
+        if(plan.kind!=="AUTHORITATIVE_PLAN")throw Error("RL7_PERSISTED_POSITIVE_GATE_DENIED");
+        expect(plan.stageA.transition.resultingState).toBe("VALIDATION_PASSED");
+        expect(plan.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+        const stored=await persistScientificPromotionPlanV1(
+          client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+        expect(stored).toMatchObject({status:"CREATED",scientificState:"PROMOTION_ELIGIBLE"});
+        await client.query("commit");
+      }catch(error){
+        await client.query("rollback").catch(()=>undefined);
+        throw error;
+      }
+      const rows=await client.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId]);
+      expect(rows.rows[0]?.n).toBe(3);
+    }finally{
+      rl10ReadState.realOwnerMode=false;
+      rl10ReadState.externalSubject="";
+      rl10ReadState.database=null;
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
     }
   },180_000);
 
