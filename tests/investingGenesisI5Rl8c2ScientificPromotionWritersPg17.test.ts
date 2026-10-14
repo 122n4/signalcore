@@ -4,6 +4,7 @@ import path from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
+import { evaluateScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
 
 const rl10PromotionState = vi.hoisted(()=>({
   context:null as null|Record<string,unknown>,
@@ -1495,6 +1496,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
           resultIdentityId:fixture.resultIdentityId,
           runInputIdentityId:fixture.runInputIdentityId}],
       };
+      let rl10ReconstructionReads=0;
       rl10PromotionState.database={
         connect:async()=>{
           const real=await pool.connect();
@@ -1505,6 +1507,7 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
                 await real.query("set local role investing_app");
                 return started;
               }
+              if(sql.includes("reconstruct_research_scientific_promotion_chain_v1")) rl10ReconstructionReads++;
               return real.query(sql,params as unknown[]);
             },
             release:(destroy?:boolean)=>real.release(destroy),
@@ -1527,6 +1530,16 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
         ok:true,status:"REUSED_IDENTICAL",rootTransitionIdentityId:
           first.ok && "rootTransitionIdentityId" in first ? first.rootTransitionIdentityId : "",
       });
+      rl10PromotionState.passport={...rl10PromotionState.passport,
+        validation:{availability:"AVAILABLE_RL3",episodes:[]}};
+      const evalBlocked=await evaluateScientificPromotionForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        rootTransitionIdentityId:first.ok && "rootTransitionIdentityId" in first ? String(first.rootTransitionIdentityId) : "",
+        researchValidationProtocolIdentityId:fixture.protocolIdentityId,
+        correlationId:"rl10-pg17-promotion-read-only-incomplete",
+      });
+      expect(evalBlocked).toEqual({ok:false,code:"INTERNAL_ERROR"});
+      expect(rl10ReconstructionReads).toBe(1);
       await client.query("begin");
       const rows=await client.query<{transition_hash_hex:string;resulting_state:string}>(
         "select transition_hash_hex,resulting_state from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",

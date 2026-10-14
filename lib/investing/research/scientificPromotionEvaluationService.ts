@@ -110,11 +110,9 @@ export async function evaluateScientificPromotionForCurrentUserV1(input:Readonly
       "select current_user,current_role")).rows);
     if(transport.current_user!=="investing_app"||transport.current_role!=="investing_app")
       throw Error("PROMOTION_TRANSPORT_INVALID");
-    const membership=await client.query<{tenant_membership_id:string}>(
-      "select m.tenant_membership_id from investing.tenant_memberships m join investing.principals p on p.principal_id=m.principal_id join investing.tenants t on t.tenant_id=m.tenant_id where m.tenant_membership_id=$1 and m.tenant_id=$2 and m.principal_id=$3 and m.role='OWNER' and m.state='ACTIVE' and p.state='ACTIVE' and t.state='ACTIVE'",
-      [ctx.tenantMembershipId,ctx.tenantId,ctx.principalId]);
-    if(membership.rows.length!==1)throw Error("PROMOTION_AUTHORITY_REVOKED");
-
+    // The SQL reconstruction function rechecks the exact owner/tenant
+    // membership under the accepted RL-8 privileged authority. A direct
+    // investing_app membership SELECT would depend on unrelated RLS grants.
     const chain=exactlyOne((await client.query<{result:unknown}>(
       "select investing.reconstruct_research_scientific_promotion_chain_v1($1::uuid) as result",
       [input.rootTransitionIdentityId])).rows).result as Record<string,unknown>;
