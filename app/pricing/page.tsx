@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CheckoutButton from "@/components/CheckoutButton";
 
 const tiers = [
   {
@@ -37,6 +38,7 @@ export default function PricingPage() {
                   <li key={line}>- {line}</li>
                 ))}
               </ul>
+              {tier.name === "Pro" ? <CheckoutButton /> : null}
             </article>
           ))}
         </div>
