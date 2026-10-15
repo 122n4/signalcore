@@ -423,3 +423,6 @@ export {
   type ValidationAssessmentThresholdV1,
   type VerifiedValidationAssessmentEvidenceV1,
 } from "./validationAssessment";
+export * from "./scientificPromotion";
+export * from "./scientificPromotionEngine";
+export * from "./blindTruth";

@@ -25,8 +25,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Full dependency audit
-        run: npm audit --audit-level=low
+      - name: Dependency security policy gate
+        run: npm run audit:dependencies
 
       - name: Prod dependency audit
         run: npm run audit:prod
