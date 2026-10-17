@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { InvestingAuthorityDatabase } from "../lib/investing/authority/context";
-import { readExperimentComparisonSourcesV1 } from "../lib/investing/research/experimentComparisonSourceReader";
+import { readExperimentComparisonSourcesV1, setComparisonReadContextV1 } from "../lib/investing/research/experimentComparisonSourceReader";
+import { readPersistedPromotionRobustnessV1 } from "../lib/investing/research/scientificPromotionRobustnessReader";
 import { buildExperimentComparisonResultV1 } from "../lib/investing/research/experimentComparisonBuilder";
 import { canonicalExperimentComparisonResultBytesV1, hashExperimentComparisonResultV1 } from "../lib/investing/research/experimentComparisonResult";
 import { Pool, type PoolClient } from "pg";
@@ -19,6 +20,8 @@ import { hashValidationRunInputV1, hashValidationChildResultV1 } from "../lib/in
 import { hashValidationResultV1 } from "../lib/investing/research/validationAggregate";
 import { canonicalExperimentComparisonProtocolBytesV1, hashExperimentComparisonProtocolV1 } from "../lib/investing/research/experimentComparison";
 import { writeExperimentComparisonV1 } from "../lib/investing/research/experimentComparisonWriter";
+import { executeHeadlessResearchCommandV1 } from "../lib/investing/research/headlessResearchService";
+import { getInvestingAuthorityDatabase } from "../lib/investing/authority/transport";
 import { i5ExperimentParametersCandidateV1, i5ExperimentResolvedResearchIrV1 } from "./support/investingI5ExperimentScientificFixtures";
 
 const writerState = vi.hoisted(() => ({
@@ -32,6 +35,9 @@ const writerState = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("../lib/investing/authority/transport", () => ({
+  getInvestingAuthorityDatabase: vi.fn(),
+}));
 vi.mock("../lib/investing/research/researchPassportReader", () => ({
   readResearchPassportV1: async () => {
     writerState.passportReads += 1;
@@ -872,6 +878,83 @@ maybeDescribe("I5 RL-7 Experiment Comparison real PG17 persistence rehearsal", (
     expect(second.protocolHash).toBe(first.protocolHash);
     expect(second.resultHash).toBe(first.resultHash);
     expect(writerState.passportReads).toBeGreaterThanOrEqual(2);
+
+    // RL-10: real investing_app + real RL-7 persisted SQL reads (not a
+    // mocked RLS or a self-declared robustness classification). The mocked
+    // accepted upstream Passport is explicitly acknowledged and linked.
+    const inspection=await database.connect();
+    try {
+      await inspection.query("begin");
+      await setComparisonReadContextV1(inspection,writerState.context);
+      await inspection.query("select set_config($1,$2,true)",
+        ["syntrake.investing.capability","RESEARCH_MUTATE"]);
+      const ownerPassport={
+        ...writerState.passport,
+        validation:{
+          ...writerState.passport.validation,
+          episodes:writerState.passport.validation.episodes.map((ep:any,i:number)=>({
+            ...ep,researchExperimentId:writerState.passport.experiments[i].researchExperimentId,
+          })),
+        },
+      };
+      const robustness=await readPersistedPromotionRobustnessV1(
+        inspection,writerState.context,ownerPassport,{
+          subjectExperiment:fixture.sources.protocol.subjectExperiment,
+          subjectExperimentParameters:fixture.sources.protocol.subjectExperimentParameters,
+          subjectResult:fixture.sources.protocol.subjectResult,
+          subjectValidationResult:fixture.sources.protocol.subjectValidationResult,
+        },
+      );
+      expect(robustness?.protocolRef.hashHex).toBe(first.protocolHash);
+      expect(robustness?.resultRef.hashHex).toBe(first.resultHash);
+      expect(robustness?.result.metricDeltas.every((x)=>x.orientedDeltaSign===null||
+        typeof x.orientedDeltaSign==="number")).toBe(true);
+      expect(robustness && hashExperimentComparisonResultV1(robustness.result)).toBe(first.resultHash);
+      await inspection.query("commit");
+    } finally {
+      await inspection.query("rollback").catch(()=>undefined);
+      await inspection.release();
+    }
+
+    // RL-10 dispatch must use precisely the same owner/persistence writer,
+    // without accepting database or authorization objects from the command.
+    vi.mocked(getInvestingAuthorityDatabase).mockReturnValue(database);
+    const routed = await executeHeadlessResearchCommandV1({
+      schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+      operation: "COMPARE_EXPERIMENTS",
+      command: {
+        researchInvestigationId: ids.investigation,
+        correlationId: "pg17-rl10-comparison-replay",
+        sources: fixture.sources,
+      },
+    });
+    expect(routed).toEqual({
+      ok: true,
+      operation: "COMPARE_EXPERIMENTS",
+      value: {
+        ok: true,
+        protocolIdentityId: first.protocolIdentityId,
+        resultIdentityId: first.resultIdentityId,
+        protocolHash: first.protocolHash,
+        resultHash: first.resultHash,
+      },
+    });
+    writerState.denied = true;
+    try {
+      const denied = await executeHeadlessResearchCommandV1({
+        schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+        operation: "COMPARE_EXPERIMENTS",
+        command: {
+          researchInvestigationId: ids.investigation,
+          correlationId: "pg17-rl10-comparison-denied",
+          sources: fixture.sources,
+        },
+      });
+      expect(denied).toEqual({ ok: false, code: "INTERNAL_ERROR" });
+    } finally {
+      writerState.denied = false;
+      vi.mocked(getInvestingAuthorityDatabase).mockReset();
+    }
 
     const client = await pool.connect();
     try {

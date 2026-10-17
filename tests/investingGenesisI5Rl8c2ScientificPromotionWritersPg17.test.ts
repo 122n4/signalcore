@@ -2,7 +2,30 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
+import { evaluateScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
+
+const rl10PromotionState = vi.hoisted(()=>({
+  context:null as null|Record<string,unknown>,
+  passport:null as unknown,
+  database:null as unknown,
+  authorized:true,
+}));
+vi.mock("server-only",()=>({}));
+vi.mock("../lib/investing/authority/context",()=>({
+  resolveAuthorizedResearchPassportReadContext:vi.fn(async()=>
+    rl10PromotionState.authorized?{ok:true,context:rl10PromotionState.context}:
+    {ok:false,code:"FORBIDDEN_OR_NOT_FOUND"}),
+  isAuthorizedResearchPassportReadContext:vi.fn((x:unknown)=>
+    rl10PromotionState.authorized && x===rl10PromotionState.context),
+}));
+vi.mock("../lib/investing/authority/transport",()=>({
+  getInvestingAuthorityDatabase:vi.fn(()=>rl10PromotionState.database),
+}));
+vi.mock("../lib/investing/research/researchPassportReader",()=>({
+  readResearchPassportV1:vi.fn(async()=>({ok:true,passport:rl10PromotionState.passport})),
+}));
 import {
   canonicalSha256HexV1,
   i5ResearchInternalCanonicalJsonBytesV1,
@@ -1438,4 +1461,106 @@ maybeDescribe("I5 RL-8C2 scientific promotion PostgreSQL 17 writer reconciliatio
       await left.query("rollback").catch(() => undefined); await right.query("rollback").catch(() => undefined);
       setup.release(); left.release(); right.release();
     }
-  }, 60_000);});
+  }, 60_000);
+  it("RL-10 creates and replays RL-8 root with real investing_app PG17 writer, no promotion", async()=>{
+    const client=await pool.connect();
+    try {
+      await client.query("begin");
+      const fixture=await createRl8cRootFixture(client,"rl10-root-service");
+      await client.query("commit");
+      rl10PromotionState.authorized=true;
+      rl10PromotionState.context={
+        actorId:"rl10-pg17-owner",principalId:fixture.principalId,
+        tenantId:fixture.tenantId,tenantMembershipId:fixture.tenantMembershipId,
+        researchInvestigationId:fixture.researchInvestigationId,
+        operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
+      };
+      rl10PromotionState.passport={
+        transportProof:{currentUser:"investing_app",currentRole:"investing_app"},
+        investigation:{
+          tenantId:fixture.tenantId,principalId:fixture.principalId,
+          tenantMembershipId:fixture.tenantMembershipId,
+          researchInvestigationId:fixture.researchInvestigationId,
+          operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
+        },
+        experiments:[{researchExperimentId:fixture.researchExperimentId,
+          experiment,experimentParameters,researchIr}],
+        runInputs:[{runInputIdentityId:fixture.runInputIdentityId,
+          researchExperimentId:fixture.researchExperimentId,
+          runInput,experimentHashHex:experiment.hashHex,researchIrHashHex:researchIr.hashHex}],
+        executionRuns:[{runInputIdentityId:fixture.runInputIdentityId,
+          terminalState:"SUCCEEDED",resultIdentityId:fixture.resultIdentityId}],
+        results:[{resultIdentityId:fixture.resultIdentityId,
+          runInputIdentityId:fixture.runInputIdentityId,result}],
+        evidence:[{evidenceIdentityId:fixture.evidenceObjectIdentityId,
+          resultIdentityId:fixture.resultIdentityId,
+          runInputIdentityId:fixture.runInputIdentityId}],
+      };
+      let rl10ReconstructionReads=0;
+      rl10PromotionState.database={
+        connect:async()=>{
+          const real=await pool.connect();
+          return {
+            query:async(sql:string,params?:readonly unknown[])=>{
+              if(sql==="begin"){
+                const started=await real.query("begin");
+                await real.query("set local role investing_app");
+                return started;
+              }
+              if(sql.includes("reconstruct_research_scientific_promotion_chain_v1")) rl10ReconstructionReads++;
+              return real.query(sql,params as unknown[]);
+            },
+            release:(destroy?:boolean)=>real.release(destroy),
+          };
+        },
+      };
+      const input={
+        researchInvestigationId:fixture.researchInvestigationId,
+        researchExperimentId:fixture.researchExperimentId,
+        runInputIdentityId:fixture.runInputIdentityId,
+        correlationId:"rl10-pg17-root-create",
+      };
+      const first=await createScientificPromotionRootForCurrentUserV1(input);
+      expect(first).toMatchObject({
+        ok:true,status:"CREATED",scientificState:"EXECUTED",
+        promotionEligibility:"NOT_EVALUATED",executionAuthority:"NONE",
+      });
+      const repeated=await createScientificPromotionRootForCurrentUserV1(input);
+      expect(repeated).toMatchObject({
+        ok:true,status:"REUSED_IDENTICAL",rootTransitionIdentityId:
+          first.ok && "rootTransitionIdentityId" in first ? first.rootTransitionIdentityId : "",
+      });
+      rl10PromotionState.passport={...(rl10PromotionState.passport as Record<string,unknown>),
+        validation:{availability:"AVAILABLE_RL3",episodes:[]}};
+      const evalBlocked=await evaluateScientificPromotionForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        rootTransitionIdentityId:first.ok && "rootTransitionIdentityId" in first ? String(first.rootTransitionIdentityId) : "",
+        researchValidationProtocolIdentityId:fixture.protocolIdentityId,
+        correlationId:"rl10-pg17-promotion-read-only-incomplete",
+      });
+      expect(evalBlocked).toEqual({ok:false,code:"INTERNAL_ERROR"});
+      expect(rl10ReconstructionReads).toBe(1);
+      await client.query("begin");
+      const rows=await client.query<{transition_hash_hex:string;resulting_state:string}>(
+        "select transition_hash_hex,resulting_state from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId],
+      );
+      await client.query("commit");
+      expect(rows.rows).toHaveLength(1);
+      expect(rows.rows[0]?.resulting_state).toBe("EXECUTED");
+      expect(rows.rows[0]?.transition_hash_hex).toBe(rootHashRef);
+
+      rl10PromotionState.authorized=false;
+      expect(await createScientificPromotionRootForCurrentUserV1(input))
+        .toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+    } finally {
+      await client.query("rollback").catch(()=>undefined);
+      rl10PromotionState.authorized=true;
+      rl10PromotionState.context=null;
+      rl10PromotionState.passport=null;
+      rl10PromotionState.database=null;
+      client.release();
+    }
+  },180_000);
+
+});

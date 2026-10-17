@@ -163,6 +163,8 @@ describe("Investing Genesis I5 Experiment BASELINE admission runtime", () => {
       .filter((line) => !line.startsWith("lib/investing/research/materialRequest.ts:"))
       .filter((line) => !line.startsWith("lib/investing/research/experimentBaselineWriter.ts:"))
       .filter((line) => !line.startsWith("lib/investing/research/experimentBaselineService.ts:"))
+      // RL-10 dispatch calls the authorized owner service, not admission/persistence directly.
+      .filter((line) => !line.startsWith("lib/investing/research/headlessResearchService.ts:"))
       .filter((line) => !line.startsWith("lib/investing/authority/context.ts:"));
 
     expect(experimentRuntime).toContain('from "./canonical"');

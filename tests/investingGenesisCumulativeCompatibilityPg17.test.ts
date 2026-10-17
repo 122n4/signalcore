@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { Pool, TypeOverrides, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -51,6 +52,7 @@ import {
 } from "../lib/investing/research";
 import { hashRunInputV1 } from "../lib/investing/research/canonical";
 import { executeResearchRunCommandV1 } from "../lib/investing/research/researchExecutionService";
+import { executeHeadlessResearchCommandV1 } from "../lib/investing/research/headlessResearchService";
 import {
   createAndActivateInvestingPlanRevisionForAccountV1,
   initializeInvestingPlanForAccountV1,
@@ -1435,16 +1437,57 @@ afterAll(async () => {
       [hashDatasetSeriesV1(executableRunInput.fixture.aaa.series), executableRunInput.fixture.aaa.bytes],
       [hashDatasetSeriesV1(executableRunInput.fixture.bbb.series), executableRunInput.fixture.bbb.bytes],
     ]);
-    const researchExecution = await executeResearchRunCommandV1({
+    // RL-10: use the real headless entry + server-owned material directory
+    // against the same disposable PostgreSQL 17 investing_app authority path.
+    // Source is SIMULATED PG17 fixture only; this is not a market provider.
+    const operatorMaterialRoot = fs.mkdtempSync(path.join(tmpdir(), "syntrake-rl10-pg17-"));
+    const materialRootEnv = "SYNTRAKE_I5_DATASET_MATERIAL_DIRECTORY";
+    const savedMaterialRoot = process.env[materialRootEnv];
+    const runEnvelope = {
+      schemaVersion: "RL10_HEADLESS_RESEARCH_COMMAND_V1",
+      operation: "EXECUTE_RUN",
+      command: {
+        researchInvestigationId: investigation.investigationId,
+        runInputIdentityId: executableRunInput.runInputIdentityId,
+        correlationId: "corr-cumulative-rl10-execution-01",
+      },
+    };
+    let routedExecution: Awaited<ReturnType<typeof executeHeadlessResearchCommandV1>>;
+    try {
+      delete process.env[materialRootEnv];
+      expect(await executeHeadlessResearchCommandV1(runEnvelope))
+        .toEqual({ ok: false, code: "CAPABILITY_UNAVAILABLE" });
+      for (const [scientificHashHex, bytes] of materialBytes) {
+        fs.writeFileSync(path.join(operatorMaterialRoot, scientificHashHex + ".jsonl"), bytes);
+      }
+      process.env[materialRootEnv] = operatorMaterialRoot;
+      routedExecution = await executeHeadlessResearchCommandV1(runEnvelope);
+    } finally {
+      if (savedMaterialRoot === undefined) delete process.env[materialRootEnv];
+      else process.env[materialRootEnv] = savedMaterialRoot;
+      fs.rmSync(operatorMaterialRoot, { recursive: true, force: true });
+    }
+    expect(routedExecution.ok).toBe(true);
+    if (!routedExecution.ok) throw new Error(`RL-10 headless execution failed: ${JSON.stringify(routedExecution)}`);
+    expect(routedExecution.operation).toBe("EXECUTE_RUN");
+    const researchExecution = routedExecution.value as Awaited<ReturnType<typeof executeResearchRunCommandV1>>;
+    expect(researchExecution.ok).toBe(true);
+    if (researchExecution.ok !== true) throw new Error(`I5 execution after repair failed: ${JSON.stringify(researchExecution)}`);
+    // Repeating the same scientific input through the established owner service
+    // must not manufacture a new Result identity.
+    const directReplay = await executeResearchRunCommandV1({
       researchInvestigationId: investigation.investigationId,
       runInputIdentityId: executableRunInput.runInputIdentityId,
-      correlationId: "corr-cumulative-i5-execution-01",
+      correlationId: "corr-cumulative-rl10-execution-02",
       datasetMaterialProvider: {
         loadSeriesContent: async (seriesRef) => materialBytes.get(seriesRef.hashHex) ?? null,
       },
     });
-    expect(researchExecution.ok).toBe(true);
-    if (researchExecution.ok !== true) throw new Error(`I5 execution after repair failed: ${JSON.stringify(researchExecution)}`);
+    expect(directReplay).toMatchObject({
+      ok: true,
+      resultHashHex: researchExecution.resultHashHex,
+      resultIdentityId: researchExecution.resultIdentityId,
+    });
     const evidenceCountAfterExecution = await adminClient.query<{ count: string }>(
       "select count(*)::text as count from investing.research_evidence_objects_scientific_identities where result_identity_id=$1",
       [researchExecution.resultIdentityId],

@@ -2,7 +2,54 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { readScientificPromotionChainForCurrentUserV1 } from "../lib/investing/research/scientificPromotionHistoryService";
+import { readResearchPassportV1 } from "../lib/investing/research/researchPassportReader";
+import { createScientificPromotionRootForCurrentUserV1 } from "../lib/investing/research/scientificPromotionRootService";
+import { evaluateScientificPromotionForCurrentUserV1,persistScientificPromotionForCurrentUserV1 } from "../lib/investing/research/scientificPromotionEvaluationService";
+import { resolveAuthorizedResearchPassportReadContext, isAuthorizedResearchPassportReadContext } from "../lib/investing/authority/context";
+import { persistScientificPromotionPlanV1 } from "../lib/investing/research/scientificPromotionPersistenceWriter";
+import { evaluateScientificPromotionV1, type ScientificPromotionEvaluationPlanV1 } from "../lib/investing/research/scientificPromotionEngine";
+import { readPersistedPromotionRobustnessV1 } from "../lib/investing/research/scientificPromotionRobustnessReader";
+import { canonicalExperimentComparisonProtocolV1 } from "../lib/investing/research/experimentComparison";
+import { canonicalExperimentComparisonResultV1 } from "../lib/investing/research/experimentComparisonResult";
+import { buildRl10PositivePromotionEvidence } from "./support/investingI5Rl10PromotionPositiveGolden";
+type PositiveBundle = ReturnType<typeof buildRl10PositivePromotionEvidence>;
+
+const rl10ReadState = vi.hoisted(() => ({
+  context: null as null | Record<string,unknown>,
+  database: null as unknown,
+  authorized: true,
+  realOwnerMode:false,
+  externalSubject:"",
+}));
+vi.mock("server-only",()=>({}));
+vi.mock("../lib/investing/authority/clerk",()=>({
+  resolveVerifiedClerkIdentity:vi.fn(async()=>({
+    ok:true,externalProvider:"CLERK",externalSubject:rl10ReadState.externalSubject,
+  })),
+}));
+vi.mock("../lib/investing/authority/context",async(importOriginal)=>{
+  const actual=await importOriginal<typeof import("../lib/investing/authority/context")>();
+  return {
+    ...actual,
+    resolveAuthorizedResearchPassportReadContext:vi.fn(
+      async(input:Parameters<typeof actual.resolveAuthorizedResearchPassportReadContext>[0])=>
+        rl10ReadState.realOwnerMode
+          ? actual.resolveAuthorizedResearchPassportReadContext(input)
+          : rl10ReadState.authorized
+            ? {ok:true,context:rl10ReadState.context}
+            : {ok:false,code:"FORBIDDEN_OR_NOT_FOUND"},
+    ),
+    isAuthorizedResearchPassportReadContext:vi.fn((context:unknown)=>
+      rl10ReadState.realOwnerMode
+        ? actual.isAuthorizedResearchPassportReadContext(context)
+        : context===rl10ReadState.context&&rl10ReadState.authorized),
+  };
+});
+vi.mock("../lib/investing/authority/transport",()=>({
+  getInvestingAuthorityDatabase:vi.fn(()=>rl10ReadState.database),
+}));
 import {
   canonicalSha256HexV1,
   i5ResearchInternalCanonicalJsonBytesV1,
@@ -414,11 +461,11 @@ async function nextFixtureIds(client: PoolClient): Promise<Rl8cAuthorityFixture>
 }
 
 
-async function seedAuthorityScope(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; reuseAuthority: boolean }> = {}): Promise<void> {
+async function seedAuthorityScope(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {}): Promise<void> {
   const membershipState = overrides.membershipState ?? "ACTIVE";
   const membershipRole = overrides.membershipRole ?? "OWNER";
   if (!overrides.reuseAuthority) {
-    await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', $2)", [fixture.principalId, `rl8c1-${suffix}`]);
+    await client.query("insert into investing.principals (principal_id, external_provider, external_subject) values ($1, 'CLERK', $2)", [fixture.principalId, overrides.authActorFromPrincipal ? fixture.principalId : `rl8c1-${suffix}`]);
     await client.query("insert into investing.tenants (tenant_id) values ($1)", [fixture.tenantId]);
     await client.query("insert into investing.tenant_memberships (tenant_membership_id, tenant_id, principal_id, role, state, revoked_at) values ($1, $2, $3, $4, $5, case when $5 = 'REVOKED' then transaction_timestamp() else null end)", [fixture.tenantMembershipId, fixture.tenantId, fixture.principalId, membershipRole, membershipState]);
   }
@@ -506,8 +553,8 @@ async function seedBaselineAndVariantExperiment(client: PoolClient, fixture: Rl8
   `, [fixture.baselineExperimentId, fixture.researchExperimentId, fixture.researchInvestigationId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchSpecRevisionId, experiment.hashHex, experimentParameters.hashHex, researchIr.hashHex, fixtureHash(`${suffix}:baseline-experiment`), fixtureHash(`${suffix}:baseline`), `rl8c1-${suffix}-baseline-idem`, `rl8c1-${suffix}-baseline-corr`, fixtureHash(`${suffix}:variant`), `rl8c1-${suffix}-variant-idem`, `rl8c1-${suffix}-variant-corr`]);
 }
 
-async function seedRunInput(client: PoolClient, fixture: Rl8cAuthorityFixture): Promise<void> {
-  const payload = {
+async function seedRunInput(client: PoolClient, fixture: Rl8cAuthorityFixture, gold?:PositiveBundle): Promise<void> {
+  const payload = gold?.runInput.payload??{
     schemaVersion: "RUN_INPUT_HASH_PAYLOAD_V1",
     researchSourceContext: "PURE_RESEARCH",
     metricRegistryVersion: "METRIC_REGISTRY_V20260927",
@@ -524,36 +571,48 @@ async function seedRunInput(client: PoolClient, fixture: Rl8cAuthorityFixture): 
       run_input_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, research_spec_revision_id,
       operation, capability, operation_scope, source_context, research_spec_hash_hex, research_ir_hash_hex, experiment_hash_hex, dataset_snapshot_hash_hex,
       metric_registry_version, metric_request_set_hash_hex, engine_version, execution_config_hash_hex, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
-    ) values ($1,$2,null,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11,'METRIC_REGISTRY_V20260927',$12,'ENGINE_V20260918',$13,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$14,$15::jsonb)
-  `, [fixture.runInputIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.researchSpecRevisionId, payload.researchSpec.hashHex, researchIr.hashHex, experiment.hashHex, payload.datasetSnapshot.hashHex, payload.metricRequestSet.hashHex, payload.executionConfig.hashHex, fixture.runInputHashHex, JSON.stringify(payload)]);
+    ) values ($1,$2,null,$3,$4,$5,$6,$7,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',$8,$9,$10,$11 ,$16,$12,$17,$13,'SHA-256','SYNTRAKE:RUN_INPUT:V1','SYNTRAKE_SHA256_V1',$14,$15::jsonb)
+  `, [fixture.runInputIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, fixture.researchSpecRevisionId, payload.researchSpec.hashHex, payload.researchIr.hashHex, payload.experiment.hashHex, payload.datasetSnapshot.hashHex, payload.metricRequestSet.hashHex, payload.executionConfig.hashHex, fixture.runInputHashHex, JSON.stringify(payload),payload.metricRegistryVersion,payload.engineVersion]);
 }
 
-async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<{ trace: string; valuation: string; metrics: string }> {
-  const ids = await client.query<{ trace: string; valuation: string; metrics: string }>("select extensions.gen_random_uuid()::text as trace, extensions.gen_random_uuid()::text as valuation, extensions.gen_random_uuid()::text as metrics");
+async function seedResultArtifacts(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<{ trace: string; valuation: string; metrics: string; benchmark:string|null }> {
+  const ids = await client.query<{ trace: string; valuation: string; metrics: string; benchmark:string }>("select extensions.gen_random_uuid()::text as trace, extensions.gen_random_uuid()::text as valuation, extensions.gen_random_uuid()::text as metrics, extensions.gen_random_uuid()::text as benchmark");
   const artifactIds = ids.rows[0]!;
-  for (const [id, kind, schema] of [[artifactIds.trace, "EXECUTION_TRACE", "EXECUTION_TRACE_V1"], [artifactIds.valuation, "VALUATION_SERIES", "VALUATION_SERIES_V1"], [artifactIds.metrics, "METRIC_RESULT_SET", "METRIC_RESULT_SET_V1"]]) {
-    const content = `${JSON.stringify({ suffix, kind })}\n`;
+  const sourceDescriptors=gold?[
+    [artifactIds.trace,"EXECUTION_TRACE",gold.result.payload.executionTrace],
+    [artifactIds.valuation,"VALUATION_SERIES",gold.result.payload.valuationSeries],
+    [artifactIds.metrics,"METRIC_RESULT_SET",gold.result.payload.metricResultSet],
+    [artifactIds.benchmark,"BENCHMARK_SERIES",gold.result.payload.benchmark],
+  ].filter(x=>x[2]!==null) as [string,string,{artifactSchemaVersion:string}][]:null;
+  const artifacts=sourceDescriptors??[
+    [artifactIds.trace,"EXECUTION_TRACE",{artifactSchemaVersion:"EXECUTION_TRACE_V1"}],
+    [artifactIds.valuation,"VALUATION_SERIES",{artifactSchemaVersion:"VALUATION_SERIES_V1"}],
+    [artifactIds.metrics,"METRIC_RESULT_SET",{artifactSchemaVersion:"METRIC_RESULT_SET_V1"}],
+  ] as [string,string,{artifactSchemaVersion:string}][];
+  for (const [id, kind, descriptor] of artifacts) {
+    const schema=descriptor.artifactSchemaVersion;
+    const content = gold?'{"ok":true}\n':`${JSON.stringify({ suffix, kind })}\n`;
     await client.query(`
       insert into investing.research_result_artifacts (artifact_id, tenant_id, account_id, principal_id, tenant_membership_id, operation, capability, operation_scope, source_context, artifact_kind, artifact_schema_version, format, content_sha256, content_byte_length, record_count, content)
       values ($1,$2,null,$3,$4,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,'CANONICAL_JSONL_UTF8_LF_FINAL_NEWLINE_V1',upper(encode(extensions.digest(convert_to($7,'UTF8'),'sha256'),'hex')),octet_length(convert_to($7,'UTF8')),1,convert_to($7,'UTF8'))
     `, [id, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, kind, schema, content]);
   }
-  return artifactIds;
+  return {trace:artifactIds.trace,valuation:artifactIds.valuation,metrics:artifactIds.metrics,benchmark:gold?artifactIds.benchmark:null};
 }
 
-async function seedResult(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<void> {
-  const artifacts = await seedResultArtifacts(client, fixture, suffix);
+async function seedResult(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<void> {
+  const artifacts = await seedResultArtifacts(client, fixture, suffix,gold);
   await client.query(`
     insert into investing.research_results_scientific_identities (
       result_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id,
       execution_trace_artifact_id, valuation_series_artifact_id, metric_result_set_artifact_id, benchmark_series_artifact_id,
       operation, capability, operation_scope, source_context, engine_id, engine_version, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload
-    ) values ($1,$2,null,$3,$4,$5,$6,$7,$8,null,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918','SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$9,'{"schemaVersion":"RESULT_HASH_PAYLOAD_V1"}'::jsonb)
-  `, [fixture.resultIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, artifacts.trace, artifacts.valuation, artifacts.metrics, fixture.resultHashHex]);
+    ) values ($1,$2,null,$3,$4,$5,$6,$7,$8,$10,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER',$11,'SHA-256','SYNTRAKE:RESULT:V1','SYNTRAKE_SHA256_V1',$9,$12::jsonb)
+  `, [fixture.resultIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, artifacts.trace, artifacts.valuation, artifacts.metrics, fixture.resultHashHex,artifacts.benchmark,gold?.result.payload.engineVersion??"ENGINE_V20260918",JSON.stringify(gold?.result.payload??{schemaVersion:"RESULT_HASH_PAYLOAD_V1"})]);
 }
 
-async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<void> {
-  const content = JSON.stringify({ schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1", suffix });
+async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<void> {
+  const content = gold?.evidenceObject?.object.contentBytes.toString("utf8")??JSON.stringify({ schemaVersion: "RESEARCH_EXECUTION_EVIDENCE_V1", suffix });
   await client.query(`
     insert into investing.research_evidence_objects_scientific_identities (
       evidence_identity_id, tenant_id, account_id, principal_id, tenant_membership_id, run_input_identity_id, result_identity_id,
@@ -563,19 +622,19 @@ async function seedEvidenceObject(client: PoolClient, fixture: Rl8cAuthorityFixt
   `, [fixture.evidenceObjectIdentityId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.runInputIdentityId, fixture.resultIdentityId, content, fixture.evidenceObjectHashHex]);
 }
 
-async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean }> = {}): Promise<Rl8cAuthorityFixture> {
-  const fixture = { ...(await nextFixtureIds(client)), ...overrides };
+async function seedRl8RootAuthorityFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; evidenceObjectHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {},gold?:PositiveBundle): Promise<Rl8cAuthorityFixture> {
+  const fixture = { ...(await nextFixtureIds(client)), ...overrides,...(gold?{runInputHashHex:gold.runInput.ref.hashHex,resultHashHex:gold.result.ref.hashHex,evidenceObjectHashHex:gold.evidenceObject?.ref.hashHex}: {}) };
   await seedAuthorityScope(client, fixture, suffix, overrides);
   await seedResearchMaterialAndSpec(client, fixture, suffix);
   await seedBaselineAndVariantExperiment(client, fixture, suffix);
-  await seedRunInput(client, fixture);
-  await seedResult(client, fixture, suffix);
-  await seedEvidenceObject(client, fixture, suffix);
+  await seedRunInput(client, fixture,gold);
+  await seedResult(client, fixture, suffix,gold);
+  await seedEvidenceObject(client, fixture, suffix,gold);
   return fixture;
 }
 
-async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean }> = {}): Promise<Rl8cAuthorityFixture> {
-  return seedRl8RootAuthorityFixture(client, suffix, overrides);
+async function createRl8cRootFixture(client: PoolClient, suffix: string, overrides: Partial<{ membershipState: string; membershipRole: string; tenantId: string; principalId: string; tenantMembershipId: string; runInputHashHex: string; resultHashHex: string; reuseAuthority: boolean; authActorFromPrincipal:boolean }> = {},gold?:PositiveBundle): Promise<Rl8cAuthorityFixture> {
+  return seedRl8RootAuthorityFixture(client, suffix, overrides,gold);
 }
 
 function validationAssessmentProtocolPayloadFixture(): CanonicalJsonValue {
@@ -607,19 +666,19 @@ function validationAssessmentResultPayloadFixture(): CanonicalJsonValue {
     outcome: "PASS",
   };
 }
-async function seedFullStageAEvidence(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string): Promise<void> {
+async function seedFullStageAEvidence(client: PoolClient, fixture: Rl8cAuthorityFixture, suffix: string,gold?:PositiveBundle): Promise<void> {
   const validationProtocolId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const validationResultId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const assessmentProtocolId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const assessmentResultId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const comparisonProtocolId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
   const comparisonResultId = (await client.query<{ id: string }>("select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
-  await client.query(`insert into investing.research_validation_protocols_scientific_identities (research_validation_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$7,'{"schemaVersion":"TEST_VALIDATION_PROTOCOL"}'::jsonb)`, [validationProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, validationProtocol.hashHex]);
-  await client.query(`insert into investing.research_validation_results_scientific_identities (research_validation_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'RESEARCH_VALIDATION_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_RESULT:V1','SYNTRAKE_SHA256_V1',$8,'{"schemaVersion":"TEST_VALIDATION_RESULT"}'::jsonb)`, [validationResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, validationResult.hashHex]);
-  await client.query(`insert into investing.research_validation_assessment_protocols_scientific_identities (research_validation_assessment_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, validation_protocol_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, assessment_methodology, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'METRIC_REGISTRY_V20260927','VALIDATION_ASSESSMENT_METHODOLOGY_V20260929','RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$11,$12::jsonb)`, [assessmentProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, validationProtocol.hashHex, experiment.hashHex, researchIr.hashHex, validationAssessmentProtocol.hashHex, JSON.stringify(validationAssessmentProtocolPayloadFixture())]);
-  await client.query(`insert into investing.research_validation_assessment_results_scientific_identities (research_validation_assessment_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, assessment_protocol_hash_hex, validation_protocol_hash_hex, validation_result_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, outcome, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'METRIC_REGISTRY_V20260927','PASS','RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1','SYNTRAKE_SHA256_V1',$15,$16::jsonb)`, [assessmentResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, assessmentProtocolId, validationResultId, validationAssessmentProtocol.hashHex, validationProtocol.hashHex, validationResult.hashHex, experiment.hashHex, researchIr.hashHex, validationAssessmentResult.hashHex, JSON.stringify(validationAssessmentResultPayloadFixture())]);
-  await client.query(`insert into investing.research_experiment_comparison_protocols_scientific_identities (research_experiment_comparison_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, hash_hex, logical_comparison_key, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'{"schemaVersion":"TEST_COMPARISON_PROTOCOL"}'::jsonb)`, [comparisonProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, robustnessComparisonProtocol.hashHex, fixtureHash(`rl8c2:${suffix}:comparison-logical-key`)]);
-  await client.query(`insert into investing.research_experiment_comparison_results_scientific_identities (research_experiment_comparison_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_comparison_protocol_identity_id, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'{"schemaVersion":"TEST_COMPARISON_RESULT"}'::jsonb)`, [comparisonResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, comparisonProtocolId, robustnessComparisonResult.hashHex]);
+  await client.query(`insert into investing.research_validation_protocols_scientific_identities (research_validation_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,'RESEARCH_VALIDATION_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$7,$8::jsonb)`, [validationProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, fixture.researchExperimentId, gold?.validationProtocol.ref.hashHex??validationProtocol.hashHex,JSON.stringify(gold?.validationProtocol.payload??{schemaVersion:"TEST_VALIDATION_PROTOCOL"})]);
+  await client.query(`insert into investing.research_validation_results_scientific_identities (research_validation_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,'RESEARCH_VALIDATION_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_RESULT:V1','SYNTRAKE_SHA256_V1',$8,$9::jsonb)`, [validationResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId,gold?.validationResult.ref.hashHex??validationResult.hashHex,JSON.stringify(gold?.validationResult.payload??{schemaVersion:"TEST_VALIDATION_RESULT"})]);
+  await client.query(`insert into investing.research_validation_assessment_protocols_scientific_identities (research_validation_assessment_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, validation_protocol_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, assessment_methodology, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'METRIC_REGISTRY_V20260927','VALIDATION_ASSESSMENT_METHODOLOGY_V20260929','RESEARCH_VALIDATION_ASSESSMENT_PROTOCOL_CREATE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_PROTOCOL:V1','SYNTRAKE_SHA256_V1',$11,$12::jsonb)`, [assessmentProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, gold?.validationProtocol.ref.hashHex??validationProtocol.hashHex, gold?.subject.subjectExperiment.hashHex??experiment.hashHex, gold?.subject.subjectResearchIr.hashHex??researchIr.hashHex, gold?.validationAssessmentProtocol?.ref.hashHex??validationAssessmentProtocol.hashHex,JSON.stringify(gold?.validationAssessmentProtocol?.payload??validationAssessmentProtocolPayloadFixture())]);
+  await client.query(`insert into investing.research_validation_assessment_results_scientific_identities (research_validation_assessment_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_validation_protocol_identity_id, research_experiment_id, research_validation_assessment_protocol_identity_id, research_validation_result_identity_id, assessment_protocol_hash_hex, validation_protocol_hash_hex, validation_result_hash_hex, subject_experiment_hash_hex, subject_research_ir_hash_hex, metric_registry_version, outcome, operation, capability, operation_scope, source_context, hash_algorithm, hash_domain, hash_version, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'METRIC_REGISTRY_V20260927','PASS','RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1','RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH','SHA-256','SYNTRAKE:VALIDATION_ASSESSMENT_RESULT:V1','SYNTRAKE_SHA256_V1',$15,$16::jsonb)`, [assessmentResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, validationProtocolId, fixture.researchExperimentId, assessmentProtocolId, validationResultId, gold?.validationAssessmentProtocol?.ref.hashHex??validationAssessmentProtocol.hashHex,gold?.validationProtocol.ref.hashHex??validationProtocol.hashHex,gold?.validationResult.ref.hashHex??validationResult.hashHex,gold?.subject.subjectExperiment.hashHex??experiment.hashHex,gold?.subject.subjectResearchIr.hashHex??researchIr.hashHex,gold?.validationAssessmentResult?.ref.hashHex??validationAssessmentResult.hashHex,JSON.stringify(gold?.validationAssessmentResult?.payload??validationAssessmentResultPayloadFixture())]);
+  await client.query(`insert into investing.research_experiment_comparison_protocols_scientific_identities (research_experiment_comparison_protocol_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, hash_hex, logical_comparison_key, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, [comparisonProtocolId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, gold?.robustness?.protocolRef.hashHex??robustnessComparisonProtocol.hashHex, fixtureHash(`rl8c2:${suffix}:comparison-logical-key`),JSON.stringify(gold?.robustness?canonicalExperimentComparisonProtocolV1(gold.robustness.protocol):{schemaVersion:"TEST_COMPARISON_PROTOCOL"})]);
+  await client.query(`insert into investing.research_experiment_comparison_results_scientific_identities (research_experiment_comparison_result_identity_id, tenant_id, principal_id, tenant_membership_id, research_investigation_id, research_experiment_comparison_protocol_identity_id, hash_hex, canonical_payload) values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)`, [comparisonResultId, fixture.tenantId, fixture.principalId, fixture.tenantMembershipId, fixture.researchInvestigationId, comparisonProtocolId,gold?.robustness?.resultRef.hashHex??robustnessComparisonResult.hashHex,JSON.stringify(gold?.robustness?canonicalExperimentComparisonResultV1(gold.robustness.result):{schemaVersion:"TEST_COMPARISON_RESULT"})]);
 }
 
 function closureTransition(stageA: ScientificPromotionTransitionV1): ScientificPromotionTransitionV1 {
@@ -635,8 +694,8 @@ function failedStageATransition(): ScientificPromotionTransitionV1 {
   return stageATransition({ resultingState: "VALIDATION_FAILED", gateOutcomes: gates, transitionReasons: ["FAILED_VALIDATION"] });
 }
 
-async function createWriterReadyRoot(client: PoolClient, suffix: string): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
-  const fixture = await createRl8cRootFixture(client, suffix);
+async function createWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false,gold?:PositiveBundle): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+  const fixture = await createRl8cRootFixture(client, suffix,realOwnerAuth?{authActorFromPrincipal:true}:{},gold);
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_PROTOCOL_CREATE_V1");
   await client.query("set local role investing_app");
   const protocol = await client.query<{ result: { researchScientificPromotionProtocolIdentityId: string } }>("select investing.persist_research_scientific_promotion_protocol_v1($1,$2::jsonb) as result", [protocolHashRef, JSON.stringify(canonicalScientificPromotionProtocolV1())]);
@@ -644,17 +703,17 @@ async function createWriterReadyRoot(client: PoolClient, suffix: string): Promis
   await client.query("reset role");
   await setRl8Context(client, fixture, "RESEARCH_SCIENTIFIC_PROMOTION_ROOT_CREATE_V1");
   await client.query("set local role investing_app");
-  const rootPayload = rootTransition();
+  const rootPayload = gold?.predecessor??rootTransition();
   const root = await client.query<{ result: { researchScientificPromotionTransitionIdentityId: string } }>("select investing.persist_research_scientific_promotion_root_v1($1,$2::jsonb) as result", [hashScientificPromotionTransitionV1(rootPayload).hashHex, JSON.stringify(rootPayload)]);
   await client.query("reset role");
-  await seedFullStageAEvidence(client, fixture, suffix);
+  if(withStageAEvidence) await seedFullStageAEvidence(client, fixture, suffix,gold);
   return { fixture, rootId: root.rows[0]!.result.researchScientificPromotionTransitionIdentityId, rootPayload };
 }
 
-async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
+async function createCommittedWriterReadyRoot(client: PoolClient, suffix: string, withStageAEvidence=true, realOwnerAuth=false,gold?:PositiveBundle): Promise<{ fixture: Rl8cAuthorityFixture; rootId: string; rootPayload: ScientificPromotionTransitionV1 }> {
   await client.query("begin");
   try {
-    const result = await createWriterReadyRoot(client, suffix);
+    const result = await createWriterReadyRoot(client, suffix, withStageAEvidence, realOwnerAuth,gold);
     await client.query("commit");
     return result;
   } catch (error) {
@@ -807,6 +866,77 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
 
   afterAll(async () => { await behaviorPool?.end(); });
 
+  it("RL-10 reads RL-8 persisted promotion chain via owner-scope and investing_app, denying foreign roots", async () => {
+    const setup=await behaviorPool.connect();
+    try {
+      const history=await createRl8c3Leaf(setup,"PROMOTION_ELIGIBLE","rl10-authorized-chain");
+      const ctx={
+        actorKind:"USER_PRINCIPAL",
+        actorId:"pg17-authorized-rl10",
+        principalId:history.fixture.principalId,
+        tenantId:history.fixture.tenantId,
+        tenantMembershipId:history.fixture.tenantMembershipId,
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        operationScope:"TENANT_SCOPE",
+        sourceContext:"PURE_RESEARCH",
+      };
+      rl10ReadState.authorized=true;
+      rl10ReadState.context=ctx;
+      rl10ReadState.database={
+        connect:async()=>{
+          const real=await behaviorPool.connect();
+          return {
+            query:async(sql:string,params?:readonly unknown[])=>{
+              if (sql==="begin") {
+                const result=await real.query("begin");
+                await real.query("set local role investing_app");
+                return result;
+              }
+              return real.query(sql,params as unknown[]);
+            },
+            release:(destroy?:boolean)=>real.release(destroy),
+          };
+        },
+      };
+      const read=await readScientificPromotionChainForCurrentUserV1({
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:history.rootId,
+        correlationId:"rl10-pg17-promotion-history",
+      });
+      expect(read.ok).toBe(true);
+      if(!read.ok || !("chain" in read)) throw Error("RL-10 persisted RL-8 chain was not readable through investing_app");
+      expect(read.chain).toMatchObject({
+        schemaVersion:"RL10_PROMOTION_CHAIN_READ_V1",
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:history.rootId,
+        scientificState:"PROMOTION_ELIGIBLE",
+        executionAuthority:"NONE",
+        newPromotionEvaluation:"NOT_PERFORMED",
+      });
+      expect(read.chain.historicalTransitionCount).toBeGreaterThan(0);
+
+      const foreign=await createRl8c3Leaf(setup,"EXECUTED","rl10-foreign-chain");
+      const cross=await readScientificPromotionChainForCurrentUserV1({
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:foreign.rootId,
+        correlationId:"rl10-pg17-promotion-foreign",
+      });
+      expect(cross).toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+      rl10ReadState.authorized=false;
+      const denied=await readScientificPromotionChainForCurrentUserV1({
+        researchInvestigationId:history.fixture.researchInvestigationId,
+        rootTransitionIdentityId:history.rootId,
+        correlationId:"rl10-pg17-promotion-denied",
+      });
+      expect(denied).toEqual({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+    } finally {
+      rl10ReadState.authorized=true;
+      rl10ReadState.context=null;
+      rl10ReadState.database=null;
+      setup.release();
+    }
+  }, 180_000);
+
   for (const state of ["EXECUTED", "INSUFFICIENT_EVIDENCE", "PROMOTION_ELIGIBLE", "REJECTED"] as const) {
     it(`REAL PG17 valid edge ${state} to SUPERSEDED`, async () => {
       const client = await behaviorPool.connect();
@@ -884,6 +1014,523 @@ maybeDescribe("I5 RL-8C3 scientific promotion real PG17 behavioral hard gate", (
       await client.query("rollback");
     } finally { client.release(); }
   }, 180_000);
+
+  it("RL-10 resolves an owner Passport from actual PG17 rows and reuses a scientific root with the real service writer",async()=>{
+    const setup=await behaviorPool.connect();
+    try{
+      const {fixture,rootId}=await createCommittedWriterReadyRoot(
+        setup,"rl10-real-owner-passport-root",false,true);
+      const spec=await setup.query<{
+        source_draft_material_hash:string;hypothesis_material_hash:string;
+      }>("select source_draft_material_hash,hypothesis_material_hash from investing.research_spec_revisions where research_spec_revision_id=$1",
+        [fixture.researchSpecRevisionId]);
+      expect(spec.rows).toHaveLength(1);
+      const row=spec.rows[0]!;
+      const refFor=(hashDomain:string,hashHex:string)=>({
+        hashAlgorithm:"SHA-256",hashDomain,hashVersion:"SYNTRAKE_SHA256_V1",hashHex,
+      });
+      // Complete the existing test authority fixture with the accepted
+      // scientific spec identity that the real Passport validates.
+      const specRef=ref("SYNTRAKE:RESEARCH_SPEC:V1","7");
+      await setup.query(`insert into investing.research_specs_scientific_identities
+        (research_spec_identity_id,tenant_id,principal_id,tenant_membership_id,research_spec_revision_id,
+         operation,capability,operation_scope,source_context,
+         hash_algorithm,hash_domain,hash_version,hash_hex,
+         source_draft_hash_hex,hypothesis_hash_hex,canonical_payload)
+        values (extensions.gen_random_uuid(),$1,$2,$3,$4,'RESEARCH_RUN_INPUT_SCIENTIFIC_CREATE_V1',
+                'RESEARCH_MUTATE','TENANT_SCOPE','PURE_RESEARCH',
+                'SHA-256','SYNTRAKE:RESEARCH_SPEC:V1','SYNTRAKE_SHA256_V1',
+                $5,$6,$7,$8::jsonb)`,[
+        fixture.tenantId,fixture.principalId,fixture.tenantMembershipId,
+        fixture.researchSpecRevisionId,specRef.hashHex,
+        row.source_draft_material_hash,row.hypothesis_material_hash,
+        JSON.stringify({
+          schemaVersion:"RESEARCH_SPEC_HASH_PAYLOAD_V1",
+          sourceDraft:refFor("SYNTRAKE:RESEARCH_DRAFT:V1",row.source_draft_material_hash),
+          hypothesisBinding:{kind:"EXPLICIT_HYPOTHESIS",hypothesis:
+            refFor("SYNTRAKE:HYPOTHESIS:V1",row.hypothesis_material_hash)},
+        }),
+      ]);
+      const runId=(await setup.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      await setup.query(`insert into investing.research_execution_runs
+        (research_execution_run_id,tenant_id,principal_id,tenant_membership_id,
+         research_investigation_id,run_input_identity_id,operation,capability,
+         operation_scope,source_context,engine_id,engine_version)
+         values($1,$2,$3,$4,$5,$6,'RESEARCH_EXECUTION_RUN_V1','RESEARCH_EXECUTE',
+           'TENANT_SCOPE','PURE_RESEARCH','HISTORICAL_EXECUTION_ADAPTER','ENGINE_V20260918')`,
+        [runId,fixture.tenantId,fixture.principalId,fixture.tenantMembershipId,
+          fixture.researchInvestigationId,fixture.runInputIdentityId]);
+      for(const [n,state] of ["REGISTERED","STARTED","SUCCEEDED"].entries()){
+        await setup.query(`insert into investing.research_execution_run_events
+        (research_execution_run_event_id,research_execution_run_id,tenant_id,principal_id,
+         tenant_membership_id,operation,capability,operation_scope,source_context,
+         event_sequence,run_status,result_identity_id,failure_reason_code)
+        values(extensions.gen_random_uuid(),$1,$2,$3,$4,'RESEARCH_EXECUTION_RUN_V1',
+        'RESEARCH_EXECUTE','TENANT_SCOPE','PURE_RESEARCH',$5,$6,$7,null)`,[
+          runId,fixture.tenantId,fixture.principalId,fixture.tenantMembershipId,
+          n+1,state,state==="SUCCEEDED"?fixture.resultIdentityId:null,
+        ]);
+      }
+
+      const context={
+        actorKind:"USER_PRINCIPAL",actorId:fixture.principalId,
+        principalId:fixture.principalId,tenantId:fixture.tenantId,
+        tenantMembershipId:fixture.tenantMembershipId,
+        researchInvestigationId:fixture.researchInvestigationId,
+        operation:"RESEARCH_PASSPORT_READ_V1",capability:"RESEARCH_READ",
+        operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
+        correlationId:"rl10-passport-real-owner-root",
+      };
+      rl10ReadState.authorized=true;
+      rl10ReadState.realOwnerMode=true;
+      rl10ReadState.externalSubject=fixture.principalId;
+      const realDatabase={
+        connect:async()=>{
+          const client=await behaviorPool.connect();
+          return {
+            query:async(sql:string,params?:readonly unknown[])=>{
+              const result=await client.query(sql,params as unknown[]);
+              if(sql.trim().toLowerCase().startsWith("begin"))
+                await client.query("set local role investing_app");
+              return result;
+            },
+            release:(destroy?:boolean)=>client.release(destroy),
+          };
+        },
+      };
+      rl10ReadState.database=realDatabase;
+      const verified=await resolveAuthorizedResearchPassportReadContext({
+        researchInvestigationId:fixture.researchInvestigationId,
+        correlationId:"rl10-owner-verified-root",
+      });
+      expect(verified.ok,JSON.stringify(verified)).toBe(true);
+      if(!verified.ok||!isAuthorizedResearchPassportReadContext(verified.context))
+        throw Error("RL-10 real owner resolver denied lawful Investigation");
+      expect(verified.context.principalId).toBe(fixture.principalId);
+      expect(verified.context.tenantId).toBe(fixture.tenantId);
+      expect(verified.context.tenantMembershipId).toBe(fixture.tenantMembershipId);
+      expect(verified.context.actorId).toBe(fixture.principalId);
+      const passport=await readResearchPassportV1(
+        {authorizedContext:verified.context},
+        realDatabase as unknown as Parameters<typeof readResearchPassportV1>[1]);
+      expect(passport.ok,JSON.stringify(passport)).toBe(true);
+      if(!passport.ok)throw Error("RL-10 real PG17 Passport source rejected");
+      expect(passport.passport.transportProof).toEqual({
+        currentUser:"investing_app",currentRole:"investing_app",
+      });
+      expect(passport.passport.results.map(x=>x.resultIdentityId))
+        .toContain(fixture.resultIdentityId);
+      expect(passport.passport.executionRuns.some(x=>
+        x.terminalState==="SUCCEEDED"&&x.resultIdentityId===fixture.resultIdentityId))
+        .toBe(true);
+      const root=await createScientificPromotionRootForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        researchExperimentId:fixture.researchExperimentId,
+        runInputIdentityId:fixture.runInputIdentityId,
+        correlationId:"rl10-root-reuse-real-passport",
+      });
+      expect(root.ok,JSON.stringify(root)).toBe(true);
+      if(!root.ok)throw Error("RL-10 actual scientific root writer rejected real Passport");
+      expect(root).toMatchObject({
+        rootTransitionIdentityId:rootId,scientificState:"EXECUTED",
+        status:"REUSED_IDENTICAL",executionAuthority:"NONE",
+      });
+      const evaluationInput={
+        researchInvestigationId:fixture.researchInvestigationId,
+        rootTransitionIdentityId:rootId,
+        researchValidationProtocolIdentityId:fixture.protocolIdentityId,
+        correlationId:"rl10-owner-no-validation-gate",
+      };
+      // Same branded owner authority, real Passport, real PG17 immutable
+      // root: an absent Validation episode must NEVER create Stage-A.
+      expect(await evaluateScientificPromotionForCurrentUserV1(evaluationInput))
+        .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
+      expect(await persistScientificPromotionForCurrentUserV1(evaluationInput))
+        .toEqual({ok:false,code:"CAPABILITY_UNAVAILABLE"});
+      const rootOnly=await setup.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId]);
+      expect(rootOnly.rows[0]?.n).toBe(1);
+      rl10ReadState.externalSubject="unknown-foreign-clerk";
+      const denied=await createScientificPromotionRootForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        researchExperimentId:fixture.researchExperimentId,
+        runInputIdentityId:fixture.runInputIdentityId,
+        correlationId:"rl10-foreign-denied-real-owner",
+      });
+      expect(denied).toMatchObject({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+      const foreignPromotion=await persistScientificPromotionForCurrentUserV1({
+        researchInvestigationId:fixture.researchInvestigationId,
+        rootTransitionIdentityId:rootId,
+        researchValidationProtocolIdentityId:fixture.protocolIdentityId,
+        correlationId:"rl10-owner-no-validation-foreign",
+      });
+      expect(foreignPromotion).toMatchObject({ok:false,code:"FORBIDDEN_OR_NOT_FOUND"});
+    }finally{
+      rl10ReadState.realOwnerMode=false;
+      rl10ReadState.externalSubject="";
+      rl10ReadState.context=null;
+      rl10ReadState.database=null;
+      setup.release();
+    }
+  },180_000);
+
+  it("RL-10 reads immutable RL-7 comparison through real investing_app RLS, hashes and RL-8 positive writer",async()=>{
+    const client=await behaviorPool.connect();
+    try{
+      const golden=buildRl10PositivePromotionEvidence();
+      if(!golden.robustness)throw Error("POSITIVE_FIXTURE_NO_RL7");
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        client,"rl10-rl7-rl8-real-gateway",true,true,golden);
+      rl10ReadState.externalSubject=fixture.principalId;
+      rl10ReadState.realOwnerMode=true;
+      rl10ReadState.database={
+        connect:async()=>{
+          const conn=await behaviorPool.connect();
+          return {
+            query:async(sql:string,params?:readonly unknown[])=>{
+              const value=await conn.query(sql,params as unknown[]);
+              if(sql.trim().toLowerCase().startsWith("begin"))
+                await conn.query("set local role investing_app");
+              return value;
+            },
+            release:(destroy?:boolean)=>conn.release(destroy),
+          };
+        },
+      };
+      const resolved=await resolveAuthorizedResearchPassportReadContext({
+        researchInvestigationId:fixture.researchInvestigationId,
+        correlationId:"rl10-rl7-r8-verified-owner",
+      });
+      expect(resolved.ok,JSON.stringify(resolved)).toBe(true);
+      if(!resolved.ok||!isAuthorizedResearchPassportReadContext(resolved.context))
+        throw Error("POSITIVE_RL7_OWNER_AUTHORITY_DENIED");
+      const ctx=resolved.context;
+      const protocol=golden.robustness.protocol;
+      const referenceResultId=(await client.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const referenceRunId=(await client.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      const thirdExperimentId=(await client.query<{id:string}>(
+        "select extensions.gen_random_uuid()::text as id")).rows[0]!.id;
+      // PASSport reference fragments are deliberately synthetic HERE.
+      // The real RL-7 gateway independently reads and verifies immutable
+      // Protocol/Result through PostgreSQL FORCE RLS and checked ownership.
+      // This does not claim an end-to-end real Research Passport lineage.
+      const passport={
+        investigation:{
+          researchInvestigationId:fixture.researchInvestigationId,
+          tenantId:fixture.tenantId,principalId:fixture.principalId,
+          tenantMembershipId:fixture.tenantMembershipId,
+          operationScope:"TENANT_SCOPE",sourceContext:"PURE_RESEARCH",
+        },
+        experiments:[
+          {researchExperimentId:fixture.researchExperimentId,
+            experiment:golden.subject.subjectExperiment,
+            experimentParameters:golden.subject.subjectExperimentParameters,
+            parentExperimentId:fixture.baselineExperimentId},
+          {researchExperimentId:fixture.baselineExperimentId,
+            experiment:protocol.referenceExperiment,
+            experimentParameters:protocol.referenceExperimentParameters,
+            parentExperimentId:null},
+          {researchExperimentId:thirdExperimentId,
+            experiment:protocol.neighborhoodExperimentRefs[2],
+            experimentParameters:null,parentExperimentId:fixture.baselineExperimentId},
+        ],
+        runInputs:[{
+          runInputIdentityId:referenceRunId,
+          researchExperimentId:fixture.baselineExperimentId,
+          experimentHashHex:protocol.referenceExperiment.hashHex,
+        }],
+        results:[{
+          resultIdentityId:referenceResultId,runInputIdentityId:referenceRunId,
+          result:protocol.referenceResult,
+        }],
+        executionRuns:[{
+          runInputIdentityId:referenceRunId,resultIdentityId:referenceResultId,
+          terminalState:"SUCCEEDED",
+        }],
+        validation:{availability:"AVAILABLE_RL3",episodes:[{
+          researchExperimentId:fixture.baselineExperimentId,state:"AGGREGATE_AVAILABLE",
+          aggregate:{validationResult:protocol.referenceValidationResult},
+        }]},
+      } as unknown as Parameters<typeof readPersistedPromotionRobustnessV1>[2];
+      await client.query("begin");
+      try{
+        await setRl8Context(client,fixture,
+          "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        const bound={
+          subjectExperiment:golden.subject.subjectExperiment,
+          subjectExperimentParameters:golden.subject.subjectExperimentParameters,
+          subjectResult:golden.result.ref,
+          subjectValidationResult:golden.validationResult.ref,
+        };
+        const observed=await readPersistedPromotionRobustnessV1(
+          client as unknown as Parameters<typeof readPersistedPromotionRobustnessV1>[0],
+          ctx,passport,bound);
+        expect(observed).not.toBeNull();
+        expect(observed?.protocolRef.hashHex).toBe(golden.robustness.protocolRef.hashHex);
+        expect(observed?.resultRef.hashHex).toBe(golden.robustness.resultRef.hashHex);
+        const plan=evaluateScientificPromotionV1({...golden,robustness:observed});
+        expect(plan.kind,plan.kind==="FAIL_CLOSED"?plan.reason:"").toBe("AUTHORITATIVE_PLAN");
+        if(plan.kind!=="AUTHORITATIVE_PLAN")throw Error("RL7_PERSISTED_POSITIVE_GATE_DENIED");
+        expect(plan.stageA.transition.resultingState).toBe("VALIDATION_PASSED");
+        expect(plan.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+        const stored=await persistScientificPromotionPlanV1(
+          client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+        expect(stored).toMatchObject({status:"CREATED",scientificState:"PROMOTION_ELIGIBLE"});
+        await client.query("commit");
+      }catch(error){
+        await client.query("rollback").catch(()=>undefined);
+        throw error;
+      }
+      const rows=await client.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId]);
+      expect(rows.rows[0]?.n).toBe(3);
+    }finally{
+      rl10ReadState.realOwnerMode=false;
+      rl10ReadState.externalSubject="";
+      rl10ReadState.database=null;
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
+    }
+  },180_000);
+
+  it("RL-10 uses a deterministic RL-8B positive scientific golden through the real PG17 owner SQL writer",async()=>{
+    const client=await behaviorPool.connect();
+    try{
+      const golden=buildRl10PositivePromotionEvidence();
+      const plan=evaluateScientificPromotionV1(golden);
+      expect(plan.kind,plan.kind==="FAIL_CLOSED"?plan.reason:"").toBe("AUTHORITATIVE_PLAN");
+      if(plan.kind!=="AUTHORITATIVE_PLAN")throw Error("GOLDEN_ENGINE_NOT_POSITIVE");
+      expect(plan.stageA.transition.resultingState).toBe("VALIDATION_PASSED");
+      expect(plan.closure?.transition.resultingState).toBe("PROMOTION_ELIGIBLE");
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        client,"rl10-golden-engine-positive",true,true,golden);
+      expect(hashScientificPromotionTransitionV1(rootPayload).hashHex)
+        .toBe(hashScientificPromotionTransitionV1(golden.predecessor).hashHex);
+      const write=async()=>{
+        await setRl8Context(client,fixture,"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        return persistScientificPromotionPlanV1(
+          client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+      };
+      await client.query("begin");
+      const created=await write();
+      expect(created).toMatchObject({status:"CREATED",scientificState:"PROMOTION_ELIGIBLE",
+        stageAHashHex:plan.stageA.transitionRef.hashHex,
+        closureHashHex:plan.closure?.transitionRef.hashHex,
+      });
+      await client.query("commit");
+      await client.query("begin");
+      const repeated=await write();
+      expect(repeated).toEqual({...created,status:"REUSED_IDENTICAL"});
+      await client.query("commit");
+      const persisted=await client.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId]);
+      expect(persisted.rows[0]?.n).toBe(3);
+      // This PG17 test verifies cryptographic engine-plan -> RL-8 writer
+      // binding. Its RL-7 and Validation rows are golden fixture data,
+      // NOT a no-mock full Passport/Comparison writer end-to-end proof.
+    }finally{
+      await client.query("rollback").catch(()=>undefined);
+      client.release();
+    }
+  },180_000);
+
+  it("RL-10 persists and replays actual RL-8C2 Stage-A/closure through investing_app with RL-8C3 chain postproof",async()=>{
+    const client=await behaviorPool.connect();
+    try{
+      await withTransaction(client,async()=>{
+        const {fixture,rootId,rootPayload}=await createWriterReadyRoot(client,"rl10-persist-plan-gateway");
+        await setRl8Context(client,fixture,"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        const stage=stageATransition();
+        const closure=closureTransition(stage);
+        const plan={
+          kind:"AUTHORITATIVE_PLAN",
+          stageA:{transition:stage,transitionRef:hashScientificPromotionTransitionV1(stage)},
+          closure:{transition:closure,transitionRef:hashScientificPromotionTransitionV1(closure)},
+        } satisfies ScientificPromotionEvaluationPlanV1;
+        const dbClient=client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0];
+        const created=await persistScientificPromotionPlanV1(dbClient,rootId,rootPayload,plan);
+        expect(created).toMatchObject({
+          status:"CREATED",scientificState:"PROMOTION_ELIGIBLE",
+          stageAHashHex:hashScientificPromotionTransitionV1(stage).hashHex,
+          closureHashHex:hashScientificPromotionTransitionV1(closure).hashHex,
+        });
+        expect(created.closureTransitionIdentityId).toMatch(/^[0-9a-f-]{36}$/u);
+        const reused=await persistScientificPromotionPlanV1(dbClient,rootId,rootPayload,plan);
+        expect(reused).toEqual({...created,status:"REUSED_IDENTICAL"});
+        const alternate=failedStageATransition();
+        const alternateClosure=closureTransition(alternate);
+        const conflict={
+          kind:"AUTHORITATIVE_PLAN",
+          stageA:{transition:alternate,transitionRef:hashScientificPromotionTransitionV1(alternate)},
+          closure:{transition:alternateClosure,transitionRef:hashScientificPromotionTransitionV1(alternateClosure)},
+        } satisfies ScientificPromotionEvaluationPlanV1;
+        await expect(persistScientificPromotionPlanV1(dbClient,rootId,rootPayload,conflict))
+          .rejects.toThrow("PROMOTION_WRITER_CONFLICT");
+        await client.query("reset role");
+        const rows=await client.query<{resulting_state:string}>(
+          "select resulting_state from investing.research_scientific_promotion_transitions_scientific_identities where research_scientific_promotion_transition_identity_id=any($1::uuid[])",
+          [[rootId,created.stageATransitionIdentityId,created.closureTransitionIdentityId]]);
+        expect(rows.rows.map(x=>x.resulting_state).sort())
+          .toEqual(["EXECUTED","PROMOTION_ELIGIBLE","VALIDATION_PASSED"].sort());
+      });
+    }finally{client.release();}
+  },180_000);
+
+  it("RL-10 recovers lost acknowledgement and rolled-back transaction without duplicate scientific transitions",async()=>{
+    const initial=await behaviorPool.connect();
+    const replay=await behaviorPool.connect();
+    try{
+      // Setup is committed independently. These are real PG17 RLS, SQL
+      // writers and reconstruction calls; only the scientific fixture data
+      // and pre-evaluated plan are controlled by the rehearsal.
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        initial,"rl10-interruption-reconciliation");
+      const stage=stageATransition();
+      const closure=closureTransition(stage);
+      const plan={
+        kind:"AUTHORITATIVE_PLAN",
+        stageA:{transition:stage,transitionRef:hashScientificPromotionTransitionV1(stage)},
+        closure:{transition:closure,transitionRef:hashScientificPromotionTransitionV1(closure)},
+      } satisfies ScientificPromotionEvaluationPlanV1;
+      const write=async(client:PoolClient)=>{
+        await setRl8Context(client,fixture,"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await client.query("set local role investing_app");
+        return persistScientificPromotionPlanV1(
+          client as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+      };
+      const count=async()=>{
+        const rows=await initial.query<{n:number}>(
+          "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1 and research_experiment_id=$2",
+          [fixture.researchInvestigationId,fixture.researchExperimentId]);
+        return rows.rows[0]!.n;
+      };
+      expect(await count()).toBe(1);
+
+      // Crash before commit: callback appeared successful, but rollback
+      // must erase both Stage-A and closure, including deferred constraints.
+      await initial.query("begin");
+      const rolledBack=await write(initial);
+      expect(rolledBack.status).toBe("CREATED");
+      await initial.query("rollback");
+      expect(await count()).toBe(1);
+
+      // Re-execution after crash creates the same scientific content;
+      // commit atomically and intentionally lose the reply.
+      await initial.query("begin");
+      const committed=await write(initial);
+      expect(committed.status).toBe("CREATED");
+      await initial.query("commit");
+      expect(await count()).toBe(3);
+
+      // A different connection with independent request/context must
+      // reconstruct exact identity/hash and return REUSED, not create.
+      await replay.query("begin");
+      const acknowledged=await write(replay);
+      expect(acknowledged).toEqual({...committed,status:"REUSED_IDENTICAL"});
+      await replay.query("commit");
+      expect(await count()).toBe(3);
+
+      // Ownership loss after commit cannot read or replay the existing
+      // root and cannot modify its immutable transition records.
+      await replay.query("begin");
+      await setRl8Context(replay,{
+        ...fixture,principalId:"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      },"RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+      await replay.query("set local role investing_app");
+      await expect(persistScientificPromotionPlanV1(
+        replay as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+        rootId,rootPayload,plan,
+      )).rejects.toThrow(/AUTHORITY_FAILURE|WRONG_LINEAGE|permission denied/iu);
+      await replay.query("rollback");
+      expect(await count()).toBe(3);
+    }finally{
+      await initial.query("rollback").catch(()=>undefined);
+      await replay.query("rollback").catch(()=>undefined);
+      initial.release();replay.release();
+    }
+  },180_000);
+
+  it("RL-10 rolls back both scientific transitions when the post-write RL-8C3 proof is corrupt or unavailable",async()=>{
+    const setup=await behaviorPool.connect();
+    const retry=await behaviorPool.connect();
+    try{
+      const {fixture,rootId,rootPayload}=await createCommittedWriterReadyRoot(
+        setup,"rl10-postwrite-proof-failure");
+      const stage=stageATransition();
+      const closure=closureTransition(stage);
+      const plan={
+        kind:"AUTHORITATIVE_PLAN",
+        stageA:{transition:stage,transitionRef:hashScientificPromotionTransitionV1(stage)},
+        closure:{transition:closure,transitionRef:hashScientificPromotionTransitionV1(closure)},
+      } satisfies ScientificPromotionEvaluationPlanV1;
+      const count=async()=>(await setup.query<{n:number}>(
+        "select count(*)::int as n from investing.research_scientific_promotion_transitions_scientific_identities where research_investigation_id=$1",
+        [fixture.researchInvestigationId],
+      )).rows[0]!.n;
+      expect(await count()).toBe(1);
+
+      for(const failure of ["CORRUPT_CHAIN","READ_UNAVAILABLE"] as const){
+        await retry.query("begin");
+        try{
+          await setRl8Context(retry,fixture,
+            "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+          await retry.query("set local role investing_app");
+          const failingClient={
+            query:async <Row=Record<string,unknown>>(sql:string,params:readonly unknown[]=[])=>{
+              const result=await retry.query<Row>(sql,params as unknown[]);
+              if(sql.includes("reconstruct_research_scientific_promotion_chain_v1")){
+                if(failure==="READ_UNAVAILABLE")throw Error("SIMULATED_CONNECTION_READ_FAILURE");
+                return {rows:[{result:{status:"CORRUPT_HISTORY",rootTransitionIdentityId:rootId}}]};
+              }
+              return result;
+            },
+          } as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0];
+          await expect(persistScientificPromotionPlanV1(
+            failingClient,rootId,rootPayload,plan,
+          )).rejects.toThrow(failure==="CORRUPT_CHAIN"?
+            "PROMOTION_POSTWRITE_CHAIN_INVALID":"SIMULATED_CONNECTION_READ_FAILURE");
+        }finally{
+          await retry.query("rollback");
+        }
+        // A writer success followed by an invalid/unavailable read is NOT
+        // allowed to commit any Stage-A or closure. Read with another client.
+        expect(await count()).toBe(1);
+      }
+
+      await retry.query("begin");
+      try{
+        await setRl8Context(retry,fixture,
+          "RESEARCH_SCIENTIFIC_PROMOTION_EVALUATION_PLAN_PERSIST_V1");
+        await retry.query("set local role investing_app");
+        const successful=await persistScientificPromotionPlanV1(
+          retry as unknown as Parameters<typeof persistScientificPromotionPlanV1>[0],
+          rootId,rootPayload,plan);
+        expect(successful.status).toBe("CREATED");
+        await retry.query("commit");
+      }catch(error){
+        await retry.query("rollback").catch(()=>undefined);
+        throw error;
+      }
+      expect(await count()).toBe(3);
+    }finally{
+      await setup.query("rollback").catch(()=>undefined);
+      await retry.query("rollback").catch(()=>undefined);
+      setup.release();
+      retry.release();
+    }
+  },180_000);
 
   it("REAL PG17 replay returns CREATED then REUSED_IDENTICAL and blocks divergent second successor", async () => {
     const client = await behaviorPool.connect();

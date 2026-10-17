@@ -814,4 +814,24 @@ maybeDescribe("I5 RL-3D Validation Assessment real PG17 rehearsal", () => {
       client.release();
     }
   });
+  it("RL-10 sees exact persisted Validation/Assessment rows through existing scoped RL-3D RLS",async()=>{
+    await asApp("RESEARCH_VALIDATION_ASSESSMENT_RESULT_FINALIZE_V1","RESEARCH_MUTATE",async(client)=>{
+      const selectors=[
+        {table:"research_validation_protocols_scientific_identities",key:"research_validation_protocol_identity_id",value:ids.protocolV2},
+        {table:"research_validation_results_scientific_identities",key:"research_validation_result_identity_id",value:ids.validationResult},
+        {table:"research_validation_assessment_protocols_scientific_identities",key:"research_validation_assessment_protocol_identity_id",value:ids.assessmentProtocol},
+        {table:"research_validation_assessment_results_scientific_identities",key:"research_validation_assessment_result_identity_id",value:ids.assessmentResult},
+      ] as const;
+      const count=async(x:typeof selectors[number])=>
+        (await client.query<{n:number}>(
+          `select count(*)::int as n from investing.${x.table} where ${x.key}=$1 and research_investigation_id=$2 and tenant_id=$3 and principal_id=$4 and tenant_membership_id=$5`,
+          [x.value,ids.investigation,ids.tenant,ids.principal,ids.membership],
+        )).rows[0]?.n;
+      for(const item of selectors)expect(await count(item),item.table).toBe(1);
+      await client.query("select set_config($1,$2,true)",
+        ["syntrake.investing.principal_id","ffffffff-ffff-4fff-8fff-ffffffffffff"]);
+      for(const item of selectors)expect(await count(item),item.table).toBe(0);
+    });
+  });
+
 });
